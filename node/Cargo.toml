@@ -6,3 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tokio = "1.17.0"
+# disable default features, import ["core", "gossipsub", "identify", "identity", "kad", "noise", "swarm", "yamux", "mplex"]
+libp2p = "0.43.0"
+futures = "0.3.21"
+async-trait = "0.1.53"
