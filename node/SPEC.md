@@ -2,11 +2,11 @@
 
 ## Bootstrapping
 
-The premise is that all connections between peers must authenticated encrypted, and multiplexed. Below we discuss our approach to meeting the goal.
+The premise is that all connections between peers must be authenticated encrypted, and multiplexed. Below we discuss our approach to meeting the goal.
 
 ## Transport
 
-Libp2p support dialling/listening on different transports in parallel. We will have a base line interoperability support of QUIC for both inbound and outbound connections, while also supporting tcp and others as fallback in case QUIC fails. IPV6 and IPV4 both are supported, with IPV4 being the default. 
+Libp2p supports dialing/listening on different transports in parallel. We will have base line interoperability support for QUIC for both inbound and outbound connections, while also supporting tcp and others as fallbacks in case QUIC fails. IPV6 and IPV4 both are supported, with IPV4 being the default.
 
 - QUIC over TCP?
     - QUIC requires not initial negotiation to agree on auth or multiplexing
@@ -25,7 +25,7 @@ Libp2p support dialling/listening on different transports in parallel. We will h
 
 ## Identities and security
 
-Beside TLS1.3 and SECIO, we chose libp2p Noise as our default as our transport security. SECIO gas been the default in IPFS, but is being phased out slowly. Through a transport upgrader, noise will create a security handshake channel between the peers `secp256k1` identities in the dialling and listening. As described in [libp2p-noise](https://github.com/libp2p/specs/tree/master/noise), the two peers can now exchange encrypted information. Multistream-select is the current transport upgrader but soon to be replaced with Multiselect 2.  
+Beside TLS1.3 and SECIO, we chose libp2p Noise as our default transport security. SECIO has been the default in IPFS, but is being phased out slowly. Through a transport upgrader, Noise will create a security handshake channel between the peers `secp256k1` identities in the dialing and listening. As described in [libp2p-noise](https://github.com/libp2p/specs/tree/master/noise), the two peers can now exchange encrypted information. Multistream-select is the current transport upgrader but soon to be replaced with Multiselect 2.  
 
 We will set the priority of transport security through our swarm as follows:
 
@@ -45,18 +45,21 @@ We will set the priority of transport security through our swarm as follows:
 
 ## ****Multiplexing****
 
-Multiplexing is native to QUIC, therefore, it will only apply transports such as TCP. We have set the default to be mplex for any TCP connection. 
+Multiplexing is native to QUIC, therefore, it will only apply to transports such as TCP. We have set the default to be mplex for any TCP connection. 
 
 ## Discovery - WIP
 
-## GossipSub - WIP
+Before messages are sent back and forth between peers, they must first discover one another. On top of gossipsub there can be any discovery mechanism as long as they use the Peer discovery interface for libp2p. We have a couple of methods, the first of which is Peer exchange through our Fleek bootstrap nodes, these nodes are nominal, and neutral, as in they don’t interact with the mesh network. The bootstrap nodes help us in several ways. One way is to maintain score of all the nodes that connect to the bootstrap nodes; subsequently preventing nodes, malicious ones, from continuing their bootstrap process. Another use case for bootstrap nodes are gossip-only nodes and act as the orchestrators and maintainers of the network. The second method, which is exploratory, is using explicit peering agreements, to define a set of peers to which nodes should connect to when bootstrapping. This should help speed up the bootstrap process for nodes far away from Fleek’s bootstrap nodes. There are downsides to this and that is seemingly well behaved nodes turning rogue.
 
-- Peer discovery
+## GossipSub - Content routing
+
+Here we discuss Fleek Mesh Construction, we start with the default v1.0 parameters and define a recommendation for the v1.1 peer scoring. We diverge from one default value and that is `D`, with that change we must also change `D_low` and `D_high`  degree of the network. Which boils down to how many peers can a node maintain a direct connection to in its local mesh. 
+
 - Parameters
     - [v1.0 spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.0.md#parameters)
         - `D`
             - The desired outbound degree of the network
-            - fleek:
+            - fleek: 8
             - default: 6
         - `D_low`
             - Lower bound for outbound degree
@@ -189,6 +192,14 @@ Multiplexing is native to QUIC, therefore, it will only apply transports such as
                 - **`P₄`**
                 - `InvalidMessageDeliveriesWeight`
                 - `InvalidMessageDeliveriesDecay`
-            
-- Spam Protection Measures - WIP
+        
 - ****Recommendations for Network Operators****
+    - The network can boostrap through known small set of bootstrap nodes. This can be done through Peer Exchange, as long as the peer can find one peer participating in the topic of interest.
+    - Without a discovery service
+        - Create and operate a set of stable bootstrapper nodes, whose addresses are known ahead of time by the application.
+        - The bootstrappers should be configured without a mesh (ie set `D=D_lo=D_hi=D_out=0`) and with Peer Exchange enabled, utilizing Signed Peer Records.
+        - The application should assign a high application-specific score to the bootstrappers and set `AcceptPXThreshold` to a high enough value attainable only by the bootstrappers.
+        - The bootstrap nodes will only act as gossip and peer exchange nodes only.
+        - Network operators may configure the application-specific scoring function such that the bootstrappers enforce further constraints into accepting new nodes (eg protocol handshakes, staked participation, and so on).
+    - With discovery service
+        - even if an external peer discovery service like Kademlia is used, recommended to use bootstrap nodes configured with Peer exchange and high application scores.
