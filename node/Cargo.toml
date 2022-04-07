@@ -1,13 +1,20 @@
 [package]
-name = "libp2p-testing"
+name = "node"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-tokio = "1.17.0"
-# disable default features, import ["core", "gossipsub", "identify", "identity", "kad", "noise", "swarm", "yamux", "mplex"]
-libp2p = "0.43.0"
+libp2p =  { version = "0.43.0", default-features = false, features = [
+    "ping",
+    "kad",
+    "gossipsub",
+    "identify",
+    "noise",
+    "yamux",
+    "mplex",
+] }
+
 futures = "0.3.21"
+tiny-cid = "0.3.0"
 async-trait = "0.1.53"
+async-std = { version = "1.11.0", features = ["attributes"] }
