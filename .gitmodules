@@ -1,6 +1,3 @@
-[submodule "ic"]
-	path = ic
-	url = https://github.com/dfinity/ic
 [submodule "rust-ipfs"]
 	path = rust-ipfs
 	url = https://github.com/rs-ipfs/rust-ipfs.git
