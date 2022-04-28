@@ -1,3 +1,8 @@
+//! Fnet Discovery implementation.
+//!
+//!
+//!
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     task::{Context, Poll},

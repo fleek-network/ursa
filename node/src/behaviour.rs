@@ -1,8 +1,14 @@
+//! Fnet Behaviour implementation.
+//!
+//!
+//!
+
 use std::task::{Context, Poll};
 
 use libp2p::{
     gossipsub::{Gossipsub, GossipsubEvent},
     identify::{Identify, IdentifyEvent},
+    identity::Keypair,
     ping::{Ping, PingEvent},
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
@@ -11,10 +17,11 @@ use libp2p::{
 };
 
 use crate::discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent};
-use tracing::{debug, error, trace, warn};
 
-/// This is Fnet custome network behaviour that handles gossip, ping, identify, and discovery
-/// This poll function must have the same signature as the NetworkBehaviour
+/// This is Fnet custom network behaviour that handles
+/// [`Gossipsub`], [`Ping`], [`Identify`], and [`DiscoveryBehaviour`].
+///
+/// The poll function must have the same signature as the NetworkBehaviour
 /// function and will be called last within the generated NetworkBehaviour implementation.
 #[derive(NetworkBehaviour)]
 #[behaviour(
@@ -29,8 +36,14 @@ pub struct FnetBehaviour {
     discovery: DiscoveryBehaviour,
 }
 
+// 20000000
+// dfx canister --network ic call tgodh-faaaa-aaaab-qaefa-cai approve '(principal "tpni3-tiaaa-aaaab-qaeeq-cai", 20000000:nat)'
+// dfx canister --network ic call tpni3-tiaaa-aaaab-qaeeq-cai burn '(principal "fle2e-ltcun-tpi5w-25chp-byb56-dfl72-f664t-slvy", 20000000:nat)'
+// 0x011478794f516fb7d9d3016a36fdcdbd5121171c2e5199df712d7a8399138553
+// 0x60DC1a1FD50F1cdA1D44dFf69Cec3E5C065417e8
+
 impl FnetBehaviour {
-    pub fn new() {
+    pub fn new(keypair: &Keypair) -> Self {
         // Setup the ping behaviour
 
         // Setup the identify behaviour
@@ -38,7 +51,13 @@ impl FnetBehaviour {
         // Setup the gossip behaviour
 
         // Setup the discovery behaviour
-        todo!()
+
+        FnetBehaviour {
+            ping: todo!(),
+            identify: todo!(),
+            gossipsub: todo!(),
+            discovery: todo!(),
+        }
     }
     fn poll(
         &mut self,

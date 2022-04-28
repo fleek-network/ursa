@@ -1,0 +1,7 @@
+- flyctl launch --image ipfs/go-ipfs:latest
+- fly volumes create ipfs_data --region fra --size 3
+- fly status
+- fly ssh console -a ursa-ipfs
+- fly regions set lax -a ursa-ipfs
+- fly regions backup lax -a ursa-ipfs
+- flyctl ips list
