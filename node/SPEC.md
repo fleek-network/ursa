@@ -63,35 +63,36 @@ Here we discuss Fleek Mesh Construction, we start with the default v1.0 paramete
             - default: 6
         - `D_low`
             - Lower bound for outbound degree
-            - fleek:
+            - fleek: 4
             - default: 4
         - `D_high`
             - Upper bound for outbound degree
-            - fleek:
+            - fleek: 12
             - default: 12
         - `D_lazy`
             - (Optional) the outbound degree for gossip emission
-            - fleek:
+            - fleek: 8
             - default: `D` = degree of the network
         - `heartbeat_interval`
             - Time between [heartbeats](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.0.md#heartbeat)
-            - fleek:
+            - fleek: 1 second to start
+                - can decrease to either 500 or 700 milliseconds
             - default: 1 second
         - `fanout_ttl`
             - Time-to-live for each topic's fanout state
-            - fleek:
+            - fleek: 60 seconds
             - default: 60 seconds
         - `mcache_len`
             - Number of history windows in message cache
-            - fleek:
+            - fleek: TBD
             - default: 5
         - `mcache_gossip`
             - Number of history windows to use when emitting gossip
-            - fleek:
+            - fleek: TBD
             - default: 3
         - `seen_ttl`
             - Expiry time for cache of seen message ids
-            - fleek:
+            - fleek: TBD
             - default: 2 minutes
     - [v1.1 spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md#overview-of-new-parameters)
         - `PruneBackoff`

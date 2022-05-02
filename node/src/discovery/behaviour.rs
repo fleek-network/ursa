@@ -9,8 +9,8 @@ use std::{
 };
 
 use libp2p::{
-    core::{connection::ConnectionId, ConnectedPoint},
-    kad::{handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaEvent, QueryId},
+    core::{connection::ConnectionId, ConnectedPoint, PublicKey},
+    kad::{handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, QueryId},
     swarm::{
         ConnectionHandler, IntoConnectionHandler, NetworkBehaviour, NetworkBehaviourAction,
         PollParameters,
@@ -29,14 +29,17 @@ struct PeerInfo {
 pub enum DiscoveryEvent {}
 
 pub struct DiscoveryBehaviour {
+    local_peer_id: PeerId,
+    /// should we support MDNS?
     /// kad instance
     kademlia: Kademlia<MemoryStore>,
     /// boostrap nodes
     /// could merge the bootstrap nodes under [peers]
-    boostrap: HashSet<PeerId>,
+    boostrap: Vec<(PeerId, Multiaddr)>,
     /// connected peers
     peers: HashSet<PeerId>,
     /// information about connected peers
+    /// we should prob introduce and arc lock on this
     peer_info: HashMap<PeerId, PeerInfo>,
     /// events
     events: VecDeque<DiscoveryEvent>,
@@ -44,7 +47,40 @@ pub struct DiscoveryBehaviour {
     // events: VecDeque<NetworkBehaviourAction<DiscoveryEvent, DiscoveryEventHandler>>,
 }
 
+impl DiscoveryBehaviour {
+    /**
+        Abstract the bootstrapping nodes in [FnetConfig]
+    */
+    // pub fn new(local_public_key: PublicKey, boostrap: Vec<(PeerId, Multiaddr)>) {
+    pub fn new(local_public_key: PublicKey) -> Self {
+        // setup kademlia config
+        // move to FnetConfig
+        let kademlia = {
+            let name = "";
+            let replication_factor = "";
+            let peer_id = local_public_key.to_peer_id();
+            let store = MemoryStore::new(peer_id);
+
+            let config = KademliaConfig::default()
+                .set_protocol_name(name)
+                .set_replication_factor(replication_factor);
+
+            Kademlia::with_config(peer_id, store, config)
+        };
+
+        // boostrap kademlia
+
+        // future: relay circuit v2 / hole punching
+    }
+
+    pub fn peer_info(&self) -> HashMap<PeerId, PeerInfo> {
+        &self.peer_info()
+    }
+}
+
 impl NetworkBehaviour for DiscoveryBehaviour {
+    /// Custom handler todo
+    // type ConnectionHandler = DiscoveryHandler;
     type ConnectionHandler = KademliaHandlerProto<QueryId>;
 
     type OutEvent = DiscoveryEvent;
@@ -54,7 +90,10 @@ impl NetworkBehaviour for DiscoveryBehaviour {
     }
 
     fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-        todo!()
+        self.peer_info
+            .get(peer_id)
+            .map(|peer_info| peer_info.addresses.cloned().collect())
+            .unwrap_or_default()
     }
 
     fn inject_connection_established(

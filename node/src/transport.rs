@@ -20,6 +20,8 @@ use libp2p::{
     yamux, PeerId, Transport,
 };
 
+use crate::config::FnetConfig;
+
 pub struct FnetTransport {
     keypair: Keypair,
     tcp: TcpConfig,
@@ -28,8 +30,8 @@ pub struct FnetTransport {
 
 impl FnetTransport {
     /// Creates a new [`FnetTransport`] using keypair.
-    pub fn new(keypair: &Keypair) -> Self {
-        let id_keys = keypair;
+    pub fn new(config: &FnetConfig) -> Self {
+        let id_keys = config.key;
 
         let tcp = {
             let noise = {
@@ -59,7 +61,15 @@ impl FnetTransport {
             transport
         };
 
-        let quic = { todo!() };
+        let quic = {
+            // block_on(QuicTransport::new(
+            //     QuicConfig::new(keypair),
+            //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
+            // ))
+            // .unwrap()
+
+            todo!()
+        };
 
         FnetTransport {
             keypair: keypair.to_owned(),
