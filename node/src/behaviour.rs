@@ -4,6 +4,7 @@
 //!
 
 use std::{
+    collections::VecDeque,
     task::{Context, Poll},
     time::Duration,
 };
@@ -11,18 +12,19 @@ use std::{
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
-        Gossipsub, GossipsubConfigBuilder, GossipsubEvent, GossipsubMessage, MessageAuthenticity,
-        MessageId, PeerScoreParams, PeerScoreThresholds, ValidationMode,
+        error::SubscriptionError, Gossipsub, GossipsubConfigBuilder, GossipsubEvent,
+        GossipsubMessage, IdentTopic as Topic, MessageAuthenticity, MessageId, PeerScoreParams,
+        PeerScoreThresholds, ValidationMode,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     kad::QueryId,
-    ping::{Ping, PingEvent},
+    ping::{Ping, PingEvent, PingFailure, PingSuccess},
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
     NetworkBehaviour,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
 
 use crate::{
     config::FnetConfig,
@@ -30,8 +32,42 @@ use crate::{
     service::PROTOCOL_NAME,
 };
 
-/// This is Fnet custom network behaviour that handles
-/// [`Gossipsub`], [`Ping`], [`Identify`], and [`DiscoveryBehaviour`].
+/// [FnetBehaviour]'s events
+#[derive(Debug)]
+pub enum FnetBehaviourEvent {
+    Ping(PingEvent),
+    Gossip(GossipsubEvent),
+    Identify(IdentifyEvent),
+    // add bitswap and rpc events
+    Discovery(DiscoveryEvent),
+}
+
+impl From<PingEvent> for FnetBehaviourEvent {
+    fn from(event: PingEvent) -> Self {
+        Self::Ping(event)
+    }
+}
+
+impl From<IdentifyEvent> for FnetBehaviourEvent {
+    fn from(event: IdentifyEvent) -> Self {
+        Self::Identify(event)
+    }
+}
+
+impl From<GossipsubEvent> for FnetBehaviourEvent {
+    fn from(event: GossipsubEvent) -> Self {
+        Self::Gossip(event)
+    }
+}
+
+impl From<DiscoveryEvent> for FnetBehaviourEvent {
+    fn from(event: DiscoveryEvent) -> Self {
+        Self::Discovery(event)
+    }
+}
+
+/// This is Fnet's custom network behaviour that handles
+/// all the [`Ping`], [`Identify`], [`Bitswap`], [`Gossipsub`], and [`DiscoveryBehaviour`].
 ///
 /// The poll function must have the same signature as the NetworkBehaviour
 /// function and will be called last within the generated NetworkBehaviour implementation.
@@ -42,12 +78,20 @@ use crate::{
     event_process = true
 )]
 pub struct FnetBehaviour<P: StoreParams> {
+    /// Aliving checks.
     ping: Ping,
-    // todo add rpc
+    // Identifying peer info to other peers.
     identify: Identify,
+    ///
     bitswap: Bitswap<P>,
+    /// Fnet's gossiping protocol for message propagation.
     gossipsub: Gossipsub,
+    /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
+
+    /// Fleek Network list of emitted events.
+    #[behaviour(ignore)]
+    events: VecDeque<FnetBehaviourEvent>,
 }
 
 impl<P: StoreParams> FnetBehaviour<P> {
@@ -125,11 +169,16 @@ impl<P: StoreParams> FnetBehaviour<P> {
             identify,
             gossipsub,
             discovery,
+            events: vec![],
         }
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, String> {
         self.discovery.bootstrap()
+    }
+
+    pub fn subscribe(&mut self, topic: &Topic) -> Result<bool, SubscriptionError> {
+        self.gossipsub.subscribe(topic)
     }
 
     fn poll(
@@ -144,6 +193,7 @@ impl<P: StoreParams> FnetBehaviour<P> {
     > {
         todo!()
     }
+
     pub fn emit() {
         todo!()
     }
@@ -151,58 +201,57 @@ impl<P: StoreParams> FnetBehaviour<P> {
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: PingEvent) {
-        todo!()
+        match event.result {
+            Ok(result) => match result {
+                PingSuccess::Pong => todo!(),
+                PingSuccess::Ping { rtt } => todo!(),
+            },
+            Err(err) => match err {
+                PingFailure::Timeout => todo!(),
+                PingFailure::Unsupported => todo!(),
+                PingFailure::Other { error } => todo!(),
+            },
+        }
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: IdentifyEvent) {
-        todo!()
+        match event {
+            IdentifyEvent::Received { peer_id, info } => todo!(),
+            IdentifyEvent::Sent { peer_id } => todo!(),
+            IdentifyEvent::Pushed { peer_id } => todo!(),
+            IdentifyEvent::Error { peer_id, error } => todo!(),
+        }
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, message: GossipsubEvent) {
-        todo!()
+        match message {
+            GossipsubEvent::Message {
+                propagation_source,
+                message_id,
+                message,
+            } => todo!(),
+            GossipsubEvent::Subscribed { peer_id, topic } => todo!(),
+            GossipsubEvent::Unsubscribed { peer_id, topic } => todo!(),
+            GossipsubEvent::GossipsubNotSupported { peer_id } => todo!(),
+        }
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for FnetBehaviour<P> {
+    fn inject_event(&mut self, event: BitswapEvent) {
+        match event {
+            BitswapEvent::Progress(query_id, counter) => todo!(),
+            BitswapEvent::Complete(query_id, result) => todo!(),
+        }
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: DiscoveryEvent) {
         todo!()
-    }
-}
-
-/// [FnetBehaviour]'s events
-#[derive(Debug)]
-pub enum FnetBehaviourEvent {
-    Ping(PingEvent),
-    Gossip(GossipsubEvent),
-    Identify(IdentifyEvent),
-    // add bitswap and rpc events
-    Discovery(DiscoveryEvent),
-}
-
-impl From<PingEvent> for FnetBehaviourEvent {
-    fn from(event: PingEvent) -> Self {
-        Self::Ping(event)
-    }
-}
-
-impl From<IdentifyEvent> for FnetBehaviourEvent {
-    fn from(event: IdentifyEvent) -> Self {
-        Self::Identify(event)
-    }
-}
-
-impl From<GossipsubEvent> for FnetBehaviourEvent {
-    fn from(event: GossipsubEvent) -> Self {
-        Self::Gossip(event)
-    }
-}
-
-impl From<DiscoveryEvent> for FnetBehaviourEvent {
-    fn from(event: DiscoveryEvent) -> Self {
-        Self::Discovery(event)
     }
 }
