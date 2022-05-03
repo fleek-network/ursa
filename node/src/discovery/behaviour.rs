@@ -18,6 +18,8 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 
+use crate::config::FnetConfig;
+
 // use super::handler::DiscoveryEventHandler;
 
 struct PeerInfo {
@@ -35,7 +37,7 @@ pub struct DiscoveryBehaviour {
     kademlia: Kademlia<MemoryStore>,
     /// boostrap nodes
     /// could merge the bootstrap nodes under [peers]
-    boostrap: Vec<(PeerId, Multiaddr)>,
+    bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
     /// connected peers
     peers: HashSet<PeerId>,
     /// information about connected peers
@@ -52,29 +54,50 @@ impl DiscoveryBehaviour {
         Abstract the bootstrapping nodes in [FnetConfig]
     */
     // pub fn new(local_public_key: PublicKey, boostrap: Vec<(PeerId, Multiaddr)>) {
-    pub fn new(local_public_key: PublicKey) -> Self {
+    pub fn new(config: &FnetConfig) -> Self {
+        let local_peer_id = config.keypair.public().to_peer_id();
+
         // setup kademlia config
         // move to FnetConfig
         let kademlia = {
             let name = "";
             let replication_factor = "";
-            let peer_id = local_public_key.to_peer_id();
-            let store = MemoryStore::new(peer_id);
+            let store = MemoryStore::new(local_peer_id);
 
             let config = KademliaConfig::default()
                 .set_protocol_name(name)
                 .set_replication_factor(replication_factor);
 
-            Kademlia::with_config(peer_id, store, config)
+            Kademlia::with_config(local_peer_id, store, config)
         };
 
-        // boostrap kademlia
-
         // future: relay circuit v2 / hole punching
+
+        Self {
+            local_peer_id,
+            kademlia,
+            bootstrap_nodes: Vec::new(),
+            peers: HashSet::new(),
+            peer_info: HashMap::new(),
+            events: VecDeque::new(),
+        }
     }
 
     pub fn peer_info(&self) -> HashMap<PeerId, PeerInfo> {
         &self.peer_info()
+    }
+
+    pub fn boostrap(&self) -> Result<QueryId, String> {
+        for (peer_id, address) in &self.bootstrap_nodes {
+            &self.kademlia.add_address(peer_id, address.clone());
+        }
+
+        &self.kademlia.bootstrap().map_err(|error| error.to_string())
+    }
+
+    pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &mut Self {
+        self.bootstrap_nodes.extend(bootstrap_nodes);
+        self
     }
 }
 

@@ -15,6 +15,7 @@ use libp2p::{
         MessageId, PeerScoreParams, PeerScoreThresholds, ValidationMode,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
+    kad::QueryId,
     ping::{Ping, PingEvent},
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
@@ -26,6 +27,7 @@ use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore};
 use crate::{
     config::FnetConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
+    service::PROTOCOL_NAME,
 };
 
 /// This is Fnet custom network behaviour that handles
@@ -50,8 +52,7 @@ pub struct FnetBehaviour<P: StoreParams> {
 
 impl<P: StoreParams> FnetBehaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
-        let local_public_key = config.key.public();
-        let protocol_version = "fnet/0.0.1".into();
+        let local_public_key = config.keypair.public();
 
         //TODO: check if FnetConfig has configs for the behaviours, if not instaniate new ones
 
@@ -62,7 +63,11 @@ impl<P: StoreParams> FnetBehaviour<P> {
         let bitswap = Bitswap::new(BitswapConfig::new(), store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(protocol_version, local_public_key));
+        let identify = Identify::new(IdentifyConfig::new(PROTOCOL_NAME.into(), local_public_key));
+
+        // Setup the discovery behaviour
+        let discovery =
+            DiscoveryBehaviour::new(&config).with_bootstrap_nodes(config.bootstrap_nodes.clone());
 
         // Setup the gossip behaviour
         // move to config
@@ -114,9 +119,6 @@ impl<P: StoreParams> FnetBehaviour<P> {
             gossipsub.with_peer_score(params, threshold).unwrap()
         };
 
-        // Setup the discovery behaviour
-        let discovery = DiscoveryBehaviour::new(local_public_key);
-
         FnetBehaviour {
             ping,
             bitswap,
@@ -124,6 +126,10 @@ impl<P: StoreParams> FnetBehaviour<P> {
             gossipsub,
             discovery,
         }
+    }
+
+    pub fn bootstrap(&mut self) -> Result<QueryId, String> {
+        self.discovery.bootstrap()
     }
 
     fn poll(

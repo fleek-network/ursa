@@ -11,16 +11,17 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::BitswapStore;
-use tracing::trace;
+use tracing::{trace, warn};
 
 use crate::{behaviour::FnetBehaviour, config::FnetConfig, transport::FnetTransport};
 
-const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
+pub const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
+
 const NETWORK_IDENTITY: &'static str = "fleek-network";
 const NETWORK_PROTOCOL: &'static str = "/fnet/0.0.1";
 
 pub struct FnetService<P: StoreParams> {
-    swarm: Swarm<FnetBehaviour<P>>,
+    swarm: Swarm<FnetBehaviour>,
 }
 
 impl<P: StoreParams> FnetService<P> {
@@ -38,7 +39,7 @@ impl<P: StoreParams> FnetService<P> {
     /// listening on [`FnetConfig`] `swarm_addr`.
     ///
     ///
-    pub fn new<S: BitswapStore<Params = P>>(config: FnetConfig, store: S) -> Self {
+    pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
@@ -69,8 +70,12 @@ impl<P: StoreParams> FnetService<P> {
             Err(error) => todo!(),
         };
 
-        // subscribe to topics and
-        // bootstrap node using Kademlia
+        // subscribe to topics
+
+        // boostrap
+        if let Err(e) = swarm.behaviour_mut().bootstrap() {
+            warn!("Failed to bootstrap with Kademlia: {}", e);
+        }
 
         FnetService { swarm }
     }

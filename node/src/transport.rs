@@ -72,7 +72,7 @@ impl FnetTransport {
         };
 
         FnetTransport {
-            keypair: keypair.to_owned(),
+            keypair: config.keypair,
             tcp,
             quic,
         }

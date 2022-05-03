@@ -1,7 +1,6 @@
 mod behaviour;
 mod config;
 mod discovery;
-mod gossip;
 mod rpc;
 mod service;
 mod transport;

@@ -8,7 +8,7 @@ use libp2p::Multiaddr;
 #[derive(Debug)]
 pub struct FnetConfig {
     /// Node key
-    pub key: Keypair,
+    pub keypair: Keypair,
     /// Swarm listening Address
     /// "/ip4/0.0.0.0/udp/0/quic".parse().unwrap()
     pub swarm_addr: Multiaddr,
@@ -20,6 +20,8 @@ pub struct FnetConfig {
     pub ping: PingConfig,
     /// Gossip Config
     pub gossip: GossipsubConfig,
+    // Bootstrap nodes
+    pub bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
 }
 
 impl FnetConfig {
