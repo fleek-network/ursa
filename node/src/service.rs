@@ -4,10 +4,12 @@
 //!
 
 use async_std::task;
+use futures::select;
 use libipld::store::StoreParams;
 use libp2p::{
+    gossipsub::IdentTopic as Topic,
     identity::Keypair,
-    swarm::{ConnectionLimits, SwarmBuilder},
+    swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::BitswapStore;
@@ -21,7 +23,7 @@ const NETWORK_IDENTITY: &'static str = "fleek-network";
 const NETWORK_PROTOCOL: &'static str = "/fnet/0.0.1";
 
 pub struct FnetService<P: StoreParams> {
-    swarm: Swarm<FnetBehaviour>,
+    swarm: Swarm<FnetBehaviour<P>>,
 }
 
 impl<P: StoreParams> FnetService<P> {
@@ -70,14 +72,31 @@ impl<P: StoreParams> FnetService<P> {
             Err(error) => todo!(),
         };
 
-        // subscribe to topics
+        // subscribe to topic
+        let topic = Topic::new(todo!());
+        if let Err(error) = swarm.behaviour_mut().subscribe(&topic) {
+            warn!("Failed to subscribe with topic: {}", error);
+        }
 
         // boostrap
-        if let Err(e) = swarm.behaviour_mut().bootstrap() {
-            warn!("Failed to bootstrap with Kademlia: {}", e);
+        if let Err(error) = swarm.behaviour_mut().bootstrap() {
+            warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
         FnetService { swarm }
+    }
+
+    /// Start the ursa network service
+    pub async fn start(&self) {
+        let swarm = self.swarm;
+
+        loop {
+            select! {
+                event = swarm.select_next_some() => match event {
+                    // _ => {}
+                }
+            }
+        }
     }
 }
 

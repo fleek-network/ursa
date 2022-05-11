@@ -2,7 +2,7 @@ use libp2p::gossipsub::GossipsubConfig;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStoreConfig as KademliaConfig;
 use libp2p::ping::Config as PingConfig;
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
 
 /// Fnet Configration
 #[derive(Debug)]
