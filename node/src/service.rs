@@ -18,9 +18,7 @@ use tracing::{trace, warn};
 use crate::{behaviour::FnetBehaviour, config::FnetConfig, transport::FnetTransport};
 
 pub const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
-
-const NETWORK_IDENTITY: &'static str = "fleek-network";
-const NETWORK_PROTOCOL: &'static str = "/fnet/0.0.1";
+pub const MESSAGE_PROTOCOL: &[u8] = b"/fnet/message/0.0.1";
 
 pub struct FnetService<P: StoreParams> {
     swarm: Swarm<FnetBehaviour<P>>,
@@ -39,7 +37,6 @@ impl<P: StoreParams> FnetService<P> {
     ///
     /// We construct a [`Swarm`] with [`FnetTransport`] and [`FnetBehaviour`]
     /// listening on [`FnetConfig`] `swarm_addr`.
-    ///
     ///
     pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
         // Todo: Create or get from local store
@@ -67,10 +64,7 @@ impl<P: StoreParams> FnetService<P> {
             }))
             .build();
 
-        match Swarm::listen_on(&mut swarm, config.swarm_addr) {
-            Ok(listener_id) => todo!(),
-            Err(error) => todo!(),
-        };
+        Swarm::listen_on(&mut swarm, config.swarm_addr).expect("swarm can be started");
 
         // subscribe to topic
         let topic = Topic::new(todo!());
@@ -92,9 +86,11 @@ impl<P: StoreParams> FnetService<P> {
 
         loop {
             select! {
-                event = swarm.select_next_some() => match event {
+                swarm_event = swarm.select_next_some() => match swarm_event {
+
                     // _ => {}
-                }
+                },
+
             }
         }
     }

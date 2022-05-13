@@ -12,9 +12,9 @@ use std::{
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
-        error::SubscriptionError, Gossipsub, GossipsubConfigBuilder, GossipsubEvent,
-        GossipsubMessage, IdentTopic as Topic, MessageAuthenticity, MessageId, PeerScoreParams,
-        PeerScoreThresholds, ValidationMode,
+        error::{PublishError, SubscriptionError},
+        Gossipsub, GossipsubConfigBuilder, GossipsubEvent, GossipsubMessage, IdentTopic as Topic,
+        MessageAuthenticity, MessageId, PeerScoreParams, PeerScoreThresholds, ValidationMode,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     kad::QueryId,
@@ -25,6 +25,7 @@ use libp2p::{
     NetworkBehaviour,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
+use tracing::{debug, trace};
 
 use crate::{
     config::FnetConfig,
@@ -88,7 +89,6 @@ pub struct FnetBehaviour<P: StoreParams> {
     gossipsub: Gossipsub,
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
-
     /// Fleek Network list of emitted events.
     #[behaviour(ignore)]
     events: VecDeque<FnetBehaviourEvent>,
@@ -122,6 +122,7 @@ impl<P: StoreParams> FnetBehaviour<P> {
             let mesh_n = 8;
             let mesh_n_low = 4;
             let mesh_n_high = 12;
+            let retain_scores = 4;
             let gossip_lazy = mesh_n;
             let heartbeat_interval = Duration::from_secs(1);
             let fanout_ttl = Duration::from_secs(60);
@@ -169,6 +170,7 @@ impl<P: StoreParams> FnetBehaviour<P> {
             identify,
             gossipsub,
             discovery,
+            // will rpc
             events: vec![],
         }
     }
@@ -181,6 +183,10 @@ impl<P: StoreParams> FnetBehaviour<P> {
         self.gossipsub.subscribe(topic)
     }
 
+    pub fn unsubscribe(&mut self, topic: &Topic) -> Result<bool, PublishError> {
+        self.gossipsub.unsubscribe(topic)
+    }
+
     fn poll(
         &mut self,
         cx: &mut Context,
@@ -191,7 +197,11 @@ impl<P: StoreParams> FnetBehaviour<P> {
             <Self as NetworkBehaviour>::ConnectionHandler,
         >,
     > {
-        todo!()
+        match self.events.pop_front() {
+            Some(event) => Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)),
+            None => todo!(),
+            _ => Poll::Pending,
+        }
     }
 
     pub fn emit() {
@@ -201,16 +211,44 @@ impl<P: StoreParams> FnetBehaviour<P> {
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: PingEvent) {
+        let peer = event.peer.to_base58();
+
         match event.result {
             Ok(result) => match result {
-                PingSuccess::Pong => todo!(),
-                PingSuccess::Ping { rtt } => todo!(),
+                PingSuccess::Pong => {
+                    trace!(
+                        "PingSuccess::Pong received a ping and sent back a pong to {}",
+                        peer
+                    );
+                }
+                PingSuccess::Ping { rtt } => {
+                    trace!(
+                        "PingSuccess::Ping with rtt {} from {} in ms",
+                        rtt.as_millis(),
+                        peer
+                    );
+                }
             },
-            Err(err) => match err {
-                PingFailure::Timeout => todo!(),
-                PingFailure::Unsupported => todo!(),
-                PingFailure::Other { error } => todo!(),
-            },
+            Err(err) => {
+                match err {
+                    PingFailure::Timeout => {
+                        debug!(
+                            "PingFailure::Timeout no response was received from {}",
+                            peer
+                        );
+                        // remove peer from list of connected.
+                    }
+                    PingFailure::Unsupported => {
+                        debug!("PingFailure::Unsupported the peer {} does not support the ping protocol", peer);
+                    }
+                    PingFailure::Other { error } => {
+                        debug!(
+                            "PingFailure::Other the ping failed with {} for reasons {}",
+                            peer, error
+                        );
+                    }
+                }
+            }
         }
     }
 }
@@ -218,10 +256,13 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for FnetBehaviour<P
 impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: IdentifyEvent) {
         match event {
-            IdentifyEvent::Received { peer_id, info } => todo!(),
-            IdentifyEvent::Sent { peer_id } => todo!(),
-            IdentifyEvent::Pushed { peer_id } => todo!(),
-            IdentifyEvent::Error { peer_id, error } => todo!(),
+            IdentifyEvent::Received { peer_id, info } => {
+                // Identification information has been received from a peer.
+                // handle identity and add to the list of peers
+            }
+            IdentifyEvent::Sent { .. } => {}
+            IdentifyEvent::Pushed { .. } => {}
+            IdentifyEvent::Error { .. } => {}
         }
     }
 }
@@ -233,10 +274,25 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehavi
                 propagation_source,
                 message_id,
                 message,
-            } => todo!(),
-            GossipsubEvent::Subscribed { peer_id, topic } => todo!(),
-            GossipsubEvent::Unsubscribed { peer_id, topic } => todo!(),
-            GossipsubEvent::GossipsubNotSupported { peer_id } => todo!(),
+            } => {
+                // A message has been received.
+                // decode message.
+                // store the event.
+            }
+            GossipsubEvent::Subscribed { peer_id, topic } => {
+                // A remote subscribed to a topic.
+                // decode gossip message.
+                // subscribe to new topic.
+            }
+            GossipsubEvent::Unsubscribed { peer_id, topic } => {
+                // A remote unsubscribed from a topic.
+                // remove subscription.
+            }
+            GossipsubEvent::GossipsubNotSupported { peer_id } => {
+                // A peer that does not support gossipsub has connected.
+                // the scoring/rating should happen here.
+                // disconnect.
+            }
         }
     }
 }
@@ -244,8 +300,16 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehavi
 impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for FnetBehaviour<P> {
     fn inject_event(&mut self, event: BitswapEvent) {
         match event {
-            BitswapEvent::Progress(query_id, counter) => todo!(),
-            BitswapEvent::Complete(query_id, result) => todo!(),
+            BitswapEvent::Progress(query_id, counter) => {
+                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
+                // When a block is received and missing blocks is not empty the counter is increased.
+                // If missing blocks is empty the counter is decremented.
+
+                // keep track of all the query ids.
+            }
+            BitswapEvent::Complete(query_id, result) => {
+                // A get or sync query completed.
+            }
         }
     }
 }
