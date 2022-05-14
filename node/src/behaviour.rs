@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::{anyhow, Result};
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
@@ -25,6 +26,7 @@ use libp2p::{
     NetworkBehaviour,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
+use tiny_cid::Cid;
 use tracing::{debug, trace};
 
 use crate::{
@@ -155,7 +157,8 @@ impl<P: StoreParams> FnetBehaviour<P> {
                 .expect("gossipsub config");
 
             let mut gossipsub =
-                Gossipsub::new(MessageAuthenticity::Signed(config.key), gossip_config).unwrap();
+                Gossipsub::new(MessageAuthenticity::Signed(config.key), gossip_config)
+                    .map_err(|err| anyhow!("{}", err));
 
             // Defaults for now
             let params = PeerScoreParams::default();
@@ -202,10 +205,6 @@ impl<P: StoreParams> FnetBehaviour<P> {
             None => todo!(),
             _ => Poll::Pending,
         }
-    }
-
-    pub fn emit() {
-        todo!()
     }
 }
 
@@ -257,6 +256,11 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehavio
     fn inject_event(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
+                trace!(
+                    "Identification information {} has been received from a peer {}.",
+                    info,
+                    peer_id
+                );
                 // Identification information has been received from a peer.
                 // handle identity and add to the list of peers
             }
@@ -268,20 +272,19 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehavio
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehaviour<P> {
-    fn inject_event(&mut self, message: GossipsubEvent) {
-        match message {
+    fn inject_event(&mut self, event: GossipsubEvent) {
+        match event {
             GossipsubEvent::Message {
                 propagation_source,
                 message_id,
                 message,
             } => {
-                // A message has been received.
-                // decode message.
-                // store the event.
+                if let Ok(cid) = Cid::try_from(message.data) {
+                    self.events.push_back(event.into());
+                }
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {
                 // A remote subscribed to a topic.
-                // decode gossip message.
                 // subscribe to new topic.
             }
             GossipsubEvent::Unsubscribed { peer_id, topic } => {
@@ -319,3 +322,10 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for FnetBehavi
         todo!()
     }
 }
+
+// ToDo: rpc event
+// impl<P: StoreParams> NetworkBehaviourEventProcess<RPCEvent> for FnetBehaviour<P> {
+//     fn inject_event(&mut self, event: RPCEvent) {
+//         todo!()
+//     }
+// }

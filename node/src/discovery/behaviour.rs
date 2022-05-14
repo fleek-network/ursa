@@ -8,9 +8,13 @@ use std::{
     task::{Context, Poll},
 };
 
+use anyhow::{anyhow, Result};
 use libp2p::{
     core::{connection::ConnectionId, ConnectedPoint, PublicKey},
-    kad::{handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, QueryId},
+    kad::{
+        handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent,
+        QueryId, QueryResult,
+    },
     swarm::{
         ConnectionHandler, IntoConnectionHandler, NetworkBehaviour, NetworkBehaviourAction,
         PollParameters,
@@ -92,7 +96,10 @@ impl DiscoveryBehaviour {
             &self.kademlia.add_address(peer_id, address.clone());
         }
 
-        &self.kademlia.bootstrap().map_err(|error| error.to_string())
+        &self
+            .kademlia
+            .bootstrap()
+            .map_err(|err| anyhow!("{:?}", err))
     }
 
     pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &mut Self {
@@ -153,6 +160,11 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         );
     }
 
+    fn inject_disconnected(&mut self, peer_id: &PeerId) {
+        // remove peer from [peers] hashset
+        self.kademlia.inject_disconnected(peer_id)
+    }
+
     fn inject_event(
         &mut self,
         peer_id: PeerId,
@@ -167,7 +179,51 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         cx: &mut Context<'_>,
         params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
-        todo!()
+        match self.events.pop_front() {
+            Some(event) => Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)),
+            None => todo!(),
+            _ => Poll::Pending,
+        }
+
+        // Poll kademlia for events
+        while let Poll::Ready(action) = self.kademlia.poll(cx, params) {
+            match action {
+                NetworkBehaviourAction::GenerateEvent(event) => match event {
+                    KademliaEvent::InboundRequest { request } => todo!(),
+                    KademliaEvent::OutboundQueryCompleted { id, result, stats } => match result {
+                        QueryResult::Bootstrap(_) => todo!(),
+                        QueryResult::GetClosestPeers(_) => todo!(),
+                        QueryResult::GetProviders(_) => todo!(),
+                        QueryResult::StartProviding(_) => todo!(),
+                        QueryResult::RepublishProvider(_) => todo!(),
+                        QueryResult::GetRecord(_) => todo!(),
+                        QueryResult::PutRecord(_) => todo!(),
+                        QueryResult::RepublishRecord(_) => todo!(),
+                    },
+                    KademliaEvent::RoutingUpdated {
+                        peer,
+                        is_new_peer,
+                        addresses,
+                        bucket_range,
+                        old_peer,
+                    } => todo!(),
+                    KademliaEvent::UnroutablePeer { peer } => todo!(),
+                    KademliaEvent::RoutablePeer { peer, address } => todo!(),
+                    KademliaEvent::PendingRoutablePeer { peer, address } => todo!(),
+                },
+                NetworkBehaviourAction::Dial { opts, handler } => todo!(),
+                NetworkBehaviourAction::NotifyHandler {
+                    peer_id,
+                    handler,
+                    event,
+                } => todo!(),
+                NetworkBehaviourAction::ReportObservedAddr { address, score } => todo!(),
+                NetworkBehaviourAction::CloseConnection {
+                    peer_id,
+                    connection,
+                } => todo!(),
+            }
+        }
     }
 }
 
