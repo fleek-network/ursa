@@ -3,13 +3,14 @@
 //!
 //!
 
-use async_std::{prelude::StreamExt, task};
+use async_std::{io, prelude::StreamExt, task};
 use futures::{select, StreamExt};
 use libipld::store::StoreParams;
 use libp2p::{
+    core::either::EitherError,
     gossipsub::IdentTopic as Topic,
     identity::Keypair,
-    swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
+    swarm::{ConnectionHandlerUpgrErr, ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::BitswapStore;
@@ -68,7 +69,9 @@ impl<P: StoreParams> FnetService<P> {
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr).unwrap().expect("swarm can be started");;
+        Swarm::listen_on(&mut swarm, config.swarm_addr)
+            .unwrap()
+            .expect("swarm can be started");
 
         // subscribe to topic
         let topic = Topic::new(todo!());

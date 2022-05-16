@@ -160,11 +160,6 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         );
     }
 
-    fn inject_disconnected(&mut self, peer_id: &PeerId) {
-        // remove peer from [peers] hashset
-        self.kademlia.inject_disconnected(peer_id)
-    }
-
     fn inject_event(
         &mut self,
         peer_id: PeerId,
