@@ -3,8 +3,8 @@
 //!
 //!
 
-use async_std::task;
-use futures::select;
+use async_std::{prelude::StreamExt, task};
+use futures::{select, StreamExt};
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::IdentTopic as Topic,
@@ -15,7 +15,11 @@ use libp2p::{
 use libp2p_bitswap::BitswapStore;
 use tracing::{trace, warn};
 
-use crate::{behaviour::FnetBehaviour, config::FnetConfig, transport::FnetTransport};
+use crate::{
+    behaviour::{FnetBehaviour, FnetBehaviourEvent},
+    config::FnetConfig,
+    transport::FnetTransport,
+};
 
 pub const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/fnet/message/0.0.1";
@@ -59,12 +63,12 @@ impl<P: StoreParams> FnetService<P> {
             // .notify_handler_buffer_size(todo!())
             // .connection_event_buffer_size(todo!())
             .connection_limits(limits)
-            .executor(Box::new(|f| {
-                task::spawn(f);
+            .executor(Box::new(|future| {
+                task::spawn(future);
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr).expect("swarm can be started");
+        Swarm::listen_on(&mut swarm, config.swarm_addr).unwrap().expect("swarm can be started");;
 
         // subscribe to topic
         let topic = Topic::new(todo!());
@@ -81,17 +85,68 @@ impl<P: StoreParams> FnetService<P> {
     }
 
     /// Start the ursa network service
-    pub async fn start(&self) {
-        let swarm = self.swarm;
-
+    pub async fn start(mut self) {
         loop {
             select! {
-                swarm_event = swarm.select_next_some() => match swarm_event {
-
-                    // _ => {}
-                },
-
+                event = self.swarm.next() => self.handle_event(event).await
             }
+        }
+    }
+
+    pub async fn handle_event(
+        &mut self,
+        event: SwarmEvent<
+            FnetBehaviourEvent,
+            // change to using anyhow
+            EitherError<ConnectionHandlerUpgrErr<io::Error>, io::Error>,
+        >,
+    ) {
+        match event {
+            SwarmEvent::Behaviour(event) => match event {
+                FnetBehaviourEvent::Ping(_) => todo!(),
+                FnetBehaviourEvent::Identify(_) => todo!(),
+                FnetBehaviourEvent::Bitswap(_) => todo!(),
+                FnetBehaviourEvent::Gossip(_) => todo!(),
+                FnetBehaviourEvent::Discovery(_) => todo!(),
+            },
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                endpoint,
+                num_established,
+                concurrent_dial_errors,
+            } => todo!(),
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                endpoint,
+                num_established,
+                cause,
+            } => todo!(),
+            SwarmEvent::IncomingConnection {
+                local_addr,
+                send_back_addr,
+            } => todo!(),
+            SwarmEvent::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error,
+            } => todo!(),
+            SwarmEvent::OutgoingConnectionError { peer_id, error } => todo!(),
+            SwarmEvent::BannedPeer { peer_id, endpoint } => todo!(),
+            SwarmEvent::NewListenAddr {
+                listener_id,
+                address,
+            } => todo!(),
+            SwarmEvent::ExpiredListenAddr {
+                listener_id,
+                address,
+            } => todo!(),
+            SwarmEvent::ListenerClosed {
+                listener_id,
+                addresses,
+                reason,
+            } => todo!(),
+            SwarmEvent::ListenerError { listener_id, error } => todo!(),
+            SwarmEvent::Dialing(_) => todo!(),
         }
     }
 }

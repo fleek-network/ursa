@@ -35,13 +35,17 @@ use crate::{
     service::PROTOCOL_NAME,
 };
 
+/// Instead of storing the entire event we
+/// can create a set of custom event types.
+///
 /// [FnetBehaviour]'s events
 #[derive(Debug)]
 pub enum FnetBehaviourEvent {
     Ping(PingEvent),
-    Gossip(GossipsubEvent),
     Identify(IdentifyEvent),
-    // add bitswap and rpc events
+    Bitswap(BitswapEvent),
+    Gossip(GossipsubEvent),
+    // add rpc events
     Discovery(DiscoveryEvent),
 }
 
