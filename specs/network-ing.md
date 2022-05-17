@@ -1,4 +1,4 @@
-# Fleek network -ing
+# Fleek network-ing
 
 ## Bootstrapping
 
