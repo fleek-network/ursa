@@ -4,7 +4,7 @@
 //!
 
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     task::{Context, Poll},
     time::Duration,
 };
@@ -23,7 +23,7 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour,
+    NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
 use tiny_cid::Cid;
@@ -38,9 +38,9 @@ use crate::{
 /// Instead of storing the entire event we
 /// can create a set of custom event types.
 ///
-/// [FnetBehaviour]'s events
+/// [Behaviour]'s events
 #[derive(Debug)]
-pub enum FnetBehaviourEvent {
+pub enum BehaviourEvent {
     Ping(PingEvent),
     Identify(IdentifyEvent),
     Bitswap(BitswapEvent),
@@ -72,7 +72,6 @@ impl From<DiscoveryEvent> for FnetBehaviourEvent {
         Self::Discovery(event)
     }
 }
-
 /// This is Fnet's custom network behaviour that handles
 /// all the [`Ping`], [`Identify`], [`Bitswap`], [`Gossipsub`], and [`DiscoveryBehaviour`].
 ///
@@ -80,11 +79,11 @@ impl From<DiscoveryEvent> for FnetBehaviourEvent {
 /// function and will be called last within the generated NetworkBehaviour implementation.
 #[derive(NetworkBehaviour)]
 #[behaviour(
-    out_event = "FnetBehaviourEvent",
+    out_event = "BehaviourEvent",
     poll_method = "poll",
     event_process = true
 )]
-pub struct FnetBehaviour<P: StoreParams> {
+pub struct Behaviour<P: StoreParams> {
     /// Aliving checks.
     ping: Ping,
     // Identifying peer info to other peers.
@@ -97,10 +96,10 @@ pub struct FnetBehaviour<P: StoreParams> {
     discovery: DiscoveryBehaviour,
     /// Fleek Network list of emitted events.
     #[behaviour(ignore)]
-    events: VecDeque<FnetBehaviourEvent>,
+    events: VecDeque<BehaviourEvent>,
 }
 
-impl<P: StoreParams> FnetBehaviour<P> {
+impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
         let local_public_key = config.keypair.public();
 
@@ -171,15 +170,19 @@ impl<P: StoreParams> FnetBehaviour<P> {
             gossipsub.with_peer_score(params, threshold).unwrap()
         };
 
-        FnetBehaviour {
+        Behaviour {
             ping,
             bitswap,
             identify,
             gossipsub,
             discovery,
-            // will rpc
-            events: vec![],
+            // todo rpc
+            events: VecDeque::new(),
         }
+    }
+
+    pub fn peers(&mut self) -> HashSet<PeerId> {
+        self.discovery.peers()
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, String> {
@@ -212,7 +215,7 @@ impl<P: StoreParams> FnetBehaviour<P> {
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for FnetBehaviour<P> {
+impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
@@ -256,7 +259,7 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for FnetBehaviour<P
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehaviour<P> {
+impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
@@ -275,7 +278,7 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for FnetBehavio
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehaviour<P> {
+impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message {
@@ -304,7 +307,7 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for FnetBehavi
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for FnetBehaviour<P> {
+impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: BitswapEvent) {
         match event {
             BitswapEvent::Progress(query_id, counter) => {
@@ -321,14 +324,14 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for FnetBehaviou
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for FnetBehaviour<P> {
+impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: DiscoveryEvent) {
         todo!()
     }
 }
 
 // ToDo: rpc event
-// impl<P: StoreParams> NetworkBehaviourEventProcess<RPCEvent> for FnetBehaviour<P> {
+// impl<P: StoreParams> NetworkBehaviourEventProcess<RPCEvent> for Behaviour<P> {
 //     fn inject_event(&mut self, event: RPCEvent) {
 //         todo!()
 //     }

@@ -3,8 +3,8 @@
 //!
 //!
 
-use async_std::{io, prelude::StreamExt, task};
-use futures::{select, StreamExt};
+use async_std::{prelude::StreamExt, task};
+use futures::select;
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
@@ -17,7 +17,7 @@ use libp2p_bitswap::BitswapStore;
 use tracing::{trace, warn};
 
 use crate::{
-    behaviour::{FnetBehaviour, FnetBehaviourEvent},
+    behaviour::{Behaviour, BehaviourEvent},
     config::FnetConfig,
     transport::FnetTransport,
 };
@@ -25,8 +25,9 @@ use crate::{
 pub const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/fnet/message/0.0.1";
 
+#[derive(Clone)]
 pub struct FnetService<P: StoreParams> {
-    swarm: Swarm<FnetBehaviour<P>>,
+    swarm: Swarm<Behaviour<P>>,
 }
 
 impl<P: StoreParams> FnetService<P> {
@@ -38,9 +39,9 @@ impl<P: StoreParams> FnetService<P> {
     /// For fnet [transport] we build a default QUIC layer and
     /// failover to tcp.
     ///
-    /// For fnet behaviour we use [`FnetBehaviour`].
+    /// For fnet behaviour we use [`Behaviour`].
     ///
-    /// We construct a [`Swarm`] with [`FnetTransport`] and [`FnetBehaviour`]
+    /// We construct a [`Swarm`] with [`FnetTransport`] and [`Behaviour`]
     /// listening on [`FnetConfig`] `swarm_addr`.
     ///
     pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
@@ -50,7 +51,7 @@ impl<P: StoreParams> FnetService<P> {
 
         let transport = FnetTransport::new(&mut config).build();
 
-        let behaviour = FnetBehaviour::new(&mut config, store);
+        let behaviour = Behaviour::new(&mut config, store);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(todo!())
@@ -99,19 +100,21 @@ impl<P: StoreParams> FnetService<P> {
     pub async fn handle_event(
         &mut self,
         event: SwarmEvent<
-            FnetBehaviourEvent,
-            // change to using anyhow
-            EitherError<ConnectionHandlerUpgrErr<io::Error>, io::Error>,
+            BehaviourEvent,
+            EitherError<ConnectionHandlerUpgrErr<anyhow::Error>, anyhow::Error>,
         >,
     ) {
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                FnetBehaviourEvent::Ping(_) => todo!(),
-                FnetBehaviourEvent::Identify(_) => todo!(),
-                FnetBehaviourEvent::Bitswap(_) => todo!(),
-                FnetBehaviourEvent::Gossip(_) => todo!(),
-                FnetBehaviourEvent::Discovery(_) => todo!(),
+                BehaviourEvent::Bitswap(_) => todo!(),
+                BehaviourEvent::Gossip(_) => todo!(),
+
+                // All the events are already handled in [Behaviour]
+                // maybe we should exclude them from [BehaviourEvent]
+                _ => {}
             },
+
+            // Do we need to handle any of the below events?
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,

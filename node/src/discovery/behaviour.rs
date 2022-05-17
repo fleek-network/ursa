@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use libp2p::{
-    core::{connection::ConnectionId, ConnectedPoint, PublicKey},
+    core::{connection::ConnectionId, ConnectedPoint},
     kad::{
         handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent,
         QueryId, QueryResult,
@@ -32,7 +32,10 @@ struct PeerInfo {
 }
 
 #[derive(Debug)]
-pub enum DiscoveryEvent {}
+pub enum DiscoveryEvent {
+    Discoverd(PeerId),
+    UnroutablePeer(PeerId),
+}
 
 pub struct DiscoveryBehaviour {
     local_peer_id: PeerId,
@@ -54,10 +57,7 @@ pub struct DiscoveryBehaviour {
 }
 
 impl DiscoveryBehaviour {
-    /**
-        Abstract the bootstrapping nodes in [FnetConfig]
-    */
-    // pub fn new(local_public_key: PublicKey, boostrap: Vec<(PeerId, Multiaddr)>) {
+    // Abstract the bootstrapping nodes in [FnetConfig]
     pub fn new(config: &FnetConfig) -> Self {
         let local_peer_id = config.keypair.public().to_peer_id();
 
@@ -71,6 +71,7 @@ impl DiscoveryBehaviour {
             let config = KademliaConfig::default()
                 .set_protocol_name(name)
                 .set_replication_factor(replication_factor);
+            // what more do we need to setup with Kad?
 
             Kademlia::with_config(local_peer_id, store, config)
         };
@@ -87,8 +88,12 @@ impl DiscoveryBehaviour {
         }
     }
 
+    pub fn peers(&self) -> HashSet<PeerId> {
+        &self.peers
+    }
+
     pub fn peer_info(&self) -> HashMap<PeerId, PeerInfo> {
-        &self.peer_info()
+        &self.peer_info
     }
 
     pub fn boostrap(&self) -> Result<QueryId, String> {
@@ -184,7 +189,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         while let Poll::Ready(action) = self.kademlia.poll(cx, params) {
             match action {
                 NetworkBehaviourAction::GenerateEvent(event) => match event {
-                    KademliaEvent::InboundRequest { request } => todo!(),
+                    KademliaEvent::InboundRequest { .. } => {}
                     KademliaEvent::OutboundQueryCompleted { id, result, stats } => match result {
                         QueryResult::Bootstrap(_) => todo!(),
                         QueryResult::GetClosestPeers(_) => todo!(),
@@ -195,38 +200,34 @@ impl NetworkBehaviour for DiscoveryBehaviour {
                         QueryResult::PutRecord(_) => todo!(),
                         QueryResult::RepublishRecord(_) => todo!(),
                     },
-                    KademliaEvent::RoutingUpdated {
-                        peer,
-                        is_new_peer,
-                        addresses,
-                        bucket_range,
-                        old_peer,
-                    } => todo!(),
-                    KademliaEvent::UnroutablePeer { peer } => todo!(),
-                    KademliaEvent::RoutablePeer { peer, address } => todo!(),
-                    KademliaEvent::PendingRoutablePeer { peer, address } => todo!(),
+                    KademliaEvent::RoutingUpdated { .. } => {}
+                    KademliaEvent::UnroutablePeer { .. } => {}
+                    KademliaEvent::RoutablePeer { .. } => {}
+                    KademliaEvent::PendingRoutablePeer { .. } => {}
                 },
-                NetworkBehaviourAction::Dial { opts, handler } => todo!(),
+                NetworkBehaviourAction::Dial { opts, handler } => {
+                    Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
+                }
                 NetworkBehaviourAction::NotifyHandler {
                     peer_id,
                     handler,
                     event,
-                } => todo!(),
-                NetworkBehaviourAction::ReportObservedAddr { address, score } => todo!(),
+                } => Poll::Ready(NetworkBehaviourAction::NotifyHandler {
+                    peer_id,
+                    handler,
+                    event,
+                }),
+                NetworkBehaviourAction::ReportObservedAddr { address, score } => {
+                    Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address, score })
+                }
                 NetworkBehaviourAction::CloseConnection {
                     peer_id,
                     connection,
-                } => todo!(),
+                } => Poll::Ready(NetworkBehaviourAction::CloseConnection {
+                    peer_id,
+                    connection,
+                }),
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
     }
 }
