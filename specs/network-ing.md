@@ -1,5 +1,7 @@
 # Fleek network-ing
 
+Authors: [@b0xtch]
+
 ## Bootstrapping
 
 The premise is that all connections between peers must be authenticated encrypted, and multiplexed. Below we discuss our approach to meeting the goal.
