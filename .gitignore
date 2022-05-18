@@ -1,2 +1,4 @@
 .DS_Store
 node/.vscode/launch.json
+
+**/target/

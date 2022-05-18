@@ -17,4 +17,3 @@ async-trait = "0.1.53"
 libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
 async-std = { version = "1.11.0", features = ["attributes"] }
-# jsonrpc-v2

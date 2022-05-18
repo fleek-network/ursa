@@ -1,0 +1,17 @@
+[package]
+name = "ursa"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libp2p = { version = "0.44.0", default-features = false, features = ["identify", "serde"] }
+futures = "0.3.21"
+tracing = "0.1.33"
+async-std = { version = "1.11.0", features = ["attributes", "tokio1"] }
+serde = { version = "1.0", features = ["derive"] }
+ctrlc = "3.1"
+structopt = { version = "0.3" }
+toml = "0.5"
+# node = {path = "../node"}
