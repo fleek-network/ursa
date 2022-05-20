@@ -1,16 +1,16 @@
 mod config;
 
-use tracing::{info, warn, error};
 use std::cell::RefCell;
+use std::fs::File;
+use std::io::{prelude::*, Result};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::path::Path;
 use structopt::StructOpt;
 use toml;
-use std::fs::File;
-use std::io::{prelude::*, Result};
+use tracing::{error, info, warn};
 
 pub use self::config::CliConfig as Config;
 
@@ -32,12 +32,12 @@ pub struct Cli {
 #[derive(StructOpt)]
 pub enum Subcommand {
     // TODO:  be implemented when we add subcommands to this cli
-    // e.g.
-    // #[structopt(
-    //     name = "fetch-params",
-    //     about = "Download parameters for generating and verifying proofs for given size"
-    // )]
-    // Fetch(FetchCommands),
+// e.g.
+// #[structopt(
+//     name = "fetch-params",
+//     about = "Download parameters for generating and verifying proofs for given size"
+// )]
+// Fetch(FetchCommands),
 }
 
 /// CLI options
@@ -47,7 +47,12 @@ pub struct CliOpts {
     pub config: Option<String>,
     #[structopt(short, long, help = "Allow rpc to be active or not (default = true)")]
     pub rpc: bool,
-    #[structopt(short, long, help = "Port used for JSON-RPC communication", requires("rpc"))]
+    #[structopt(
+        short,
+        long,
+        help = "Port used for JSON-RPC communication",
+        requires("rpc")
+    )]
     pub port: Option<String>,
 }
 
@@ -55,18 +60,21 @@ impl CliOpts {
     pub fn to_config(&self) -> Result<Config> {
         let cfg: Config = match &self.config {
             Some(config_file) => {
-                info!("Reading configuration from user provided config file {}", config_file);
+                info!(
+                    "Reading configuration from user provided config file {}",
+                    config_file
+                );
                 // Read from config file
                 let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
                 // Parse and return the configuration file
                 // read_toml(&toml)?
                 let toml_str = toml::from_str(&toml).unwrap();
-                toml_str 
+                toml_str
             }
             None => {
                 info!("No Configuration provided by the user, Using default config");
                 Config::default()
-            },
+            }
         };
         Ok(cfg)
     }
@@ -74,13 +82,12 @@ impl CliOpts {
 
 /// Read file as a `String`.
 pub fn read_file_to_string(path: &Path) -> Result<String> {
-    // let mut file = File::open(path);
     let mut file = match File::open(path) {
         Ok(file) => file,
         Err(error) => {
             error!("Problem opening the file: {:?}", error);
             process::exit(1);
-        },
+        }
     };
     let mut string = String::new();
     file.read_to_string(&mut string)?;

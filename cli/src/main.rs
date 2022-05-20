@@ -1,23 +1,17 @@
 mod ursa;
 
-use std::env;
 use dotenv::dotenv;
-// use node::service::FnetService;
-use tracing::{info, warn, error};
+use node::service::FnetService;
+use std::env;
+use structopt::StructOpt;
+use tracing::{error, info, warn};
 use tracing_subscriber;
 use ursa::{cli_error_and_die, Cli};
-use structopt::StructOpt;
-use node::service::FnetService;
 
 #[async_std::main]
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    // let collector = tracing_subscriber::fmt()
-    // // filter spans/events with level TRACE or higher.
-    // .with_max_level(Level::TRACE) //env!("LOG_LEVEL")
-    // // build but do not install the subscriber.
-    // .finish();
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
 
@@ -28,7 +22,6 @@ async fn main() {
                 info!("Starting up with config {:?}", cfg);
                 let service = FnetService::new(cfg, store);
                 service.start().await;
-                
             }
         },
         Err(e) => {

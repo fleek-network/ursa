@@ -1,11 +1,9 @@
-
 // use libp2p::identity::Keypair;
 use libp2p::{Multiaddr, PeerId};
+use serde::{Deserialize, Serialize};
 
 /// Fnet Configration
-use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-/// Fnet Configration
 pub struct CliConfig {
     /// Node key
     // pub keypair: Keypair,
@@ -28,6 +26,7 @@ impl Default for CliConfig {
         }
     }
 }
+
 impl CliConfig {
     pub fn new() {
         todo!();
