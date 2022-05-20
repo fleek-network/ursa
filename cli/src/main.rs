@@ -1,6 +1,6 @@
 mod ursa;
-// mod node;
 
+use node::service::FnetService;
 use ursa::{cli_error_and_die, Cli};
 use structopt::StructOpt;
 // use node::service::FnetService;
@@ -16,8 +16,8 @@ async fn main() {
             Some(command) => todo!(),
             None => {
                 println!("Starting up with config {:?}", cfg);
-                // let service = service::FnetService::new(cfg, store);
-                // service.start().await;
+                let service = FnetService::new(cfg, store);
+                service.start().await;
                 
             }
         },
