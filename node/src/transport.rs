@@ -1,4 +1,4 @@
-//! Fnet Transport implementation.
+//! Ursa Transport implementation.
 //!
 //!
 //!
@@ -20,17 +20,17 @@ use libp2p::{
     yamux, PeerId, Transport,
 };
 
-use crate::config::FnetConfig;
+use crate::config::UrsaConfig;
 
-pub struct FnetTransport {
+pub struct UrsaTransport {
     keypair: Keypair,
     tcp: TcpConfig,
     quic: TcpConfig,
 }
 
-impl FnetTransport {
-    /// Creates a new [`FnetTransport`] using keypair.
-    pub fn new(config: &FnetConfig) -> Self {
+impl UrsaTransport {
+    /// Creates a new [`UrsaTransport`] using keypair.
+    pub fn new(config: &UrsaConfig) -> Self {
         let id_keys = config.key;
 
         let tcp = {
@@ -71,14 +71,14 @@ impl FnetTransport {
             todo!()
         };
 
-        FnetTransport {
+        UrsaTransport {
             keypair: config.keypair,
             tcp,
             quic,
         }
     }
 
-    /// Builds [`FnetTransport`]
+    /// Builds [`UrsaTransport`]
     ///
     /// Defaults to QUIC transport over TCP.
     /// If QUIC fails to establish a connection, we failover to TCP.

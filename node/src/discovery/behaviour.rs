@@ -1,4 +1,4 @@
-//! Fnet Discovery implementation.
+//! Ursa Discovery implementation.
 //!
 //!
 //!
@@ -22,7 +22,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 
-use crate::config::FnetConfig;
+use crate::config::UrsaConfig;
 
 // use super::handler::DiscoveryEventHandler;
 
@@ -57,12 +57,12 @@ pub struct DiscoveryBehaviour {
 }
 
 impl DiscoveryBehaviour {
-    // Abstract the bootstrapping nodes in [FnetConfig]
-    pub fn new(config: &FnetConfig) -> Self {
+    // Abstract the bootstrapping nodes in [UrsaConfig]
+    pub fn new(config: &UrsaConfig) -> Self {
         let local_peer_id = config.keypair.public().to_peer_id();
 
         // setup kademlia config
-        // move to FnetConfig
+        // move to UrsaConfig
         let kademlia = {
             let name = "";
             let replication_factor = "";

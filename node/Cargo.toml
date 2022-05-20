@@ -16,4 +16,5 @@ libp2p-quic = "0.6.1"
 async-trait = "0.1.53"
 libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
+jsonrpc-v2 = "0.11.0"
 async-std = { version = "1.11.0", features = ["attributes"] }

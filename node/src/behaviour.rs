@@ -1,4 +1,4 @@
-//! Fnet Behaviour implementation.
+//! Ursa Behaviour implementation.
 //!
 //!
 //!
@@ -30,7 +30,7 @@ use tiny_cid::Cid;
 use tracing::{debug, trace};
 
 use crate::{
-    config::FnetConfig,
+    config::UrsaConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
     service::PROTOCOL_NAME,
 };
@@ -49,30 +49,30 @@ pub enum BehaviourEvent {
     Discovery(DiscoveryEvent),
 }
 
-impl From<PingEvent> for FnetBehaviourEvent {
+impl From<PingEvent> for BehaviourEvent {
     fn from(event: PingEvent) -> Self {
         Self::Ping(event)
     }
 }
 
-impl From<IdentifyEvent> for FnetBehaviourEvent {
+impl From<IdentifyEvent> for BehaviourEvent {
     fn from(event: IdentifyEvent) -> Self {
         Self::Identify(event)
     }
 }
 
-impl From<GossipsubEvent> for FnetBehaviourEvent {
+impl From<GossipsubEvent> for BehaviourEvent {
     fn from(event: GossipsubEvent) -> Self {
         Self::Gossip(event)
     }
 }
 
-impl From<DiscoveryEvent> for FnetBehaviourEvent {
+impl From<DiscoveryEvent> for BehaviourEvent {
     fn from(event: DiscoveryEvent) -> Self {
         Self::Discovery(event)
     }
 }
-/// This is Fnet's custom network behaviour that handles
+/// This is Ursa's custom network behaviour that handles
 /// all the [`Ping`], [`Identify`], [`Bitswap`], [`Gossipsub`], and [`DiscoveryBehaviour`].
 ///
 /// The poll function must have the same signature as the NetworkBehaviour
@@ -90,20 +90,20 @@ pub struct Behaviour<P: StoreParams> {
     identify: Identify,
     ///
     bitswap: Bitswap<P>,
-    /// Fnet's gossiping protocol for message propagation.
+    /// Ursa's gossiping protocol for message propagation.
     gossipsub: Gossipsub,
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
-    /// Fleek Network list of emitted events.
+    /// Ursa's emitted events.
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
-    pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
+    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Self {
         let local_public_key = config.keypair.public();
 
-        //TODO: check if FnetConfig has configs for the behaviours, if not instaniate new ones
+        // TODO: check if UrsaConfig has configs for the behaviours, if not instaniate new ones
 
         // Setup the ping behaviour
         let ping = Ping::default();

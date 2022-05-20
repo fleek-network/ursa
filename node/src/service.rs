@@ -1,4 +1,4 @@
-//! Fnet Service implementation.
+//! Ursa Service implementation.
 //!
 //!
 //!
@@ -18,38 +18,37 @@ use tracing::{trace, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
-    config::FnetConfig,
-    transport::FnetTransport,
+    config::UrsaConfig,
+    transport::UrsaTransport,
 };
 
-pub const PROTOCOL_NAME: &[u8] = b"/fnet/0.0.1";
-pub const MESSAGE_PROTOCOL: &[u8] = b"/fnet/message/0.0.1";
+pub const PROTOCOL_NAME: &[u8] = b"/ursa/0.0.1";
+pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
-#[derive(Clone)]
-pub struct FnetService<P: StoreParams> {
+pub struct UrsaService<P: StoreParams> {
     swarm: Swarm<Behaviour<P>>,
 }
 
-impl<P: StoreParams> FnetService<P> {
-    /// Init a new [`FnetService`] based on [`FnetConfig`]
+impl<P: StoreParams> UrsaService<P> {
+    /// Init a new [`UrsaService`] based on [`UrsaConfig`]
     ///
-    /// For fnet [identity] we use ed25519 either
+    /// For ursa [identity] we use ed25519 either
     /// checking for a local store or creating a new keypair.
     ///
-    /// For fnet [transport] we build a default QUIC layer and
+    /// For ursa [transport] we build a default QUIC layer and
     /// failover to tcp.
     ///
-    /// For fnet behaviour we use [`Behaviour`].
+    /// For ursa behaviour we use [`Behaviour`].
     ///
-    /// We construct a [`Swarm`] with [`FnetTransport`] and [`Behaviour`]
-    /// listening on [`FnetConfig`] `swarm_addr`.
+    /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
+    /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new<S: BitswapStore<Params = P>>(config: &FnetConfig, store: S) -> Self {
+    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Self {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
 
-        let transport = FnetTransport::new(&mut config).build();
+        let transport = UrsaTransport::new(&mut config).build();
 
         let behaviour = Behaviour::new(&mut config, store);
 
@@ -85,7 +84,7 @@ impl<P: StoreParams> FnetService<P> {
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        FnetService { swarm }
+        UrsaService { swarm }
     }
 
     /// Start the ursa network service

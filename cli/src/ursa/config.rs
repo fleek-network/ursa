@@ -2,7 +2,7 @@
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
-/// Fnet Configration
+/// Ursa Configration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct CliConfig {
     /// Node key

@@ -1,7 +1,7 @@
 mod ursa;
 
 use dotenv::dotenv;
-use node::service::FnetService;
+use node::service::UrsaService;
 use std::env;
 use structopt::StructOpt;
 use tracing::{error, info, warn};
@@ -20,7 +20,7 @@ async fn main() {
             Some(command) => todo!(),
             None => {
                 info!("Starting up with config {:?}", cfg);
-                let service = FnetService::new(cfg, store);
+                let service = UrsaService::new(cfg, store);
                 service.start().await;
             }
         },
