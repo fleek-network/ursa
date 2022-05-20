@@ -30,5 +30,6 @@ impl Default for CliConfig {
 }
 impl CliConfig {
     pub fn new() {
+        todo!();
     }
 }

@@ -17,10 +17,10 @@ pub use self::config::CliConfig as Config;
 /// CLI structure generated when interacting with URSA binary
 #[derive(StructOpt)]
 #[structopt(
-    name = "ursa",// env!("CARGO_PKG_NAME"),
-    version = "0.1", // option_env!("URSA_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    about = "The Great Bear",// env!("CARGO_PKG_DESCRIPTION"),
-    // author = "",// env!("CARGO_PKG_AUTHORS")
+    name = option_env!("CARGO_PKG_NAME").unwrap_or("ursa"),
+    version = option_env!("URSA_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    about = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("The Great Bear"),
+    author = option_env!("CARGO_PKG_AUTHORS").unwrap_or("fleek")
 )]
 pub struct Cli {
     #[structopt(flatten)]
@@ -63,7 +63,10 @@ impl CliOpts {
                 let toml_str = toml::from_str(&toml).unwrap();
                 toml_str 
             }
-            None => Config::default(),
+            None => {
+                info!("No Configuration provided by the user, Using default config");
+                Config::default()
+            },
         };
         Ok(cfg)
     }
@@ -71,7 +74,14 @@ impl CliOpts {
 
 /// Read file as a `String`.
 pub fn read_file_to_string(path: &Path) -> Result<String> {
-    let mut file = File::open(path)?;
+    // let mut file = File::open(path);
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) => {
+            error!("Problem opening the file: {:?}", error);
+            process::exit(1);
+        },
+    };
     let mut string = String::new();
     file.read_to_string(&mut string)?;
     Ok(string)
