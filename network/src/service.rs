@@ -25,8 +25,13 @@ use crate::{
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/0.0.1";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
+
 pub struct UrsaService<P: StoreParams> {
     swarm: Swarm<Behaviour<P>>,
+    /// Handles inbound requests from peers
+
+    /// Handles
+    
 }
 
 impl<P: StoreParams> UrsaService<P> {
