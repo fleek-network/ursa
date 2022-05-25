@@ -3,8 +3,12 @@
 //!
 //!
 
-use async_std::{prelude::StreamExt, task};
-use futures::select;
+use async_std::{
+    channel::{unbounded, Receiver, Sender},
+    prelude::StreamExt,
+    task,
+};
+use futures::{select, FutureExt};
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
@@ -25,13 +29,20 @@ use crate::{
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/0.0.1";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
+pub struct Command {}
+
+pub struct Event {}
 
 pub struct UrsaService<P: StoreParams> {
     swarm: Swarm<Behaviour<P>>,
-    /// Handles inbound requests from peers
-
-    /// Handles
-    
+    /// Handles outbound messages to peers
+    command_sender: Sender<Command>,
+    /// Handles inbound messages from peers
+    command_receiver: Receiver<Command>,
+    /// Handles events emitted by the ursa network
+    event_sender: Sender<Event>,
+    /// Handles events received by the ursa network
+    event_receiver: Receiver<Event>,
 }
 
 impl<P: StoreParams> UrsaService<P> {
@@ -84,24 +95,43 @@ impl<P: StoreParams> UrsaService<P> {
             warn!("Failed to subscribe with topic: {}", error);
         }
 
-        // boostrap
+        // boostrap with kademlia
         if let Err(error) = swarm.behaviour_mut().bootstrap() {
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        UrsaService { swarm }
+        // create an unbounded message sender and reciever
+        let (command_sender, command_receiver) = unbounded();
+        // create an unbounded event sender and reciever
+        let (event_sender, event_receiver) = unbounded();
+
+        UrsaService {
+            swarm,
+            command_sender,
+            command_receiver,
+            event_sender,
+            event_receiver,
+        }
     }
 
-    /// Start the ursa network service
+    /// Start the ursa network service loop.
+    ///
+    /// Poll `swarm` and `command_receiver` from [`UrsaService`].
+    /// - `swarm` handles the network events [Event].
+    /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) {
         loop {
             select! {
-                event = self.swarm.next() => self.handle_event(event).await
+                event = self.swarm.next() => self.handle_event(event).await,
+                command = self.command_receiver.next() => match command {
+                    Some(command) => self.handle_command(command).await,
+                    None => return,
+                },
             }
         }
     }
 
-    pub async fn handle_event(
+    async fn handle_event(
         &mut self,
         event: SwarmEvent<
             BehaviourEvent,
@@ -158,6 +188,10 @@ impl<P: StoreParams> UrsaService<P> {
             SwarmEvent::ListenerError { listener_id, error } => todo!(),
             SwarmEvent::Dialing(_) => todo!(),
         }
+    }
+
+    async fn handle_command(&mut self, command: Command) {
+        todo!()
     }
 }
 

@@ -41,6 +41,8 @@ use crate::{
 /// [Behaviour]'s events
 #[derive(Debug)]
 pub enum BehaviourEvent {
+    PeerDiscovery(PeerId),
+    PeerUnroutable(PeerId),
     Ping(PingEvent),
     Identify(IdentifyEvent),
     Bitswap(BitswapEvent),
@@ -49,34 +51,17 @@ pub enum BehaviourEvent {
     Discovery(DiscoveryEvent),
 }
 
-impl From<PingEvent> for BehaviourEvent {
-    fn from(event: PingEvent) -> Self {
-        Self::Ping(event)
-    }
-}
-
-impl From<IdentifyEvent> for BehaviourEvent {
-    fn from(event: IdentifyEvent) -> Self {
-        Self::Identify(event)
-    }
-}
-
-impl From<GossipsubEvent> for BehaviourEvent {
-    fn from(event: GossipsubEvent) -> Self {
-        Self::Gossip(event)
-    }
-}
-
-impl From<DiscoveryEvent> for BehaviourEvent {
-    fn from(event: DiscoveryEvent) -> Self {
-        Self::Discovery(event)
-    }
-}
-/// This is Ursa's custom network behaviour that handles
-/// all the [`Ping`], [`Identify`], [`Bitswap`], [`Gossipsub`], and [`DiscoveryBehaviour`].
+/// This is Ursa's custom [`NetworkBehaviour`] in libp2p Swarm.
 ///
 /// The poll function must have the same signature as the NetworkBehaviour
 /// function and will be called last within the generated NetworkBehaviour implementation.
+///
+/// - [`Ping`]
+/// - [`Identify`]
+/// - [`Bitswap`]
+/// - [`Gossipsub`]
+/// - [`DiscoveryBehaviour`]
+/// - [`RequestResponse`]
 #[derive(NetworkBehaviour)]
 #[behaviour(
     out_event = "BehaviourEvent",
@@ -88,7 +73,7 @@ pub struct Behaviour<P: StoreParams> {
     ping: Ping,
     // Identifying peer info to other peers.
     identify: Identify,
-    ///
+    /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
     /// Ursa's gossiping protocol for message propagation.
     gossipsub: Gossipsub,
@@ -271,9 +256,9 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P
                 // Identification information has been received from a peer.
                 // handle identity and add to the list of peers
             }
-            IdentifyEvent::Sent { .. } => {}
-            IdentifyEvent::Pushed { .. } => {}
-            IdentifyEvent::Error { .. } => {}
+            IdentifyEvent::Sent { .. }
+            | IdentifyEvent::Pushed { .. }
+            | IdentifyEvent::Error { .. } => {}
         }
     }
 }
@@ -326,7 +311,10 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P>
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: DiscoveryEvent) {
-        todo!()
+        match event {
+            DiscoveryEvent::Discoverd(peer_id) => todo!(),
+            DiscoveryEvent::UnroutablePeer(_) => todo!(),
+        }
     }
 }
 

@@ -10,20 +10,21 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use libp2p::{
+    autonat::{Behaviour as Autonat, Config as AutonatConfig},
     core::{connection::ConnectionId, ConnectedPoint},
     kad::{
         handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent,
         QueryId, QueryResult,
     },
+    mdns::{Mdns, MdnsConfig},
     swarm::{
-        ConnectionHandler, IntoConnectionHandler, NetworkBehaviour, NetworkBehaviourAction,
-        PollParameters,
+        behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
+        NetworkBehaviourAction, PollParameters,
     },
     Multiaddr, PeerId,
 };
 
 use crate::config::UrsaConfig;
-
 // use super::handler::DiscoveryEventHandler;
 
 struct PeerInfo {
@@ -39,30 +40,29 @@ pub enum DiscoveryEvent {
 
 pub struct DiscoveryBehaviour {
     local_peer_id: PeerId,
-    /// should we support MDNS?
-    /// kad instance
+    /// Kademlia instance.
     kademlia: Kademlia<MemoryStore>,
-    /// boostrap nodes
-    /// could merge the bootstrap nodes under [peers]
+    /// Boostrap nodes.
     bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
-    /// connected peers
+    /// Connected peers.
     peers: HashSet<PeerId>,
-    /// information about connected peers
-    /// we should prob introduce and arc lock on this
+    /// Information about connected peers.
     peer_info: HashMap<PeerId, PeerInfo>,
     /// events
     events: VecDeque<DiscoveryEvent>,
+    /// Optional MDNS protocol.
+    mdns: Toggle<Mdns>,
+    /// Optional autonat.
+    autonat: Toggle<Autonat>,
     // Custom event handler
-    // events: VecDeque<NetworkBehaviourAction<DiscoveryEvent, DiscoveryEventHandler>>,
+    // events: VecDeque<NetworkBehaviourAction<DiscoveryEvent, DiscoveryEventHandler>>
 }
 
 impl DiscoveryBehaviour {
-    // Abstract the bootstrapping nodes in [UrsaConfig]
     pub fn new(config: &UrsaConfig) -> Self {
-        let local_peer_id = config.keypair.public().to_peer_id();
+        let local_peer_id = PeerId::from(config.keypair.public());
 
         // setup kademlia config
-        // move to UrsaConfig
         let kademlia = {
             let name = "";
             let replication_factor = "";
@@ -76,7 +76,19 @@ impl DiscoveryBehaviour {
             Kademlia::with_config(local_peer_id, store, config)
         };
 
-        // future: relay circuit v2 / hole punching
+        // mdns is off by default
+        let mdns = if config.mdns {
+            Some(Mdns::new(MdnsConfig::default())).expect("mdns start")
+        } else {
+            None
+        };
+
+        // autonat is off by default
+        let autonat = if config.autonat {
+            Some(Autonat::new(local_peer_id, AutonatConfig::default())).expect("autonat setup")
+        } else {
+            None
+        };
 
         Self {
             local_peer_id,
@@ -85,6 +97,8 @@ impl DiscoveryBehaviour {
             peers: HashSet::new(),
             peer_info: HashMap::new(),
             events: VecDeque::new(),
+            mdns: mdns.into(),
+            autonat: autonat.into(),
         }
     }
 
@@ -200,10 +214,10 @@ impl NetworkBehaviour for DiscoveryBehaviour {
                         QueryResult::PutRecord(_) => todo!(),
                         QueryResult::RepublishRecord(_) => todo!(),
                     },
-                    KademliaEvent::RoutingUpdated { .. } => {}
-                    KademliaEvent::UnroutablePeer { .. } => {}
-                    KademliaEvent::RoutablePeer { .. } => {}
-                    KademliaEvent::PendingRoutablePeer { .. } => {}
+                    KademliaEvent::RoutingUpdated { .. }
+                    | KademliaEvent::UnroutablePeer { .. }
+                    | KademliaEvent::RoutablePeer { .. }
+                    | KademliaEvent::PendingRoutablePeer { .. } => {}
                 },
                 NetworkBehaviourAction::Dial { opts, handler } => {
                     Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })

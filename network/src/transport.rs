@@ -14,24 +14,34 @@ use libp2p::{
         upgrade::SelectUpgrade,
     },
     dns::DnsConfig,
-    identity::Keypair,
     mplex, noise,
+    relay::v2::client::Client as RelayClient,
+    relay::v2::relay::{self, Relay},
     tcp::TcpConfig,
     yamux, PeerId, Transport,
 };
 
 use crate::config::UrsaConfig;
 
+/// * [`Relay`]
 pub struct UrsaTransport {
-    keypair: Keypair,
     tcp: TcpConfig,
     quic: TcpConfig,
+    relay: RelayClient,
 }
 
 impl UrsaTransport {
     /// Creates a new [`UrsaTransport`] using keypair.
     pub fn new(config: &UrsaConfig) -> Self {
-        let id_keys = config.key;
+        let id_keys = config.keypair;
+        let local_peer_id = PeerId::from(config.keypair.public());
+
+        // Todo: add relay as an alt transport
+        let (relay_transport, relay) = if config.relay {
+            RelayClient::new_transport_and_behaviour(local_peer_id)
+        } else {
+            None
+        };
 
         let tcp = {
             let noise = {
@@ -67,15 +77,10 @@ impl UrsaTransport {
             //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
             // ))
             // .unwrap()
-
             todo!()
         };
 
-        UrsaTransport {
-            keypair: config.keypair,
-            tcp,
-            quic,
-        }
+        UrsaTransport { tcp, quic, relay }
     }
 
     /// Builds [`UrsaTransport`]

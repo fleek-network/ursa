@@ -4,15 +4,20 @@ use libp2p::{Multiaddr, PeerId};
 /// Ursa Configration
 #[derive(Debug)]
 pub struct UrsaConfig {
-    /// Node key
+    /// Node key.
     pub keypair: Keypair,
-    /// Swarm listening Address
-    /// "/ip4/0.0.0.0/udp/0/quic".parse().unwrap()
+    /// Swarm listening Address.
     pub swarm_addr: Multiaddr,
-    /// Quic Config
+    /// Quic Config.
     pub quic: bool,
-    // Bootstrap nodes
+    /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
+    /// Optional relay through other peers.
+    pub relay: bool,
+    /// Optional mdns local discovery.
+    pub mdns: bool,
+    /// Optional autonat.
+    pub autonat: bool,
 }
 
 impl Default for UrsaConfig {
@@ -22,6 +27,9 @@ impl Default for UrsaConfig {
             swarm_addr: "/ip4/0.0.0.0/udp/0/quic".parse().unwrap(),
             quic: true,
             bootstrap_nodes: vec![],
+            relay: false,
+            mdns: false,
+            autonat: false,
         }
     }
 }
