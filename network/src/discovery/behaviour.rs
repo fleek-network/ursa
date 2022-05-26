@@ -17,6 +17,7 @@ use libp2p::{
         QueryId, QueryResult,
     },
     mdns::{Mdns, MdnsConfig},
+    relay::v2::relay::{Config as RelayConfig, Relay},
     swarm::{
         behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
         NetworkBehaviourAction, PollParameters,
@@ -50,6 +51,8 @@ pub struct DiscoveryBehaviour {
     peer_info: HashMap<PeerId, PeerInfo>,
     /// events
     events: VecDeque<DiscoveryEvent>,
+    /// Relay v2 for routing through peers.
+    relay: Relay,
     /// Optional MDNS protocol.
     mdns: Toggle<Mdns>,
     /// Optional autonat.
@@ -85,10 +88,18 @@ impl DiscoveryBehaviour {
 
         // autonat is off by default
         let autonat = if config.autonat {
-            Some(Autonat::new(local_peer_id, AutonatConfig::default())).expect("autonat setup")
+            let mut behaviour = Autonat::new(local_peer_id, AutonatConfig::default());
+
+            for (peer, address) in config.bootstrap_nodes {
+                behaviour.add_server(peer, Some(address));
+            }
+
+            behaviour
         } else {
             None
         };
+
+        let relay = Relay::new(local_peer_id, RelayConfig::default());
 
         Self {
             local_peer_id,
@@ -97,6 +108,7 @@ impl DiscoveryBehaviour {
             peers: HashSet::new(),
             peer_info: HashMap::new(),
             events: VecDeque::new(),
+            relay,
             mdns: mdns.into(),
             autonat: autonat.into(),
         }

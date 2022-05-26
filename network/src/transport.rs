@@ -16,7 +16,6 @@ use libp2p::{
     dns::DnsConfig,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    relay::v2::relay::{self, Relay},
     tcp::TcpConfig,
     yamux, PeerId, Transport,
 };
@@ -27,7 +26,7 @@ use crate::config::UrsaConfig;
 pub struct UrsaTransport {
     tcp: TcpConfig,
     quic: TcpConfig,
-    relay: RelayClient,
+    relay_client: RelayClient,
 }
 
 impl UrsaTransport {
@@ -36,8 +35,7 @@ impl UrsaTransport {
         let id_keys = config.keypair;
         let local_peer_id = PeerId::from(config.keypair.public());
 
-        // Todo: add relay as an alt transport
-        let (relay_transport, relay) = if config.relay {
+        let (relay_transport, relay_client) = if config.relay {
             RelayClient::new_transport_and_behaviour(local_peer_id)
         } else {
             None
@@ -62,6 +60,7 @@ impl UrsaTransport {
             .unwrap();
 
             transport
+                .or_transport(relay_transport)
                 .upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
@@ -80,7 +79,11 @@ impl UrsaTransport {
             todo!()
         };
 
-        UrsaTransport { tcp, quic, relay }
+        UrsaTransport {
+            tcp,
+            quic,
+            relay_client,
+        }
     }
 
     /// Builds [`UrsaTransport`]
