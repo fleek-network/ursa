@@ -2971,6 +2971,7 @@ dependencies = [
  "anyhow",
  "async-std",
  "async-trait",
+ "bytes",
  "futures",
  "ipld_blockstore",
  "jsonrpc-v2",

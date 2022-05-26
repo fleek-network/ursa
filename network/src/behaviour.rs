@@ -1,7 +1,17 @@
-//! Ursa Behaviour implementation.
+//! # Ursa Behaviour implementation.
 //!
+//! Ursa custom behaviour implements [`NetworkBehaviour`] with the following options:
 //!
-//!
+//! - [`Ping`] A `NetworkBehaviour` that responds to inbound pings and
+//! periodically sends outbound pings on every established connection.
+//! - [`Identify`] A `Networkbehaviour` that automatically identifies nodes periodically, returns information
+//! about them, and answers identify queries from other nodes.
+//! - [`Bitswap`] A `Networkbehaviour` that handles sending and receiving blocks.
+//! - [`Gossipsub`] A `Networkbehaviour` that handles the gossipsub protocol.
+//! - [`DiscoveryBehaviour`]
+//! - [`RequestResponse`] A `NetworkBehaviour` that implements a generic
+//! request/response protocol or protocol family, whereby each request is
+//! sent over a new substream on a connection.
 
 use std::{
     collections::{HashSet, VecDeque},
@@ -20,6 +30,10 @@ use libp2p::{
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     kad::QueryId,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    request_response::{
+        ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
+        RequestResponseMessage,
+    },
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
@@ -30,6 +44,7 @@ use tiny_cid::Cid;
 use tracing::{debug, trace};
 
 use crate::{
+    codec::{UrsaExchangeCodec, UrsaExchangeProtocol, UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
     service::PROTOCOL_NAME,
@@ -51,17 +66,12 @@ pub enum BehaviourEvent {
     Discovery(DiscoveryEvent),
 }
 
-/// This is Ursa's custom [`NetworkBehaviour`] in libp2p Swarm.
+/// A `Networkbehaviour` that handles Ursa's different protocol implementations.
 ///
 /// The poll function must have the same signature as the NetworkBehaviour
 /// function and will be called last within the generated NetworkBehaviour implementation.
 ///
-/// - [`Ping`]
-/// - [`Identify`]
-/// - [`Bitswap`]
-/// - [`Gossipsub`]
-/// - [`DiscoveryBehaviour`]
-/// - [`RequestResponse`]
+/// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
 #[behaviour(
     out_event = "BehaviourEvent",
@@ -79,6 +89,8 @@ pub struct Behaviour<P: StoreParams> {
     gossipsub: Gossipsub,
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
+    /// request/response protocol implementation for [`UrsaExchangeProtocol`]
+    request_response: RequestResponse<UrsaExchangeCodec>,
     /// Ursa's emitted events.
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
@@ -102,6 +114,17 @@ impl<P: StoreParams> Behaviour<P> {
         // Setup the discovery behaviour
         let discovery =
             DiscoveryBehaviour::new(&config).with_bootstrap_nodes(config.bootstrap_nodes.clone());
+
+        let request_response = {
+            let protocols = std::iter::once((UrsaExchangeProtocol {}, ProtocolSupport::Full));
+
+            let cfg = RequestResponseConfig::default();
+            // Todo: set using config
+            cfg.set_connection_keep_alive(Duration::from_secs(10));
+            cfg.set_request_timeout(todo!());
+
+            RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
+        };
 
         // Setup the gossip behaviour
         // move to config
@@ -162,6 +185,7 @@ impl<P: StoreParams> Behaviour<P> {
             gossipsub,
             discovery,
             // todo rpc
+            request_response,
             events: VecDeque::new(),
         }
     }
@@ -314,6 +338,41 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<
         match event {
             DiscoveryEvent::Discoverd(peer_id) => todo!(),
             DiscoveryEvent::UnroutablePeer(_) => todo!(),
+        }
+    }
+}
+
+impl<P: StoreParams>
+    NetworkBehaviourEventProcess<RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>>
+    for Behaviour<P>
+{
+    fn inject_event(
+        &mut self,
+        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) {
+        match event {
+            RequestResponseEvent::Message { peer, message } => match message {
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    channel,
+                } => todo!(),
+                RequestResponseMessage::Response {
+                    request_id,
+                    response,
+                } => todo!(),
+            },
+            RequestResponseEvent::OutboundFailure {
+                peer,
+                request_id,
+                error,
+            } => todo!(),
+            RequestResponseEvent::InboundFailure {
+                peer,
+                request_id,
+                error,
+            } => todo!(),
+            RequestResponseEvent::ResponseSent { peer, request_id } => todo!(),
         }
     }
 }

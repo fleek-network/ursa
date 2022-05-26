@@ -1,7 +1,15 @@
-//! Ursa Service implementation.
+//! # Ursa libp2p implementation.
 //!
+//! The service is bootstrapped with the following premises:
 //!
+//! - Load or create a new [`Keypair`] by checking the local storage.
+//! - Instanitate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
+//! - A custome ['NetworkBehaviour'] is implemented based on [`UrsaConfig`] provided by node runner.
+//! - Using the [`UrsaTransport`] and [`Behaviour`] a new [`Swarm`] is built.
+//! - Two channels are created to serve (send/recieve) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
 //!
+//! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
+//! receiving [`UrsaEvent`]'s using the respective channels.
 
 use async_std::{
     channel::{unbounded, Receiver, Sender},
@@ -18,7 +26,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::BitswapStore;
-use tracing::{trace, warn};
+use tracing::{info, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
@@ -29,29 +37,33 @@ use crate::{
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/0.0.1";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
-pub struct Command {}
+#[derive(Debug)]
+pub enum UrsaCommand {}
 
-pub struct Event {}
+#[derive(Debug)]
+pub enum UrsaEvent {}
+// Creates a new one-shot channel for sending single values across asynchronous tasks.
 
 pub struct UrsaService<P: StoreParams> {
+    /// The main libp2p swamr emitting events.
     swarm: Swarm<Behaviour<P>>,
     /// Handles outbound messages to peers
-    command_sender: Sender<Command>,
+    command_sender: Sender<UrsaCommand>,
     /// Handles inbound messages from peers
-    command_receiver: Receiver<Command>,
+    command_receiver: Receiver<UrsaCommand>,
     /// Handles events emitted by the ursa network
-    event_sender: Sender<Event>,
+    event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
-    event_receiver: Receiver<Event>,
+    event_receiver: Receiver<UrsaEvent>,
 }
 
 impl<P: StoreParams> UrsaService<P> {
     /// Init a new [`UrsaService`] based on [`UrsaConfig`]
     ///
-    /// For ursa [identity] we use ed25519 either
+    /// For ursa `keypair` we use ed25519 either
     /// checking for a local store or creating a new keypair.
     ///
-    /// For ursa [transport] we build a default QUIC layer and
+    /// For ursa `transport` we build a default QUIC layer and
     /// failover to tcp.
     ///
     /// For ursa behaviour we use [`Behaviour`].
@@ -63,6 +75,8 @@ impl<P: StoreParams> UrsaService<P> {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+
+        info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
 
         let transport = UrsaTransport::new(&mut config).build();
 
@@ -100,9 +114,7 @@ impl<P: StoreParams> UrsaService<P> {
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        // create an unbounded message sender and reciever
         let (command_sender, command_receiver) = unbounded();
-        // create an unbounded event sender and reciever
         let (event_sender, event_receiver) = unbounded();
 
         UrsaService {
@@ -190,7 +202,7 @@ impl<P: StoreParams> UrsaService<P> {
         }
     }
 
-    async fn handle_command(&mut self, command: Command) {
+    async fn handle_command(&mut self, command: UrsaCommand) {
         todo!()
     }
 }
