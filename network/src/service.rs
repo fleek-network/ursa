@@ -42,7 +42,6 @@ pub enum UrsaCommand {}
 
 #[derive(Debug)]
 pub enum UrsaEvent {}
-// Creates a new one-shot channel for sending single values across asynchronous tasks.
 
 pub struct UrsaService<P: StoreParams> {
     /// The main libp2p swamr emitting events.
@@ -114,8 +113,8 @@ impl<P: StoreParams> UrsaService<P> {
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        let (command_sender, command_receiver) = unbounded();
         let (event_sender, event_receiver) = unbounded();
+        let (command_sender, command_receiver) = unbounded();
 
         UrsaService {
             swarm,
@@ -152,8 +151,10 @@ impl<P: StoreParams> UrsaService<P> {
     ) {
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Bitswap(_) => todo!(),
-                BehaviourEvent::Gossip(_) => todo!(),
+                BehaviourEvent::Bitswap(event) => self.swarm.behaviour_mut().bitswap_handler(event),
+                BehaviourEvent::Gossip(event) => {
+                    self.swarm.behaviour_mut().gossipsub_handler(event)
+                }
 
                 // All the events are already handled in [Behaviour]
                 // maybe we should exclude them from [BehaviourEvent]
@@ -208,4 +209,18 @@ impl<P: StoreParams> UrsaService<P> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::config::UrsaConfig;
+
+    use super::UrsaService;
+
+    async fn ursa_service() -> UrsaService {
+        UrsaService::new(&UrsaConfig::default()).await.unwrap()
+    }
+
+    // Network Starts
+    #[test]
+    fn ursa_service_start() {
+        todo!()
+    }
+}

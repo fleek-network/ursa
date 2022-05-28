@@ -3,15 +3,15 @@
 //! Ursa custom behaviour implements [`NetworkBehaviour`] with the following options:
 //!
 //! - [`Ping`] A `NetworkBehaviour` that responds to inbound pings and
-//! periodically sends outbound pings on every established connection.
+//!   periodically sends outbound pings on every established connection.
 //! - [`Identify`] A `Networkbehaviour` that automatically identifies nodes periodically, returns information
-//! about them, and answers identify queries from other nodes.
+//!   about them, and answers identify queries from other nodes.
 //! - [`Bitswap`] A `Networkbehaviour` that handles sending and receiving blocks.
 //! - [`Gossipsub`] A `Networkbehaviour` that handles the gossipsub protocol.
 //! - [`DiscoveryBehaviour`]
 //! - [`RequestResponse`] A `NetworkBehaviour` that implements a generic
-//! request/response protocol or protocol family, whereby each request is
-//! sent over a new substream on a connection.
+//!   request/response protocol or protocol family, whereby each request is
+//!   sent over a new substream on a connection.
 
 use std::{
     collections::{HashSet, VecDeque},
@@ -44,26 +44,23 @@ use tiny_cid::Cid;
 use tracing::{debug, trace};
 
 use crate::{
-    codec::{UrsaExchangeCodec, UrsaExchangeProtocol, UrsaExchangeRequest, UrsaExchangeResponse},
+    codec::proto::{
+        UrsaExchangeCodec, UrsaExchangeProtocol, UrsaExchangeRequest, UrsaExchangeResponse,
+    },
     config::UrsaConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
     service::PROTOCOL_NAME,
 };
 
-/// Instead of storing the entire event we
-/// can create a set of custom event types.
-///
 /// [Behaviour]'s events
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    PeerDiscovery(PeerId),
-    PeerUnroutable(PeerId),
     Ping(PingEvent),
-    Identify(IdentifyEvent),
     Bitswap(BitswapEvent),
     Gossip(GossipsubEvent),
-    // add rpc events
+    Identify(IdentifyEvent),
     Discovery(DiscoveryEvent),
+    Txrx(RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>),
 }
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
@@ -116,12 +113,8 @@ impl<P: StoreParams> Behaviour<P> {
             DiscoveryBehaviour::new(&config).with_bootstrap_nodes(config.bootstrap_nodes.clone());
 
         let request_response = {
-            let protocols = std::iter::once((UrsaExchangeProtocol {}, ProtocolSupport::Full));
-
             let cfg = RequestResponseConfig::default();
-            // Todo: set using config
-            cfg.set_connection_keep_alive(Duration::from_secs(10));
-            cfg.set_request_timeout(todo!());
+            let protocols = vec![(UrsaExchangeProtocol(), ProtocolSupport::Full)];
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
@@ -184,7 +177,6 @@ impl<P: StoreParams> Behaviour<P> {
             identify,
             gossipsub,
             discovery,
-            // todo rpc
             request_response,
             events: VecDeque::new(),
         }
@@ -216,16 +208,14 @@ impl<P: StoreParams> Behaviour<P> {
             <Self as NetworkBehaviour>::ConnectionHandler,
         >,
     > {
-        match self.events.pop_front() {
-            Some(event) => Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)),
-            None => todo!(),
-            _ => Poll::Pending,
+        if !self.events.is_empty() {
+            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
         }
-    }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: PingEvent) {
+        Poll::Pending
+    }
+
+    pub fn ping_handler(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -266,10 +256,8 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
             }
         }
     }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: IdentifyEvent) {
+    pub fn identify_handler(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -284,6 +272,30 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P
             | IdentifyEvent::Pushed { .. }
             | IdentifyEvent::Error { .. } => {}
         }
+    }
+
+    pub fn bitswap_handler(&mut self, event: BitswapEvent) {}
+
+    pub fn gossipsub_handler(&mut self, event: GossipsubEvent) {}
+
+    pub fn discovery_handler(&mut self, event: DiscoveryEvent) {}
+
+    pub fn tx_rx_handler(
+        &mut self,
+        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) {
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: PingEvent) {
+        self.ping_handler(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: IdentifyEvent) {
+        self.identify_handler(event)
     }
 }
 
@@ -376,10 +388,3 @@ impl<P: StoreParams>
         }
     }
 }
-
-// ToDo: rpc event
-// impl<P: StoreParams> NetworkBehaviourEventProcess<RPCEvent> for Behaviour<P> {
-//     fn inject_event(&mut self, event: RPCEvent) {
-//         todo!()
-//     }
-// }

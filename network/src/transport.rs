@@ -22,7 +22,6 @@ use libp2p::{
 
 use crate::config::UrsaConfig;
 
-/// * [`Relay`]
 pub struct UrsaTransport {
     tcp: TcpConfig,
     quic: TcpConfig,

@@ -1,12 +1,14 @@
 [package]
 name = "node"
 version = "0.1.0"
-authors = ["b0xtch <mahmoud@fleek.co>"]
 edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's libp2p implementation"
 
 [dependencies]
 bytes = "1.1.0"
-libp2p = "0.43.0"
 anyhow = "1.0.56"
 futures = "0.3.21"
 tracing = "0.1.33"
@@ -19,3 +21,24 @@ async-trait = "0.1.53"
 libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
 async-std = { version = "1.11.0", features = ["attributes"] }
+
+[dependencies.libp2p]
+version = "0.43.0"
+default-features = false
+features = [
+    "autonat",
+    "dns-async-std",
+    "identify",
+    "kad",
+    "gossipsub",
+    "metrics",
+    "mdns",
+    "mplex",
+    "noise",
+    "ping",
+    "relay",
+    "request-response",
+    "tcp-async-io",
+    "yamux",
+    "serde",
+]
