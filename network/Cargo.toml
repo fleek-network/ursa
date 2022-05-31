@@ -1,5 +1,5 @@
 [package]
-name = "node"
+name = "network"
 version = "0.1.0"
 edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]

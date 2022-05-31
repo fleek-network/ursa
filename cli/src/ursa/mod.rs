@@ -29,16 +29,16 @@ pub struct Cli {
     #[structopt(subcommand)]
     pub cmd: Option<Subcommand>,
 }
+
+/// TODO:  be implemented when we add subcommands to this cli
+/// e.g.
+/// #[structopt(
+///     name = "fetch-params",
+///     about = "Download parameters for generating and verifying proofs for given size"
+/// )]
+/// Fetch(FetchCommands),
 #[derive(StructOpt)]
-pub enum Subcommand {
-    // TODO:  be implemented when we add subcommands to this cli
-// e.g.
-// #[structopt(
-//     name = "fetch-params",
-//     about = "Download parameters for generating and verifying proofs for given size"
-// )]
-// Fetch(FetchCommands),
-}
+pub enum Subcommand {}
 
 /// CLI options
 #[derive(StructOpt, Debug)]

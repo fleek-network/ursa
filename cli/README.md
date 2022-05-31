@@ -1,13 +1,12 @@
-# Ursa Libp2p
+# Ursa CLI
 
-> Libp2p networking implementation for Ursa network.
+> Ursa's CLI.
 
 ## Prerequisites
 
 ## Usage
 
 ```sh
-cargo run --release
 ```
 
 ## Contributing

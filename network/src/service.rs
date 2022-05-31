@@ -11,37 +11,79 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
+use anyhow::{Error, Result};
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     prelude::StreamExt,
     task,
 };
-use futures::{select, FutureExt};
+use futures::{channel::oneshot, select, FutureExt};
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
-    gossipsub::IdentTopic as Topic,
+    gossipsub::{GossipsubEvent, GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
+    request_response::RequestResponseEvent,
     swarm::{ConnectionHandlerUpgrErr, ConnectionLimits, SwarmBuilder, SwarmEvent},
-    PeerId, Swarm,
+    Multiaddr, PeerId, Swarm,
 };
-use libp2p_bitswap::BitswapStore;
+use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use std::collections::HashSet;
+use tiny_cid::Cid;
 use tracing::{info, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
+    codec::proto::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
 };
 
-pub const PROTOCOL_NAME: &[u8] = b"/ursa/0.0.1";
-pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
+pub const PROTOCOL_NAME: &[u8] = b"ipfs/0.1.0";
+pub const MESSAGE_PROTOCOL: &[u8] = b"ursa/message/0.0.1";
 
 #[derive(Debug)]
-pub enum UrsaCommand {}
+pub enum UrsaCommand {
+    Get {
+        cid: Cid,
+        sender: oneshot::Sender<HashSet<PeerId>>,
+    },
+    GetCid {
+        cid: Cid,
+        peer: PeerId,
+        sender: oneshot::Sender<Result<String, Error>>,
+    },
+    PutCid {
+        cid: Cid,
+        sender: oneshot::Sender<()>,
+    },
+    PutCar {
+        car: Cid,
+        sender: oneshot::Sender<()>,
+    },
+    GetProviders {
+        cid: Cid,
+        sender: oneshot::Sender<HashSet<PeerId>>,
+    },
+    GossipsubMessage {},
+    Dial {
+        peer_id: PeerId,
+        peer_addr: Multiaddr,
+        sender: oneshot::Sender<Result<(), Error>>,
+    },
+    StartListening {
+        addr: Multiaddr,
+        sender: oneshot::Sender<Result<(), Error>>,
+    },
+}
 
 #[derive(Debug)]
-pub enum UrsaEvent {}
+pub enum UrsaEvent {
+    PeerConnected(PeerId),
+    PeerDisconnected(PeerId),
+    BitswapEvent(BitswapEvent),
+    GossipsubMessage(GossipsubMessage),
+}
 
 pub struct UrsaService<P: StoreParams> {
     /// The main libp2p swamr emitting events.
@@ -70,7 +112,7 @@ impl<P: StoreParams> UrsaService<P> {
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Self {
+    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Result<Self> {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
@@ -116,13 +158,13 @@ impl<P: StoreParams> UrsaService<P> {
         let (event_sender, event_receiver) = unbounded();
         let (command_sender, command_receiver) = unbounded();
 
-        UrsaService {
+        Ok(UrsaService {
             swarm,
             command_sender,
             command_receiver,
             event_sender,
             event_receiver,
-        }
+        })
     }
 
     /// Start the ursa network service loop.
@@ -130,12 +172,23 @@ impl<P: StoreParams> UrsaService<P> {
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
-    pub async fn start(mut self) {
+    pub async fn start(&mut self) {
         loop {
             select! {
-                event = self.swarm.next() => self.handle_event(event).await,
+                event = self.swarm.next() => match event {
+                    Some(event) => {
+                        if let Err(err) = self.handle_event(event).await {
+                            warn!("Swarm Event: {:?}", err);
+                        }
+                    },
+                    None => return,
+                },
                 command = self.command_receiver.next() => match command {
-                    Some(command) => self.handle_command(command).await,
+                    Some(command) => {
+                        if let Err(err) = self.handle_command(command).await {
+                            warn!("Swarm Command: {:?}", err);
+                        }
+                    },
                     None => return,
                 },
             }
@@ -144,66 +197,64 @@ impl<P: StoreParams> UrsaService<P> {
 
     async fn handle_event(
         &mut self,
-        event: SwarmEvent<
-            BehaviourEvent,
-            EitherError<ConnectionHandlerUpgrErr<anyhow::Error>, anyhow::Error>,
-        >,
+        event: SwarmEvent<BehaviourEvent, EitherError<ConnectionHandlerUpgrErr<Error>, Error>>,
     ) {
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Bitswap(event) => self.swarm.behaviour_mut().bitswap_handler(event),
-                BehaviourEvent::Gossip(event) => {
-                    self.swarm.behaviour_mut().gossipsub_handler(event)
-                }
+                BehaviourEvent::Bitswap(event) => self.handle_bitswap(event),
+                BehaviourEvent::Gossip(event) => self.handle_gossipsub(event),
+                BehaviourEvent::RequestResponse(event) => self.handle_request_response(event),
 
-                // All the events are already handled in [Behaviour]
-                // maybe we should exclude them from [BehaviourEvent]
-                _ => {}
+                // handled at the behaviour level
+                BehaviourEvent::Ping { .. }
+                | BehaviourEvent::Identify { .. }
+                | BehaviourEvent::Discovery { .. } => {}
             },
 
             // Do we need to handle any of the below events?
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint,
-                num_established,
-                concurrent_dial_errors,
-            } => todo!(),
-            SwarmEvent::ConnectionClosed {
-                peer_id,
-                endpoint,
-                num_established,
-                cause,
-            } => todo!(),
-            SwarmEvent::IncomingConnection {
-                local_addr,
-                send_back_addr,
-            } => todo!(),
-            SwarmEvent::IncomingConnectionError {
-                local_addr,
-                send_back_addr,
-                error,
-            } => todo!(),
-            SwarmEvent::OutgoingConnectionError { peer_id, error } => todo!(),
-            SwarmEvent::BannedPeer { peer_id, endpoint } => todo!(),
-            SwarmEvent::NewListenAddr {
-                listener_id,
-                address,
-            } => todo!(),
-            SwarmEvent::ExpiredListenAddr {
-                listener_id,
-                address,
-            } => todo!(),
-            SwarmEvent::ListenerClosed {
-                listener_id,
-                addresses,
-                reason,
-            } => todo!(),
-            SwarmEvent::ListenerError { listener_id, error } => todo!(),
-            SwarmEvent::Dialing(_) => todo!(),
+            SwarmEvent::Dialing { .. }
+            | SwarmEvent::BannedPeer { .. }
+            | SwarmEvent::NewListenAddr { .. }
+            | SwarmEvent::ListenerError { .. }
+            | SwarmEvent::ListenerClosed { .. }
+            | SwarmEvent::ConnectionClosed { .. }
+            | SwarmEvent::ExpiredListenAddr { .. }
+            | SwarmEvent::IncomingConnection { .. }
+            | SwarmEvent::ConnectionEstablished { .. }
+            | SwarmEvent::IncomingConnectionError { .. }
+            | SwarmEvent::OutgoingConnectionError { .. } => {}
         }
     }
 
     async fn handle_command(&mut self, command: UrsaCommand) {
+        match command {
+            UrsaCommand::Get { cid, sender } => todo!(),
+            UrsaCommand::PutCar { cid, sender, car } => todo!(),
+            UrsaCommand::GetProviders { cid, sender } => todo!(),
+            UrsaCommand::GetCid { cid, peer, sender } => todo!(),
+            UrsaCommand::Dial {
+                peer_id,
+                peer_addr,
+                sender,
+            } => todo!(),
+            UrsaCommand::StartListening { addr, sender } => todo!(),
+            UrsaCommand::PutCid { cid, sender } => todo!(),
+            UrsaCommand::GossipsubMessage {} => todo!(),
+        }
+    }
+
+    fn handle_gossipsub(&self, event: GossipsubEvent) {
+        todo!()
+    }
+
+    fn handle_bitswap(&self, event: BitswapEvent) {
+        todo!()
+    }
+
+    fn handle_request_response(
+        &self,
+        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) {
         todo!()
     }
 }

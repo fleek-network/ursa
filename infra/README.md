@@ -1,13 +1,12 @@
-# Ursa Libp2p
+# Ursa Infra
 
-> Libp2p networking implementation for Ursa network.
+> Deploy and run an ursa node, setup TLS and DNS.
 
 ## Prerequisites
 
 ## Usage
 
 ```sh
-cargo run --release
 ```
 
 ## Contributing

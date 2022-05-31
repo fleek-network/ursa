@@ -5,7 +5,7 @@ use libp2p::{core::ProtocolName, request_response::RequestResponseCodec};
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/txrx/1.0.0";
 
 #[derive(Debug, Clone)]
-pub struct UrsaExchangeProtocol();
+pub struct UrsaExchangeProtocol;
 
 impl ProtocolName for UrsaExchangeProtocol {
     fn protocol_name(&self) -> &[u8] {

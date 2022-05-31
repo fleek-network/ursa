@@ -62,7 +62,7 @@ pub struct DiscoveryBehaviour {
 }
 
 impl DiscoveryBehaviour {
-    pub fn new(config: &UrsaConfig) -> Self {
+    pub fn new(config: &UrsaConfig) -> Result<Self> {
         let local_peer_id = PeerId::from(config.keypair.public());
 
         // setup kademlia config
@@ -101,7 +101,7 @@ impl DiscoveryBehaviour {
 
         let relay = Relay::new(local_peer_id, RelayConfig::default());
 
-        Self {
+        Ok(Self {
             local_peer_id,
             kademlia,
             bootstrap_nodes: Vec::new(),
@@ -111,7 +111,11 @@ impl DiscoveryBehaviour {
             relay,
             mdns: mdns.into(),
             autonat: autonat.into(),
-        }
+        })
+    }
+
+    pub fn add_address(&self, peer_id: PeerId, address: Multiaddr) {
+        &self.kademlia.add_address(&peer_id, address);
     }
 
     pub fn peers(&self) -> HashSet<PeerId> {
@@ -136,6 +140,33 @@ impl DiscoveryBehaviour {
     pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &mut Self {
         self.bootstrap_nodes.extend(bootstrap_nodes);
         self
+    }
+
+    fn handle_event(&self, event: KademliaEvent) {
+        match event {
+            KademliaEvent::OutboundQueryCompleted { result, .. } => match result {
+                QueryResult::GetClosestPeers(result) => match result {
+                    Ok(closet_peers_result) => {
+                        let peers = closet_peers_result.peers;
+
+                        todo!()
+                    }
+                    Err(_) => todo!(),
+                },
+                QueryResult::Bootstrap { .. }
+                | QueryResult::GetRecord { .. }
+                | QueryResult::PutRecord { .. }
+                | QueryResult::GetProviders { .. }
+                | QueryResult::StartProviding { .. }
+                | QueryResult::RepublishProvider { .. }
+                | QueryResult::RepublishRecord { .. } => {}
+            },
+            KademliaEvent::RoutingUpdated { .. }
+            | KademliaEvent::RoutablePeer { .. }
+            | KademliaEvent::InboundRequest { .. }
+            | KademliaEvent::UnroutablePeer { .. }
+            | KademliaEvent::PendingRoutablePeer { .. } => {}
+        }
     }
 }
 
@@ -214,23 +245,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         // Poll kademlia for events
         while let Poll::Ready(action) = self.kademlia.poll(cx, params) {
             match action {
-                NetworkBehaviourAction::GenerateEvent(event) => match event {
-                    KademliaEvent::InboundRequest { .. } => {}
-                    KademliaEvent::OutboundQueryCompleted { id, result, stats } => match result {
-                        QueryResult::Bootstrap(_) => todo!(),
-                        QueryResult::GetClosestPeers(_) => todo!(),
-                        QueryResult::GetProviders(_) => todo!(),
-                        QueryResult::StartProviding(_) => todo!(),
-                        QueryResult::RepublishProvider(_) => todo!(),
-                        QueryResult::GetRecord(_) => todo!(),
-                        QueryResult::PutRecord(_) => todo!(),
-                        QueryResult::RepublishRecord(_) => todo!(),
-                    },
-                    KademliaEvent::RoutingUpdated { .. }
-                    | KademliaEvent::UnroutablePeer { .. }
-                    | KademliaEvent::RoutablePeer { .. }
-                    | KademliaEvent::PendingRoutablePeer { .. } => {}
-                },
+                NetworkBehaviourAction::GenerateEvent(event) => self.handle_event(event),
                 NetworkBehaviourAction::Dial { opts, handler } => {
                     Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
                 }

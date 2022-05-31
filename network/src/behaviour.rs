@@ -16,16 +16,14 @@
 use std::{
     collections::{HashSet, VecDeque},
     task::{Context, Poll},
-    time::Duration,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
         error::{PublishError, SubscriptionError},
-        Gossipsub, GossipsubConfigBuilder, GossipsubEvent, GossipsubMessage, IdentTopic as Topic,
-        MessageAuthenticity, MessageId, PeerScoreParams, PeerScoreThresholds, ValidationMode,
+        Gossipsub, GossipsubEvent, IdentTopic as Topic,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     kad::QueryId,
@@ -49,10 +47,13 @@ use crate::{
     },
     config::UrsaConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
-    service::PROTOCOL_NAME,
+    gossipsub::UrsaGossipsub,
+    service::{UrsaEvent, PROTOCOL_NAME},
+    types::UrsaRequestResponseEvent,
 };
 
 /// [Behaviour]'s events
+/// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Ping(PingEvent),
@@ -60,7 +61,7 @@ pub enum BehaviourEvent {
     Gossip(GossipsubEvent),
     Identify(IdentifyEvent),
     Discovery(DiscoveryEvent),
-    Txrx(RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>),
+    RequestResponse(UrsaRequestResponseEvent),
 }
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
@@ -102,8 +103,11 @@ impl<P: StoreParams> Behaviour<P> {
         // Setup the ping behaviour
         let ping = Ping::default();
 
+        // Setup the gossip behaviour
+        let gossipsub = UrsaGossipsub::new(config);
+
         // Setup the bitswap behaviour
-        let bitswap = Bitswap::new(BitswapConfig::new(), store);
+        let bitswap = Bitswap::new(BitswapConfig::default(), store);
 
         // Setup the identify behaviour
         let identify = Identify::new(IdentifyConfig::new(PROTOCOL_NAME.into(), local_public_key));
@@ -114,61 +118,9 @@ impl<P: StoreParams> Behaviour<P> {
 
         let request_response = {
             let cfg = RequestResponseConfig::default();
-            let protocols = vec![(UrsaExchangeProtocol(), ProtocolSupport::Full)];
+            let protocols = vec![(UrsaExchangeProtocol, ProtocolSupport::Full)];
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
-        };
-
-        // Setup the gossip behaviour
-        // move to config
-        // based on node v0 spec
-        let gossipsub = {
-            let history_length = 5;
-            let history_gossip = 3;
-            let mesh_n = 8;
-            let mesh_n_low = 4;
-            let mesh_n_high = 12;
-            let retain_scores = 4;
-            let gossip_lazy = mesh_n;
-            let heartbeat_interval = Duration::from_secs(1);
-            let fanout_ttl = Duration::from_secs(60);
-            // D_out
-            let mesh_outbound_min = (mesh_n / 2) - 1;
-            let max_transmit_size = 1;
-            let max_msgs_per_rpc = 1;
-            let cache_size = 1;
-            let id_fn = move |message: &GossipsubMessage| MessageId::from(todo!());
-
-            let gossip_config = GossipsubConfigBuilder::default()
-                .history_length(history_length)
-                .history_gossip(history_gossip)
-                .mesh_n(mesh_n)
-                .mesh_n_low(mesh_n_low)
-                .mesh_n_high(mesh_n_high)
-                // .retain_scores(retain_scores)
-                .gossip_lazy(gossip_lazy)
-                .heartbeat_interval(heartbeat_interval)
-                .fanout_ttl(fanout_ttl)
-                .max_transmit_size(max_transmit_size)
-                .duplicate_cache_time(cache_size)
-                .validate_messages()
-                .validation_mode(ValidationMode::Strict)
-                .message_id_fn(id_fn)
-                .allow_self_origin(true)
-                .mesh_outbound_min(mesh_outbound_min)
-                .max_messages_per_rpc(max_msgs_per_rpc)
-                .build()
-                .expect("gossipsub config");
-
-            let mut gossipsub =
-                Gossipsub::new(MessageAuthenticity::Signed(config.key), gossip_config)
-                    .map_err(|err| anyhow!("{}", err));
-
-            // Defaults for now
-            let params = PeerScoreParams::default();
-            let threshold = PeerScoreThresholds::defaults();
-
-            gossipsub.with_peer_score(params, threshold).unwrap()
         };
 
         Behaviour {
@@ -215,7 +167,7 @@ impl<P: StoreParams> Behaviour<P> {
         Poll::Pending
     }
 
-    pub fn ping_handler(&mut self, event: PingEvent) {
+    pub fn handle_ping(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -232,6 +184,7 @@ impl<P: StoreParams> Behaviour<P> {
                         rtt.as_millis(),
                         peer
                     );
+                    // perhaps we can set rtt for each peer
                 }
             },
             Err(err) => {
@@ -257,7 +210,7 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn identify_handler(&mut self, event: IdentifyEvent) {
+    pub fn handle_identify(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -265,8 +218,20 @@ impl<P: StoreParams> Behaviour<P> {
                     info,
                     peer_id
                 );
-                // Identification information has been received from a peer.
-                // handle identity and add to the list of peers
+
+                // check if received identify is from a peer on the same network
+                if info
+                    .protocols
+                    .iter()
+                    .any(|name| name.as_bytes() == PROTOCOL_NAME)
+                {
+                    self.gossipsub.add_explicit_peer(&peer_id);
+
+                    for address in info.listen_addrs {
+                        self.discovery.add_address(peer_id, address);
+                        self.request_response.add_address(&peer_id, address);
+                    }
+                }
             }
             IdentifyEvent::Sent { .. }
             | IdentifyEvent::Pushed { .. }
@@ -274,33 +239,22 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn bitswap_handler(&mut self, event: BitswapEvent) {}
+    pub fn handle_bitswap(&mut self, event: BitswapEvent) {
+        match event {
+            BitswapEvent::Progress(query_id, counter) => {
+                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
+                // When a block is received and missing blocks is not empty the counter is increased.
+                // If missing blocks is empty the counter is decremented.
 
-    pub fn gossipsub_handler(&mut self, event: GossipsubEvent) {}
-
-    pub fn discovery_handler(&mut self, event: DiscoveryEvent) {}
-
-    pub fn tx_rx_handler(
-        &mut self,
-        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) {
+                // keep track of all the query ids.
+            }
+            BitswapEvent::Complete(query_id, result) => {
+                // A get or sync query completed.
+            }
+        }
     }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: PingEvent) {
-        self.ping_handler(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: IdentifyEvent) {
-        self.identify_handler(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: GossipsubEvent) {
+    pub fn handle_gossipsub(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message {
                 propagation_source,
@@ -326,39 +280,15 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<
             }
         }
     }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: BitswapEvent) {
-        match event {
-            BitswapEvent::Progress(query_id, counter) => {
-                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
-                // When a block is received and missing blocks is not empty the counter is increased.
-                // If missing blocks is empty the counter is decremented.
-
-                // keep track of all the query ids.
-            }
-            BitswapEvent::Complete(query_id, result) => {
-                // A get or sync query completed.
-            }
-        }
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: DiscoveryEvent) {
+    pub fn handle_discovery(&mut self, event: DiscoveryEvent) {
         match event {
             DiscoveryEvent::Discoverd(peer_id) => todo!(),
             DiscoveryEvent::UnroutablePeer(_) => todo!(),
         }
     }
-}
 
-impl<P: StoreParams>
-    NetworkBehaviourEventProcess<RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>>
-    for Behaviour<P>
-{
-    fn inject_event(
+    pub fn handle_request_response(
         &mut self,
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
     ) {
@@ -368,11 +298,11 @@ impl<P: StoreParams>
                     request_id,
                     request,
                     channel,
-                } => todo!(),
+                } => {}
                 RequestResponseMessage::Response {
                     request_id,
                     response,
-                } => todo!(),
+                } => {}
             },
             RequestResponseEvent::OutboundFailure {
                 peer,
@@ -386,5 +316,47 @@ impl<P: StoreParams>
             } => todo!(),
             RequestResponseEvent::ResponseSent { peer, request_id } => todo!(),
         }
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: PingEvent) {
+        self.handle_ping(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: IdentifyEvent) {
+        self.handle_identify(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: GossipsubEvent) {
+        self.handle_gossipsub(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: BitswapEvent) {
+        self.handle_bitswap(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: DiscoveryEvent) {
+        self.handle_discovery(event)
+    }
+}
+
+impl<P: StoreParams>
+    NetworkBehaviourEventProcess<RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>>
+    for Behaviour<P>
+{
+    fn inject_event(
+        &mut self,
+        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) {
+        self.handle_request_response(event)
     }
 }

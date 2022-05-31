@@ -1,7 +1,7 @@
 mod ursa;
 
 use dotenv::dotenv;
-use node::service::UrsaService;
+use network::service::UrsaService;
 use std::env;
 use structopt::StructOpt;
 use tracing::{error, info, warn};
