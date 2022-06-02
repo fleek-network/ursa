@@ -5,18 +5,23 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    num::NonZeroUsize,
     task::{Context, Poll},
 };
 
-use anyhow::{anyhow, Result};
+use crate::config::UrsaConfig;
+use anyhow::{anyhow, Error, Result};
+use async_std::task::block_on;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
     core::{connection::ConnectionId, ConnectedPoint},
+    identity::Keypair,
     kad::{
         handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent,
         QueryId, QueryResult,
     },
-    mdns::{Mdns, MdnsConfig},
+    mdns::{Mdns, MdnsConfig, MdnsEvent},
+    multiaddr::Protocol,
     relay::v2::relay::{Config as RelayConfig, Relay},
     swarm::{
         behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
@@ -24,9 +29,10 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
+use tracing::warn;
 
-use crate::config::UrsaConfig;
-// use super::handler::DiscoveryEventHandler;
+const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
+// const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/ursa/kad/0.0.1";
 
 struct PeerInfo {
     peer_id: PeerId,
@@ -35,8 +41,8 @@ struct PeerInfo {
 
 #[derive(Debug)]
 pub enum DiscoveryEvent {
-    Discoverd(PeerId),
-    UnroutablePeer(PeerId),
+    Connected(PeerId),
+    Disconnected(PeerId),
 }
 
 pub struct DiscoveryBehaviour {
@@ -57,31 +63,45 @@ pub struct DiscoveryBehaviour {
     mdns: Toggle<Mdns>,
     /// Optional autonat.
     autonat: Toggle<Autonat>,
-    // Custom event handler
-    // events: VecDeque<NetworkBehaviourAction<DiscoveryEvent, DiscoveryEventHandler>>
 }
 
 impl DiscoveryBehaviour {
-    pub fn new(config: &UrsaConfig) -> Result<Self> {
-        let local_peer_id = PeerId::from(config.keypair.public());
+    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Self {
+        let local_peer_id = PeerId::from(keypair.public());
+
+        let bootstrap_nodes = config
+            .bootstrap_nodes
+            .into_iter()
+            .filter_map(|multiaddr| {
+                let mut addr = multiaddr.to_owned();
+                if let Some(Protocol::P2p(mh)) = addr.pop() {
+                    let peer_id = PeerId::from_multihash(mh).unwrap();
+                    Some((peer_id, addr))
+                } else {
+                    warn!("Could not parse bootstrap addr {}", multiaddr);
+                    None
+                }
+            })
+            .collect();
 
         // setup kademlia config
         let kademlia = {
-            let name = "";
-            let replication_factor = "";
             let store = MemoryStore::new(local_peer_id);
+            // todo(botch): move replication factor to config
+            // why 8?
+            let replication_factor = NonZeroUsize::new(8).unwrap();
 
-            let config = KademliaConfig::default()
-                .set_protocol_name(name)
+            let kad_config = KademliaConfig::default()
+                .set_protocol_name(URSA_KAD_PROTOCOL)
                 .set_replication_factor(replication_factor);
-            // what more do we need to setup with Kad?
 
-            Kademlia::with_config(local_peer_id, store, config)
+            Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
 
-        // mdns is off by default
         let mdns = if config.mdns {
-            Some(Mdns::new(MdnsConfig::default())).expect("mdns start")
+            Some(block_on(async {
+                Mdns::new(Default::default()).await.expect("mdns start")
+            }))
         } else {
             None
         };
@@ -90,89 +110,85 @@ impl DiscoveryBehaviour {
         let autonat = if config.autonat {
             let mut behaviour = Autonat::new(local_peer_id, AutonatConfig::default());
 
-            for (peer, address) in config.bootstrap_nodes {
-                behaviour.add_server(peer, Some(address));
+            for (peer_id, address) in bootstrap_nodes {
+                behaviour.add_server(peer_id, Some(address));
             }
 
-            behaviour
+            Some(behaviour)
         } else {
             None
         };
 
         let relay = Relay::new(local_peer_id, RelayConfig::default());
 
-        Ok(Self {
+        Self {
             local_peer_id,
             kademlia,
-            bootstrap_nodes: Vec::new(),
+            bootstrap_nodes,
             peers: HashSet::new(),
             peer_info: HashMap::new(),
             events: VecDeque::new(),
             relay,
             mdns: mdns.into(),
             autonat: autonat.into(),
-        })
+        }
     }
 
-    pub fn add_address(&self, peer_id: PeerId, address: Multiaddr) {
-        &self.kademlia.add_address(&peer_id, address);
+    pub fn add_address(&mut self, peer_id: PeerId, address: Multiaddr) {
+        self.kademlia.add_address(&peer_id, address);
     }
 
-    pub fn peers(&self) -> HashSet<PeerId> {
+    pub fn peers(&self) -> &HashSet<PeerId> {
         &self.peers
     }
 
-    pub fn peer_info(&self) -> HashMap<PeerId, PeerInfo> {
+    pub fn peer_info(&self) -> &HashMap<PeerId, PeerInfo> {
         &self.peer_info
     }
 
-    pub fn boostrap(&self) -> Result<QueryId, String> {
+    pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
         for (peer_id, address) in &self.bootstrap_nodes {
-            &self.kademlia.add_address(peer_id, address.clone());
+            self.kademlia.add_address(peer_id, address.clone());
         }
 
-        &self
-            .kademlia
+        self.kademlia
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
     }
 
-    pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &mut Self {
+    pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &Self {
         self.bootstrap_nodes.extend(bootstrap_nodes);
         self
     }
 
-    fn handle_event(&self, event: KademliaEvent) {
-        match event {
-            KademliaEvent::OutboundQueryCompleted { result, .. } => match result {
-                QueryResult::GetClosestPeers(result) => match result {
-                    Ok(closet_peers_result) => {
-                        let peers = closet_peers_result.peers;
+    fn handle_kad_event(&self, event: KademliaEvent) {
+        if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
+            if let QueryResult::GetClosestPeers(closest_peers_result) = result {
+                match closest_peers_result {
+                    Ok(closest_peers) => {
+                        let peers = closest_peers.peers;
 
                         todo!()
                     }
-                    Err(_) => todo!(),
-                },
-                QueryResult::Bootstrap { .. }
-                | QueryResult::GetRecord { .. }
-                | QueryResult::PutRecord { .. }
-                | QueryResult::GetProviders { .. }
-                | QueryResult::StartProviding { .. }
-                | QueryResult::RepublishProvider { .. }
-                | QueryResult::RepublishRecord { .. } => {}
-            },
-            KademliaEvent::RoutingUpdated { .. }
-            | KademliaEvent::RoutablePeer { .. }
-            | KademliaEvent::InboundRequest { .. }
-            | KademliaEvent::UnroutablePeer { .. }
-            | KademliaEvent::PendingRoutablePeer { .. } => {}
+                    Err(_) => {}
+                }
+            }
+        }
+    }
+
+    fn handle_mdns_event(&self, event: MdnsEvent) {
+        match event {
+            MdnsEvent::Discovered(discoverd_peers) => {
+                for (peer_id, address) in discoverd_peers {
+                    self.add_address(peer_id, address)
+                }
+            }
+            MdnsEvent::Expired(_) => {}
         }
     }
 }
 
 impl NetworkBehaviour for DiscoveryBehaviour {
-    /// Custom handler todo
-    // type ConnectionHandler = DiscoveryHandler;
     type ConnectionHandler = KademliaHandlerProto<QueryId>;
 
     type OutEvent = DiscoveryEvent;
@@ -182,10 +198,17 @@ impl NetworkBehaviour for DiscoveryBehaviour {
     }
 
     fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-        self.peer_info
+        let addresses = self
+            .peer_info
             .get(peer_id)
-            .map(|peer_info| peer_info.addresses.cloned().collect())
-            .unwrap_or_default()
+            .map(|peer_info| peer_info.addresses);
+
+        if let Some(addresses) = addresses {
+            addresses.extend(self.mdns.addresses_of_peer(peer_id));
+            addresses.extend(self.kademlia.addresses_of_peer(peer_id));
+        }
+
+        addresses.unwrap_or_default()
     }
 
     fn inject_connection_established(
@@ -236,39 +259,69 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         cx: &mut Context<'_>,
         params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
-        match self.events.pop_front() {
-            Some(event) => Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)),
-            None => todo!(),
-            _ => Poll::Pending,
+        if let Some(event) = self.events.pop_front() {
+            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
         }
 
         // Poll kademlia for events
         while let Poll::Ready(action) = self.kademlia.poll(cx, params) {
             match action {
-                NetworkBehaviourAction::GenerateEvent(event) => self.handle_event(event),
+                NetworkBehaviourAction::GenerateEvent(event) => self.handle_kad_event(event),
                 NetworkBehaviourAction::Dial { opts, handler } => {
-                    Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
+                    return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
                 }
                 NetworkBehaviourAction::NotifyHandler {
                     peer_id,
                     handler,
                     event,
-                } => Poll::Ready(NetworkBehaviourAction::NotifyHandler {
-                    peer_id,
-                    handler,
-                    event,
-                }),
+                } => {
+                    return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
+                        peer_id,
+                        handler,
+                        event,
+                    })
+                }
                 NetworkBehaviourAction::ReportObservedAddr { address, score } => {
-                    Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address, score })
+                    return Poll::Ready(NetworkBehaviourAction::ReportObservedAddr {
+                        address,
+                        score,
+                    })
                 }
                 NetworkBehaviourAction::CloseConnection {
                     peer_id,
                     connection,
-                } => Poll::Ready(NetworkBehaviourAction::CloseConnection {
-                    peer_id,
-                    connection,
-                }),
+                } => {
+                    return Poll::Ready(NetworkBehaviourAction::CloseConnection {
+                        peer_id,
+                        connection,
+                    })
+                }
             }
         }
+
+        while let Poll::Ready(action) = self.mdns.poll(cx, params) {
+            match action {
+                NetworkBehaviourAction::GenerateEvent(event) => self.handle_mdns_event(event),
+                NetworkBehaviourAction::ReportObservedAddr { address, score } => {
+                    return Poll::Ready(NetworkBehaviourAction::ReportObservedAddr {
+                        address,
+                        score,
+                    })
+                }
+                NetworkBehaviourAction::CloseConnection {
+                    peer_id,
+                    connection,
+                } => {
+                    return Poll::Ready(NetworkBehaviourAction::CloseConnection {
+                        peer_id,
+                        connection,
+                    })
+                }
+                NetworkBehaviourAction::Dial { .. }
+                | NetworkBehaviourAction::NotifyHandler { .. } => {}
+            }
+        }
+
+        Poll::Pending
     }
 }

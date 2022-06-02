@@ -18,7 +18,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
@@ -26,6 +26,7 @@ use libp2p::{
         Gossipsub, GossipsubEvent, IdentTopic as Topic,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
+    identity::Keypair,
     kad::QueryId,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
@@ -42,15 +43,14 @@ use tiny_cid::Cid;
 use tracing::{debug, trace};
 
 use crate::{
-    codec::proto::{
-        UrsaExchangeCodec, UrsaExchangeProtocol, UrsaExchangeRequest, UrsaExchangeResponse,
-    },
+    codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    service::{UrsaEvent, PROTOCOL_NAME},
     types::UrsaRequestResponseEvent,
 };
+
+pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
@@ -87,7 +87,7 @@ pub struct Behaviour<P: StoreParams> {
     gossipsub: Gossipsub,
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
-    /// request/response protocol implementation for [`UrsaExchangeProtocol`]
+    /// request/response protocol implementation for [`UrsaProtocol`]
     request_response: RequestResponse<UrsaExchangeCodec>,
     /// Ursa's emitted events.
     #[behaviour(ignore)]
@@ -95,8 +95,12 @@ pub struct Behaviour<P: StoreParams> {
 }
 
 impl<P: StoreParams> Behaviour<P> {
-    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Self {
-        let local_public_key = config.keypair.public();
+    pub fn new<S: BitswapStore<Params = P>>(
+        keypair: &Keypair,
+        config: &UrsaConfig,
+        store: S,
+    ) -> Self {
+        let local_public_key = keypair.public();
 
         // TODO: check if UrsaConfig has configs for the behaviours, if not instaniate new ones
 
@@ -104,21 +108,20 @@ impl<P: StoreParams> Behaviour<P> {
         let ping = Ping::default();
 
         // Setup the gossip behaviour
-        let gossipsub = UrsaGossipsub::new(config);
+        let gossipsub = UrsaGossipsub::new(keypair, config);
+
+        // Setup the discovery behaviour
+        let discovery = DiscoveryBehaviour::new(keypair, config);
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(PROTOCOL_NAME.into(), local_public_key));
-
-        // Setup the discovery behaviour
-        let discovery =
-            DiscoveryBehaviour::new(&config).with_bootstrap_nodes(config.bootstrap_nodes.clone());
+        let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
 
         let request_response = {
             let cfg = RequestResponseConfig::default();
-            let protocols = vec![(UrsaExchangeProtocol, ProtocolSupport::Full)];
+            let protocols = std::iter::once((UrsaProtocol, ProtocolSupport::Full));
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
@@ -134,11 +137,11 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn peers(&mut self) -> HashSet<PeerId> {
-        self.discovery.peers()
+    pub fn peers(&self) -> &HashSet<PeerId> {
+        &self.discovery.peers()
     }
 
-    pub fn bootstrap(&mut self) -> Result<QueryId, String> {
+    pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
         self.discovery.bootstrap()
     }
 
@@ -160,8 +163,8 @@ impl<P: StoreParams> Behaviour<P> {
             <Self as NetworkBehaviour>::ConnectionHandler,
         >,
     > {
-        if !self.events.is_empty() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
+        if let Some(event) = self.events.pop_front() {
+            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
         }
 
         Poll::Pending
@@ -214,8 +217,8 @@ impl<P: StoreParams> Behaviour<P> {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
-                    "Identification information {} has been received from a peer {}.",
-                    info,
+                    "Identification information with version {} has been received from a peer {}.",
+                    info.protocol_version,
                     peer_id
                 );
 
@@ -223,7 +226,7 @@ impl<P: StoreParams> Behaviour<P> {
                 if info
                     .protocols
                     .iter()
-                    .any(|name| name.as_bytes() == PROTOCOL_NAME)
+                    .any(|name| name.as_bytes() == IPFS_PROTOCOL.as_bytes())
                 {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
@@ -262,7 +265,7 @@ impl<P: StoreParams> Behaviour<P> {
                 message,
             } => {
                 if let Ok(cid) = Cid::try_from(message.data) {
-                    self.events.push_back(event.into());
+                    self.events.push_back(BehaviourEvent::Gossip(event));
                 }
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {
@@ -283,8 +286,7 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn handle_discovery(&mut self, event: DiscoveryEvent) {
         match event {
-            DiscoveryEvent::Discoverd(peer_id) => todo!(),
-            DiscoveryEvent::UnroutablePeer(_) => todo!(),
+            DiscoveryEvent::Connected { .. } | DiscoveryEvent::Disconnected { .. } => {}
         }
     }
 

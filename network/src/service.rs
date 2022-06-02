@@ -17,7 +17,7 @@ use async_std::{
     prelude::StreamExt,
     task,
 };
-use futures::{channel::oneshot, select, FutureExt};
+use futures::{channel::oneshot, select};
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
@@ -25,7 +25,7 @@ use libp2p::{
     identity::Keypair,
     request_response::RequestResponseEvent,
     swarm::{ConnectionHandlerUpgrErr, ConnectionLimits, SwarmBuilder, SwarmEvent},
-    Multiaddr, PeerId, Swarm,
+    PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use std::collections::HashSet;
@@ -34,47 +34,34 @@ use tracing::{info, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
-    codec::proto::{UrsaExchangeRequest, UrsaExchangeResponse},
+    codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
 };
 
-pub const PROTOCOL_NAME: &[u8] = b"ipfs/0.1.0";
-pub const MESSAGE_PROTOCOL: &[u8] = b"ursa/message/0.0.1";
+pub const URSA_GLOBAL: &str = "/ursa/global";
+pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
+
+#[derive(Debug)]
+struct GetProviders {
+    cid: Cid,
+    sender: oneshot::Sender<HashSet<PeerId>>,
+}
+
+#[derive(Debug)]
+struct StartProviding {
+    cid: Cid,
+    sender: oneshot::Sender<Result<()>>,
+}
+
+#[derive(Debug)]
+struct GossipsubMessageCommand;
 
 #[derive(Debug)]
 pub enum UrsaCommand {
-    Get {
-        cid: Cid,
-        sender: oneshot::Sender<HashSet<PeerId>>,
-    },
-    GetCid {
-        cid: Cid,
-        peer: PeerId,
-        sender: oneshot::Sender<Result<String, Error>>,
-    },
-    PutCid {
-        cid: Cid,
-        sender: oneshot::Sender<()>,
-    },
-    PutCar {
-        car: Cid,
-        sender: oneshot::Sender<()>,
-    },
-    GetProviders {
-        cid: Cid,
-        sender: oneshot::Sender<HashSet<PeerId>>,
-    },
-    GossipsubMessage {},
-    Dial {
-        peer_id: PeerId,
-        peer_addr: Multiaddr,
-        sender: oneshot::Sender<Result<(), Error>>,
-    },
-    StartListening {
-        addr: Multiaddr,
-        sender: oneshot::Sender<Result<(), Error>>,
-    },
+    GetProviders(GetProviders),
+    StartProviding(StartProviding),
+    GossipsubMessage(GossipsubMessageCommand),
 }
 
 #[derive(Debug)]
@@ -119,9 +106,9 @@ impl<P: StoreParams> UrsaService<P> {
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
 
-        let transport = UrsaTransport::new(&mut config).build();
+        let transport = UrsaTransport::new(&keypair, &mut config);
 
-        let behaviour = Behaviour::new(&mut config, store);
+        let behaviour = Behaviour::new(&keypair, &mut config, store);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(todo!())
@@ -140,12 +127,10 @@ impl<P: StoreParams> UrsaService<P> {
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr)
-            .unwrap()
-            .expect("swarm can be started");
+        Swarm::listen_on(&mut swarm, config.swarm_addr).unwrap();
 
         // subscribe to topic
-        let topic = Topic::new(todo!());
+        let topic = Topic::new(URSA_GLOBAL);
         if let Err(error) = swarm.behaviour_mut().subscribe(&topic) {
             warn!("Failed to subscribe with topic: {}", error);
         }
@@ -172,10 +157,13 @@ impl<P: StoreParams> UrsaService<P> {
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
-    pub async fn start(&mut self) {
+    pub async fn start(mut self) {
+        let mut swarm = self.swarm.fuse();
+        let mut command_receiver = self.command_receiver.fuse();
+
         loop {
             select! {
-                event = self.swarm.next() => match event {
+                event = swarm.next() => match event {
                     Some(event) => {
                         if let Err(err) = self.handle_event(event).await {
                             warn!("Swarm Event: {:?}", err);
@@ -183,7 +171,7 @@ impl<P: StoreParams> UrsaService<P> {
                     },
                     None => return,
                 },
-                command = self.command_receiver.next() => match command {
+                command = command_receiver.next() => match command {
                     Some(command) => {
                         if let Err(err) = self.handle_command(command).await {
                             warn!("Swarm Command: {:?}", err);
@@ -193,6 +181,21 @@ impl<P: StoreParams> UrsaService<P> {
                 },
             }
         }
+    }
+
+    fn handle_bitswap(&self, event: BitswapEvent) {
+        todo!()
+    }
+
+    fn handle_gossipsub(&self, event: GossipsubEvent) {
+        todo!()
+    }
+
+    fn handle_request_response(
+        &self,
+        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) {
+        todo!()
     }
 
     async fn handle_event(
@@ -228,45 +231,21 @@ impl<P: StoreParams> UrsaService<P> {
 
     async fn handle_command(&mut self, command: UrsaCommand) {
         match command {
-            UrsaCommand::Get { cid, sender } => todo!(),
-            UrsaCommand::PutCar { cid, sender, car } => todo!(),
-            UrsaCommand::GetProviders { cid, sender } => todo!(),
-            UrsaCommand::GetCid { cid, peer, sender } => todo!(),
-            UrsaCommand::Dial {
-                peer_id,
-                peer_addr,
-                sender,
-            } => todo!(),
-            UrsaCommand::StartListening { addr, sender } => todo!(),
-            UrsaCommand::PutCid { cid, sender } => todo!(),
-            UrsaCommand::GossipsubMessage {} => todo!(),
+            UrsaCommand::GetProviders(_) => todo!(),
+            UrsaCommand::StartProviding(_) => todo!(),
+            UrsaCommand::GossipsubMessage(_) => todo!(),
         }
-    }
-
-    fn handle_gossipsub(&self, event: GossipsubEvent) {
-        todo!()
-    }
-
-    fn handle_bitswap(&self, event: BitswapEvent) {
-        todo!()
-    }
-
-    fn handle_request_response(
-        &self,
-        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) {
-        todo!()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::config::UrsaConfig;
+    use libipld::store::StoreParams;
 
     use super::UrsaService;
 
-    async fn ursa_service() -> UrsaService {
-        UrsaService::new(&UrsaConfig::default()).await.unwrap()
+    fn ursa_service<P: StoreParams>() -> UrsaService<P> {
+        todo!()
     }
 
     // Network Starts

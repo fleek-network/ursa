@@ -14,6 +14,7 @@ use libp2p::{
         upgrade::SelectUpgrade,
     },
     dns::DnsConfig,
+    identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
     tcp::TcpConfig,
@@ -25,20 +26,23 @@ use crate::config::UrsaConfig;
 pub struct UrsaTransport {
     tcp: TcpConfig,
     quic: TcpConfig,
-    relay_client: RelayClient,
+    relay_client: Option<RelayClient>,
 }
 
 impl UrsaTransport {
-    /// Creates a new [`UrsaTransport`] using keypair.
-    pub fn new(config: &UrsaConfig) -> Self {
-        let id_keys = config.keypair;
-        let local_peer_id = PeerId::from(config.keypair.public());
+    /// Creates a new [`UrsaTransport`].
+    ///
+    /// Defaults to QUIC transport over TCP.
+    /// If QUIC fails to establish a connection, we failover to TCP.
+    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Boxed<(PeerId, StreamMuxerBox)> {
+        let id_keys = keypair;
+        let local_peer_id = PeerId::from(keypair.public());
 
-        let (relay_transport, relay_client) = if config.relay {
-            RelayClient::new_transport_and_behaviour(local_peer_id)
-        } else {
-            None
-        };
+        // let relay = if config.relay {
+        //     Some(RelayClient::new_transport_and_behaviour(local_peer_id))
+        // } else {
+        //     None
+        // };
 
         let tcp = {
             let noise = {
@@ -53,46 +57,30 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
             };
 
-            let transport = block_on(DnsConfig::system(
-                TcpConfig::new().nodelay(true).port_reuse(true),
-            ))
-            .unwrap();
-
-            transport
-                .or_transport(relay_transport)
+            let tcp = TcpConfig::new()
+                .nodelay(true)
+                .port_reuse(true)
+                // .or_transport(Some(relay.0))
                 .upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
                 .timeout(Duration::from_secs(20))
                 .boxed();
 
-            transport
+            block_on(DnsConfig::system(tcp)).unwrap()
         };
 
-        let quic = {
-            // block_on(QuicTransport::new(
-            //     QuicConfig::new(keypair),
-            //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
-            // ))
-            // .unwrap()
-            todo!()
-        };
-
-        UrsaTransport {
-            tcp,
-            quic,
-            relay_client,
-        }
-    }
-
-    /// Builds [`UrsaTransport`]
-    ///
-    /// Defaults to QUIC transport over TCP.
-    /// If QUIC fails to establish a connection, we failover to TCP.
-    pub fn build(&self) -> Boxed<(PeerId, StreamMuxerBox)> {
+        // let quic = {
+        //     // block_on(QuicTransport::new(
+        //     //     QuicConfig::new(keypair),
+        //     //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
+        //     // ))
+        //     // .unwrap()
+        //     todo!()
+        // };
         // self.quic.or_transport(self.tcp)
-        // self.tcp.or_transport(self.quic).boxed()
-        OrTransport::new(self.quic, self.tcp)
+
+        OrTransport::new(tcp, tcp)
             .map(|either_output, _| match either_output {
                 EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
                 EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),

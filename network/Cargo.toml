@@ -13,7 +13,6 @@ anyhow = "1.0.56"
 futures = "0.3.21"
 tracing = "0.1.33"
 tiny-cid = "0.3.0"
-libipld = "0.13.1"
 jsonrpc-v2 = "0.11.0"
 # Temp quic lib
 libp2p-quic = "0.6.1"
@@ -21,6 +20,10 @@ async-trait = "0.1.53"
 libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
 async-std = { version = "1.11.0", features = ["attributes"] }
+
+[dependencies.libipld]
+version = "0.12.0"
+default-features = false
 
 [dependencies.libp2p]
 version = "0.43.0"

@@ -1,13 +1,16 @@
+use std::pin::Pin;
+
+use anyhow::Result;
 use async_trait::async_trait;
-use futures::AsyncRead;
+use futures::{AsyncRead, Future};
 use libp2p::{core::ProtocolName, request_response::RequestResponseCodec};
 
-pub const PROTOCOL_NAME: &[u8] = b"/ursa/txrx/1.0.0";
+pub const PROTOCOL_NAME: &[u8] = b"/ursa/txrx/0.0.1";
 
 #[derive(Debug, Clone)]
-pub struct UrsaExchangeProtocol;
+pub struct UrsaProtocol;
 
-impl ProtocolName for UrsaExchangeProtocol {
+impl ProtocolName for UrsaProtocol {
     fn protocol_name(&self) -> &[u8] {
         PROTOCOL_NAME
     }
@@ -24,7 +27,7 @@ pub struct UrsaExchangeResponse;
 
 #[async_trait]
 impl RequestResponseCodec for UrsaExchangeCodec {
-    type Protocol = UrsaExchangeProtocol;
+    type Protocol = UrsaProtocol;
 
     type Request = UrsaExchangeRequest;
 
@@ -34,7 +37,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
-    ) -> std::io::Result<Self::Request>
+    ) -> Pin<Box<dyn Future<Output = Result<Self::Request>> + Send>>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -45,9 +48,9 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
-    ) -> std::io::Result<Self::Response>
+    ) -> Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>
     where
-        T: futures::AsyncRead + Unpin + Send,
+        T: AsyncRead + Unpin + Send,
     {
         todo!()
     }
@@ -57,7 +60,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         protocol: &Self::Protocol,
         io: &mut T,
         req: Self::Request,
-    ) -> std::io::Result<()>
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
     where
         T: futures::AsyncWrite + Unpin + Send,
     {
@@ -69,7 +72,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         protocol: &Self::Protocol,
         io: &mut T,
         res: Self::Response,
-    ) -> std::io::Result<()>
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
     where
         T: futures::AsyncWrite + Unpin + Send,
     {
