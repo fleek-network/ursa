@@ -78,6 +78,7 @@ pub enum UrsaEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
+
     BitswapEvent(BitswapEvent),
     /// A Gossip message request was recieved from a peer.
     GossipsubMessage(GossipsubMessage),
