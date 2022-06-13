@@ -11,31 +11,29 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     task,
 };
 use futures::{channel::oneshot, select, StreamExt};
-use libipld::store::StoreParams;
+use ipld_blockstore::BlockStore;
+use libipld::{store::StoreParams, DefaultParams};
 use libp2p::{
-    core::either::EitherError,
     gossipsub::{GossipsubEvent, GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
     request_response::RequestResponseEvent,
-    swarm::{ConnectionHandlerUpgrErr, ConnectionLimits, SwarmBuilder, SwarmEvent},
+    swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
-use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use libp2p_bitswap::BitswapEvent;
+use std::{collections::HashSet, marker::PhantomData, sync::Arc};
+use store::{BitswapStorage, Store};
 use tiny_cid::Cid;
 use tracing::{info, warn};
 
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent},
+    behaviour::{Behaviour, BehaviourEvent, BehaviourEventError},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
@@ -78,11 +76,11 @@ pub enum UrsaEvent {
     GossipsubMessage(GossipsubMessage),
 }
 
-pub struct UrsaService<P: StoreParams> {
-    /// The main libp2p swamr emitting events.
-    swarm: Swarm<Behaviour<P>>,
+pub struct UrsaService<P: StoreParams, S> {
     /// Store
-    store: Store<P>,
+    store: Arc<Store<S>>,
+    /// The main libp2p swamr emitting events.
+    swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
     command_sender: Sender<UrsaCommand>,
     /// Handles inbound messages from peers
@@ -91,9 +89,14 @@ pub struct UrsaService<P: StoreParams> {
     event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
+    _marker: PhantomData<P>,
 }
 
-impl<P: StoreParams> UrsaService<P> {
+impl<P, S> UrsaService<P, S>
+where
+    P: StoreParams,
+    S: BlockStore + Sync + Send + 'static,
+{
     /// Init a new [`UrsaService`] based on [`UrsaConfig`]
     ///
     /// For ursa `keypair` we use ed25519 either
@@ -107,7 +110,7 @@ impl<P: StoreParams> UrsaService<P> {
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new<S: BitswapStore<Params = P>>(config: &UrsaConfig, store: S) -> Result<Self> {
+    pub fn new(config: &UrsaConfig, store: Arc<Store<S>>) -> Result<Self> {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
@@ -116,7 +119,9 @@ impl<P: StoreParams> UrsaService<P> {
 
         let transport = UrsaTransport::new(&keypair, &mut config);
 
-        let behaviour = Behaviour::new(&keypair, &mut config, store);
+        let bitswap_store = BitswapStorage(store.clone());
+
+        let behaviour = Behaviour::new(&keypair, &mut config, bitswap_store);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(todo!())
@@ -158,6 +163,7 @@ impl<P: StoreParams> UrsaService<P> {
             command_receiver,
             event_sender,
             event_receiver,
+            _marker: PhantomData,
         })
     }
 
@@ -172,45 +178,43 @@ impl<P: StoreParams> UrsaService<P> {
 
         loop {
             select! {
-                event = swarm.next() => match event {
-                    Some(event) => {
+                event = swarm.next() => {
+                    if let Some(event) = event {
                         if let Err(err) = self.handle_event(event).await {
                             warn!("Swarm Event: {:?}", err);
                         }
-                    },
-                    None => return,
+                    }
                 },
-                command = command_receiver.next() => match command {
-                    Some(command) => {
+                command = command_receiver.next() => {
+                    if let Some(command) = command {
                         if let Err(err) = self.handle_command(command).await {
-                            warn!("Swarm Command: {:?}", err);
+                            warn!("Command Event: {:?}", err);
                         }
-                    },
-                    None => return,
+                    }
                 },
             }
         }
     }
 
-    fn handle_bitswap(&self, event: BitswapEvent) {
+    fn handle_bitswap(&self, event: BitswapEvent) -> Result<()> {
         todo!()
     }
 
-    fn handle_gossipsub(&self, event: GossipsubEvent) {
+    fn handle_gossipsub(&self, event: GossipsubEvent) -> Result<()> {
         todo!()
     }
 
     fn handle_request_response(
         &self,
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) {
+    ) -> Result<()> {
         todo!()
     }
 
     async fn handle_event(
         &mut self,
-        event: SwarmEvent<BehaviourEvent, EitherError<ConnectionHandlerUpgrErr<Error>, Error>>,
-    ) {
+        event: SwarmEvent<BehaviourEvent, BehaviourEventError>,
+    ) -> Result<()> {
         match event {
             SwarmEvent::Behaviour(event) => match event {
                 BehaviourEvent::Bitswap(event) => self.handle_bitswap(event),
@@ -220,7 +224,7 @@ impl<P: StoreParams> UrsaService<P> {
                 // handled at the behaviour level
                 BehaviourEvent::Ping { .. }
                 | BehaviourEvent::Identify { .. }
-                | BehaviourEvent::Discovery { .. } => {}
+                | BehaviourEvent::Discovery { .. } => Ok({}),
             },
 
             // Do we need to handle any of the below events?
@@ -234,11 +238,11 @@ impl<P: StoreParams> UrsaService<P> {
             | SwarmEvent::IncomingConnection { .. }
             | SwarmEvent::ConnectionEstablished { .. }
             | SwarmEvent::IncomingConnectionError { .. }
-            | SwarmEvent::OutgoingConnectionError { .. } => {}
+            | SwarmEvent::OutgoingConnectionError { .. } => Ok({}),
         }
     }
 
-    async fn handle_command(&mut self, command: UrsaCommand) {
+    async fn handle_command(&mut self, command: UrsaCommand) -> Result<()> {
         match command {
             UrsaCommand::Get(_) => todo!(),
             UrsaCommand::Put(_) => todo!(),
@@ -252,10 +256,6 @@ mod tests {
     use libipld::store::StoreParams;
 
     use super::UrsaService;
-
-    fn ursa_service<P: StoreParams>() -> UrsaService<P> {
-        todo!()
-    }
 
     // Network Starts
     #[test]

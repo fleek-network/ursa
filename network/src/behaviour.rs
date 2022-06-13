@@ -15,26 +15,29 @@
 
 use std::{
     collections::{HashSet, VecDeque},
+    iter,
     task::{Context, Poll},
 };
 
 use anyhow::{Error, Result};
 use libipld::store::StoreParams;
 use libp2p::{
+    core::either::EitherError,
     gossipsub::{
-        error::{PublishError, SubscriptionError},
+        error::{GossipsubHandlerError, PublishError, SubscriptionError},
         Gossipsub, GossipsubEvent, IdentTopic as Topic,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
     kad::QueryId,
-    ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage,
     },
     swarm::{
-        NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
+        ConnectionHandlerUpgrErr, NetworkBehaviour, NetworkBehaviourAction,
+        NetworkBehaviourEventProcess, PollParameters,
     },
     NetworkBehaviour, PeerId,
 };
@@ -63,6 +66,20 @@ pub enum BehaviourEvent {
     Discovery(DiscoveryEvent),
     RequestResponse(UrsaRequestResponseEvent),
 }
+
+pub type BehaviourEventError = EitherError<
+    EitherError<
+        EitherError<
+            EitherError<
+                EitherError<ping::Failure, std::io::Error>,
+                ConnectionHandlerUpgrErr<std::io::Error>,
+            >,
+            GossipsubHandlerError,
+        >,
+        std::io::Error,
+    >,
+    ConnectionHandlerUpgrErr<std::io::Error>,
+>;
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
 ///
@@ -98,7 +115,7 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &UrsaConfig,
-        store: S,
+        bitswap_store: S,
     ) -> Self {
         let local_public_key = keypair.public();
 
@@ -114,14 +131,14 @@ impl<P: StoreParams> Behaviour<P> {
         let discovery = DiscoveryBehaviour::new(keypair, config);
 
         // Setup the bitswap behaviour
-        let bitswap = Bitswap::new(BitswapConfig::default(), store);
+        let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
         let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
 
         let request_response = {
             let cfg = RequestResponseConfig::default();
-            let protocols = std::iter::once((UrsaProtocol, ProtocolSupport::Full));
+            let protocols = iter::once((UrsaProtocol, ProtocolSupport::Full));
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
