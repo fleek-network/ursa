@@ -1,15 +1,15 @@
 use anyhow::Result;
 use axum::{routing::post, Extension, Router};
 use serde::Serialize;
-use std::{
-    marker::PhantomData,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 
 use crate::{
     config::RpcConfig,
-    rpc::{api::NetworkInterface, rpc::RpcServer},
+    rpc::{
+        api::NetworkInterface,
+        routes,
+        rpc::{handler, RpcServer},
+    },
 };
 
 pub struct Rpc<I, T>
@@ -37,10 +37,11 @@ where
 
     pub async fn start(&self, config: RpcConfig) -> Result<()> {
         let router = Router::new()
-            .route("/rpc/v0", post(self.server.handler))
-            .layer(Extension(self.server));
+            // .route("/rpc/v0", post(handler))
+            .merge(routes::network::init())
+            .layer(Extension(self.server.clone()));
 
-        let http_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.port);
+        let http_address = &SocketAddr::from(([127, 0, 0, 1], config.port));
         axum::Server::bind(&http_address)
             .serve(router.into_make_service())
             .await?;

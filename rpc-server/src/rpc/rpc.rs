@@ -1,15 +1,26 @@
 use std::sync::Arc;
 
-use anyhow::Ok;
-use jsonrpc_v2::{Data, MapRouter, Server};
+use axum::{Extension, Json};
+use jsonrpc_v2::{Data, MapRouter, RequestObject, ResponseObjects, Server};
 use serde::Serialize;
 
 use crate::config::RpcConfig;
 
-use super::{api::NetworkInterface, method::get_handler::get_handler};
+use super::{
+    api::NetworkInterface,
+    routes::network::{get_cid_handler, put_car_handler},
+};
 
 #[derive(Clone)]
 pub struct RpcServer(Arc<Server<MapRouter>>);
+
+pub async fn handler(
+    Json(req): Json<RequestObject>,
+    Extension(server): Extension<RpcServer>,
+) -> Json<ResponseObjects> {
+    let res = server.0.handle(req).await;
+    Json(res)
+}
 
 impl RpcServer {
     pub fn new<I, T>(config: &RpcConfig, interface: Arc<I>) -> Self
@@ -19,12 +30,9 @@ impl RpcServer {
     {
         let server = Server::new()
             .with_data(Data::new(interface))
-            .with_method("ursa_get", get_handler::<I, T>);
+            .with_method("ursa_get_cid", get_cid_handler::<I, T>)
+            .with_method("ursa_put_car", put_car_handler::<I, T>);
 
         RpcServer(server.finish())
-    }
-
-    pub fn handler() -> anyhow::Result<()> {
-        Ok(())
     }
 }

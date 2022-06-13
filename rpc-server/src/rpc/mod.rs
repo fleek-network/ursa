@@ -1,3 +1,3 @@
 pub mod api;
-pub mod method;
+pub mod routes;
 pub mod rpc;
