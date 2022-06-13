@@ -1,0 +1,12 @@
+[package]
+name = "store"
+version = "0.1.0"
+edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's store implementation"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

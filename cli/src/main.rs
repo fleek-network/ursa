@@ -16,11 +16,13 @@ async fn main() {
     let Cli { opts, cmd } = Cli::from_args();
 
     match opts.to_config() {
-        Ok(cfg) => match cmd {
+        Ok(config) => match cmd {
             Some(command) => todo!(),
             None => {
-                info!("Starting up with config {:?}", cfg);
-                let service = UrsaService::new(cfg, store);
+                info!("Starting up with config {:?}", config);
+
+                let store = Store::default();
+                let service = UrsaService::new(config, store);
                 service.start().await;
             }
         },

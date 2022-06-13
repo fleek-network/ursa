@@ -65,13 +65,13 @@ impl UrsaGossipsub {
             .expect("gossipsub config");
 
         let mut gossipsub =
-            Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config)
-                .map_err(|err| anyhow!("{}", err));
+            Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config);
+        // .map_err(|err| anyhow!("{}", err));
 
         // Defaults for now
         let params = PeerScoreParams::default();
         let threshold = PeerScoreThresholds::default();
 
-        gossipsub.unwrap()
+        gossipsub.with_peer_score(params, threshold).unwrap()
     }
 }

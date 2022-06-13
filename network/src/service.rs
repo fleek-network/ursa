@@ -14,10 +14,9 @@
 use anyhow::{Error, Result};
 use async_std::{
     channel::{unbounded, Receiver, Sender},
-    prelude::StreamExt,
     task,
 };
-use futures::{channel::oneshot, select};
+use futures::{channel::oneshot, select, StreamExt};
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
@@ -28,7 +27,10 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 use tiny_cid::Cid;
 use tracing::{info, warn};
 
@@ -43,13 +45,13 @@ pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 #[derive(Debug)]
-struct GetProviders {
+struct Get {
     cid: Cid,
     sender: oneshot::Sender<HashSet<PeerId>>,
 }
 
 #[derive(Debug)]
-struct StartProviding {
+struct Put {
     cid: Cid,
     sender: oneshot::Sender<Result<()>>,
 }
@@ -59,8 +61,11 @@ struct GossipsubMessageCommand;
 
 #[derive(Debug)]
 pub enum UrsaCommand {
-    GetProviders(GetProviders),
-    StartProviding(StartProviding),
+    /// Rpc commands
+    Get(Get),
+    Put(Put),
+
+    /// inter-network commands
     GossipsubMessage(GossipsubMessageCommand),
 }
 
@@ -68,6 +73,7 @@ pub enum UrsaCommand {
 pub enum UrsaEvent {
     PeerConnected(PeerId),
     PeerDisconnected(PeerId),
+
     BitswapEvent(BitswapEvent),
     GossipsubMessage(GossipsubMessage),
 }
@@ -75,6 +81,8 @@ pub enum UrsaEvent {
 pub struct UrsaService<P: StoreParams> {
     /// The main libp2p swamr emitting events.
     swarm: Swarm<Behaviour<P>>,
+    /// Store
+    store: Store<P>,
     /// Handles outbound messages to peers
     command_sender: Sender<UrsaCommand>,
     /// Handles inbound messages from peers
@@ -145,6 +153,7 @@ impl<P: StoreParams> UrsaService<P> {
 
         Ok(UrsaService {
             swarm,
+            store,
             command_sender,
             command_receiver,
             event_sender,
@@ -231,8 +240,8 @@ impl<P: StoreParams> UrsaService<P> {
 
     async fn handle_command(&mut self, command: UrsaCommand) {
         match command {
-            UrsaCommand::GetProviders(_) => todo!(),
-            UrsaCommand::StartProviding(_) => todo!(),
+            UrsaCommand::Get(_) => todo!(),
+            UrsaCommand::Put(_) => todo!(),
             UrsaCommand::GossipsubMessage(_) => todo!(),
         }
     }
