@@ -5,10 +5,12 @@ edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
 license = "MIT"
 repository = "https://github.com/Psychedelic/ursa"
-description = "Ursa's libp2p implementation"
+description = "Ursa's rpc client implementation"
 
 [dependencies]
 anyhow = "1.0.57"
-async-trait = "0.1.53"
+tiny-cid = "0.3.0"
 serde_json = "1.0.81"
+async-trait = "0.1.53"
+network = { path = "../network" }
 serde = { version = "1.0.137", features = ["derive"] }

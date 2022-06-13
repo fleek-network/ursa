@@ -1,0 +1,20 @@
+[package]
+name = "rpc-server"
+version = "0.1.0"
+edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's rpc server implementation"
+
+[dependencies]
+axum = "0.5.7"
+bytes = "1.1.0"
+anyhow = "1.0.56"
+futures = "0.3.21"
+tracing = "0.1.33"
+jsonrpc-v2 = "0.11.0"
+async-trait = "0.1.53"
+serde = { version = "1.0.137", features = ["derive"] }
+tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
+async-std = { version = "1.11.0", features = ["attributes"] }
