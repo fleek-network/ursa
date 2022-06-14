@@ -1,8 +1,8 @@
-use std::pin::Pin;
+use std::{io, pin::Pin};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::{AsyncRead, Future};
+use futures::{AsyncRead, AsyncWrite};
 use libp2p::{core::ProtocolName, request_response::RequestResponseCodec};
 
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/txrx/0.0.1";
@@ -33,46 +33,42 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 
     type Response = UrsaExchangeResponse;
 
-    fn read_request<T>(
-        &mut self,
-        protocol: &Self::Protocol,
-        io: &mut T,
-    ) -> Pin<Box<dyn Future<Output = Result<Self::Request>> + Send>>
+    async fn read_request<T>(&mut self, _: &Self::Protocol, io: &mut T) -> io::Result<Self::Request>
     where
         T: AsyncRead + Unpin + Send,
     {
         todo!()
     }
 
-    fn read_response<T>(
+    async fn read_response<T>(
         &mut self,
-        protocol: &Self::Protocol,
+        _: &Self::Protocol,
         io: &mut T,
-    ) -> Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>
+    ) -> io::Result<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
         todo!()
     }
 
-    fn write_request<T>(
+    async fn write_request<T>(
         &mut self,
         protocol: &Self::Protocol,
-        io: &mut T,
+        _: &mut T,
         req: Self::Request,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    ) -> io::Result<()>
     where
-        T: futures::AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
         todo!()
     }
 
-    fn write_response<T>(
+    async fn write_response<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
         res: Self::Response,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    ) -> io::Result<()>
     where
         T: futures::AsyncWrite + Unpin + Send,
     {

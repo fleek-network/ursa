@@ -25,7 +25,8 @@ use libp2p::{
     core::either::EitherError,
     gossipsub::{
         error::{GossipsubHandlerError, PublishError, SubscriptionError},
-        Gossipsub, GossipsubEvent, IdentTopic as Topic,
+        Gossipsub, GossipsubEvent, IdentTopic as Topic, MessageId, PeerScoreParams,
+        PeerScoreThresholds,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
@@ -125,7 +126,11 @@ impl<P: StoreParams> Behaviour<P> {
         let ping = Ping::default();
 
         // Setup the gossip behaviour
-        let gossipsub = UrsaGossipsub::new(keypair, config);
+        let mut gossipsub = UrsaGossipsub::new(keypair, config);
+        // todo(botch): handle gracefully
+        gossipsub
+            .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
+            .unwrap();
 
         // Setup the discovery behaviour
         let discovery = DiscoveryBehaviour::new(keypair, config);
@@ -152,6 +157,14 @@ impl<P: StoreParams> Behaviour<P> {
             request_response,
             events: VecDeque::new(),
         }
+    }
+
+    pub fn publish(
+        &mut self,
+        topic: Topic,
+        data: impl Into<Vec<u8>>,
+    ) -> Result<MessageId, PublishError> {
+        self.gossipsub.publish(topic, data)
     }
 
     pub fn peers(&self) -> &HashSet<PeerId> {
@@ -248,8 +261,8 @@ impl<P: StoreParams> Behaviour<P> {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
-                        self.discovery.add_address(peer_id, address);
-                        self.request_response.add_address(&peer_id, address);
+                        self.discovery.add_address(&peer_id, address.clone());
+                        self.request_response.add_address(&peer_id, address.clone());
                     }
                 }
             }
@@ -282,7 +295,7 @@ impl<P: StoreParams> Behaviour<P> {
                 message,
             } => {
                 if let Ok(cid) = Cid::try_from(message.data) {
-                    self.events.push_back(BehaviourEvent::Gossip(event));
+                    // self.events.push_back(BehaviourEvent::Gossip(event));
                 }
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {

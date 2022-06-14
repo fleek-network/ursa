@@ -80,11 +80,12 @@ impl UrsaTransport {
         // };
         // self.quic.or_transport(self.tcp)
 
-        OrTransport::new(tcp, tcp)
-            .map(|either_output, _| match either_output {
-                EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-                EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-            })
-            .boxed()
+        // OrTransport::new(tcp, tcp)
+        //     .map(|either_output, _| match either_output {
+        //         EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+        //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+        //     })
+        //     .boxed()
+        tcp.boxed()
     }
 }

@@ -28,7 +28,7 @@ async fn main() {
                 let db = Arc::new(db);
 
                 let store = Arc::new(Store::new(Arc::clone(&db)));
-                let service = UrsaService::new(config, Arc::clone(&store));
+                let service = UrsaService::new(&config, Arc::clone(&store));
 
                 service.start().await;
             }

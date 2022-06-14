@@ -9,12 +9,12 @@ use std::{
 use libp2p::{
     gossipsub::{
         Gossipsub, GossipsubConfigBuilder, GossipsubMessage, MessageAuthenticity, MessageId,
-        PeerScoreParams, PeerScoreThresholds, ValidationMode,
+        ValidationMode,
     },
     identity::Keypair,
 };
 
-const URSA_GOSSIP_PROTOCOL: &str = "/ursa/gossipsub/0.0.1";
+const URSA_GOSSIP_PROTOCOL: &str = "ursa/gossipsub/0.0.1";
 
 ///
 #[derive(Debug)]
@@ -64,14 +64,8 @@ impl UrsaGossipsub {
             .build()
             .expect("gossipsub config");
 
-        let mut gossipsub =
-            Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config);
-        // .map_err(|err| anyhow!("{}", err));
-
-        // Defaults for now
-        let params = PeerScoreParams::default();
-        let threshold = PeerScoreThresholds::default();
-
-        gossipsub.with_peer_score(params, threshold).unwrap()
+        Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config)
+            .map_err(|err| anyhow!("{}", err))
+            .unwrap()
     }
 }

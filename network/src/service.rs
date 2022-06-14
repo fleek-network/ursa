@@ -11,12 +11,13 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::Result;
+use anyhow::{anyhow, Ok, Result};
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     task,
 };
-use futures::{channel::oneshot, select, StreamExt};
+use futures::{channel::oneshot, future::ok, select};
+use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::{store::StoreParams, DefaultParams};
 use libp2p::{
@@ -30,7 +31,7 @@ use libp2p_bitswap::BitswapEvent;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use store::{BitswapStorage, Store};
 use tiny_cid::Cid;
-use tracing::{info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BehaviourEventError},
@@ -76,7 +77,7 @@ pub enum UrsaEvent {
     GossipsubMessage(GossipsubMessage),
 }
 
-pub struct UrsaService<P: StoreParams, S> {
+pub struct UrsaService<S> {
     /// Store
     store: Arc<Store<S>>,
     /// The main libp2p swamr emitting events.
@@ -89,12 +90,10 @@ pub struct UrsaService<P: StoreParams, S> {
     event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
-    _marker: PhantomData<P>,
 }
 
-impl<P, S> UrsaService<P, S>
+impl<S> UrsaService<S>
 where
-    P: StoreParams,
     S: BlockStore + Sync + Send + 'static,
 {
     /// Init a new [`UrsaService`] based on [`UrsaConfig`]
@@ -110,26 +109,26 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(config: &UrsaConfig, store: Arc<Store<S>>) -> Result<Self> {
+    pub fn new(config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
         // Todo: Create or get from local store
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
 
-        let transport = UrsaTransport::new(&keypair, &mut config);
+        let transport = UrsaTransport::new(&keypair, &config);
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, &mut config, bitswap_store);
+        let behaviour = Behaviour::new(&keypair, &config, bitswap_store);
 
         let limits = ConnectionLimits::default()
-            .with_max_pending_incoming(todo!())
-            .with_max_pending_outgoing(todo!())
-            .with_max_established_incoming(todo!())
-            .with_max_established_outgoing(todo!())
-            .with_max_established(todo!())
-            .with_max_established_per_peer(todo!());
+            .with_max_pending_incoming(Some(10))
+            .with_max_pending_outgoing(Some(10))
+            .with_max_established_incoming(Some(10))
+            .with_max_established_outgoing(Some(10))
+            .with_max_established(Some(10))
+            .with_max_established_per_peer(Some(10));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             // .notify_handler_buffer_size(todo!())
@@ -140,7 +139,7 @@ where
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr).unwrap();
+        Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
 
         // subscribe to topic
         let topic = Topic::new(URSA_GLOBAL);
@@ -156,15 +155,14 @@ where
         let (event_sender, event_receiver) = unbounded();
         let (command_sender, command_receiver) = unbounded();
 
-        Ok(UrsaService {
+        UrsaService {
             swarm,
             store,
             command_sender,
             command_receiver,
             event_sender,
             event_receiver,
-            _marker: PhantomData,
-        })
+        }
     }
 
     /// Start the ursa network service loop.
@@ -180,16 +178,16 @@ where
             select! {
                 event = swarm.next() => {
                     if let Some(event) = event {
-                        if let Err(err) = self.handle_event(event).await {
-                            warn!("Swarm Event: {:?}", err);
-                        }
+                        // if let Err(err) = self.handle_event(event).await {
+                        //     warn!("Swarm Event: {:?}", err);
+                        // }
                     }
                 },
                 command = command_receiver.next() => {
                     if let Some(command) = command {
-                        if let Err(err) = self.handle_command(command).await {
-                            warn!("Command Event: {:?}", err);
-                        }
+                        // if let Err(err) = self.handle_command(&command).await {
+                        //     warn!("Command Event: {:?}", err);
+                        // }
                     }
                 },
             }
@@ -200,8 +198,21 @@ where
         todo!()
     }
 
-    fn handle_gossipsub(&self, event: GossipsubEvent) -> Result<()> {
-        todo!()
+    async fn handle_gossipsub(&self, event: GossipsubEvent) -> Result<()> {
+        debug!("Gossip message received {:?}", event);
+
+        if let GossipsubEvent::Message { message, .. } = event {
+            if self
+                .event_sender
+                .send(UrsaEvent::GossipsubMessage(message))
+                .await
+                .is_err()
+            {
+                error!("Event sender failed!");
+            }
+        }
+
+        Ok(())
     }
 
     fn handle_request_response(
@@ -218,7 +229,7 @@ where
         match event {
             SwarmEvent::Behaviour(event) => match event {
                 BehaviourEvent::Bitswap(event) => self.handle_bitswap(event),
-                BehaviourEvent::Gossip(event) => self.handle_gossipsub(event),
+                BehaviourEvent::Gossip(event) => self.handle_gossipsub(event).await,
                 BehaviourEvent::RequestResponse(event) => self.handle_request_response(event),
 
                 // handled at the behaviour level
@@ -242,24 +253,95 @@ where
         }
     }
 
-    async fn handle_command(&mut self, command: UrsaCommand) -> Result<()> {
+    async fn handle_command(&mut self, command: &UrsaCommand) -> Result<()> {
         match command {
             UrsaCommand::Get(_) => todo!(),
             UrsaCommand::Put(_) => todo!(),
-            UrsaCommand::GossipsubMessage(_) => todo!(),
+            UrsaCommand::GossipsubMessage(data) => {
+                if let Err(error) = self
+                    .swarm
+                    .behaviour_mut()
+                    .publish(Topic::new(URSA_GLOBAL), "")
+                {
+                    warn!("Failed to publish message: {:?}", error);
+                }
+
+                Ok(())
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use libipld::store::StoreParams;
+    use std::{thread, time::Duration};
 
-    use super::UrsaService;
+    use super::*;
+
+    use db::rocks::RocksDb;
+    use simple_logger::SimpleLogger;
+    use store::Store;
+
+    fn network_init(config: &UrsaConfig) -> UrsaService<RocksDb> {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+        UrsaService::new(&config, Arc::clone(&store))
+    }
 
     // Network Starts
     #[test]
-    fn ursa_service_start() {
-        todo!()
+    fn test_network_star() {
+        let service = network_init(&UrsaConfig::default());
+
+        task::spawn(async {
+            service.start().await;
+        });
+    }
+
+    // #[async_std::test]
+    #[async_std::test]
+    async fn test_network_bootstraps() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+        let service_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+
+        let mut service_2_config = UrsaConfig::default();
+        service_2_config.listen = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+
+        let service_2 = UrsaService::new(&service_2_config, Arc::clone(&store));
+
+        let service_1_sender = service_1.command_sender.clone();
+        let service_2_receiver = service_2.event_receiver.clone();
+
+        task::spawn(async {
+            service_1.start().await;
+        });
+
+        task::spawn(async {
+            service_2.start().await;
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let msg = UrsaCommand::GossipsubMessage(GossipsubMessageCommand);
+        service_1_sender.send(msg).await.unwrap();
+
+        let mut command_receiver = service_2_receiver.fuse();
+
+        loop {
+            if let Some(event) = command_receiver.next().await {
+                if let UrsaEvent::GossipsubMessage(gossip) = event {
+                    print!("{:?}", gossip);
+                    break;
+                }
+            }
+        }
     }
 }
