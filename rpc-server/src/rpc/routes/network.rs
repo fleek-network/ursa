@@ -7,24 +7,24 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tiny_cid::Cid;
 
-use crate::rpc::{api::NetworkInterface, rpc::handler};
+use crate::rpc::{
+    api::{
+        NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutParams, NetworkPutResult,
+        Result,
+    },
+    rpc::http_handler,
+};
 
-pub type Result<T> = anyhow::Result<T, Error>;
-
-#[derive(Deserialize)]
-pub struct GetHandlerParams {
-    pub cid: Cid,
-}
-
-#[derive(Deserialize)]
-pub struct PutHandlerParams {
-    pub cid: Cid,
+pub fn init() -> Router {
+    Router::new()
+        .route("/rpc/v0", get(http_handler))
+        .route("/rpc/v0", post(http_handler))
 }
 
 pub async fn get_cid_handler<I, T>(
     data: Data<Arc<I>>,
-    Params(params): Params<GetHandlerParams>,
-) -> Result<()>
+    Params(params): Params<NetworkGetParams>,
+) -> Result<NetworkGetResult>
 where
     I: NetworkInterface<T>,
     T: Serialize,
@@ -32,13 +32,13 @@ where
     // let cid = params.cid;
     // data.0.get(cid);
 
-    Ok(())
+    Ok(true)
 }
 
 pub async fn put_car_handler<I, T>(
     data: Data<Arc<I>>,
-    Params(params): Params<PutHandlerParams>,
-) -> Result<()>
+    Params(params): Params<NetworkPutParams>,
+) -> Result<NetworkPutResult>
 where
     I: NetworkInterface<T>,
     T: Serialize,
@@ -46,11 +46,5 @@ where
     // let cid = params.cid;
     // data.0.get(cid);
 
-    Ok(())
-}
-
-pub fn init() -> Router {
-    Router::new()
-        .route("/rpc/v0", get(handler))
-        .route("/rpc/v0", post(handler))
+    Ok(true)
 }

@@ -11,8 +11,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            listen: SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080),
-            swarm_addr: SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080),
+            listen: SocketAddr::from(([127, 0, 0, 1], 8080)),
+            swarm_addr: SocketAddr::from(([127, 0, 0, 1], 8080)),
         }
     }
 }

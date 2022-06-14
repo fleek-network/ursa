@@ -1,15 +1,11 @@
 use anyhow::Result;
-use axum::{routing::post, Extension, Router};
+use axum::{Extension, Router};
 use serde::Serialize;
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 
 use crate::{
     config::RpcConfig,
-    rpc::{
-        api::NetworkInterface,
-        routes,
-        rpc::{handler, RpcServer},
-    },
+    rpc::{api::NetworkInterface, routes, rpc::RpcServer},
 };
 
 pub struct Rpc<I, T>
@@ -37,15 +33,23 @@ where
 
     pub async fn start(&self, config: RpcConfig) -> Result<()> {
         let router = Router::new()
-            // .route("/rpc/v0", post(handler))
             .merge(routes::network::init())
             .layer(Extension(self.server.clone()));
 
-        let http_address = &SocketAddr::from(([127, 0, 0, 1], config.port));
+        let http_address = SocketAddr::from(([127, 0, 0, 1], config.port));
         axum::Server::bind(&http_address)
             .serve(router.into_make_service())
             .await?;
 
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_rpc_start() {}
 }
