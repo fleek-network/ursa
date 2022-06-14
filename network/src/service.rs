@@ -103,7 +103,6 @@ pub struct UrsaService<S> {
     event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
-    _marker: PhantomData<P>,
 }
 
 impl<S> UrsaService<S>
