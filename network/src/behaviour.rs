@@ -32,7 +32,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::QueryId,
+    kad::{KademliaEvent, QueryId},
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,

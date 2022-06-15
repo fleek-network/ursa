@@ -50,12 +50,10 @@ pub enum UrsaCommand {
         cid: Cid,
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
-
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
     },
-
     GetPeers {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
