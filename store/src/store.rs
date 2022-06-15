@@ -1,9 +1,7 @@
-use cid::Cid as Forest_Cid;
 use ipld_blockstore::BlockStore;
 use libipld::store::DefaultParams;
 use libipld::{Block, Cid, Result};
 use libp2p_bitswap::BitswapStore;
-use std::str::FromStr;
 use std::sync::Arc;
 
 pub struct Store<S> {
@@ -29,20 +27,17 @@ where
     type Params = DefaultParams;
 
     fn contains(&mut self, cid: &Cid) -> Result<bool> {
-        let key = Forest_Cid::from_str(&cid.to_string());
-        Ok(self.0.db.exists(key.unwrap().to_bytes())?)
+        Ok(self.0.db.exists(cid.to_bytes())?)
     }
 
     fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
-        let key = Forest_Cid::from_str(&cid.to_string()).unwrap();
-        Ok(self.0.db.read(key.to_bytes()).unwrap())
+        Ok(self.0.db.read(cid.to_bytes()).unwrap())
     }
 
     fn insert(&mut self, block: &Block<Self::Params>) -> Result<()> {
-        let key = Forest_Cid::from_str(&block.cid().to_string()).unwrap();
         self.0
             .db
-            .write(key.to_bytes(), block.data().to_vec())
+            .write(&block.cid().to_bytes(), block.data().to_vec())
             .unwrap();
 
         Ok(())
