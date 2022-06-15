@@ -21,7 +21,10 @@ use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::{store::StoreParams, DefaultParams};
 use libp2p::{
-    gossipsub::{GossipsubEvent, GossipsubMessage, IdentTopic as Topic},
+    gossipsub::{
+        error::PublishError, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
+        TopicHash,
+    },
     identity::Keypair,
     request_response::RequestResponseEvent,
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
@@ -44,28 +47,25 @@ pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 #[derive(Debug)]
-struct Get {
-    cid: Cid,
-    sender: oneshot::Sender<HashSet<PeerId>>,
-}
-
-#[derive(Debug)]
-struct Put {
-    cid: Cid,
-    sender: oneshot::Sender<Result<()>>,
-}
-
-#[derive(Debug)]
-struct GossipsubMessageCommand;
-
-#[derive(Debug)]
 pub enum UrsaCommand {
     /// Rpc commands
-    Get(Get),
-    Put(Put),
+    Get {
+        cid: Cid,
+        sender: oneshot::Sender<HashSet<PeerId>>,
+    },
+    Put {
+        cid: Cid,
+        sender: oneshot::Sender<Result<()>>,
+    },
+    GetPeers {
+        sender: oneshot::Sender<HashSet<PeerId>>,
+    },
 
     /// inter-network commands
-    GossipsubMessage(GossipsubMessageCommand),
+    GossipsubMessage {
+        topic: Topic,
+        message: GossipsubMessage,
+    },
 }
 
 #[derive(Debug)]
@@ -178,95 +178,73 @@ where
             select! {
                 event = swarm.next() => {
                     if let Some(event) = event {
-                        // if let Err(err) = self.handle_event(event).await {
-                        //     warn!("Swarm Event: {:?}", err);
-                        // }
+                        match event {
+                            SwarmEvent::Behaviour(event) => match event {
+                                BehaviourEvent::Bitswap(_) => {},
+                                BehaviourEvent::Gossip {
+                                    peer_id,
+                                    topic,
+                                    message,
+                                } => {
+                                    debug!("Gossip message received {:?}", peer_id);
+
+                                    // todo(botch)
+                                    // Check if topic is correct
+                                    // Check the validitay of the message
+                                    // report message validation
+
+                                    if self
+                                        .event_sender
+                                        .send(UrsaEvent::GossipsubMessage(message))
+                                        .await
+                                        .is_err()
+                                    {
+                                        warn!("Failed to publish message to topic: {:?}", topic);
+                                    }
+                                },
+                                BehaviourEvent::RequestResponse(_) => {},
+
+                                // handled at the behaviour level
+                                BehaviourEvent::Ping { .. }
+                                | BehaviourEvent::Identify { .. }
+                                | BehaviourEvent::Discovery { .. } => {},
+                            },
+
+                            // Do we need to handle any of the below events?
+                            SwarmEvent::Dialing { .. }
+                            | SwarmEvent::BannedPeer { .. }
+                            | SwarmEvent::NewListenAddr { .. }
+                            | SwarmEvent::ListenerError { .. }
+                            | SwarmEvent::ListenerClosed { .. }
+                            | SwarmEvent::ConnectionClosed { .. }
+                            | SwarmEvent::ExpiredListenAddr { .. }
+                            | SwarmEvent::IncomingConnection { .. }
+                            | SwarmEvent::ConnectionEstablished { .. }
+                            | SwarmEvent::IncomingConnectionError { .. }
+                            | SwarmEvent::OutgoingConnectionError { .. } => {},
+                        }
                     }
                 },
                 command = command_receiver.next() => {
                     if let Some(command) = command {
-                        // if let Err(err) = self.handle_command(&command).await {
-                        //     warn!("Command Event: {:?}", err);
-                        // }
+                        match command {
+                            UrsaCommand::Get { cid, sender } => {},
+                            UrsaCommand::Put { cid, sender } => {},
+                            UrsaCommand::GetPeers { sender } => {
+                                let peers = swarm.get_mut().behaviour_mut().peers();
+                                sender.send(peers).unwrap();
+                            }
+                            UrsaCommand::GossipsubMessage { topic, message } => {
+                                if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
+                                    warn!(
+                                        "Failed to publish message top topic {:?} with error {:?}:",
+                                        URSA_GLOBAL, error
+                                    );
+                                }
+                            }
+                        }
                     }
                 },
-            }
-        }
-    }
-
-    fn handle_bitswap(&self, event: BitswapEvent) -> Result<()> {
-        todo!()
-    }
-
-    async fn handle_gossipsub(&self, event: GossipsubEvent) -> Result<()> {
-        debug!("Gossip message received {:?}", event);
-
-        if let GossipsubEvent::Message { message, .. } = event {
-            if self
-                .event_sender
-                .send(UrsaEvent::GossipsubMessage(message))
-                .await
-                .is_err()
-            {
-                error!("Event sender failed!");
-            }
-        }
-
-        Ok(())
-    }
-
-    fn handle_request_response(
-        &self,
-        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) -> Result<()> {
-        todo!()
-    }
-
-    async fn handle_event(
-        &mut self,
-        event: SwarmEvent<BehaviourEvent, BehaviourEventError>,
-    ) -> Result<()> {
-        match event {
-            SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Bitswap(event) => self.handle_bitswap(event),
-                BehaviourEvent::Gossip(event) => self.handle_gossipsub(event).await,
-                BehaviourEvent::RequestResponse(event) => self.handle_request_response(event),
-
-                // handled at the behaviour level
-                BehaviourEvent::Ping { .. }
-                | BehaviourEvent::Identify { .. }
-                | BehaviourEvent::Discovery { .. } => Ok({}),
-            },
-
-            // Do we need to handle any of the below events?
-            SwarmEvent::Dialing { .. }
-            | SwarmEvent::BannedPeer { .. }
-            | SwarmEvent::NewListenAddr { .. }
-            | SwarmEvent::ListenerError { .. }
-            | SwarmEvent::ListenerClosed { .. }
-            | SwarmEvent::ConnectionClosed { .. }
-            | SwarmEvent::ExpiredListenAddr { .. }
-            | SwarmEvent::IncomingConnection { .. }
-            | SwarmEvent::ConnectionEstablished { .. }
-            | SwarmEvent::IncomingConnectionError { .. }
-            | SwarmEvent::OutgoingConnectionError { .. } => Ok({}),
-        }
-    }
-
-    async fn handle_command(&mut self, command: &UrsaCommand) -> Result<()> {
-        match command {
-            UrsaCommand::Get(_) => todo!(),
-            UrsaCommand::Put(_) => todo!(),
-            UrsaCommand::GossipsubMessage(data) => {
-                if let Err(error) = self
-                    .swarm
-                    .behaviour_mut()
-                    .publish(Topic::new(URSA_GLOBAL), "")
-                {
-                    warn!("Failed to publish message: {:?}", error);
-                }
-
-                Ok(())
             }
         }
     }
@@ -274,7 +252,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration};
+    use std::{thread, time::Duration, vec};
 
     use super::*;
 
@@ -305,6 +283,8 @@ mod tests {
     #[async_std::test]
     async fn test_network_bootstraps() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let topic = Topic::new(URSA_GLOBAL);
+
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
 
@@ -330,7 +310,15 @@ mod tests {
         let delay = Duration::from_millis(2000);
         thread::sleep(delay);
 
-        let msg = UrsaCommand::GossipsubMessage(GossipsubMessageCommand);
+        let msg = UrsaCommand::GossipsubMessage {
+            topic: topic.clone(),
+            message: GossipsubMessage {
+                source: None,
+                data: vec![1],
+                sequence_number: Some(1),
+                topic: topic.hash(),
+            },
+        };
         service_1_sender.send(msg).await.unwrap();
 
         let mut command_receiver = service_2_receiver.fuse();

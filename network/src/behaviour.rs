@@ -25,12 +25,12 @@ use libp2p::{
     core::either::EitherError,
     gossipsub::{
         error::{GossipsubHandlerError, PublishError, SubscriptionError},
-        Gossipsub, GossipsubEvent, IdentTopic as Topic, MessageId, PeerScoreParams,
-        PeerScoreThresholds,
+        Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
+        PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::QueryId,
+    kad::{KademliaEvent, QueryId},
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -62,7 +62,11 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 pub enum BehaviourEvent {
     Ping(PingEvent),
     Bitswap(BitswapEvent),
-    Gossip(GossipsubEvent),
+    Gossip {
+        peer_id: PeerId,
+        topic: TopicHash,
+        message: GossipsubMessage,
+    },
     Identify(IdentifyEvent),
     Discovery(DiscoveryEvent),
     RequestResponse(UrsaRequestResponseEvent),
@@ -130,7 +134,7 @@ impl<P: StoreParams> Behaviour<P> {
         // todo(botch): handle gracefully
         gossipsub
             .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
-            .unwrap();
+            .expect("PeerScoreParams and PeerScoreThresholds");
 
         // Setup the discovery behaviour
         let discovery = DiscoveryBehaviour::new(keypair, config);
@@ -162,13 +166,13 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn publish(
         &mut self,
         topic: Topic,
-        data: impl Into<Vec<u8>>,
+        data: GossipsubMessage,
     ) -> Result<MessageId, PublishError> {
-        self.gossipsub.publish(topic, data)
+        self.gossipsub.publish(topic, data.data)
     }
 
-    pub fn peers(&self) -> &HashSet<PeerId> {
-        &self.discovery.peers()
+    pub fn peers(&self) -> HashSet<PeerId> {
+        self.discovery.peers().clone()
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
@@ -200,7 +204,7 @@ impl<P: StoreParams> Behaviour<P> {
         Poll::Pending
     }
 
-    pub fn handle_ping(&mut self, event: PingEvent) {
+    fn handle_ping(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -243,7 +247,7 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_identify(&mut self, event: IdentifyEvent) {
+    fn handle_identify(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -272,7 +276,7 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_bitswap(&mut self, event: BitswapEvent) {
+    fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
             BitswapEvent::Progress(query_id, counter) => {
                 // Received a block from a peer. Includes the number of known missing blocks for a sync query.
@@ -287,16 +291,18 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_gossipsub(&mut self, event: GossipsubEvent) {
+    fn handle_gossipsub(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message {
                 propagation_source,
-                message_id,
                 message,
+                ..
             } => {
-                if let Ok(cid) = Cid::try_from(message.data) {
-                    // self.events.push_back(BehaviourEvent::Gossip(event));
-                }
+                self.events.push_back(BehaviourEvent::Gossip {
+                    peer_id: propagation_source,
+                    topic: message.topic.clone(),
+                    message,
+                });
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {
                 // A remote subscribed to a topic.
@@ -314,13 +320,13 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_discovery(&mut self, event: DiscoveryEvent) {
+    fn handle_discovery(&mut self, event: DiscoveryEvent) {
         match event {
             DiscoveryEvent::Connected { .. } | DiscoveryEvent::Disconnected { .. } => {}
         }
     }
 
-    pub fn handle_request_response(
+    fn handle_request_response(
         &mut self,
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
     ) {
@@ -330,11 +336,11 @@ impl<P: StoreParams> Behaviour<P> {
                     request_id,
                     request,
                     channel,
-                } => {}
+                } => todo!(),
                 RequestResponseMessage::Response {
                     request_id,
                     response,
-                } => {}
+                } => todo!(),
             },
             RequestResponseEvent::OutboundFailure {
                 peer,
