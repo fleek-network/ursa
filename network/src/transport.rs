@@ -23,11 +23,7 @@ use libp2p::{
 
 use crate::config::UrsaConfig;
 
-pub struct UrsaTransport {
-    tcp: TcpConfig,
-    quic: TcpConfig,
-    relay_client: Option<RelayClient>,
-}
+pub struct UrsaTransport;
 
 impl UrsaTransport {
     /// Creates a new [`UrsaTransport`].

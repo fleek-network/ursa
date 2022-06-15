@@ -34,7 +34,7 @@ use tracing::warn;
 const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 // const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/ursa/kad/0.0.1";
 
-struct PeerInfo {
+pub struct PeerInfo {
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
 }
@@ -69,7 +69,7 @@ impl DiscoveryBehaviour {
     pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        let bootstrap_nodes = config
+        let bootstrap_nodes: Vec<(PeerId, Multiaddr)> = config
             .bootstrap_nodes
             .clone()
             .into_iter()
@@ -225,13 +225,17 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         failed_addresses: Option<&Vec<Multiaddr>>,
         other_established: usize,
     ) {
-        self.kademlia.inject_connection_established(
-            peer_id,
-            connection_id,
-            endpoint,
-            failed_addresses,
-            other_established,
-        );
+        if self.peers.insert(*peer_id) {
+            self.kademlia.inject_connection_established(
+                peer_id,
+                connection_id,
+                endpoint,
+                failed_addresses,
+                other_established,
+            );
+
+            self.events.push_back(DiscoveryEvent::Connected(*peer_id));
+        }
     }
 
     fn inject_connection_closed(
@@ -242,13 +246,18 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
         remaining_established: usize,
     ) {
-        self.kademlia.inject_connection_closed(
-            peer_id,
-            connection_id,
-            endpoint,
-            handler,
-            remaining_established,
-        );
+        if self.peers.remove(peer_id) {
+            self.kademlia.inject_connection_closed(
+                peer_id,
+                connection_id,
+                endpoint,
+                handler,
+                remaining_established,
+            );
+
+            self.events
+                .push_back(DiscoveryEvent::Disconnected(*peer_id));
+        }
     }
 
     fn inject_event(

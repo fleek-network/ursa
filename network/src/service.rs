@@ -11,30 +11,26 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, Error, Ok, Result};
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     task,
 };
-use futures::{channel::oneshot, future::ok, select};
+use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::{store::StoreParams, DefaultParams};
+use libipld::DefaultParams;
 use libp2p::{
-    gossipsub::{
-        error::PublishError, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
-        TopicHash,
-    },
+    gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
-    request_response::RequestResponseEvent,
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::BitswapEvent;
-use std::{collections::HashSet, marker::PhantomData, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 use store::{BitswapStorage, Store};
 use tiny_cid::Cid;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BehaviourEventError},
@@ -72,7 +68,6 @@ pub enum UrsaCommand {
 pub enum UrsaEvent {
     PeerConnected(PeerId),
     PeerDisconnected(PeerId),
-
     BitswapEvent(BitswapEvent),
     GossipsubMessage(GossipsubMessage),
 }
@@ -203,11 +198,28 @@ where
                                     }
                                 },
                                 BehaviourEvent::RequestResponse(_) => {},
+                                BehaviourEvent::PeerConnected(peer_id) => {
+                                    debug!("Peer connected {:?}", peer_id);
 
-                                // handled at the behaviour level
-                                BehaviourEvent::Ping { .. }
-                                | BehaviourEvent::Identify { .. }
-                                | BehaviourEvent::Discovery { .. } => {},
+                                    if self
+                                        .event_sender
+                                        .send(UrsaEvent::PeerConnected(peer_id))
+                                        .await
+                                        .is_err()
+                                    {
+                                        warn!("Failed to send peer connection message: {:?}", peer_id);
+                                    }
+                                }
+                                BehaviourEvent::PeerDisconnected(peer_id) => {
+                                    if self
+                                        .event_sender
+                                        .send(UrsaEvent::PeerDisconnected(peer_id))
+                                        .await
+                                        .is_err()
+                                    {
+                                        warn!("Failed to send peer disconnect message: {:?}", peer_id);
+                                    }
+                                }
                             },
 
                             // Do we need to handle any of the below events?
@@ -252,16 +264,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration, vec};
-
     use super::*;
 
     use db::rocks::RocksDb;
     use simple_logger::SimpleLogger;
+    use std::{thread, time::Duration, vec};
     use store::Store;
 
-    fn network_init(config: &UrsaConfig) -> UrsaService<RocksDb> {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+    fn network_init(config: UrsaConfig) -> UrsaService<RocksDb> {
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
 
@@ -271,40 +281,45 @@ mod tests {
 
     // Network Starts
     #[test]
-    fn test_network_star() {
-        let service = network_init(&UrsaConfig::default());
+    fn test_network_start() {
+        SimpleLogger::new()
+            .with_utc_timestamps()
+            .with_colors(true)
+            .init()
+            .unwrap();
+        let service = network_init(UrsaConfig::default());
 
         task::spawn(async {
             service.start().await;
         });
     }
 
-    // #[async_std::test]
+    // fn test_network_bitswap() {}
+
     #[async_std::test]
-    async fn test_network_bootstraps() {
+    async fn test_network_gossip() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
-
         let store = Arc::new(Store::new(Arc::clone(&db)));
-        let service_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
 
-        let mut service_2_config = UrsaConfig::default();
-        service_2_config.listen = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
 
-        let service_2 = UrsaService::new(&service_2_config, Arc::clone(&store));
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_2 = UrsaService::new(&config, Arc::clone(&store));
 
-        let service_1_sender = service_1.command_sender.clone();
-        let service_2_receiver = service_2.event_receiver.clone();
+        let node_1_sender = node_1.command_sender.clone();
+        let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
-            service_1.start().await;
+            node_1.start().await;
         });
 
         task::spawn(async {
-            service_2.start().await;
+            node_2.start().await;
         });
 
         let delay = Duration::from_millis(2000);
@@ -319,17 +334,83 @@ mod tests {
                 topic: topic.hash(),
             },
         };
-        service_1_sender.send(msg).await.unwrap();
+        node_1_sender.send(msg).await.unwrap();
 
-        let mut command_receiver = service_2_receiver.fuse();
+        let mut command_receiver = node_2_receiver.fuse();
 
         loop {
             if let Some(event) = command_receiver.next().await {
                 if let UrsaEvent::GossipsubMessage(gossip) = event {
-                    print!("{:?}", gossip);
+                    assert_eq!(vec![1], gossip.data);
                     break;
                 }
             }
         }
     }
+
+    #[async_std::test]
+    async fn test_network_mdns() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
+        config.mdns = true;
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+
+        let mut swarm_2 = node_2.swarm.fuse();
+
+        loop {
+            if let Some(event) = swarm_2.next().await {
+                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
+                    info!("Node 2 PeerConnected: {:?}", peer_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    #[async_std::test]
+    async fn test_network_discovery() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+
+        let mut swarm_2 = node_2.swarm.fuse();
+
+        loop {
+            if let Some(event) = swarm_2.next().await {
+                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
+                    info!("Node 2 PeerConnected: {:?}", peer_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    // #[async_std::test]
+    // async fn test_network_req_res() {
+    //     todo!()
+    // }
 }

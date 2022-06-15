@@ -49,7 +49,7 @@ use tracing::{debug, trace};
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
-    discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
+    discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
     types::UrsaRequestResponseEvent,
 };
@@ -60,15 +60,14 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Ping(PingEvent),
     Bitswap(BitswapEvent),
     Gossip {
         peer_id: PeerId,
         topic: TopicHash,
         message: GossipsubMessage,
     },
-    Identify(IdentifyEvent),
-    Discovery(DiscoveryEvent),
+    PeerConnected(PeerId),
+    PeerDisconnected(PeerId),
     RequestResponse(UrsaRequestResponseEvent),
 }
 
@@ -322,7 +321,14 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_discovery(&mut self, event: DiscoveryEvent) {
         match event {
-            DiscoveryEvent::Connected { .. } | DiscoveryEvent::Disconnected { .. } => {}
+            DiscoveryEvent::Connected(peer_id) => {
+                self.events
+                    .push_back(BehaviourEvent::PeerConnected(peer_id));
+            }
+            DiscoveryEvent::Disconnected(peer_id) => {
+                self.events
+                    .push_back(BehaviourEvent::PeerDisconnected(peer_id));
+            }
         }
     }
 
