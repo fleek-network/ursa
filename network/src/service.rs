@@ -76,7 +76,6 @@ pub enum UrsaEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
-
     BitswapEvent(BitswapEvent),
     /// A Gossip message request was recieved from a peer.
     GossipsubMessage(GossipsubMessage),
@@ -500,4 +499,70 @@ mod tests {
             }
         }
     }
+
+    #[async_std::test]
+    async fn test_network_mdns() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
+        config.mdns = true;
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+
+        let mut swarm_2 = node_2.swarm.fuse();
+
+        loop {
+            if let Some(event) = swarm_2.next().await {
+                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
+                    info!("Node 2 PeerConnected: {:?}", peer_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    #[async_std::test]
+    async fn test_network_discovery() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+
+        let mut swarm_2 = node_2.swarm.fuse();
+
+        loop {
+            if let Some(event) = swarm_2.next().await {
+                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
+                    info!("Node 2 PeerConnected: {:?}", peer_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    // #[async_std::test]
+    // async fn test_network_req_res() {
+    //     todo!()
+    // }
 }
