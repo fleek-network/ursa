@@ -11,15 +11,17 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
+
 use async_std::{
     channel::{unbounded, Receiver, Sender},
-    task,
+    task, process::Command,
 };
-use futures::{channel::oneshot, select};
+
+use futures::{channel::{oneshot, mpsc}, future::ok, select, Future, prelude::{*},};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::DefaultParams;
+use libipld::{store::StoreParams, DefaultParams, Cid};
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
@@ -27,14 +29,14 @@ use libp2p::{
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
-use libp2p_bitswap::BitswapEvent;
 use std::{collections::HashSet, sync::Arc};
+use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use std::{marker::PhantomData, pin::Pin, task::{Context, Poll}};
 use store::{BitswapStorage, Store};
-use tiny_cid::Cid;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BehaviourEventError},
+    behaviour::{Behaviour, BehaviourEvent, BehaviourEventError, SyncEvent},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
@@ -268,7 +270,12 @@ where
                 command = command_receiver.next() => {
                     if let Some(command) = command {
                         match command {
-                            UrsaCommand::Get { cid, sender } => {},
+                            UrsaCommand::Get { cid, sender } => {
+                                let peers= swarm.get_mut().behaviour_mut().peers();
+                                swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().map(|p| *p));
+                                // todo: look for block in the blockstore and send it back through sender channel
+                                
+                            },
                             UrsaCommand::Put { cid, sender } => {},
                             UrsaCommand::GetPeers { sender } => {
                                 let peers = swarm.get_mut().behaviour_mut().peers();
@@ -289,6 +296,92 @@ where
                     }
                 },
             }
+        }
+    }
+
+    }
+
+
+pub struct GetQuery{
+    // todo: check if swarm required
+    pub id: libp2p_bitswap::QueryId,
+    pub rx: oneshot::Receiver<Result<()>>,
+}
+
+impl Future for GetQuery {
+    type Output = Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        match Pin::new(&mut self.rx).poll(cx) {
+            Poll::Ready(Ok(result)) => Poll::Ready(result),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err.into())),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl Drop for GetQuery {
+    fn drop(&mut self) {
+        //todo
+        // let swarm = Pin::new(&mut self.swarm).take().unwrap();
+        // swarm.behaviour_mut().cancel(self.id);
+    }
+}
+
+
+/// A `bitswap` sync query.
+pub struct SyncQuery {
+    // todo: check if swarm required
+    // swarm: Option<Swarm<Behaviour<DefaultParams>>>,
+    pub id: Option<libp2p_bitswap::QueryId>,
+    pub rx: mpsc::UnboundedReceiver<SyncEvent>,
+}
+
+impl SyncQuery {
+    fn ready(res: Result<()>) -> Self {
+        let (tx, rx) = mpsc::unbounded();
+        tx.unbounded_send(SyncEvent::Complete(res)).unwrap();
+        Self {
+            //swarm: None,
+            id: None,
+            rx,
+        }
+    }
+}
+
+impl Future for SyncQuery {
+    type Output = Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        loop {
+            let poll = Pin::new(&mut self.rx).poll_next(cx);
+            tracing::trace!("sync progress: {:?}", poll);
+            match poll {
+                Poll::Ready(Some(SyncEvent::Complete(result))) => return Poll::Ready(result),
+                Poll::Ready(_) => continue,
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+    }
+}
+
+impl Stream for SyncQuery{
+    type Item = SyncEvent;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let poll = Pin::new(&mut self.rx).poll_next(cx);
+        tracing::trace!("sync progress: {:?}", poll);
+        poll
+    }
+}
+
+impl Drop for SyncQuery {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            // todo: implement destructor
+            // let swarm = self.swarm.take().unwrap();
+            // let mut swarm = swarm.lock();
+            // swarm.behaviour_mut().cancel(id);
         }
     }
 }

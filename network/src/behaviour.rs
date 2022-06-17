@@ -19,10 +19,11 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-
+use fnv::FnvHashMap;
+use futures::{channel::{oneshot, mpsc::{self}}, Future};
 use anyhow::{Error, Result};
 use futures::channel::oneshot;
-use libipld::store::StoreParams;
+use libipld::{store::StoreParams, Cid};
 use libp2p::{
     core::either::EitherError,
     gossipsub::{
@@ -32,7 +33,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::{KademliaEvent, QueryId},
+    kad::{QueryId},
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -44,15 +45,32 @@ use libp2p::{
     },
     NetworkBehaviour, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
-use tracing::{debug, trace, warn};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId as bQueryId};
+use tracing::{debug, trace};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
+    types::UrsaRequestResponseEvent, service::{SyncQuery, GetQuery},
 };
+
+/// An event of a sync query.
+#[derive(Debug)]
+pub enum SyncEvent {
+    /// Signals that the sync query made progress and counts the amount of
+    /// subtrees to sync. If it is syncing a linked list, it will always be
+    /// 1.
+    Progress { missing: usize },
+    /// Signals completion of the sync query and if it was completed
+    /// successfully.
+    Complete(Result<()>),
+}
+enum QueryChannel {
+    Get(oneshot::Sender<Result<()>>),
+    Sync(mpsc::UnboundedSender<SyncEvent>),
+}
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
@@ -136,6 +154,8 @@ pub struct Behaviour<P: StoreParams> {
     /// Pending requests
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    #[behaviour(ignore)]
+    queries: FnvHashMap<libp2p_bitswap::QueryId, QueryChannel>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -186,6 +206,7 @@ impl<P: StoreParams> Behaviour<P> {
             events: VecDeque::new(),
             pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
+            queries: Default::default(),
         }
     }
 
@@ -324,16 +345,21 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
-            BitswapEvent::Progress(query_id, counter) => {
-                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
-                // When a block is received and missing blocks is not empty the counter is increased.
-                // If missing blocks is empty the counter is decremented.
-
-                // keep track of all the query ids.
+            BitswapEvent::Progress(id, missing) => {
+                if let Some(QueryChannel::Sync(ch)) = self.queries.get(&id.into()) {
+                    ch.unbounded_send(SyncEvent::Progress { missing }).ok();
             }
-            BitswapEvent::Complete(query_id, result) => {
-                // A get or sync query completed.
             }
+            BitswapEvent::Complete(id, result) => match self.queries.remove(&id.into()) {
+                Some(QueryChannel::Get(ch)) => {
+                    // self.cancel(id);
+                    ch.send(result).ok();
+                }
+                Some(QueryChannel::Sync(ch)) => {
+                    ch.unbounded_send(SyncEvent::Complete(result)).ok();
+                }
+                _ => {}
+            },
         }
     }
 
@@ -462,6 +488,41 @@ impl<P: StoreParams> Behaviour<P> {
                 );
             }
         }
+    }
+
+    pub fn get_block(
+        &mut self,
+        cid: Cid,
+        providers: impl Iterator<Item = PeerId>,
+    ) -> GetQuery{
+        let (tx, rx) = oneshot::channel();
+        let id = self.bitswap.get(cid, providers);
+        self.queries.insert(id.into(), QueryChannel::Get(tx));
+        GetQuery {
+            id: id.into(),
+            rx,
+        }
+    }
+
+    pub fn sync_block(
+        &mut self,
+        cid: Cid,
+        providers: Vec<PeerId>,
+        missing: impl Iterator<Item = Cid>,
+    ) -> SyncQuery {
+        let (tx, rx) = mpsc::unbounded();
+        let id = self.bitswap.sync(cid, providers, missing);
+        self.queries.insert(id.into(), QueryChannel::Sync(tx));
+        SyncQuery {
+            id: id.into(),
+            rx,
+        }
+    }
+
+    pub fn cancel(&mut self, id: bQueryId) {
+        self.queries.remove(&id);
+        self.bitswap.cancel(id);
+
     }
 }
 
