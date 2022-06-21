@@ -137,7 +137,7 @@ impl DiscoveryBehaviour {
     }
 
     pub fn add_address(&mut self, peer_id: &PeerId, address: Multiaddr) {
-        self.kademlia.add_address(&peer_id, address);
+        self.kademlia.add_address(peer_id, address);
     }
 
     pub fn peers(&self) -> &HashSet<PeerId> {
@@ -158,22 +158,12 @@ impl DiscoveryBehaviour {
             .map_err(|err| anyhow!("{:?}", err))
     }
 
-    pub fn with_bootstrap_nodes(&mut self, bootstrap_nodes: Vec<(PeerId, Multiaddr)>) -> &Self {
-        self.bootstrap_nodes.extend(bootstrap_nodes);
-        self
-    }
-
     fn handle_kad_event(&self, event: KademliaEvent) {
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
-            if let QueryResult::GetClosestPeers(closest_peers_result) = result {
-                match closest_peers_result {
-                    Ok(closest_peers) => {
-                        let peers = closest_peers.peers;
+            if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
+                let peers = closest_peers.peers;
 
-                        todo!()
-                    }
-                    Err(_) => {}
-                }
+                todo!()
             }
         }
     }

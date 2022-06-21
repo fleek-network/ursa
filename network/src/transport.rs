@@ -43,7 +43,7 @@ impl UrsaTransport {
         let tcp = {
             let noise = {
                 let dh_keys = noise::Keypair::<noise::X25519Spec>::new()
-                    .into_authentic(&id_keys)
+                    .into_authentic(id_keys)
                     .expect("Signing libp2p-noise static DH keypair failed.");
 
                 noise::NoiseConfig::xx(dh_keys).into_authenticated()

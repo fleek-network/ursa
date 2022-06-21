@@ -12,6 +12,7 @@ ctrlc = "3.1"
 futures = "0.3.21"
 structopt = "0.3"
 dotenv = "0.15.0"
+anyhow = "1.0.57"
 tracing = "0.1.33"
 store = { path = "../store" }
 tracing-subscriber = "0.3.11"

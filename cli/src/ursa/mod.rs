@@ -9,7 +9,6 @@ use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use structopt::StructOpt;
-use toml;
 use tracing::{error, info, warn};
 
 pub use self::config::CliConfig as Config;

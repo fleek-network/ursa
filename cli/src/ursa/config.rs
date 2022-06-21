@@ -1,5 +1,5 @@
 // use libp2p::identity::Keypair;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BOOTSTRAP: &[&str] = &[

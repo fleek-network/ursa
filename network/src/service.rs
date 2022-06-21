@@ -11,7 +11,7 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{anyhow, Error, Ok, Result};
+use anyhow::{anyhow, Result};
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     task,
@@ -23,6 +23,7 @@ use libipld::DefaultParams;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
+    request_response::ResponseChannel,
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
@@ -49,15 +50,22 @@ pub enum UrsaCommand {
         cid: Cid,
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
+
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
     },
+
     GetPeers {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
-    /// inter-network commands
+    SendRequest {
+        peer_id: PeerId,
+        request: UrsaExchangeRequest,
+        channel: oneshot::Sender<Result<UrsaExchangeResponse>>,
+    },
+
     GossipsubMessage {
         topic: Topic,
         message: GossipsubMessage,
@@ -70,6 +78,10 @@ pub enum UrsaEvent {
     PeerDisconnected(PeerId),
     BitswapEvent(BitswapEvent),
     GossipsubMessage(GossipsubMessage),
+    RequestMessage {
+        request: UrsaExchangeRequest,
+        channel: ResponseChannel<UrsaExchangeResponse>,
+    },
 }
 
 pub struct UrsaService<S> {
@@ -111,11 +123,11 @@ where
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
 
-        let transport = UrsaTransport::new(&keypair, &config);
+        let transport = UrsaTransport::new(&keypair, config);
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, &config, bitswap_store);
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(10))
@@ -135,6 +147,12 @@ where
             .build();
 
         Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
+
+        for to_dial in &config.bootstrap_nodes {
+            Swarm::dial(&mut swarm, to_dial.clone())
+                .map_err(|err| anyhow!("{}", err))
+                .unwrap();
+        }
 
         // subscribe to topic
         let topic = Topic::new(URSA_GLOBAL);
@@ -165,7 +183,7 @@ where
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
-    pub async fn start(mut self) {
+    pub async fn start(self) {
         let mut swarm = self.swarm.fuse();
         let mut command_receiver = self.command_receiver.fuse();
 
@@ -176,48 +194,57 @@ where
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
                                 BehaviourEvent::Bitswap(_) => {},
-                                BehaviourEvent::Gossip {
-                                    peer_id,
+                                BehaviourEvent::GossipMessage {
+                                    peer,
                                     topic,
                                     message,
                                 } => {
-                                    debug!("Gossip message received {:?}", peer_id);
+                                    debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
+                                    let swarm_mut = swarm.get_mut();
 
-                                    // todo(botch)
-                                    // Check if topic is correct
-                                    // Check the validitay of the message
-                                    // report message validation
-
-                                    if self
-                                        .event_sender
-                                        .send(UrsaEvent::GossipsubMessage(message))
-                                        .await
-                                        .is_err()
-                                    {
-                                        warn!("Failed to publish message to topic: {:?}", topic);
+                                    if swarm_mut.is_connected(&peer) {
+                                        if self
+                                            .event_sender
+                                            .send(UrsaEvent::GossipsubMessage(message))
+                                            .await
+                                            .is_err()
+                                        {
+                                            warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
+                                        }
                                     }
                                 },
-                                BehaviourEvent::RequestResponse(_) => {},
-                                BehaviourEvent::PeerConnected(peer_id) => {
-                                    debug!("Peer connected {:?}", peer_id);
+                                BehaviourEvent::RequestMessage { peer, request, channel } => {
+                                    debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
 
                                     if self
                                         .event_sender
-                                        .send(UrsaEvent::PeerConnected(peer_id))
+                                        .send(UrsaEvent::RequestMessage { request, channel })
                                         .await
                                         .is_err()
                                     {
-                                        warn!("Failed to send peer connection message: {:?}", peer_id);
+                                        warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
                                     }
-                                }
-                                BehaviourEvent::PeerDisconnected(peer_id) => {
+                                },
+                                BehaviourEvent::PeerConnected(peer) => {
+                                    debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
+
                                     if self
                                         .event_sender
-                                        .send(UrsaEvent::PeerDisconnected(peer_id))
+                                        .send(UrsaEvent::PeerConnected(peer))
                                         .await
                                         .is_err()
                                     {
-                                        warn!("Failed to send peer disconnect message: {:?}", peer_id);
+                                        warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
+                                    }
+                                }
+                                BehaviourEvent::PeerDisconnected(peer) => {
+                                    if self
+                                        .event_sender
+                                        .send(UrsaEvent::PeerDisconnected(peer))
+                                        .await
+                                        .is_err()
+                                    {
+                                        warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
                                     }
                                 }
                             },
@@ -244,12 +271,15 @@ where
                             UrsaCommand::Put { cid, sender } => {},
                             UrsaCommand::GetPeers { sender } => {
                                 let peers = swarm.get_mut().behaviour_mut().peers();
-                                sender.send(peers).unwrap();
+                                let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
+                            UrsaCommand::SendRequest { peer_id, request, channel } => {
+                                let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel).await;
+                            },
                             UrsaCommand::GossipsubMessage { topic, message } => {
                                 if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
                                     warn!(
-                                        "Failed to publish message top topic {:?} with error {:?}:",
+                                        "[UrsaCommand::GossipsubMessage] - Failed to publish message top topic {:?} with error {:?}:",
                                         URSA_GLOBAL, error
                                     );
                                 }
@@ -339,11 +369,9 @@ mod tests {
         let mut command_receiver = node_2_receiver.fuse();
 
         loop {
-            if let Some(event) = command_receiver.next().await {
-                if let UrsaEvent::GossipsubMessage(gossip) = event {
-                    assert_eq!(vec![1], gossip.data);
-                    break;
-                }
+            if let Some(UrsaEvent::GossipsubMessage(gossip)) = command_receiver.next().await {
+                assert_eq!(vec![1], gossip.data);
+                break;
             }
         }
     }
@@ -351,8 +379,10 @@ mod tests {
     #[async_std::test]
     async fn test_network_mdns() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
-        let mut config = UrsaConfig::default();
-        config.mdns = true;
+        let mut config = UrsaConfig {
+            mdns: true,
+            ..Default::default()
+        };
 
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
@@ -370,11 +400,11 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(event) = swarm_2.next().await {
-                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
-                    info!("Node 2 PeerConnected: {:?}", peer_id);
-                    break;
-                }
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
+                swarm_2.next().await
+            {
+                info!("Node 2 PeerConnected: {:?}", peer_id);
+                break;
             }
         }
     }
@@ -400,11 +430,11 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(event) = swarm_2.next().await {
-                if let SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id)) = event {
-                    info!("Node 2 PeerConnected: {:?}", peer_id);
-                    break;
-                }
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
+                swarm_2.next().await
+            {
+                info!("Node 2 PeerConnected: {:?}", peer_id);
+                break;
             }
         }
     }

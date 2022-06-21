@@ -14,12 +14,14 @@
 //!   sent over a new substream on a connection.
 
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     iter,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use anyhow::{Error, Result};
+use futures::channel::oneshot;
 use libipld::store::StoreParams;
 use libp2p::{
     core::either::EitherError,
@@ -33,8 +35,8 @@ use libp2p::{
     kad::{KademliaEvent, QueryId},
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
-        ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
-        RequestResponseMessage,
+        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
+        RequestResponseMessage, ResponseChannel,
     },
     swarm::{
         ConnectionHandlerUpgrErr, NetworkBehaviour, NetworkBehaviourAction,
@@ -44,14 +46,13 @@ use libp2p::{
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
 use tiny_cid::Cid;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    types::UrsaRequestResponseEvent,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -61,14 +62,18 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Bitswap(BitswapEvent),
-    Gossip {
-        peer_id: PeerId,
+    PeerConnected(PeerId),
+    PeerDisconnected(PeerId),
+    GossipMessage {
+        peer: PeerId,
         topic: TopicHash,
         message: GossipsubMessage,
     },
-    PeerConnected(PeerId),
-    PeerDisconnected(PeerId),
-    RequestResponse(UrsaRequestResponseEvent),
+    RequestMessage {
+        peer: PeerId,
+        request: UrsaExchangeRequest,
+        channel: ResponseChannel<UrsaExchangeResponse>,
+    },
 }
 
 pub type BehaviourEventError = EitherError<
@@ -100,19 +105,33 @@ pub type BehaviourEventError = EitherError<
 pub struct Behaviour<P: StoreParams> {
     /// Aliving checks.
     ping: Ping,
+
     // Identifying peer info to other peers.
     identify: Identify,
+
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
+
     /// Ursa's gossiping protocol for message propagation.
     gossipsub: Gossipsub,
+
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
+
     /// request/response protocol implementation for [`UrsaProtocol`]
     request_response: RequestResponse<UrsaExchangeCodec>,
+
     /// Ursa's emitted events.
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
+
+    /// Pending responses
+    #[behaviour(ignore)]
+    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
+
+    /// Pending requests
+    #[behaviour(ignore)]
+    pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -122,8 +141,6 @@ impl<P: StoreParams> Behaviour<P> {
         bitswap_store: S,
     ) -> Self {
         let local_public_key = keypair.public();
-
-        // TODO: check if UrsaConfig has configs for the behaviours, if not instaniate new ones
 
         // Setup the ping behaviour
         let ping = Ping::default();
@@ -145,7 +162,11 @@ impl<P: StoreParams> Behaviour<P> {
         let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
 
         let request_response = {
-            let cfg = RequestResponseConfig::default();
+            let mut cfg = RequestResponseConfig::default();
+
+            // todo(botch): calculate an upper limit to allow for large files
+            cfg.set_request_timeout(Duration::from_secs(60));
+
             let protocols = iter::once((UrsaProtocol, ProtocolSupport::Full));
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
@@ -159,6 +180,8 @@ impl<P: StoreParams> Behaviour<P> {
             discovery,
             request_response,
             events: VecDeque::new(),
+            pending_requests: HashMap::default(),
+            pending_responses: HashMap::default(),
         }
     }
 
@@ -186,6 +209,18 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.unsubscribe(topic)
     }
 
+    pub async fn send_request(
+        &mut self,
+        peer: PeerId,
+        request: UrsaExchangeRequest,
+        sender: oneshot::Sender<Result<UrsaExchangeResponse>>,
+    ) -> Result<()> {
+        let request_id = self.request_response.send_request(&peer, request);
+        self.pending_responses.insert(request_id, sender);
+
+        Ok(())
+    }
+
     fn poll(
         &mut self,
         cx: &mut Context,
@@ -210,13 +245,13 @@ impl<P: StoreParams> Behaviour<P> {
             Ok(result) => match result {
                 PingSuccess::Pong => {
                     trace!(
-                        "PingSuccess::Pong received a ping and sent back a pong to {}",
+                        "PingSuccess::Pong] - received a ping and sent back a pong to {}",
                         peer
                     );
                 }
                 PingSuccess::Ping { rtt } => {
                     trace!(
-                        "PingSuccess::Ping with rtt {} from {} in ms",
+                        "[PingSuccess::Ping] - with rtt {} from {} in ms",
                         rtt.as_millis(),
                         peer
                     );
@@ -227,17 +262,17 @@ impl<P: StoreParams> Behaviour<P> {
                 match err {
                     PingFailure::Timeout => {
                         debug!(
-                            "PingFailure::Timeout no response was received from {}",
+                            "[PingFailure::Timeout] - no response was received from {}",
                             peer
                         );
                         // remove peer from list of connected.
                     }
                     PingFailure::Unsupported => {
-                        debug!("PingFailure::Unsupported the peer {} does not support the ping protocol", peer);
+                        debug!("[PingFailure::Unsupported] - the peer {} does not support the ping protocol", peer);
                     }
                     PingFailure::Other { error } => {
                         debug!(
-                            "PingFailure::Other the ping failed with {} for reasons {}",
+                            "[PingFailure::Other] - the ping failed with {} for reasons {}",
                             peer, error
                         );
                     }
@@ -250,10 +285,18 @@ impl<P: StoreParams> Behaviour<P> {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
-                    "Identification information with version {} has been received from a peer {}.",
+                    "[IdentifyEvent::Received] - with version {} has been received from a peer {}.",
                     info.protocol_version,
                     peer_id
                 );
+
+                if self.peers().contains(&peer_id) {
+                    trace!(
+                        "[IdentifyEvent::Received] - peer {} already known!",
+                        peer_id
+                    );
+                    ()
+                }
 
                 // check if received identify is from a peer on the same network
                 if info
@@ -297,8 +340,8 @@ impl<P: StoreParams> Behaviour<P> {
                 message,
                 ..
             } => {
-                self.events.push_back(BehaviourEvent::Gossip {
-                    peer_id: propagation_source,
+                self.events.push_back(BehaviourEvent::GossipMessage {
+                    peer: propagation_source,
                     topic: message.topic.clone(),
                     message,
                 });
@@ -337,28 +380,83 @@ impl<P: StoreParams> Behaviour<P> {
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
     ) {
         match event {
-            RequestResponseEvent::Message { peer, message } => match message {
-                RequestResponseMessage::Request {
-                    request_id,
-                    request,
-                    channel,
-                } => todo!(),
-                RequestResponseMessage::Response {
-                    request_id,
-                    response,
-                } => todo!(),
-            },
+            RequestResponseEvent::Message { peer, message } => {
+                match message {
+                    RequestResponseMessage::Request {
+                        request_id,
+                        request,
+                        channel,
+                    } => {
+                        debug!(
+                            "[RequestResponseMessage::Request] - {} {}: {:?}",
+                            request_id, peer, request
+                        );
+                        // self.pending_requests.insert(request_id, channel);
+
+                        self.events.push_back(BehaviourEvent::RequestMessage {
+                            peer,
+                            request,
+                            channel,
+                        });
+                    }
+                    RequestResponseMessage::Response {
+                        request_id,
+                        response,
+                    } => {
+                        debug!(
+                            "[RequestResponseMessage::Response] - {} {}: {:?}",
+                            request_id, peer, response
+                        );
+
+                        if let Some(request) = self.pending_responses.remove(&request_id) {
+                            if request.send(Ok(response)).is_err() {
+                                warn!("[RequestResponseMessage::Response] - failed to send request: {:?}", request_id);
+                            }
+                        }
+
+                        debug!("[RequestResponseMessage::Response] - failed to remove channel for: {:?}", request_id);
+                    }
+                }
+            }
             RequestResponseEvent::OutboundFailure {
                 peer,
                 request_id,
                 error,
-            } => todo!(),
+            } => {
+                debug!(
+                    "[RequestResponseMessage::OutboundFailure] - {} {}: {:?}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                    error.to_string()
+                );
+
+                if let Some(request) = self.pending_responses.remove(&request_id) {
+                    if request.send(Err(error.into())).is_err() {
+                        warn!("[RequestResponseMessage::OutboundFailure] - failed to send request: {:?}", request_id);
+                    }
+                }
+
+                debug!("[RequestResponseMessage::OutboundFailure] - failed to remove channel for: {:?}", request_id);
+            }
             RequestResponseEvent::InboundFailure {
                 peer,
                 request_id,
                 error,
-            } => todo!(),
-            RequestResponseEvent::ResponseSent { peer, request_id } => todo!(),
+            } => {
+                warn!(
+                    "[RequestResponseMessage::InboundFailure] - {} {}: {:?}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                    error.to_string()
+                );
+            }
+            RequestResponseEvent::ResponseSent { peer, request_id } => {
+                debug!(
+                    "[RequestResponseMessage::ResponseSent] - {}: {}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                );
+            }
         }
     }
 }
