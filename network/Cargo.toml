@@ -26,6 +26,7 @@ store = { path = "../store" }
 async-std = { version = "1.11.0", features = ["attributes"] }
 fnv = "1.0.7"
 forest_cid = "0.3.0"
+log="0.4.17"
 
 [dependencies.libipld]
 version = "0.12.0"

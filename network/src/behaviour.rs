@@ -13,17 +13,10 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    iter,
-    task::{Context, Poll},
-    time::Duration,
-};
-use fnv::FnvHashMap;
-use futures::{channel::{oneshot}};
 use anyhow::{Error, Result};
+use fnv::FnvHashMap;
 use futures::channel::oneshot;
-use libipld::{store::StoreParams, Cid, Block};
+use libipld::{store::StoreParams, Block, Cid};
 use libp2p::{
     core::either::EitherError,
     gossipsub::{
@@ -33,7 +26,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::{QueryId},
+    kad::QueryId,
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -46,17 +39,22 @@ use libp2p::{
     NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId as bQueryId};
-use tracing::{debug, trace};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    iter,
+    task::{Context, Poll},
+    time::Duration,
+};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    types::UrsaRequestResponseEvent,
 };
 
-pub type BlockSenderChannel<T> = oneshot::Sender<Block<T>>;
+pub type BlockSenderChannel = oneshot::Sender<Vec<u8>>;
 
 #[derive(Debug)]
 pub struct BitswapInfo {
@@ -85,8 +83,8 @@ pub enum BehaviourEvent {
     PeerDisconnected(PeerId),
     /// A Gossip message request was recieved from a peer.
     Bitswap(BitswapInfo),
-    Gossip {
-        peer_id: PeerId,
+    GossipMessage {
+        peer: PeerId,
         topic: TopicHash,
         message: GossipsubMessage,
     },
@@ -351,15 +349,16 @@ impl<P: StoreParams> Behaviour<P> {
                 todo!();
             }
             BitswapEvent::Complete(id, _result) => {
-            match self.queries.remove(&id.into()) {
-                Some(info) => {
-                    self.events.push_back(BehaviourEvent::Bitswap(info));
-                }
-                _ => {
-                    debug!("Query Id {:?} not found in the hash map", id)
+                info!("Bitswap Event complete for query id: {:?}", id);
+                match self.queries.remove(&id.into()) {
+                    Some(info) => {
+                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                    }
+                    _ => {
+                        debug!("Query Id {:?} not found in the hash map", id)
+                    }
                 }
             }
-        }
         }
     }
 
@@ -490,35 +489,20 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn get_block(
-        &mut self,
-        cid: Cid,
-        providers: impl Iterator<Item = PeerId>,
-    ){
-        debug!("get block via rpc called, the requested cid is: {:?}", cid);
+    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(cid, providers);
-        self.queries.insert(id.into(), BitswapInfo {query_id: id, cid });
+        self.queries
+            .insert(id.into(), BitswapInfo { query_id: id, cid });
     }
 
-    // pub fn sync_block(
-    //     &mut self,
-    //     cid: Cid,
-    //     providers: Vec<PeerId>,
-    //     missing: impl Iterator<Item = Cid>,
-    // ) -> SyncQuery {
-    //     let (tx, rx) = mpsc::unbounded();
-    //     let id = self.bitswap.sync(cid, providers, missing);
-    //     self.queries.insert(id.into(), QueryChannel::Sync(tx));
-    //     SyncQuery {
-    //         id: id.into(),
-    //         rx,
-    //     }
-    // }
+    pub fn sync_block() {
+        todo!()
+    }
 
     pub fn cancel(&mut self, id: bQueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
-
     }
 }
 
