@@ -3,6 +3,7 @@ members = [
   "cli",
   "network",
   "store",
+  "car-rs",
 ]
 
 exclude = [
