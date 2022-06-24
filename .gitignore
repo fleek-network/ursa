@@ -9,3 +9,5 @@ node/.vscode/launch.json
 
 # config file for initial config load up
 config.toml
+
+Cargo.lock

@@ -3,7 +3,5 @@ mod codec;
 mod config;
 mod discovery;
 mod gossipsub;
-mod rpc;
 mod service;
 mod transport;
-mod types;
