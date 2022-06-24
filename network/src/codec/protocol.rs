@@ -100,7 +100,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 
     async fn write_request<T>(
         &mut self,
-        protocol: &Self::Protocol,
+        _: &Self::Protocol,
         io: &mut T,
         req: Self::Request,
     ) -> io::Result<()>
@@ -116,7 +116,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 
     async fn write_response<T>(
         &mut self,
-        protocol: &Self::Protocol,
+        _: &Self::Protocol,
         io: &mut T,
         res: Self::Response,
     ) -> io::Result<()>

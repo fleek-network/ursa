@@ -45,8 +45,6 @@ impl Default for UrsaConfig {
             relay: false,
             autonat: false,
             bootstrap_nodes,
-            // once quic support
-            // "/ip4/0.0.0.0/udp/0/quic".parse().unwrap(),
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
         }
     }

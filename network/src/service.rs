@@ -74,10 +74,15 @@ pub enum UrsaCommand {
 
 #[derive(Debug)]
 pub enum UrsaEvent {
+    /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
+    /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
     BitswapEvent(BitswapEvent),
+    /// A Gossip message request was recieved from a peer.
     GossipsubMessage(GossipsubMessage),
+    /// A message request was recieved from a peer.
+    /// Attached is a channel for returning a response.
     RequestMessage {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
@@ -116,9 +121,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
-        // Todo: Create or get from local store
-        let keypair = Keypair::generate_ed25519();
+    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
@@ -274,7 +277,7 @@ where
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
-                                let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel).await;
+                                let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
                             },
                             UrsaCommand::GossipsubMessage { topic, message } => {
                                 if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
@@ -294,6 +297,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::codec::protocol::RequestType;
+
     use super::*;
 
     use db::rocks::RocksDb;
@@ -301,12 +306,16 @@ mod tests {
     use std::{thread, time::Duration, vec};
     use store::Store;
 
-    fn network_init(config: UrsaConfig) -> UrsaService<RocksDb> {
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
-        let db = Arc::new(db);
+    fn network_init(
+        config: &UrsaConfig,
+        store: Arc<Store<RocksDb>>,
+    ) -> (UrsaService<RocksDb>, PeerId) {
+        let keypair = Keypair::generate_ed25519();
+        let local_peer_id = PeerId::from(keypair.public());
 
-        let store = Arc::new(Store::new(Arc::clone(&db)));
-        UrsaService::new(&config, Arc::clone(&store))
+        let service = UrsaService::new(keypair, &config, store);
+
+        (service, local_peer_id)
     }
 
     // Network Starts
@@ -317,7 +326,12 @@ mod tests {
             .with_colors(true)
             .init()
             .unwrap();
-        let service = network_init(UrsaConfig::default());
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let (service, _) = network_init(&UrsaConfig::default(), Arc::clone(&store));
 
         task::spawn(async {
             service.start().await;
@@ -336,10 +350,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+        let (node_1, _) = network_init(&config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         let node_1_sender = node_1.command_sender.clone();
         let node_2_receiver = node_2.event_receiver.clone();
@@ -388,10 +402,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+        let (node_1, _) = network_init(&config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
             node_1.start().await;
@@ -418,10 +432,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let node_1 = UrsaService::new(&UrsaConfig::default(), Arc::clone(&store));
+        let (node_1, _) = network_init(&config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let node_2 = UrsaService::new(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
             node_1.start().await;
@@ -439,8 +453,52 @@ mod tests {
         }
     }
 
-    // #[async_std::test]
-    // async fn test_network_req_res() {
-    //     todo!()
-    // }
+    #[async_std::test]
+    async fn test_network_req_res() {
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        let mut config = UrsaConfig::default();
+        let topic = Topic::new(URSA_GLOBAL);
+
+        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = Arc::new(db);
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let (node_1, _) = network_init(&config, Arc::clone(&store));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let (node_2, peer_2) = network_init(&config, Arc::clone(&store));
+
+        let node_1_sender = node_1.command_sender.clone();
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let (sender, _) = oneshot::channel();
+        let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
+        let msg = UrsaCommand::SendRequest {
+            peer_id: peer_2,
+            request,
+            channel: sender,
+        };
+
+        node_1_sender.send(msg).await.unwrap();
+
+        let mut swarm_2 = node_2.swarm.fuse();
+
+        loop {
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage {
+                peer,
+                request,
+                channel,
+            })) = swarm_2.next().await
+            {
+                info!("Node 2 RequestMessage: {:?}", request);
+                break;
+            }
+        }
+    }
 }

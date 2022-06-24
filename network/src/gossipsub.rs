@@ -22,8 +22,6 @@ pub struct UrsaGossipsub;
 
 impl UrsaGossipsub {
     pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Gossipsub {
-        let history_length = 5;
-        let history_gossip = 3;
         let mesh_n = 8;
         let mesh_n_low = 4;
         let mesh_n_high = 12;
@@ -32,7 +30,8 @@ impl UrsaGossipsub {
         let fanout_ttl = Duration::from_secs(60);
         // D_out
         let mesh_outbound_min = (mesh_n / 2) - 1;
-        let max_transmit_size = 16 * 1024 * 1024;
+        let max_transmit_size = 4 * 1024 * 1024;
+        // todo(botch): should we limit the number here?
         let max_msgs_per_rpc = 1;
         let cache_size = Duration::from_secs(60);
         let message_id_fn = move |message: &GossipsubMessage| {
@@ -43,8 +42,6 @@ impl UrsaGossipsub {
 
         let gossip_config = GossipsubConfigBuilder::default()
             .protocol_id_prefix(URSA_GOSSIP_PROTOCOL)
-            .history_length(history_length)
-            .history_gossip(history_gossip)
             .mesh_n(mesh_n)
             .mesh_n_low(mesh_n_low)
             .mesh_n_high(mesh_n_high)

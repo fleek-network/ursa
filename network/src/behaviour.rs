@@ -32,7 +32,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::{KademliaEvent, QueryId},
+    kad::QueryId,
     ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -45,7 +45,6 @@ use libp2p::{
     NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
-use tiny_cid::Cid;
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -62,13 +61,18 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Bitswap(BitswapEvent),
+    /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
+    /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
+    /// A Gossip message request was recieved from a peer.
     GossipMessage {
         peer: PeerId,
         topic: TopicHash,
         message: GossipsubMessage,
     },
+    /// A message request was recieved from a peer.
+    /// Attached is a channel for returning a response.
     RequestMessage {
         peer: PeerId,
         request: UrsaExchangeRequest,
@@ -209,7 +213,7 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.unsubscribe(topic)
     }
 
-    pub async fn send_request(
+    pub fn send_request(
         &mut self,
         peer: PeerId,
         request: UrsaExchangeRequest,
