@@ -1,0 +1,15 @@
+// Copyright 2019-2022 ChainSafe Systems
+// SPDX-License-Identifier: Apache-2.0, MIT
+
+use async_std::fs::File;
+use async_std::io::BufReader;
+use db::MemoryDB;
+use car_rs::*;
+
+#[async_std::test]
+async fn load_into_blockstore() {
+    let file = File::open("tests/test.car").await.unwrap();
+    let buf_reader = BufReader::new(file);
+    let bs = MemoryDB::default();
+    let _ = load_car(&bs, buf_reader).await.unwrap();
+}

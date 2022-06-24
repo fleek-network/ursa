@@ -1,0 +1,23 @@
+[package]
+name    = "car_rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["ChainSafe Systems <info@chainsafe.io>", "b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "IPLD Car with v1 support"
+
+[dependencies]
+fvm_shared        = "0.7.1"
+fvm_ipld_encoding = "0.2"
+cid               = { package = "forest_cid", version = "0.3", features = ["cbor"] }
+forest_encoding   = "0.2"
+blockstore        = { package = "ipld_blockstore", version = "0.1" }
+serde             = { version = "1.0", features = ["derive"] }
+thiserror         = "1.0"
+futures           = "0.3"
+integer-encoding  = { version = "3.0", features = ["futures_async"] }
+
+[dev-dependencies]
+db        = { package = "forest_db", version = "0.1" }
+async-std = { version = "1.9", features = ["attributes"] }
