@@ -13,16 +13,10 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    iter,
-    task::{Context, Poll},
-    time::Duration,
-};
-
 use anyhow::{Error, Result};
+use fnv::FnvHashMap;
 use futures::channel::oneshot;
-use libipld::store::StoreParams;
+use libipld::{store::StoreParams, Block, Cid};
 use libp2p::{
     core::either::EitherError,
     gossipsub::{
@@ -44,8 +38,14 @@ use libp2p::{
     },
     NetworkBehaviour, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
-use tracing::{debug, trace, warn};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId as bQueryId};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    iter,
+    task::{Context, Poll},
+    time::Duration,
+};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
@@ -54,18 +54,35 @@ use crate::{
     gossipsub::UrsaGossipsub,
 };
 
+pub type BlockSenderChannel = oneshot::Sender<Vec<u8>>;
+
+#[derive(Debug)]
+pub struct BitswapInfo {
+    cid: Cid,
+    query_id: bQueryId,
+}
+
+impl BitswapInfo {
+    pub fn cid(&self) -> Cid {
+        self.cid
+    }
+    pub fn query_id(&self) -> bQueryId {
+        self.query_id
+    }
+}
+
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Bitswap(BitswapEvent),
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
     /// A Gossip message request was recieved from a peer.
+    Bitswap(BitswapInfo),
     GossipMessage {
         peer: PeerId,
         topic: TopicHash,
@@ -136,6 +153,8 @@ pub struct Behaviour<P: StoreParams> {
     /// Pending requests
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    #[behaviour(ignore)]
+    queries: FnvHashMap<bQueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -186,6 +205,7 @@ impl<P: StoreParams> Behaviour<P> {
             events: VecDeque::new(),
             pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
+            queries: Default::default(),
         }
     }
 
@@ -324,15 +344,20 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
-            BitswapEvent::Progress(query_id, counter) => {
-                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
-                // When a block is received and missing blocks is not empty the counter is increased.
-                // If missing blocks is empty the counter is decremented.
-
-                // keep track of all the query ids.
+            BitswapEvent::Progress(id, missing) => {
+                // only required if need to handle sync queries
+                todo!();
             }
-            BitswapEvent::Complete(query_id, result) => {
-                // A get or sync query completed.
+            BitswapEvent::Complete(id, _result) => {
+                info!("Bitswap Event complete for query id: {:?}", id);
+                match self.queries.remove(&id.into()) {
+                    Some(info) => {
+                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                    }
+                    _ => {
+                        debug!("Query Id {:?} not found in the hash map", id)
+                    }
+                }
             }
         }
     }
@@ -462,6 +487,22 @@ impl<P: StoreParams> Behaviour<P> {
                 );
             }
         }
+    }
+
+    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
+        let id = self.bitswap.get(cid, providers);
+        self.queries
+            .insert(id.into(), BitswapInfo { query_id: id, cid });
+    }
+
+    pub fn sync_block() {
+        todo!()
+    }
+
+    pub fn cancel(&mut self, id: bQueryId) {
+        self.queries.remove(&id);
+        self.bitswap.cancel(id);
     }
 }
 
