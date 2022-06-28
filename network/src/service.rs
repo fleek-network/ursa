@@ -11,7 +11,7 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 
 use async_std::{
     channel::{unbounded, Receiver, Sender},
@@ -19,7 +19,7 @@ use async_std::{
 };
 
 use fnv::FnvHashMap;
-use futures::{channel::oneshot, prelude::*, select};
+use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::{Block, Cid, DefaultParams};
@@ -544,11 +544,8 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage {
-                peer,
-                request,
-                channel,
-            })) = swarm_2.next().await
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage { request, .. })) =
+                swarm_2.next().await
             {
                 info!("Node 2 RequestMessage: {:?}", request);
                 break;
