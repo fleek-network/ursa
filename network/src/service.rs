@@ -36,7 +36,7 @@ use store::{BitswapStorage, Store};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BlockSenderChannel},
+    behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
@@ -211,30 +211,32 @@ where
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
                                 BehaviourEvent::Bitswap(info)=> {
-                                    let cid = info.cid();
-                                    let query_id = info.query_id();
+                                    let BitswapInfo {cid, query_id, block_found } = info;
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
                                     if let Some (chans) = self.response_channels.remove(&cid) {
+                                        // TODO: in some cases, the insert takes few milliseconds after query complete is received
+                                        // wait for block to be inserted
+                                        match block_found {
+                                            true => loop { if blockstore.contains(&cid).unwrap() { break; } },
+                                            _ => {},
+                                        }
                                         for chan in chans.into_iter(){
-                                            // TODO: bitswap event complete is received even if none of the peers is storing the requested the block
-                                            // and also, in some cases, the insert takes few milliseconds after query complete is received
-                                            loop {
-                                                if blockstore.contains(&cid).unwrap() { break; }
-                                            }
                                             if let Ok(Some(data)) = blockstore.get(&cid) {
-                                                if chan.send(data).is_err() {
+                                                if chan.send(Ok(data)).is_err() {
                                                     error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
                                                 }
                                                 info!("[BehaviourEvent::Bitswap] - Send Bitswap block with cid {:?}, via oneshot channel", cid);
                                             } else {
-                                                info!("[BehaviourEvent::Bitswap] - The block store contains block: {:?}", blockstore.contains(&cid));
-                                                error!("[BehaviourEvent::Bitswap] - Block evicted too soon.");
+                                                error!("[BehaviourEvent::Bitswap] - block not found.");
+                                                if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
+                                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
+                                                }
                                             }
                                         }
-                                } else {
-                                    debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
-                                }
-                            },
+                                    } else {
+                                        debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
+                                    }
+                    },
                                 BehaviourEvent::GossipMessage {
                                     peer,
                                     topic,
@@ -310,7 +312,7 @@ where
                         match command {
                             UrsaCommand::Get { cid, sender } => {
                                 if let Ok(Some(data)) = blockstore.get(&cid) {
-                                    let _ = sender.send(data);
+                                    let _ = sender.send(Ok(data));
                                 } else {
                                     if let Some(chans) = self.response_channels.get_mut(&cid) {
                                         chans.push(sender);
@@ -609,8 +611,69 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
-            info!("the value receive from the channel from node {:?}", value);
-            assert_eq!(value, block.data());
+            match value {
+                Ok(val) => assert_eq!(val, block.data()),
+                _ => {}
+            }
+        });
+    }
+
+    #[async_std::test]
+    async fn test_bitswap_get_block_not_found() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let mut config = UrsaConfig::default();
+
+        let db1 = Arc::new(RocksDb::open("test_db1").expect("Opening RocksDB must succeed"));
+        let db2 = Arc::new(RocksDb::open("test_db2").expect("Opening RocksDB must succeed"));
+
+        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let store2 = Arc::new(Store::new(Arc::clone(&db2)));
+
+        let (node_1, _) = network_init(&config, Arc::clone(&store1));
+
+        let block = create_block(ipld!(&b"hello world"[..]));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let (node_2, _) = network_init(&config, Arc::clone(&store2));
+
+        let node_2_sender = node_2.command_sender.clone();
+        // let node_2_receiver = node_2.event_receiver.clone();
+
+        task::spawn(async {
+            node_1.start().await;
+        });
+        task::spawn(async {
+            node_2.start().await;
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let (sender, receiver) = oneshot::channel();
+
+        let msg = UrsaCommand::Get {
+            cid: *block.cid(),
+            sender,
+        };
+        node_2_sender.send(msg).await.unwrap();
+
+        futures::executor::block_on(async {
+            info!("waiting for msg on block receive channel...");
+            let value = receiver.await.expect("Unable to receive from channel");
+            match value {
+                Err(val) => assert_eq!(
+                    val.to_string(),
+                    format!(
+                        "The requested block with cid {:?} is not found with any peers",
+                        *block.cid()
+                    )
+                ),
+                _ => {}
+            }
         });
     }
 }

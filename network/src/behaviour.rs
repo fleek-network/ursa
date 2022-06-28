@@ -25,6 +25,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
+    kad,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -33,7 +34,7 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour, PeerId, kad,
+    NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
@@ -42,7 +43,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
@@ -51,21 +52,13 @@ use crate::{
     gossipsub::UrsaGossipsub,
 };
 
-pub type BlockSenderChannel = oneshot::Sender<Vec<u8>>;
+pub type BlockSenderChannel = oneshot::Sender<Result<Vec<u8>, Error>>;
 
 #[derive(Debug)]
 pub struct BitswapInfo {
-    cid: Cid,
-    query_id: QueryId,
-}
-
-impl BitswapInfo {
-    pub fn cid(&self) -> Cid {
-        self.cid
-    }
-    pub fn query_id(&self) -> QueryId {
-        self.query_id
-    }
+    pub cid: Cid,
+    pub query_id: QueryId,
+    pub block_found: bool,
 }
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -227,10 +220,17 @@ impl<P: StoreParams> Behaviour<P> {
 
         Ok(())
     }
-
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(cid, providers);
-        self.queries.insert(id, BitswapInfo { query_id: id, cid });
+        self.queries.insert(
+            id.into(),
+            BitswapInfo {
+                query_id: id,
+                cid,
+                block_found: false,
+            },
+        );
     }
 
     pub fn sync_block() {
@@ -344,14 +344,24 @@ impl<P: StoreParams> Behaviour<P> {
                 // only required if need to handle sync queries
                 todo!();
             }
-            BitswapEvent::Complete(id, _result) => {
-                info!("[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}", id);
-                match self.queries.remove(&id) {
-                    Some(info) => {
+            BitswapEvent::Complete(id, result) => {
+                info!(
+                    "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
+                    id
+                );
+                match self.queries.remove(&id.into()) {
+                    Some(mut info) => {
+                        match result {
+                            Err(err) => error!("{:?}", err),
+                            Ok(_res) => info.block_found = true,
+                        }
                         self.events.push_back(BehaviourEvent::Bitswap(info));
                     }
                     _ => {
-                        debug!("[BitswapEvent::Complete] - Query Id {:?} not found in the hash map", id)
+                        debug!(
+                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
+                            id
+                        )
                     }
                 }
             }
