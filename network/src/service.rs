@@ -11,7 +11,7 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 
 use async_std::{
     channel::{unbounded, Receiver, Sender},
@@ -19,10 +19,10 @@ use async_std::{
 };
 
 use fnv::FnvHashMap;
-use futures::{channel::oneshot, prelude::*, select};
+use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::{store::StoreParams, Block, Cid, DefaultParams};
+use libipld::{Block, Cid, DefaultParams};
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
@@ -31,13 +31,12 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use std::task::{Context, Poll};
-use std::{collections::HashSet, sync::Arc, thread, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 use store::{BitswapStorage, Store};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BehaviourEventError, BitswapInfo, BlockSenderChannel},
+    behaviour::{Behaviour, BehaviourEvent, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
@@ -93,7 +92,7 @@ pub enum UrsaEvent {
 pub struct UrsaService<S> {
     /// Store
     store: Arc<Store<S>>,
-    /// The main libp2p swamr emitting events.
+    /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
     command_sender: Sender<UrsaCommand>,
@@ -202,8 +201,8 @@ where
             self.swarm.local_peer_id()
         );
         let mut swarm = self.swarm.fuse();
-        let mut command_receiver = self.command_receiver.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());
+        let mut command_receiver = self.command_receiver.fuse();
 
         loop {
             select! {
@@ -224,16 +223,16 @@ where
                                             }
                                             if let Ok(Some(data)) = blockstore.get(&cid) {
                                                 if chan.send(data).is_err() {
-                                                    error!("Bitswap response channel send failed");
+                                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
                                                 }
-                                                info!("Send Bitswap block with cid {:?}, via oneshot channel", cid);
+                                                info!("[BehaviourEvent::Bitswap] - Send Bitswap block with cid {:?}, via oneshot channel", cid);
                                             } else {
-                                                info!("the block store contains block: {:?}", blockstore.contains(&cid));
-                                                error!("block evicted too soon.");
+                                                info!("[BehaviourEvent::Bitswap] - The block store contains block: {:?}", blockstore.contains(&cid));
+                                                error!("[BehaviourEvent::Bitswap] - Block evicted too soon.");
                                             }
                                         }
                                 } else {
-                                    debug!("Received Bitswap response, but response channel cannot be found");
+                                    debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                                 }
                             },
                                 BehaviourEvent::GossipMessage {
@@ -311,15 +310,15 @@ where
                         match command {
                             UrsaCommand::Get { cid, sender } => {
                                 if let Ok(Some(data)) = blockstore.get(&cid) {
-                                    sender.send(data);
+                                    let _ = sender.send(data);
                                 } else {
                                     if let Some(chans) = self.response_channels.get_mut(&cid) {
                                         chans.push(sender);
                                     } else {
-                                    self.response_channels.insert(cid, vec![sender]);
+                                        self.response_channels.insert(cid, vec![sender]);
                                     }
-                                    let peers= swarm.get_mut().behaviour_mut().peers();
-                                    swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().map(|p| *p));
+                                    let peers = swarm.get_mut().behaviour_mut().peers();
+                                    swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
                                 }
 
                             },
@@ -371,7 +370,7 @@ mod tests {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
 
-        let service = UrsaService::new(keypair, &config, store);
+        let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
     }
@@ -513,7 +512,6 @@ mod tests {
     async fn test_network_req_res() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
-        let topic = Topic::new(URSA_GLOBAL);
 
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
@@ -546,11 +544,8 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage {
-                peer,
-                request,
-                channel,
-            })) = swarm_2.next().await
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage { request, .. })) =
+                swarm_2.next().await
             {
                 info!("Node 2 RequestMessage: {:?}", request);
                 break;
@@ -592,7 +587,6 @@ mod tests {
         let (node_2, _) = network_init(&config, Arc::clone(&store2));
 
         let node_2_sender = node_2.command_sender.clone();
-        // let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
             node_1.start().await;

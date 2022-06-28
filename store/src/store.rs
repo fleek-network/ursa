@@ -37,7 +37,7 @@ where
     fn insert(&mut self, block: &Block<Self::Params>) -> Result<()> {
         self.0
             .db
-            .write(&block.cid().to_bytes(), block.data().to_vec())
+            .write(&block.cid().to_bytes(), block.data())
             .unwrap();
 
         Ok(())
