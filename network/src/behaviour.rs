@@ -16,11 +16,10 @@
 use anyhow::{Error, Result};
 use fnv::FnvHashMap;
 use futures::channel::oneshot;
-use libipld::{store::StoreParams, Block, Cid};
+use libipld::{store::StoreParams, Cid};
 use libp2p::{
-    core::either::EitherError,
     gossipsub::{
-        error::{GossipsubHandlerError, PublishError, SubscriptionError},
+        error::{PublishError, SubscriptionError},
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
         PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
@@ -33,8 +32,7 @@ use libp2p::{
         RequestResponseMessage, ResponseChannel,
     },
     swarm::{
-        ConnectionHandlerUpgrErr, NetworkBehaviour, NetworkBehaviourAction,
-        NetworkBehaviourEventProcess, PollParameters,
+        NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
     NetworkBehaviour, PeerId,
 };
@@ -45,7 +43,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
@@ -96,20 +94,6 @@ pub enum BehaviourEvent {
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
 }
-
-pub type BehaviourEventError = EitherError<
-    EitherError<
-        EitherError<
-            EitherError<
-                EitherError<ping::Failure, std::io::Error>,
-                ConnectionHandlerUpgrErr<std::io::Error>,
-            >,
-            GossipsubHandlerError,
-        >,
-        std::io::Error,
-    >,
-    ConnectionHandlerUpgrErr<std::io::Error>,
->;
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
 ///
@@ -245,6 +229,21 @@ impl<P: StoreParams> Behaviour<P> {
         Ok(())
     }
 
+    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
+        let id = self.bitswap.get(cid, providers);
+        self.queries.insert(id, BitswapInfo { query_id: id, cid });
+    }
+
+    pub fn sync_block() {
+        todo!()
+    }
+
+    pub fn cancel(&mut self, id: bQueryId) {
+        self.queries.remove(&id);
+        self.bitswap.cancel(id);
+    }
+
     fn poll(
         &mut self,
         cx: &mut Context,
@@ -319,7 +318,6 @@ impl<P: StoreParams> Behaviour<P> {
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
-                    ()
                 }
 
                 // check if received identify is from a peer on the same network
@@ -350,7 +348,7 @@ impl<P: StoreParams> Behaviour<P> {
             }
             BitswapEvent::Complete(id, _result) => {
                 info!("Bitswap Event complete for query id: {:?}", id);
-                match self.queries.remove(&id.into()) {
+                match self.queries.remove(&id) {
                     Some(info) => {
                         self.events.push_back(BehaviourEvent::Bitswap(info));
                     }
@@ -487,22 +485,6 @@ impl<P: StoreParams> Behaviour<P> {
                 );
             }
         }
-    }
-
-    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
-        info!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self.bitswap.get(cid, providers);
-        self.queries
-            .insert(id.into(), BitswapInfo { query_id: id, cid });
-    }
-
-    pub fn sync_block() {
-        todo!()
-    }
-
-    pub fn cancel(&mut self, id: bQueryId) {
-        self.queries.remove(&id);
-        self.bitswap.cancel(id);
     }
 }
 
