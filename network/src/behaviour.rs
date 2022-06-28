@@ -25,8 +25,7 @@ use libp2p::{
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::QueryId,
-    ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
+    ping::{Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
@@ -34,9 +33,9 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour, PeerId,
+    NetworkBehaviour, PeerId, kad,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId as bQueryId};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
@@ -57,14 +56,14 @@ pub type BlockSenderChannel = oneshot::Sender<Vec<u8>>;
 #[derive(Debug)]
 pub struct BitswapInfo {
     cid: Cid,
-    query_id: bQueryId,
+    query_id: QueryId,
 }
 
 impl BitswapInfo {
     pub fn cid(&self) -> Cid {
         self.cid
     }
-    pub fn query_id(&self) -> bQueryId {
+    pub fn query_id(&self) -> QueryId {
         self.query_id
     }
 }
@@ -138,7 +137,7 @@ pub struct Behaviour<P: StoreParams> {
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
     #[behaviour(ignore)]
-    queries: FnvHashMap<bQueryId, BitswapInfo>,
+    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -205,7 +204,7 @@ impl<P: StoreParams> Behaviour<P> {
         self.discovery.peers().clone()
     }
 
-    pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
+    pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
         self.discovery.bootstrap()
     }
 
@@ -230,7 +229,6 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
-        info!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(cid, providers);
         self.queries.insert(id, BitswapInfo { query_id: id, cid });
     }
@@ -239,7 +237,7 @@ impl<P: StoreParams> Behaviour<P> {
         todo!()
     }
 
-    pub fn cancel(&mut self, id: bQueryId) {
+    pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
     }
@@ -347,13 +345,13 @@ impl<P: StoreParams> Behaviour<P> {
                 todo!();
             }
             BitswapEvent::Complete(id, _result) => {
-                info!("Bitswap Event complete for query id: {:?}", id);
+                info!("[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}", id);
                 match self.queries.remove(&id) {
                     Some(info) => {
                         self.events.push_back(BehaviourEvent::Bitswap(info));
                     }
                     _ => {
-                        debug!("Query Id {:?} not found in the hash map", id)
+                        debug!("[BitswapEvent::Complete] - Query Id {:?} not found in the hash map", id)
                     }
                 }
             }
