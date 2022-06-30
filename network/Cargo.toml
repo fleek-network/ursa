@@ -8,6 +8,8 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's libp2p implementation"
 
 [dependencies]
+fnv = "1.0.7"
+log = "0.4.17"
 bytes = "1.1.0"
 anyhow = "1.0.56"
 serde = "1.0.137"
@@ -24,9 +26,6 @@ libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
 store = { path = "../store" }
 async-std = { version = "1.11.0", features = ["attributes"] }
-fnv = "1.0.7"
-forest_cid = "0.3.0"
-log="0.4.17"
 
 [dependencies.libipld]
 version = "0.12.0"
