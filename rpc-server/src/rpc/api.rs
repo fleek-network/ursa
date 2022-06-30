@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use async_std::fs::File;
+use async_std::{channel::Sender, fs::File};
 use async_trait::async_trait;
 use car_rs::CarReader;
+use cid::Cid;
 use futures::channel::oneshot;
 use ipld_blockstore::BlockStore;
 use jsonrpc_v2::Error;
-use libipld::Cid;
 use network::UrsaCommand;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use store::Store;
+use tracing::{error, info, warn};
 
 pub type Result<T> = anyhow::Result<T, Error>;
 
@@ -31,6 +32,7 @@ where
     S: BlockStore + Sync + Send + 'static,
 {
     pub store: Arc<Store<S>>,
+    pub network_send: Sender<UrsaCommand>,
 }
 
 #[async_trait]
@@ -45,8 +47,19 @@ where
         let request = UrsaCommand::Get { cid, sender };
 
         // use network sender to send command
-
-        receiver.await;
+        match self.network_send.send(request).await {
+            Err(err) => {
+                error!(
+                    "There was an error while sending the get Ursa Get Command, {:?}",
+                    err
+                );
+            }
+            Ok(_) => match receiver.await {
+                Ok(_) => todo!(),
+                Err(_err) => todo!(),
+            },
+        }
+        // handle the block receive from the channel
         Ok(())
     }
 

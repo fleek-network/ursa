@@ -1,9 +1,9 @@
 mod behaviour;
 mod codec;
-mod config;
+pub mod config;
 mod discovery;
 mod gossipsub;
-mod service;
+pub mod service;
 mod transport;
-
+mod utils;
 pub use self::service::*;

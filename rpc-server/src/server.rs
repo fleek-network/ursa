@@ -45,10 +45,24 @@ mod tests {
     use super::*;
 
     use db::rocks::RocksDb;
+    use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use store::Store;
 
     use crate::rpc::api::NodeNetworkInterface;
+    use network::{config::UrsaConfig, service::UrsaService};
+
+    fn ursa_network_init(
+        config: &UrsaConfig,
+        store: Arc<Store<RocksDb>>,
+    ) -> (UrsaService<RocksDb>, PeerId) {
+        let keypair = Keypair::generate_ed25519();
+        let local_peer_id = PeerId::from(keypair.public());
+
+        let service = UrsaService::new(keypair, config, store);
+
+        (service, local_peer_id)
+    }
 
     #[tokio::test]
     async fn test_rpc_start() {
@@ -67,7 +81,14 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let interface = Arc::new(NodeNetworkInterface { store });
+        let mut ursa_config = UrsaConfig::default();
+        let (ursa_node, _) = ursa_network_init(&ursa_config, Arc::clone(&store));
+        let ursa_node_sender = ursa_node.command_sender().clone();
+
+        let interface = Arc::new(NodeNetworkInterface {
+            store,
+            network_send: ursa_node_sender,
+        });
 
         let rpc = Rpc::new(&config, interface);
 

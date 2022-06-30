@@ -18,11 +18,12 @@ use async_std::{
     task,
 };
 
+use cid::Cid;
 use fnv::FnvHashMap;
 use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::{Block, Cid, DefaultParams};
+use libipld::DefaultParams;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
@@ -40,6 +41,7 @@ use crate::{
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
+    utils,
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -190,6 +192,9 @@ where
         }
     }
 
+    pub fn command_sender(&self) -> &Sender<UrsaCommand> {
+        &self.command_sender
+    }
     /// Start the ursa network service loop.
     ///
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
@@ -216,12 +221,13 @@ where
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
+                                        let bitswap_cid = utils::convert_cid(cid.to_bytes());
                                         match block_found {
-                                            true => loop { if blockstore.contains(&cid).unwrap() { break; } },
+                                            true => loop { if blockstore.contains(&bitswap_cid).unwrap() { break; } },
                                             _ => {},
                                         }
                                         for chan in chans.into_iter(){
-                                            if let Ok(Some(data)) = blockstore.get(&cid) {
+                                            if let Ok(Some(data)) = blockstore.get(&bitswap_cid) {
                                                 if chan.send(Ok(data)).is_err() {
                                                     error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
                                                 }
@@ -311,7 +317,7 @@ where
                     if let Some(command) = command {
                         match command {
                             UrsaCommand::Get { cid, sender } => {
-                                if let Ok(Some(data)) = blockstore.get(&cid) {
+                                if let Ok(Some(data)) = blockstore.get(&utils::convert_cid(cid.to_bytes())) {
                                     let _ = sender.send(Ok(data));
                                 } else {
                                     if let Some(chans) = self.response_channels.get_mut(&cid) {
@@ -355,7 +361,7 @@ mod tests {
     use super::*;
 
     use db::rocks::RocksDb;
-    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, DefaultParams, Ipld};
+    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
@@ -601,9 +607,8 @@ mod tests {
         thread::sleep(delay);
 
         let (sender, receiver) = oneshot::channel();
-
         let msg = UrsaCommand::Get {
-            cid: *block.cid(),
+            cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
         node_2_sender.send(msg).await.unwrap();
@@ -656,7 +661,7 @@ mod tests {
         let (sender, receiver) = oneshot::channel();
 
         let msg = UrsaCommand::Get {
-            cid: *block.cid(),
+            cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
         node_2_sender.send(msg).await.unwrap();

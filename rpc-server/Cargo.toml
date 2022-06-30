@@ -11,6 +11,7 @@ description = "Ursa's rpc server implementation"
 axum = "0.5.7"
 bytes = "1.1.0"
 anyhow = "1.0.56"
+cid="0.8.5"
 futures = "0.3.21"
 tracing = "0.1.33"
 jsonrpc-v2 = "0.11.0"
@@ -32,3 +33,24 @@ default-features = false
 [dev-dependencies]
 simple_logger = "2.1.0"
 db = { package = "forest_db", version = "0.1" }
+
+[dependencies.libp2p]
+version = "0.43.0"
+default-features = false
+features = [
+    "autonat",
+    "dns-async-std",
+    "identify",
+    "kad",
+    "gossipsub",
+    "metrics",
+    "mdns",
+    "mplex",
+    "noise",
+    "ping",
+    "relay",
+    "request-response",
+    "tcp-async-io",
+    "yamux",
+    "serde",
+]
