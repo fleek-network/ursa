@@ -228,7 +228,7 @@ impl<P: StoreParams> Behaviour<P> {
             .bitswap
             .get(utils::convert_cid(cid.to_bytes()), providers);
         self.queries.insert(
-            id.into(),
+            id,
             BitswapInfo {
                 query_id: id,
                 cid,
@@ -353,7 +353,7 @@ impl<P: StoreParams> Behaviour<P> {
                     "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
                     id
                 );
-                match self.queries.remove(&id.into()) {
+                match self.queries.remove(&id) {
                     Some(mut info) => {
                         match result {
                             Err(err) => error!("{:?}", err),

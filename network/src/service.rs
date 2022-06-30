@@ -200,7 +200,7 @@ where
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
-    pub async fn start(mut self) {
+    pub async fn start(mut self) -> Result<()> {
         info!(
             "Node startig up with peerid {:?}",
             self.swarm.local_peer_id()
@@ -222,10 +222,8 @@ where
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
                                         let bitswap_cid = utils::convert_cid(cid.to_bytes());
-                                        match block_found {
-                                            true => loop { if blockstore.contains(&bitswap_cid).unwrap() { break; } },
-                                            _ => {},
-                                        }
+                                        if let true = block_found { loop { if blockstore.contains(&bitswap_cid).unwrap() { break; } } }
+
                                         for chan in chans.into_iter(){
                                             if let Ok(Some(data)) = blockstore.get(&bitswap_cid) {
                                                 if chan.send(Ok(data)).is_err() {
@@ -356,10 +354,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::codec::protocol::RequestType;
-
     use super::*;
 
+    use crate::codec::protocol::RequestType;
     use db::rocks::RocksDb;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use log::LevelFilter;
@@ -399,7 +396,9 @@ mod tests {
         let (service, _) = network_init(&UrsaConfig::default(), Arc::clone(&store));
 
         task::spawn(async {
-            service.start().await;
+            if let Err(err) = service.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
     }
 
@@ -422,11 +421,15 @@ mod tests {
         let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         task::spawn(async {
-            node_2.start().await;
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -471,7 +474,9 @@ mod tests {
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
@@ -501,7 +506,9 @@ mod tests {
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
@@ -533,7 +540,9 @@ mod tests {
         let node_1_sender = node_1.command_sender.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -597,10 +606,15 @@ mod tests {
         let node_2_sender = node_2.command_sender.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
+
         task::spawn(async {
-            node_2.start().await;
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -649,10 +663,15 @@ mod tests {
         // let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
+
         task::spawn(async {
-            node_2.start().await;
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
