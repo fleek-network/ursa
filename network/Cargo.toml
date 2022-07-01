@@ -8,6 +8,7 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's libp2p implementation"
 
 [dependencies]
+cid = "0.8.5"
 fnv = "1.0.7"
 log = "0.4.17"
 bytes = "1.1.0"

@@ -359,10 +359,10 @@ mod tests {
     use crate::codec::protocol::RequestType;
     use db::rocks::RocksDb;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
-    use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
     use store::Store;
+    use tracing::log::LevelFilter;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()

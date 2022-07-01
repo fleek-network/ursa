@@ -8,7 +8,7 @@ use futures::channel::oneshot;
 use ipld_blockstore::BlockStore;
 use jsonrpc_v2::Error;
 use network::UrsaCommand;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use store::Store;
 use tracing::{error, info, warn};
 
@@ -69,14 +69,14 @@ where
 }
 
 /// Network Api
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct NetworkGetParams {
     pub cid: Cid,
 }
 
 pub type NetworkGetResult = bool;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct NetworkPutCarParams {
     pub cid: Cid,
     // pub car: File,

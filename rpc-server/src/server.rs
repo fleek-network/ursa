@@ -4,8 +4,13 @@ use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
     config::RpcConfig,
-    rpc::{api::NetworkInterface, routes, rpc::RpcServer},
+    rpc::{
+        api::NetworkInterface,
+        routes,
+        rpc::{http_handler, RpcServer},
+    },
 };
+use tracing::info;
 
 pub struct Rpc<I>
 where
@@ -27,12 +32,14 @@ where
     }
 
     pub async fn start(&self, config: RpcConfig) -> Result<()> {
+        info!("Rpc server starting up");
         let router = Router::new()
             .merge(routes::network::init())
             .layer(Extension(self.server.clone()));
 
         let http_address = SocketAddr::from(([127, 0, 0, 1], config.rpc_port));
-        axum::Server::bind(&http_address)
+        println!("listening on {}", http_address);
+        let builder = axum::Server::bind(&http_address)
             .serve(router.into_make_service())
             .await?;
 
@@ -48,6 +55,7 @@ mod tests {
     use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use store::Store;
+    use tracing::log::LevelFilter;
 
     use crate::rpc::api::NodeNetworkInterface;
     use network::{config::UrsaConfig, service::UrsaService};
@@ -68,6 +76,7 @@ mod tests {
     async fn test_rpc_start() {
         SimpleLogger::new()
             .with_utc_timestamps()
+            .with_level(LevelFilter::Info)
             .with_colors(true)
             .init()
             .unwrap();
@@ -81,7 +90,7 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let mut ursa_config = UrsaConfig::default();
+        let ursa_config = UrsaConfig::default();
         let (ursa_node, _) = ursa_network_init(&ursa_config, Arc::clone(&store));
         let ursa_node_sender = ursa_node.command_sender().clone();
 
