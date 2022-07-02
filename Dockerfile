@@ -1,5 +1,8 @@
 FROM rust:latest as builder
 
+# Install dependencies
+RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
+
 # Make a fake Rust app to keep a cached layer of compiled crates
 # RUN USER=root cargo new app
 # WORKDIR /usr/src/app
@@ -27,9 +30,6 @@ FROM debian:bullseye-slim
 
 # USER app
 # WORKDIR /app
-
-# Install dependencies
-RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
 
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /usr/local/cargo/bin/ursa /usr/local/bin/ursa
