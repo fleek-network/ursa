@@ -12,14 +12,17 @@
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
 use anyhow::{anyhow, Result};
+
 use async_std::{
     channel::{unbounded, Receiver, Sender},
     task,
 };
+
+use fnv::FnvHashMap;
 use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::DefaultParams;
+use libipld::{Block, Cid, DefaultParams};
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
@@ -27,14 +30,13 @@ use libp2p::{
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
-use libp2p_bitswap::BitswapEvent;
+use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use std::{collections::HashSet, sync::Arc};
 use store::{BitswapStorage, Store};
-use tiny_cid::Cid;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BehaviourEventError},
+    behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
@@ -48,14 +50,12 @@ pub enum UrsaCommand {
     /// Rpc commands
     Get {
         cid: Cid,
-        sender: oneshot::Sender<HashSet<PeerId>>,
+        sender: BlockSenderChannel,
     },
-
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
     },
-
     GetPeers {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
@@ -92,7 +92,7 @@ pub enum UrsaEvent {
 pub struct UrsaService<S> {
     /// Store
     store: Arc<Store<S>>,
-    /// The main libp2p swamr emitting events.
+    /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
     command_sender: Sender<UrsaCommand>,
@@ -102,6 +102,8 @@ pub struct UrsaService<S> {
     event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
+    /// hashmap for keeping track of rpc response channels
+    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel>>,
 }
 
 impl<S> UrsaService<S>
@@ -157,6 +159,12 @@ where
                 .unwrap();
         }
 
+        for to_dial in &config.bootstrap_nodes {
+            Swarm::dial(&mut swarm, to_dial.clone())
+                .map_err(|err| anyhow!("{}", err))
+                .unwrap();
+        }
+
         // subscribe to topic
         let topic = Topic::new(URSA_GLOBAL);
         if let Err(error) = swarm.behaviour_mut().subscribe(&topic) {
@@ -178,6 +186,7 @@ where
             command_receiver,
             event_sender,
             event_receiver,
+            response_channels: Default::default(),
         }
     }
 
@@ -186,8 +195,13 @@ where
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
-    pub async fn start(self) {
+    pub async fn start(mut self) -> Result<()> {
+        info!(
+            "Node startig up with peerid {:?}",
+            self.swarm.local_peer_id()
+        );
         let mut swarm = self.swarm.fuse();
+        let mut blockstore = BitswapStorage(self.store.clone());
         let mut command_receiver = self.command_receiver.fuse();
 
         loop {
@@ -196,7 +210,31 @@ where
                     if let Some(event) = event {
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
-                                BehaviourEvent::Bitswap(_) => {},
+                                BehaviourEvent::Bitswap(info)=> {
+                                    let BitswapInfo {cid, query_id, block_found } = info;
+                                    swarm.get_mut().behaviour_mut().cancel(query_id);
+                                    if let Some (chans) = self.response_channels.remove(&cid) {
+                                        // TODO: in some cases, the insert takes few milliseconds after query complete is received
+                                        // wait for block to be inserted
+                                        if let true = block_found { loop { if blockstore.contains(&cid).unwrap() { break; } } }
+
+                                        for chan in chans.into_iter(){
+                                            if let Ok(Some(data)) = blockstore.get(&cid) {
+                                                if chan.send(Ok(data)).is_err() {
+                                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
+                                                }
+                                                info!("[BehaviourEvent::Bitswap] - Send Bitswap block with cid {:?}, via oneshot channel", cid);
+                                            } else {
+                                                error!("[BehaviourEvent::Bitswap] - block not found.");
+                                                if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
+                                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
+                                    }
+                    },
                                 BehaviourEvent::GossipMessage {
                                     peer,
                                     topic,
@@ -270,7 +308,20 @@ where
                 command = command_receiver.next() => {
                     if let Some(command) = command {
                         match command {
-                            UrsaCommand::Get { cid, sender } => {},
+                            UrsaCommand::Get { cid, sender } => {
+                                if let Ok(Some(data)) = blockstore.get(&cid) {
+                                    let _ = sender.send(Ok(data));
+                                } else {
+                                    if let Some(chans) = self.response_channels.get_mut(&cid) {
+                                        chans.push(sender);
+                                    } else {
+                                        self.response_channels.insert(cid, vec![sender]);
+                                    }
+                                    let peers = swarm.get_mut().behaviour_mut().peers();
+                                    swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
+                                }
+
+                            },
                             UrsaCommand::Put { cid, sender } => {},
                             UrsaCommand::GetPeers { sender } => {
                                 let peers = swarm.get_mut().behaviour_mut().peers();
@@ -297,14 +348,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::codec::protocol::RequestType;
-
     use super::*;
 
+    use crate::codec::protocol::RequestType;
     use db::rocks::RocksDb;
+    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, DefaultParams, Ipld};
+    use log::LevelFilter;
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
     use store::Store;
+
+    fn create_block(ipld: Ipld) -> Block<DefaultParams> {
+        Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
+    }
 
     fn network_init(
         config: &UrsaConfig,
@@ -313,7 +369,7 @@ mod tests {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
 
-        let service = UrsaService::new(keypair, &config, store);
+        let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
     }
@@ -334,11 +390,11 @@ mod tests {
         let (service, _) = network_init(&UrsaConfig::default(), Arc::clone(&store));
 
         task::spawn(async {
-            service.start().await;
+            if let Err(err) = service.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
     }
-
-    // fn test_network_bitswap() {}
 
     #[async_std::test]
     async fn test_network_gossip() {
@@ -359,11 +415,15 @@ mod tests {
         let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         task::spawn(async {
-            node_2.start().await;
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -408,7 +468,9 @@ mod tests {
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
@@ -438,7 +500,9 @@ mod tests {
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
@@ -457,7 +521,6 @@ mod tests {
     async fn test_network_req_res() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
-        let topic = Topic::new(URSA_GLOBAL);
 
         let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
@@ -471,7 +534,9 @@ mod tests {
         let node_1_sender = node_1.command_sender.clone();
 
         task::spawn(async {
-            node_1.start().await;
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -490,15 +555,144 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage {
-                peer,
-                request,
-                channel,
-            })) = swarm_2.next().await
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage { request, .. })) =
+                swarm_2.next().await
             {
                 info!("Node 2 RequestMessage: {:?}", request);
                 break;
             }
         }
+    }
+
+    #[async_std::test]
+    async fn test_bitswap_get() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let mut config = UrsaConfig::default();
+
+        let db1 = Arc::new(RocksDb::open("test_db1").expect("Opening RocksDB must succeed"));
+        let db2 = Arc::new(RocksDb::open("test_db2").expect("Opening RocksDB must succeed"));
+
+        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let store2 = Arc::new(Store::new(Arc::clone(&db2)));
+
+        let mut bitswap_store_1 = BitswapStorage(store1.clone());
+
+        let (node_1, _) = network_init(&config, Arc::clone(&store1));
+
+        let block = create_block(ipld!(&b"hello world"[..]));
+        info!("inserting block into bitswap store for node 1");
+        if let Err(err) = bitswap_store_1.insert(&block) {
+            error!(
+                "there was an error while inserting into the blockstore {:?}",
+                err
+            );
+        } else {
+            info!("block inserted successfully");
+        }
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let (node_2, _) = network_init(&config, Arc::clone(&store2));
+
+        let node_2_sender = node_2.command_sender.clone();
+
+        task::spawn(async {
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        task::spawn(async {
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let (sender, receiver) = oneshot::channel();
+
+        let msg = UrsaCommand::Get {
+            cid: *block.cid(),
+            sender,
+        };
+        node_2_sender.send(msg).await.unwrap();
+
+        futures::executor::block_on(async {
+            info!("waiting for msg on block receive channel...");
+            let value = receiver.await.expect("Unable to receive from channel");
+            match value {
+                Ok(val) => assert_eq!(val, block.data()),
+                _ => {}
+            }
+        });
+    }
+
+    #[async_std::test]
+    async fn test_bitswap_get_block_not_found() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let mut config = UrsaConfig::default();
+
+        let db1 = Arc::new(RocksDb::open("test_db1").expect("Opening RocksDB must succeed"));
+        let db2 = Arc::new(RocksDb::open("test_db2").expect("Opening RocksDB must succeed"));
+
+        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let store2 = Arc::new(Store::new(Arc::clone(&db2)));
+
+        let (node_1, _) = network_init(&config, Arc::clone(&store1));
+
+        let block = create_block(ipld!(&b"hello world"[..]));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let (node_2, _) = network_init(&config, Arc::clone(&store2));
+
+        let node_2_sender = node_2.command_sender.clone();
+        // let node_2_receiver = node_2.event_receiver.clone();
+
+        task::spawn(async {
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        task::spawn(async {
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let (sender, receiver) = oneshot::channel();
+
+        let msg = UrsaCommand::Get {
+            cid: *block.cid(),
+            sender,
+        };
+        node_2_sender.send(msg).await.unwrap();
+
+        futures::executor::block_on(async {
+            info!("waiting for msg on block receive channel...");
+            let value = receiver.await.expect("Unable to receive from channel");
+            match value {
+                Err(val) => assert_eq!(
+                    val.to_string(),
+                    format!(
+                        "The requested block with cid {:?} is not found with any peers",
+                        *block.cid()
+                    )
+                ),
+                _ => {}
+            }
+        });
     }
 }

@@ -1,5 +1,5 @@
 use crate::config::UrsaConfig;
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},

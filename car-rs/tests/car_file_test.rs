@@ -3,8 +3,8 @@
 
 use async_std::fs::File;
 use async_std::io::BufReader;
-use db::MemoryDB;
 use car_rs::*;
+use db::MemoryDB;
 
 #[async_std::test]
 async fn load_into_blockstore() {

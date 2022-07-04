@@ -36,7 +36,7 @@ impl CarHeader {
         S: Stream<Item = (Cid, Vec<u8>)> + Unpin,
     {
         // Write header bytes
-        let header_bytes = to_vec(self)?;
+        let header_bytes = to_vec(self).unwrap();
         ld_write(writer, &header_bytes).await?;
 
         // Write all key values from the stream

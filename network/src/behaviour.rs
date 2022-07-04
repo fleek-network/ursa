@@ -13,39 +13,37 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
+use anyhow::{Error, Result};
+use fnv::FnvHashMap;
+use futures::channel::oneshot;
+use libipld::{store::StoreParams, Cid};
+use libp2p::{
+    gossipsub::{
+        error::{PublishError, SubscriptionError},
+        Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
+        PeerScoreParams, PeerScoreThresholds, TopicHash,
+    },
+    identify::{Identify, IdentifyConfig, IdentifyEvent},
+    identity::Keypair,
+    kad,
+    ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    request_response::{
+        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
+        RequestResponseMessage, ResponseChannel,
+    },
+    swarm::{
+        NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
+    },
+    NetworkBehaviour, PeerId,
+};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
     task::{Context, Poll},
     time::Duration,
 };
-
-use anyhow::{Error, Result};
-use futures::channel::oneshot;
-use libipld::store::StoreParams;
-use libp2p::{
-    core::either::EitherError,
-    gossipsub::{
-        error::{GossipsubHandlerError, PublishError, SubscriptionError},
-        Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
-        PeerScoreParams, PeerScoreThresholds, TopicHash,
-    },
-    identify::{Identify, IdentifyConfig, IdentifyEvent},
-    identity::Keypair,
-    kad::QueryId,
-    ping::{self, Ping, PingEvent, PingFailure, PingSuccess},
-    request_response::{
-        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
-        RequestResponseMessage, ResponseChannel,
-    },
-    swarm::{
-        ConnectionHandlerUpgrErr, NetworkBehaviour, NetworkBehaviourAction,
-        NetworkBehaviourEventProcess, PollParameters,
-    },
-    NetworkBehaviour, PeerId,
-};
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
@@ -54,18 +52,27 @@ use crate::{
     gossipsub::UrsaGossipsub,
 };
 
+pub type BlockSenderChannel = oneshot::Sender<Result<Vec<u8>, Error>>;
+
+#[derive(Debug)]
+pub struct BitswapInfo {
+    pub cid: Cid,
+    pub query_id: QueryId,
+    pub block_found: bool,
+}
+
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Bitswap(BitswapEvent),
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
     /// A Gossip message request was recieved from a peer.
+    Bitswap(BitswapInfo),
     GossipMessage {
         peer: PeerId,
         topic: TopicHash,
@@ -79,20 +86,6 @@ pub enum BehaviourEvent {
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
 }
-
-pub type BehaviourEventError = EitherError<
-    EitherError<
-        EitherError<
-            EitherError<
-                EitherError<ping::Failure, std::io::Error>,
-                ConnectionHandlerUpgrErr<std::io::Error>,
-            >,
-            GossipsubHandlerError,
-        >,
-        std::io::Error,
-    >,
-    ConnectionHandlerUpgrErr<std::io::Error>,
->;
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
 ///
@@ -137,6 +130,8 @@ pub struct Behaviour<P: StoreParams> {
     /// Pending requests
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    #[behaviour(ignore)]
+    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -187,6 +182,7 @@ impl<P: StoreParams> Behaviour<P> {
             events: VecDeque::new(),
             pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
+            queries: Default::default(),
         }
     }
 
@@ -202,7 +198,7 @@ impl<P: StoreParams> Behaviour<P> {
         self.discovery.peers().clone()
     }
 
-    pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
+    pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
         self.discovery.bootstrap()
     }
 
@@ -224,6 +220,27 @@ impl<P: StoreParams> Behaviour<P> {
         self.pending_responses.insert(request_id, sender);
 
         Ok(())
+    }
+    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
+        let id = self.bitswap.get(cid, providers);
+        self.queries.insert(
+            id,
+            BitswapInfo {
+                query_id: id,
+                cid,
+                block_found: false,
+            },
+        );
+    }
+
+    pub fn sync_block() {
+        todo!()
+    }
+
+    pub fn cancel(&mut self, id: QueryId) {
+        self.queries.remove(&id);
+        self.bitswap.cancel(id);
     }
 
     fn poll(
@@ -300,7 +317,6 @@ impl<P: StoreParams> Behaviour<P> {
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
-                    ()
                 }
 
                 // check if received identify is from a peer on the same network
@@ -325,15 +341,30 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
-            BitswapEvent::Progress(query_id, counter) => {
-                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
-                // When a block is received and missing blocks is not empty the counter is increased.
-                // If missing blocks is empty the counter is decremented.
-
-                // keep track of all the query ids.
+            BitswapEvent::Progress(id, missing) => {
+                // only required if need to handle sync queries
+                todo!();
             }
-            BitswapEvent::Complete(query_id, result) => {
-                // A get or sync query completed.
+            BitswapEvent::Complete(id, result) => {
+                info!(
+                    "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
+                    id
+                );
+                match self.queries.remove(&id) {
+                    Some(mut info) => {
+                        match result {
+                            Err(err) => error!("{:?}", err),
+                            Ok(_res) => info.block_found = true,
+                        }
+                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                    }
+                    _ => {
+                        debug!(
+                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
+                            id
+                        )
+                    }
+                }
             }
         }
     }
