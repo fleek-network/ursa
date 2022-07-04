@@ -1,35 +1,38 @@
 FROM rust:latest as builder
 
 # Make a fake Rust app to keep a cached layer of compiled crates
-RUN USER=root cargo new --bin ursa
-WORKDIR /usr/src/ursa
+# RUN USER=root cargo new app
+# WORKDIR /usr/src/app
+# COPY ./cli/Cargo.toml ./cli/Cargo.lock ./
 
-COPY ../Cargo.toml ../Cargo.lock ./
+# # Needs at least a main.rs file with a main function
+# RUN mkdir src && echo "fn main(){}" > src/main.rs
 
-# Needs at least a main.rs file with a main function
-RUN mkdir src && echo "fn main(){}" > src/main.rs
-
-# Will build all dependent crates in release mode
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/src/app/target \
-    cargo build --release
+# # Will build all dependent crates in release mode
+# RUN --mount=type=cache,target=/usr/local/cargo/registry \
+#     --mount=type=cache,target=/usr/src/app/target \
+#     cargo build --release
 
 # Copy the rest
-COPY ../ .
+COPY . .
+
 # Build (install) the actual binaries
-RUN cargo install --path .
+RUN make install
 
 # Runtime image
 FROM debian:bullseye-slim
 
 # Run as "app" user
-RUN useradd -ms /bin/bash ursa
+# RUN useradd -ms /bin/bash app
 
-USER ursa
-WORKDIR /ursa
+# USER app
+# WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/local/cargo/bin/hello /app/hello
+COPY --from=builder /usr/local/cargo/bin/ursa /usr/local/bin/ursa
 
-# run ursa node with internal ipfs node
-CMD ["./ursa", "8080", "ursa-ipfs.internal:5001"]
+# run ursa node
+ENTRYPOINT ["/usr/local/bin/ursa"]

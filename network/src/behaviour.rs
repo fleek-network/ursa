@@ -224,7 +224,7 @@ impl<P: StoreParams> Behaviour<P> {
         info!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(cid, providers);
         self.queries.insert(
-            id.into(),
+            id,
             BitswapInfo {
                 query_id: id,
                 cid,
@@ -349,7 +349,7 @@ impl<P: StoreParams> Behaviour<P> {
                     "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
                     id
                 );
-                match self.queries.remove(&id.into()) {
+                match self.queries.remove(&id) {
                     Some(mut info) => {
                         match result {
                             Err(err) => error!("{:?}", err),
