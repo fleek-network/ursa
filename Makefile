@@ -17,6 +17,7 @@ docker-build:
 
 docker-run:
 	docker run --name ursa-cli -it ursa
+#	docker run ursa
 
 docker: docker-build docker-run
 
