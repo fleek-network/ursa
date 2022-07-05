@@ -23,11 +23,11 @@
     - `80` - will redirect to HTTPS port 443
     - `443` - point to the certificate folder and nginx that we get from cerbot, then we proxy the traffic.
 
-- **Cerbot**: will be use to generate and update our certificates
+- **Cerbot**: will be used to generate and update our certificates
   - This shares two volumes with the nginx server to store the certificates themselves, as well as managing the web handshake 
-  - download cerbot configration files under `./data/certbot` from ``.
+  - download cerbot configration files under `./data/certbot` from `https://github.com/certbot/certbot`.
     - `options-ssl-nginx.conf`
-    - 
+    - `ssl-dhparams.pem`
   - Setup the initial certificates
     - nginx needs a certificate to startup SSL.
       - therefore create a fake cert at first which will later be replaced with certbot.
