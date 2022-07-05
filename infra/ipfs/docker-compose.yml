@@ -4,6 +4,7 @@ services:
   # Proxy to ipfs
   nginx:
     image: nginx:latest
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
     ports:
       - "80:80"
       - "443:443"
@@ -12,25 +13,25 @@ services:
       - ./data/nginx:/etc/nginx/conf.d
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 
-  # Will update certs periodically
+  # Get and update certs periodically
   certbot:
-    image: certbot/certbot
+    image: certbot/certbot:latest
+    command: certonly --webroot --webroot-path=/var/www/certbot --email mahmoud@fleek.co -d b0tch.com -d www.b0tch.com --agree-tos --no-eff-email --rsa-key-size 4096 --force-renewal" certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/logs:/var/log/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-
+      
   ipfs:
     image: ipfs/go-ipfs:latest
     environment:
       - IPFS_PROFILE=server
-      - IPFS_PATH=/ipfsdata
+      - IPFS_PATH=/data/ipfs
     volumes:
-      - ./data/ipfs:/ipfsdata
+      - ./data/ipfs:/data/ipfs
     ports:
-      - "4001:4001"
-      - "127.0.0.1:8080:8080"
-      - "127.0.0.1:8081:8081"
-      - "127.0.0.1:5001:5001"
+      - "4001:4001" # ipfs swarm - exposed to the outside world
+      - "127.0.0.1:8080:8080" # ipfs gateway - expose only on localhost
+      - "127.0.0.1:5001:5001" # ipfs api - exposed only on localhost
