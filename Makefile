@@ -16,10 +16,10 @@ docker-build:
 	docker build -t ursa -f ./Dockerfile .
 
 docker-build-dev:
-	docker build -t ursa-dev -f ./Dockerfile.dev --progress tty .
+	docker build -t ursa -f ./Dockerfile.dev --progress tty .
 
 docker-run-dev:
-	docker run --name ursa-dev -it ursa
+	docker run --name ursa-cli -it ursa
 
 docker-run:
 	docker run --name ursa-cli -it ursa
