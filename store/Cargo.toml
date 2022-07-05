@@ -1,0 +1,21 @@
+[package]
+name = "store"
+version = "0.1.0"
+edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's store implementation"
+
+[dependencies]
+tracing = "0.1.35"
+async-trait = "0.1.56"
+ipld_blockstore = "0.1.1"
+libp2p-bitswap = "0.22.0"
+libipld = { version = "0.12.0"}
+db = { package = "forest_db", version = "0.1" }
+async-std = { version = "1.11.0", features = ["attributes"] }
+
+[features]
+default = ["rocksdb"]
+rocksdb = ["db/rocksdb", "ipld_blockstore/rocksdb"]

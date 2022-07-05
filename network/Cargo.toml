@@ -8,17 +8,23 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's libp2p implementation"
 
 [dependencies]
+fnv = "1.0.7"
+log = "0.4.17"
 bytes = "1.1.0"
 anyhow = "1.0.56"
+serde = "1.0.137"
 futures = "0.3.21"
 tracing = "0.1.33"
 tiny-cid = "0.3.0"
 jsonrpc-v2 = "0.11.0"
 # Temp quic lib
 libp2p-quic = "0.6.1"
+serde_json = "1.0.81"
 async-trait = "0.1.53"
+futures-util = "0.3.21"
 libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
+store = { path = "../store" }
 async-std = { version = "1.11.0", features = ["attributes"] }
 
 [dependencies.libipld]
@@ -45,3 +51,7 @@ features = [
     "yamux",
     "serde",
 ]
+
+[dev-dependencies]
+simple_logger = "2.1.0"
+db = { package = "forest_db", version = "0.1" }

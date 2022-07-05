@@ -1,18 +1,15 @@
-mod config;
-
+use network::UrsaConfig;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{prelude::*, Result};
 use std::path::Path;
 use std::path::PathBuf;
-use std::process;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
+use std::{process, thread};
 use structopt::StructOpt;
-use toml;
 use tracing::{error, info, warn};
-
-pub use self::config::CliConfig as Config;
 
 /// CLI structure generated when interacting with URSA binary
 #[derive(StructOpt)]
@@ -57,25 +54,23 @@ pub struct CliOpts {
 }
 
 impl CliOpts {
-    pub fn to_config(&self) -> Result<Config> {
-        let cfg: Config = match &self.config {
-            Some(config_file) => {
-                info!(
-                    "Reading configuration from user provided config file {}",
-                    config_file
-                );
-                // Read from config file
-                let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
-                // Parse and return the configuration file
-                // read_toml(&toml)?
-                let toml_str = toml::from_str(&toml).unwrap();
-                toml_str
-            }
-            None => {
-                info!("No Configuration provided by the user, Using default config");
-                Config::default()
-            }
+    pub fn to_config(&self) -> Result<UrsaConfig> {
+        let cfg: UrsaConfig = if let Some(config_file) = &self.config {
+            info!(
+                "Reading configuration from user provided config file {}",
+                config_file
+            );
+            // Read from config file
+            let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
+            // Parse and return the configuration file
+            // read_toml(&toml)?
+            let toml_str = toml::from_str(&toml).unwrap();
+            toml_str
+        } else {
+            info!("No Configuration provided by the user, Using default config");
+            UrsaConfig::default()
         };
+
         Ok(cfg)
     }
 }
@@ -94,8 +89,21 @@ pub fn read_file_to_string(path: &Path) -> Result<String> {
     Ok(string)
 }
 
+pub fn wait_until_ctrlc() {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    while running.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// Blocks current thread until ctrl-c is received
-pub async fn block_until_sigint() {
+pub async fn _block_until_sigint() {
     let (ctrlc_send, ctrlc_oneshot) = futures::channel::oneshot::channel();
     let ctrlc_send_c = RefCell::new(Some(ctrlc_send));
 

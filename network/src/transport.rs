@@ -23,11 +23,7 @@ use libp2p::{
 
 use crate::config::UrsaConfig;
 
-pub struct UrsaTransport {
-    tcp: TcpConfig,
-    quic: TcpConfig,
-    relay_client: Option<RelayClient>,
-}
+pub struct UrsaTransport;
 
 impl UrsaTransport {
     /// Creates a new [`UrsaTransport`].
@@ -47,7 +43,7 @@ impl UrsaTransport {
         let tcp = {
             let noise = {
                 let dh_keys = noise::Keypair::<noise::X25519Spec>::new()
-                    .into_authentic(&id_keys)
+                    .into_authentic(id_keys)
                     .expect("Signing libp2p-noise static DH keypair failed.");
 
                 noise::NoiseConfig::xx(dh_keys).into_authenticated()
@@ -80,11 +76,12 @@ impl UrsaTransport {
         // };
         // self.quic.or_transport(self.tcp)
 
-        OrTransport::new(tcp, tcp)
-            .map(|either_output, _| match either_output {
-                EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-                EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-            })
-            .boxed()
+        // OrTransport::new(tcp, tcp)
+        //     .map(|either_output, _| match either_output {
+        //         EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+        //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+        //     })
+        //     .boxed()
+        tcp.boxed()
     }
 }

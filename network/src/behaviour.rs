@@ -13,42 +13,53 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
-use std::{
-    collections::{HashSet, VecDeque},
-    task::{Context, Poll},
-};
-
 use anyhow::{Error, Result};
-use libipld::store::StoreParams;
+use fnv::FnvHashMap;
+use futures::channel::oneshot;
+use libipld::{store::StoreParams, Cid};
 use libp2p::{
     gossipsub::{
         error::{PublishError, SubscriptionError},
-        Gossipsub, GossipsubEvent, IdentTopic as Topic,
+        Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
+        PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    kad::QueryId,
+    kad,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
     request_response::{
-        ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
-        RequestResponseMessage,
+        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
+        RequestResponseMessage, ResponseChannel,
     },
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
     NetworkBehaviour, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore};
-use tiny_cid::Cid;
-use tracing::{debug, trace};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    iter,
+    task::{Context, Poll},
+    time::Duration,
+};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
-    discovery::behaviour::{DiscoveryBehaviour, DiscoveryEvent},
+    discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    types::UrsaRequestResponseEvent,
 };
+
+pub type BlockSenderChannel = oneshot::Sender<Result<Vec<u8>, Error>>;
+
+#[derive(Debug)]
+pub struct BitswapInfo {
+    pub cid: Cid,
+    pub query_id: QueryId,
+    pub block_found: bool,
+}
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
@@ -56,12 +67,24 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Ping(PingEvent),
-    Bitswap(BitswapEvent),
-    Gossip(GossipsubEvent),
-    Identify(IdentifyEvent),
-    Discovery(DiscoveryEvent),
-    RequestResponse(UrsaRequestResponseEvent),
+    /// An event trigger when remote peer connects.
+    PeerConnected(PeerId),
+    /// An event trigger when remote peer disconnects.
+    PeerDisconnected(PeerId),
+    /// A Gossip message request was recieved from a peer.
+    Bitswap(BitswapInfo),
+    GossipMessage {
+        peer: PeerId,
+        topic: TopicHash,
+        message: GossipsubMessage,
+    },
+    /// A message request was recieved from a peer.
+    /// Attached is a channel for returning a response.
+    RequestMessage {
+        peer: PeerId,
+        request: UrsaExchangeRequest,
+        channel: ResponseChannel<UrsaExchangeResponse>,
+    },
 }
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
@@ -79,49 +102,71 @@ pub enum BehaviourEvent {
 pub struct Behaviour<P: StoreParams> {
     /// Aliving checks.
     ping: Ping,
+
     // Identifying peer info to other peers.
     identify: Identify,
+
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
+
     /// Ursa's gossiping protocol for message propagation.
     gossipsub: Gossipsub,
+
     /// Kademlia discovery and bootstrap.
     discovery: DiscoveryBehaviour,
+
     /// request/response protocol implementation for [`UrsaProtocol`]
     request_response: RequestResponse<UrsaExchangeCodec>,
+
     /// Ursa's emitted events.
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
+
+    /// Pending responses
+    #[behaviour(ignore)]
+    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
+
+    /// Pending requests
+    #[behaviour(ignore)]
+    pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    #[behaviour(ignore)]
+    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &UrsaConfig,
-        store: S,
+        bitswap_store: S,
     ) -> Self {
         let local_public_key = keypair.public();
-
-        // TODO: check if UrsaConfig has configs for the behaviours, if not instaniate new ones
 
         // Setup the ping behaviour
         let ping = Ping::default();
 
         // Setup the gossip behaviour
-        let gossipsub = UrsaGossipsub::new(keypair, config);
+        let mut gossipsub = UrsaGossipsub::new(keypair, config);
+        // todo(botch): handle gracefully
+        gossipsub
+            .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
+            .expect("PeerScoreParams and PeerScoreThresholds");
 
         // Setup the discovery behaviour
         let discovery = DiscoveryBehaviour::new(keypair, config);
 
         // Setup the bitswap behaviour
-        let bitswap = Bitswap::new(BitswapConfig::default(), store);
+        let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
         let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
 
         let request_response = {
-            let cfg = RequestResponseConfig::default();
-            let protocols = std::iter::once((UrsaProtocol, ProtocolSupport::Full));
+            let mut cfg = RequestResponseConfig::default();
+
+            // todo(botch): calculate an upper limit to allow for large files
+            cfg.set_request_timeout(Duration::from_secs(60));
+
+            let protocols = iter::once((UrsaProtocol, ProtocolSupport::Full));
 
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
@@ -134,14 +179,25 @@ impl<P: StoreParams> Behaviour<P> {
             discovery,
             request_response,
             events: VecDeque::new(),
+            pending_requests: HashMap::default(),
+            pending_responses: HashMap::default(),
+            queries: Default::default(),
         }
     }
 
-    pub fn peers(&self) -> &HashSet<PeerId> {
-        &self.discovery.peers()
+    pub fn publish(
+        &mut self,
+        topic: Topic,
+        data: GossipsubMessage,
+    ) -> Result<MessageId, PublishError> {
+        self.gossipsub.publish(topic, data.data)
     }
 
-    pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
+    pub fn peers(&self) -> HashSet<PeerId> {
+        self.discovery.peers().clone()
+    }
+
+    pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
         self.discovery.bootstrap()
     }
 
@@ -151,6 +207,39 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn unsubscribe(&mut self, topic: &Topic) -> Result<bool, PublishError> {
         self.gossipsub.unsubscribe(topic)
+    }
+
+    pub fn send_request(
+        &mut self,
+        peer: PeerId,
+        request: UrsaExchangeRequest,
+        sender: oneshot::Sender<Result<UrsaExchangeResponse>>,
+    ) -> Result<()> {
+        let request_id = self.request_response.send_request(&peer, request);
+        self.pending_responses.insert(request_id, sender);
+
+        Ok(())
+    }
+    pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
+        info!("get block via rpc called, the requested cid is: {:?}", cid);
+        let id = self.bitswap.get(cid, providers);
+        self.queries.insert(
+            id,
+            BitswapInfo {
+                query_id: id,
+                cid,
+                block_found: false,
+            },
+        );
+    }
+
+    pub fn sync_block() {
+        todo!()
+    }
+
+    pub fn cancel(&mut self, id: QueryId) {
+        self.queries.remove(&id);
+        self.bitswap.cancel(id);
     }
 
     fn poll(
@@ -170,20 +259,20 @@ impl<P: StoreParams> Behaviour<P> {
         Poll::Pending
     }
 
-    pub fn handle_ping(&mut self, event: PingEvent) {
+    fn handle_ping(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
         match event.result {
             Ok(result) => match result {
                 PingSuccess::Pong => {
                     trace!(
-                        "PingSuccess::Pong received a ping and sent back a pong to {}",
+                        "PingSuccess::Pong] - received a ping and sent back a pong to {}",
                         peer
                     );
                 }
                 PingSuccess::Ping { rtt } => {
                     trace!(
-                        "PingSuccess::Ping with rtt {} from {} in ms",
+                        "[PingSuccess::Ping] - with rtt {} from {} in ms",
                         rtt.as_millis(),
                         peer
                     );
@@ -194,17 +283,17 @@ impl<P: StoreParams> Behaviour<P> {
                 match err {
                     PingFailure::Timeout => {
                         debug!(
-                            "PingFailure::Timeout no response was received from {}",
+                            "[PingFailure::Timeout] - no response was received from {}",
                             peer
                         );
                         // remove peer from list of connected.
                     }
                     PingFailure::Unsupported => {
-                        debug!("PingFailure::Unsupported the peer {} does not support the ping protocol", peer);
+                        debug!("[PingFailure::Unsupported] - the peer {} does not support the ping protocol", peer);
                     }
                     PingFailure::Other { error } => {
                         debug!(
-                            "PingFailure::Other the ping failed with {} for reasons {}",
+                            "[PingFailure::Other] - the ping failed with {} for reasons {}",
                             peer, error
                         );
                     }
@@ -213,14 +302,21 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_identify(&mut self, event: IdentifyEvent) {
+    fn handle_identify(&mut self, event: IdentifyEvent) {
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
-                    "Identification information with version {} has been received from a peer {}.",
+                    "[IdentifyEvent::Received] - with version {} has been received from a peer {}.",
                     info.protocol_version,
                     peer_id
                 );
+
+                if self.peers().contains(&peer_id) {
+                    trace!(
+                        "[IdentifyEvent::Received] - peer {} already known!",
+                        peer_id
+                    );
+                }
 
                 // check if received identify is from a peer on the same network
                 if info
@@ -231,8 +327,8 @@ impl<P: StoreParams> Behaviour<P> {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
-                        self.discovery.add_address(peer_id, address);
-                        self.request_response.add_address(&peer_id, address);
+                        self.discovery.add_address(&peer_id, address.clone());
+                        self.request_response.add_address(&peer_id, address.clone());
                     }
                 }
             }
@@ -242,31 +338,48 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_bitswap(&mut self, event: BitswapEvent) {
+    fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
-            BitswapEvent::Progress(query_id, counter) => {
-                // Received a block from a peer. Includes the number of known missing blocks for a sync query.
-                // When a block is received and missing blocks is not empty the counter is increased.
-                // If missing blocks is empty the counter is decremented.
-
-                // keep track of all the query ids.
+            BitswapEvent::Progress(id, missing) => {
+                // only required if need to handle sync queries
+                todo!();
             }
-            BitswapEvent::Complete(query_id, result) => {
-                // A get or sync query completed.
+            BitswapEvent::Complete(id, result) => {
+                info!(
+                    "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
+                    id
+                );
+                match self.queries.remove(&id) {
+                    Some(mut info) => {
+                        match result {
+                            Err(err) => error!("{:?}", err),
+                            Ok(_res) => info.block_found = true,
+                        }
+                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                    }
+                    _ => {
+                        debug!(
+                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
+                            id
+                        )
+                    }
+                }
             }
         }
     }
 
-    pub fn handle_gossipsub(&mut self, event: GossipsubEvent) {
+    fn handle_gossipsub(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message {
                 propagation_source,
-                message_id,
                 message,
+                ..
             } => {
-                if let Ok(cid) = Cid::try_from(message.data) {
-                    self.events.push_back(BehaviourEvent::Gossip(event));
-                }
+                self.events.push_back(BehaviourEvent::GossipMessage {
+                    peer: propagation_source,
+                    topic: message.topic.clone(),
+                    message,
+                });
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {
                 // A remote subscribed to a topic.
@@ -284,39 +397,101 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    pub fn handle_discovery(&mut self, event: DiscoveryEvent) {
+    fn handle_discovery(&mut self, event: DiscoveryEvent) {
         match event {
-            DiscoveryEvent::Connected { .. } | DiscoveryEvent::Disconnected { .. } => {}
+            DiscoveryEvent::Connected(peer_id) => {
+                self.events
+                    .push_back(BehaviourEvent::PeerConnected(peer_id));
+            }
+            DiscoveryEvent::Disconnected(peer_id) => {
+                self.events
+                    .push_back(BehaviourEvent::PeerDisconnected(peer_id));
+            }
         }
     }
 
-    pub fn handle_request_response(
+    fn handle_request_response(
         &mut self,
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
     ) {
         match event {
-            RequestResponseEvent::Message { peer, message } => match message {
-                RequestResponseMessage::Request {
-                    request_id,
-                    request,
-                    channel,
-                } => {}
-                RequestResponseMessage::Response {
-                    request_id,
-                    response,
-                } => {}
-            },
+            RequestResponseEvent::Message { peer, message } => {
+                match message {
+                    RequestResponseMessage::Request {
+                        request_id,
+                        request,
+                        channel,
+                    } => {
+                        debug!(
+                            "[RequestResponseMessage::Request] - {} {}: {:?}",
+                            request_id, peer, request
+                        );
+                        // self.pending_requests.insert(request_id, channel);
+
+                        self.events.push_back(BehaviourEvent::RequestMessage {
+                            peer,
+                            request,
+                            channel,
+                        });
+                    }
+                    RequestResponseMessage::Response {
+                        request_id,
+                        response,
+                    } => {
+                        debug!(
+                            "[RequestResponseMessage::Response] - {} {}: {:?}",
+                            request_id, peer, response
+                        );
+
+                        if let Some(request) = self.pending_responses.remove(&request_id) {
+                            if request.send(Ok(response)).is_err() {
+                                warn!("[RequestResponseMessage::Response] - failed to send request: {:?}", request_id);
+                            }
+                        }
+
+                        debug!("[RequestResponseMessage::Response] - failed to remove channel for: {:?}", request_id);
+                    }
+                }
+            }
             RequestResponseEvent::OutboundFailure {
                 peer,
                 request_id,
                 error,
-            } => todo!(),
+            } => {
+                debug!(
+                    "[RequestResponseMessage::OutboundFailure] - {} {}: {:?}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                    error.to_string()
+                );
+
+                if let Some(request) = self.pending_responses.remove(&request_id) {
+                    if request.send(Err(error.into())).is_err() {
+                        warn!("[RequestResponseMessage::OutboundFailure] - failed to send request: {:?}", request_id);
+                    }
+                }
+
+                debug!("[RequestResponseMessage::OutboundFailure] - failed to remove channel for: {:?}", request_id);
+            }
             RequestResponseEvent::InboundFailure {
                 peer,
                 request_id,
                 error,
-            } => todo!(),
-            RequestResponseEvent::ResponseSent { peer, request_id } => todo!(),
+            } => {
+                warn!(
+                    "[RequestResponseMessage::InboundFailure] - {} {}: {:?}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                    error.to_string()
+                );
+            }
+            RequestResponseEvent::ResponseSent { peer, request_id } => {
+                debug!(
+                    "[RequestResponseMessage::ResponseSent] - {}: {}",
+                    peer.to_string(),
+                    request_id.to_string(),
+                );
+            }
         }
     }
 }

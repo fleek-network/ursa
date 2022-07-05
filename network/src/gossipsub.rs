@@ -1,5 +1,5 @@
 use crate::config::UrsaConfig;
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -9,12 +9,12 @@ use std::{
 use libp2p::{
     gossipsub::{
         Gossipsub, GossipsubConfigBuilder, GossipsubMessage, MessageAuthenticity, MessageId,
-        PeerScoreParams, PeerScoreThresholds, ValidationMode,
+        ValidationMode,
     },
     identity::Keypair,
 };
 
-const URSA_GOSSIP_PROTOCOL: &str = "/ursa/gossipsub/0.0.1";
+const URSA_GOSSIP_PROTOCOL: &str = "ursa/gossipsub/0.0.1";
 
 ///
 #[derive(Debug)]
@@ -22,8 +22,6 @@ pub struct UrsaGossipsub;
 
 impl UrsaGossipsub {
     pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Gossipsub {
-        let history_length = 5;
-        let history_gossip = 3;
         let mesh_n = 8;
         let mesh_n_low = 4;
         let mesh_n_high = 12;
@@ -32,7 +30,8 @@ impl UrsaGossipsub {
         let fanout_ttl = Duration::from_secs(60);
         // D_out
         let mesh_outbound_min = (mesh_n / 2) - 1;
-        let max_transmit_size = 16 * 1024 * 1024;
+        let max_transmit_size = 4 * 1024 * 1024;
+        // todo(botch): should we limit the number here?
         let max_msgs_per_rpc = 1;
         let cache_size = Duration::from_secs(60);
         let message_id_fn = move |message: &GossipsubMessage| {
@@ -43,8 +42,6 @@ impl UrsaGossipsub {
 
         let gossip_config = GossipsubConfigBuilder::default()
             .protocol_id_prefix(URSA_GOSSIP_PROTOCOL)
-            .history_length(history_length)
-            .history_gossip(history_gossip)
             .mesh_n(mesh_n)
             .mesh_n_low(mesh_n_low)
             .mesh_n_high(mesh_n_high)
@@ -64,14 +61,8 @@ impl UrsaGossipsub {
             .build()
             .expect("gossipsub config");
 
-        let mut gossipsub =
-            Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config)
-                .map_err(|err| anyhow!("{}", err));
-
-        // Defaults for now
-        let params = PeerScoreParams::default();
-        let threshold = PeerScoreThresholds::default();
-
-        gossipsub.unwrap()
+        Gossipsub::new(MessageAuthenticity::Signed(keypair.clone()), gossip_config)
+            .map_err(|err| anyhow!("{}", err))
+            .unwrap()
     }
 }

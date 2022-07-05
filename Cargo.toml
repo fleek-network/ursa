@@ -1,0 +1,16 @@
+[workspace]
+members = [
+  "cli",
+  "network",
+  "store",
+  "car-rs",
+]
+
+exclude = [
+  "infra",
+]
+
+[profile.release]
+lto = true
+opt-level = 'z'
+codegen-units = 1

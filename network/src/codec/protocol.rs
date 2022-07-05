@@ -1,9 +1,19 @@
-use std::pin::Pin;
-
-use anyhow::Result;
 use async_trait::async_trait;
-use futures::{AsyncRead, Future};
-use libp2p::{core::ProtocolName, request_response::RequestResponseCodec};
+use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use libp2p::{
+    core::{
+        upgrade::{read_length_prefixed, write_length_prefixed},
+        ProtocolName,
+    },
+    request_response::RequestResponseCodec,
+};
+use serde::{Deserialize, Serialize};
+use std::io;
+
+/// Max request size in bytes
+const MAX_REQUEST_SIZE: usize = 4 * 1024 * 1024; // 1 << 22
+/// Max response size in bytes
+const MAX_RESPONSE_SIZE: usize = 10 * 1024 * 1024;
 
 pub const PROTOCOL_NAME: &[u8] = b"/ursa/txrx/0.0.1";
 
@@ -19,11 +29,30 @@ impl ProtocolName for UrsaProtocol {
 #[derive(Debug, Clone)]
 pub struct UrsaExchangeCodec;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct UrsaExchangeRequest;
+// todo(botch): think of a proper structure for a request
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RequestType {
+    // change this to the final cid version
+    CarRequest(String),
+}
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct UrsaExchangeResponse;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UrsaExchangeRequest(pub RequestType);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CarResponse {
+    // change this to the final cid version
+    pub cid: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ResponseType {
+    CarResponse(CarResponse),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UrsaExchangeResponse(pub ResponseType);
 
 #[async_trait]
 impl RequestResponseCodec for UrsaExchangeCodec {
@@ -33,49 +62,96 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 
     type Response = UrsaExchangeResponse;
 
-    fn read_request<T>(
-        &mut self,
-        protocol: &Self::Protocol,
-        io: &mut T,
-    ) -> Pin<Box<dyn Future<Output = Result<Self::Request>> + Send>>
+    async fn read_request<T>(&mut self, _: &Self::Protocol, io: &mut T) -> io::Result<Self::Request>
     where
         T: AsyncRead + Unpin + Send,
     {
-        todo!()
+        let vec = read_length_prefixed(io, MAX_REQUEST_SIZE).await?;
+
+        if vec.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+
+        let request: UrsaExchangeRequest =
+            serde_json::from_str(&String::from_utf8(vec).unwrap()).unwrap();
+
+        Ok(request)
     }
 
-    fn read_response<T>(
+    async fn read_response<T>(
         &mut self,
-        protocol: &Self::Protocol,
+        _: &Self::Protocol,
         io: &mut T,
-    ) -> Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>
+    ) -> io::Result<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
-        todo!()
+        let vec = read_length_prefixed(io, MAX_RESPONSE_SIZE).await?;
+
+        if vec.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+
+        let response: UrsaExchangeResponse =
+            serde_json::from_str(&String::from_utf8(vec).unwrap()).unwrap();
+
+        Ok(response)
     }
 
-    fn write_request<T>(
+    async fn write_request<T>(
         &mut self,
-        protocol: &Self::Protocol,
+        _: &Self::Protocol,
         io: &mut T,
         req: Self::Request,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    ) -> io::Result<()>
+    where
+        T: AsyncWrite + Unpin + Send,
+    {
+        let data = serde_json::to_vec(&req).unwrap();
+        write_length_prefixed(io, &data).await?;
+        io.close().await?;
+
+        Ok(())
+    }
+
+    async fn write_response<T>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        res: Self::Response,
+    ) -> io::Result<()>
     where
         T: futures::AsyncWrite + Unpin + Send,
     {
+        let data = serde_json::to_vec(&res).unwrap();
+        write_length_prefixed(io, &data).await?;
+        io.close().await?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[async_std::test]
+    async fn test_read_request() {
         todo!()
     }
 
-    fn write_response<T>(
-        &mut self,
-        protocol: &Self::Protocol,
-        io: &mut T,
-        res: Self::Response,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
-    where
-        T: futures::AsyncWrite + Unpin + Send,
-    {
+    #[async_std::test]
+    async fn test_read_respose() {
+        todo!()
+    }
+
+    #[async_std::test]
+    async fn test_write_request() {
+        todo!()
+    }
+
+    #[async_std::test]
+    async fn test_write_response() {
         todo!()
     }
 }

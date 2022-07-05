@@ -16,5 +16,3 @@
 .direnv
 
 Cargo.lock
-
-test_db*
