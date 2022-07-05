@@ -1,0 +1,21 @@
+FROM rust:1.61.0 AS builder
+
+ENV DEBIAN_FRONTEND noninteractive
+RUN --mount=type=cache,target=/var/cache/apt \
+    rm -f /etc/apt/apt.conf.d/docker-clean &&\
+    apt-get update &&\
+	  apt-get install -yqq --no-install-recommends build-essential clang &&\
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/ursa
+COPY . .
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/src/ursa/target \
+    make install
+
+
+FROM debian:bullseye-slim
+COPY --from=builder /usr/local/cargo/bin/ursa /usr/local/bin/ursa
+EXPOSE 4069
+ENTRYPOINT ["/usr/local/bin/ursa"]
