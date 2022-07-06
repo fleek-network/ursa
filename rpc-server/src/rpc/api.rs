@@ -27,9 +27,9 @@ pub struct NetworkGetParams {
 pub type NetworkGetResult = bool;
 
 #[derive(Deserialize, Serialize)]
-pub struct NetworkPutCarParams<R: AsyncRead + Send + Unpin> {
+pub struct NetworkPutCarParams {
     pub cid: Cid,
-    pub reader: R,
+    pub data: Vec<u8>,
 }
 
 pub type NetworkPutCarResult = bool;
@@ -42,14 +42,18 @@ pub struct NetworkPutFileParams {
 
 pub type NetworkPutFileResult = bool;
 
+/// Abstraction of Ursa's rpc commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
     type Error;
 
+    /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<()>;
 
+    /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()>;
 
+    // Put a file using a local path
     async fn put_file(&self, cid: Cid, path: String) -> Result<()>;
 }
 
@@ -73,41 +77,29 @@ where
         let request = UrsaCommand::Get { cid, sender };
 
         // use network sender to send command
-        match self.network_send.send(request).await {
-            Err(err) => {
-                error!(
-                    "There was an error while sending the get Ursa Get &Command, {:?}",
-                    err
-                );
-            }
-            Ok(_) => match receiver.await {
-                Ok(_) => todo!(),
-                Err(_err) => todo!(),
-            },
-        }
+        self.network_send.send(request).await?;
+        receiver.await?;
+
         // handle the block receive from the channel
         Ok(())
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()> {
-        if let Ok(cids) = load_car(self.store.blockstore(), reader).await {
-            let (sender, receiver) = oneshot::channel();
-            let request = UrsaCommand::StartProviding { cid, sender };
+        let cids = load_car(self.store.blockstore(), reader).await?;
 
-            if let Err(error) = self.network_send.send(request).await {
-                error!("[put_car] - Sender dropped {:?}", error);
-            }
+        let (sender, receiver) = oneshot::channel();
+        let request = UrsaCommand::StartProviding { cid, sender };
 
-            receiver.await?;
-        }
+        self.network_send.send(request).await?;
+        receiver.await?;
 
         Ok(())
     }
 
     /// Used through CLI
     async fn put_file(&self, cid: Cid, path: String) -> Result<()> {
-        let file = File::open(path).await;
-        let reader = BufReader::new(file.unwrap());
+        let file = File::open(path).await?;
+        let reader = BufReader::new(file);
 
         self.put_car(cid, reader).await
     }

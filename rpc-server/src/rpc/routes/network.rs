@@ -1,19 +1,20 @@
+use async_std::io::Cursor;
 use axum::{
     routing::{get, post},
     Router,
 };
-use futures::AsyncRead;
 use jsonrpc_v2::{Data, Error, Params};
-use libipld::Cid;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::rpc::{
-    api::{
-        NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
-        NetworkPutCarResult,
+use crate::{
+    api::{NetworkPutFileParams, NetworkPutFileResult},
+    rpc::{
+        api::{
+            NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
+            NetworkPutCarResult,
+        },
+        rpc::http_handler,
     },
-    rpc::http_handler,
 };
 
 pub type Result<T> = anyhow::Result<T, Error>;
@@ -31,23 +32,37 @@ pub async fn get_cid_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = params.cid;
-    data.0.get(cid);
+    let _ = data.0.get(params.cid).await;
 
     Ok(true)
 }
 
-pub async fn put_car_handler<I, R: AsyncRead + Send + Unpin>(
+pub async fn put_car_handler<I>(
     data: Data<Arc<I>>,
-    Params(params): Params<NetworkPutCarParams<R>>,
+    Params(params): Params<NetworkPutCarParams>,
 ) -> Result<NetworkPutCarResult>
 where
     I: NetworkInterface,
 {
     let cid = params.cid;
-    let reader = params.reader;
+    let buffer = params.data;
 
-    data.0.put_car(cid, reader);
+    let _ = data.0.put_car(cid, Cursor::new(&buffer)).await;
+
+    Ok(true)
+}
+
+pub async fn put_file_handler<I>(
+    data: Data<Arc<I>>,
+    Params(params): Params<NetworkPutFileParams>,
+) -> Result<NetworkPutFileResult>
+where
+    I: NetworkInterface,
+{
+    let cid = params.cid;
+    let path = params.path;
+
+    let _ = data.0.put_file(cid, path).await;
 
     Ok(true)
 }
