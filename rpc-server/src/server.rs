@@ -37,7 +37,7 @@ where
             .merge(routes::network::init())
             .layer(Extension(self.server.clone()));
 
-        let http_address = SocketAddr::from(([127, 0, 0, 1], config.rpc_port));
+        let http_address = SocketAddr::from(([0, 0, 0, 0], config.rpc_port));
         
         println!("listening on {}", http_address);
         let builder = axum::Server::bind(&http_address)
