@@ -27,7 +27,7 @@ use libipld::DefaultParams;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
-    request_response::ResponseChannel,
+    request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
@@ -49,23 +49,35 @@ pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 #[derive(Debug)]
 pub enum UrsaCommand {
-    /// Rpc commands
     Get {
         cid: Cid,
         sender: BlockSenderChannel,
     },
+
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
     },
+
     GetPeers {
         sender: oneshot::Sender<HashSet<PeerId>>,
+    },
+
+    StartProviding {
+        cid: Cid,
+        sender: oneshot::Sender<Result<Cid>>,
     },
 
     SendRequest {
         peer_id: PeerId,
         request: UrsaExchangeRequest,
         channel: oneshot::Sender<Result<UrsaExchangeResponse>>,
+    },
+
+    SendResponse {
+        request_id: RequestId,
+        response: UrsaExchangeResponse,
+        channel: oneshot::Sender<Result<()>>,
     },
 
     GossipsubMessage {
@@ -333,9 +345,11 @@ where
                                 let peers = swarm.get_mut().behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
+                            UrsaCommand::StartProviding { cid, sender } => todo!(),
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
                                 let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
                             },
+                            UrsaCommand::SendResponse { request_id, response, channel } => todo!(),
                             UrsaCommand::GossipsubMessage { topic, message } => {
                                 if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
                                     warn!(
@@ -630,9 +644,8 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
-            match value {
-                Ok(val) => assert_eq!(val, block.data()),
-                _ => {}
+            if let Ok(val) = value {
+                assert_eq!(val, block.data())
             }
         });
     }

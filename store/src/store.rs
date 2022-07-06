@@ -15,6 +15,10 @@ where
     pub fn new(db: Arc<S>) -> Self {
         Self { db }
     }
+
+    pub fn blockstore(&self) -> &S {
+        &self.db
+    }
 }
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where

@@ -2,7 +2,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use futures::channel::oneshot;
+use futures::AsyncRead;
 use jsonrpc_v2::{Data, Error, Params};
 use libipld::Cid;
 use serde::{Deserialize, Serialize};
@@ -11,10 +11,12 @@ use std::sync::Arc;
 use crate::rpc::{
     api::{
         NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
-        NetworkPutCarResult, Result,
+        NetworkPutCarResult,
     },
     rpc::http_handler,
 };
+
+pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
     Router::new()
@@ -35,12 +37,17 @@ where
     Ok(true)
 }
 
-pub async fn put_car_handler<I>(
+pub async fn put_car_handler<I, R: AsyncRead + Send + Unpin>(
     data: Data<Arc<I>>,
-    Params(params): Params<NetworkPutCarParams>,
+    Params(params): Params<NetworkPutCarParams<R>>,
 ) -> Result<NetworkPutCarResult>
 where
     I: NetworkInterface,
 {
+    let cid = params.cid;
+    let reader = params.reader;
+
+    data.0.put_car(cid, reader);
+
     Ok(true)
 }

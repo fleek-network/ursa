@@ -1,10 +1,12 @@
+use async_std::io::BufReader;
 use std::sync::Arc;
 
+use anyhow::Result;
 use async_std::{channel::Sender, fs::File};
 use async_trait::async_trait;
-use car_rs::CarReader;
+use car_rs::{load_car, CarReader};
 use cid::Cid;
-use futures::channel::oneshot;
+use futures::{channel::oneshot, AsyncRead};
 use ipld_blockstore::BlockStore;
 use jsonrpc_v2::Error;
 use network::UrsaCommand;
@@ -12,11 +14,33 @@ use serde::{Deserialize, Serialize};
 use store::Store;
 use tracing::{error, info, warn};
 
-pub type Result<T> = anyhow::Result<T, Error>;
-
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
 pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // chunk to ~10MB CARs
+
+/// Network Api
+#[derive(Deserialize, Serialize)]
+pub struct NetworkGetParams {
+    pub cid: Cid,
+}
+
+pub type NetworkGetResult = bool;
+
+#[derive(Deserialize, Serialize)]
+pub struct NetworkPutCarParams<R: AsyncRead + Send + Unpin> {
+    pub cid: Cid,
+    pub reader: R,
+}
+
+pub type NetworkPutCarResult = bool;
+
+#[derive(Deserialize, Serialize)]
+pub struct NetworkPutFileParams {
+    pub cid: Cid,
+    pub path: String,
+}
+
+pub type NetworkPutFileResult = bool;
 
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
@@ -24,7 +48,9 @@ pub trait NetworkInterface: Sync + Send + 'static {
 
     async fn get(&self, cid: Cid) -> Result<()>;
 
-    async fn put_car(&self, cid: Cid, car_reader: CarReader<File>) -> Result<()>;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()>;
+
+    async fn put_file(&self, cid: Cid, path: String) -> Result<()>;
 }
 
 pub struct NodeNetworkInterface<S>
@@ -50,7 +76,7 @@ where
         match self.network_send.send(request).await {
             Err(err) => {
                 error!(
-                    "There was an error while sending the get Ursa Get Command, {:?}",
+                    "There was an error while sending the get Ursa Get &Command, {:?}",
                     err
                 );
             }
@@ -63,23 +89,26 @@ where
         Ok(())
     }
 
-    async fn put_car(&self, cid: Cid, car_reader: CarReader<File>) -> Result<()> {
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()> {
+        if let Ok(cids) = load_car(self.store.blockstore(), reader).await {
+            let (sender, receiver) = oneshot::channel();
+            let request = UrsaCommand::StartProviding { cid, sender };
+
+            if let Err(error) = self.network_send.send(request).await {
+                error!("[put_car] - Sender dropped {:?}", error);
+            }
+
+            receiver.await?;
+        }
+
         Ok(())
     }
+
+    /// Used through CLI
+    async fn put_file(&self, cid: Cid, path: String) -> Result<()> {
+        let file = File::open(path).await;
+        let reader = BufReader::new(file.unwrap());
+
+        self.put_car(cid, reader).await
+    }
 }
-
-/// Network Api
-#[derive(Deserialize, Serialize)]
-pub struct NetworkGetParams {
-    pub cid: Cid,
-}
-
-pub type NetworkGetResult = bool;
-
-#[derive(Deserialize, Serialize)]
-pub struct NetworkPutCarParams {
-    pub cid: Cid,
-    // pub car: File,
-}
-
-pub type NetworkPutCarResult = bool;
