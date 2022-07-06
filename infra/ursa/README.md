@@ -9,6 +9,10 @@
 - flyctl ips list
 
 # Reverse Proxy Setup
+- Host
+  - It is assumed that DNS records point to the Docker host
+  - add an A record with the actual domain
+
 - **IPFS**: with local storage at `/data/ipfs` which is mounted locally for presistence.
   - Expose ports:
     - `4001` - ipfs swarm [public]
