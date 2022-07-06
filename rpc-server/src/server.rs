@@ -38,6 +38,7 @@ where
             .layer(Extension(self.server.clone()));
 
         let http_address = SocketAddr::from(([127, 0, 0, 1], config.rpc_port));
+        
         println!("listening on {}", http_address);
         let builder = axum::Server::bind(&http_address)
             .serve(router.into_make_service())
