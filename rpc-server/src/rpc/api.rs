@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_std::{channel::Sender, fs::File};
 use async_trait::async_trait;
-use car_rs::{load_car, CarReader};
+use car_rs::load_car;
 use cid::Cid;
 use futures::{channel::oneshot, AsyncRead};
 use ipld_blockstore::BlockStore;
@@ -21,10 +21,11 @@ pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // chunk to ~10MB CARs
 /// Network Api
 #[derive(Deserialize, Serialize)]
 pub struct NetworkGetParams {
-    pub cid: Cid,
+    pub cid: String,
 }
 
-pub type NetworkGetResult = bool;
+pub type NetworkGetResult = Vec<u8>;
+pub const NETWORK_GET: &str = "ursa_get_cid";
 
 #[derive(Deserialize, Serialize)]
 pub struct NetworkPutCarParams {
@@ -51,10 +52,10 @@ pub trait NetworkInterface: Sync + Send + 'static {
     async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
     /// Put a car file and start providing to the network
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()>;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<Cid>;
 
     // Put a file using a local path
-    async fn put_file(&self, cid: Cid, path: String) -> Result<()>;
+    async fn put_file(&self, cid: Cid, path: String) -> Result<Cid>;
 }
 
 pub struct NodeNetworkInterface<S>
@@ -81,20 +82,18 @@ where
         receiver.await?
     }
 
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()> {
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<Cid> {
         let cids = load_car(self.store.blockstore(), reader).await?;
 
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cid, sender };
 
         self.network_send.send(request).await?;
-        receiver.await?;
-
-        Ok(())
+        receiver.await?
     }
 
     /// Used through CLI
-    async fn put_file(&self, cid: Cid, path: String) -> Result<()> {
+    async fn put_file(&self, cid: Cid, path: String) -> Result<Cid> {
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
 

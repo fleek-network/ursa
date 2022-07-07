@@ -47,11 +47,10 @@ use crate::{
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
-#[derive(Debug)]
 pub enum UrsaCommand {
     Get {
         cid: Cid,
-        sender: BlockSenderChannel,
+        sender: BlockSenderChannel<Vec<u8>>,
     },
 
     Put {
@@ -117,7 +116,7 @@ pub struct UrsaService<S> {
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
-    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel>>,
+    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
 }
 
 impl<S> UrsaService<S>
@@ -701,6 +700,7 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
+            // TODO: fix the assertion for this test
             match value {
                 Err(val) => assert_eq!(
                     val.to_string(),
@@ -712,5 +712,38 @@ mod tests {
                 _ => {}
             }
         });
+    }
+
+    #[async_std::test]
+    async fn add_block() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let config = UrsaConfig::default();
+        let db = Arc::new(RocksDb::open("../test_db").expect("Opening RocksDB must succeed"));
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let mut bitswap_store = BitswapStorage(store.clone());
+
+        let block = create_block(ipld!(&b"hello world"[..]));
+        info!("inserting block into bitswap store for node");
+        let cid = utils::convert_cid(block.cid().to_bytes());
+        let string_cid = Cid::to_string(&cid);
+        info!("block cid to string : {:?}", string_cid);
+
+        if let Err(err) = bitswap_store.insert(&block) {
+            error!(
+                "there was an error while inserting into the blockstore {:?}",
+                err
+            );
+        } else {
+            info!("block inserted successfully");
+        }
+        info!(
+            "{:?}",
+            bitswap_store.contains(&utils::convert_cid(cid.to_bytes()))
+        )
     }
 }

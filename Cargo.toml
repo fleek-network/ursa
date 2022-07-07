@@ -5,6 +5,7 @@ members = [
   "store",
   "car-rs",
   "rpc-server",
+  "rpc-client",
 ]
 
 exclude = [

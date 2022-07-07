@@ -5,7 +5,7 @@ mod discovery;
 mod gossipsub;
 pub mod service;
 mod transport;
-mod utils;
+pub mod utils;
 
 pub use self::config::*;
 pub use self::service::*;

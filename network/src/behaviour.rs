@@ -54,7 +54,7 @@ use crate::{
     utils,
 };
 
-pub type BlockSenderChannel = oneshot::Sender<Result<Vec<u8>, Error>>;
+pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
 
 #[derive(Debug)]
 pub struct BitswapInfo {
