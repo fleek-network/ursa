@@ -20,8 +20,8 @@
     - `5001` - ipfs api [local]
 
 - **Nginx**: should redirect 80 -> 443, but will listen on both. Then proxy the requests to our ipfs node.
-  - etsencrypt keys, and certbot web data will be exposed as volumes to be configure nginx, and to share data with the certbot service.
-  - the location /.will-known/acme-challenege/ which certbot is going to use to negotiate with the letsencrypt servers to generate our certficate. 
+  - letsencrypt keys, and certbot web data will be exposed as volumes to be configure nginx, and to share data with the certbot service.
+  - the location `/.will-known/acme-challenege/` which certbot is going to use to negotiate with the letsencrypt servers to generate our certficate. 
   - Create nginx configration under `./data/nginx/app.conf`:
   - Listen on:
     - `80` - will redirect to HTTPS port 443
