@@ -48,7 +48,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     type Error;
 
     /// Get a bitswap block from the network
-    async fn get(&self, cid: Cid) -> Result<()>;
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
     /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()>;
@@ -72,16 +72,13 @@ where
 {
     type Error = Error;
 
-    async fn get(&self, cid: Cid) -> Result<()> {
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::Get { cid, sender };
 
         // use network sender to send command
         self.network_send.send(request).await?;
-        receiver.await?;
-
-        // handle the block receive from the channel
-        Ok(())
+        receiver.await?
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<()> {
