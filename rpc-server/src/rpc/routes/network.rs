@@ -3,8 +3,10 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use cid::Cid;
+use std::{str::FromStr, sync::Arc};
+
 use jsonrpc_v2::{Data, Error, Params};
-use std::sync::Arc;
 
 use crate::{
     api::{NetworkPutFileParams, NetworkPutFileResult},
@@ -16,7 +18,6 @@ use crate::{
         rpc::http_handler,
     },
 };
-
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
@@ -32,9 +33,15 @@ pub async fn get_cid_handler<I>(
 where
     I: NetworkInterface,
 {
-    let _ = data.0.get(params.cid).await;
-
-    Ok(true)
+    let cid = Cid::from_str(&params.cid).unwrap();
+    match data.0.get(cid).await {
+        Err(_err) => Err(Error::Full {
+            data: None,
+            code: 200,
+            message: "There was an error while getting the block".to_string(),
+        }),
+        Ok(res) => Ok(res),
+    }
 }
 
 pub async fn put_car_handler<I>(
