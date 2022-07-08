@@ -33,3 +33,12 @@ services:
       - "4001:4001" # ipfs swarm - exposed to the outside world
       - "127.0.0.1:8080:8080" # ipfs gateway - expose only on localhost
       - "127.0.0.1:5001:5001" # ipfs api - exposed only on localhost
+
+
+  ursa:
+    build:
+      context: ../../.
+      dockerfile: Dockerfile.dev
+    restart: on-failure
+    expose:
+      - "4069"
