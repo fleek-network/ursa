@@ -16,5 +16,5 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 
 FROM debian:bullseye-slim
-COPY --from=builder /usr/local/cargo/bin/cli /usr/local/bin/cli
-ENTRYPOINT ["/usr/local/bin/cli", "--rpc"]
+COPY --from=builder /usr/local/cargo/bin/ursa /usr/local/bin/ursa
+ENTRYPOINT ["/usr/local/bin/ursa"]
