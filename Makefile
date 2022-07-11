@@ -26,6 +26,10 @@ docker-run:
 
 compose-up:
 	docker-compose -f infra/ursa/docker-compose.yml up
+
+compose-down:
+	docker-compose -f infra/ursa/docker-compose.yml down
+
 #	docker run ursa
 
 docker: docker-build docker-run
