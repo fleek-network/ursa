@@ -50,7 +50,7 @@ pub struct CliOpts {
         help = "Port used for JSON-RPC communication",
         requires("rpc")
     )]
-    pub port: Option<String>,
+    pub port: Option<u16>,
     #[structopt(short, long, help = "Database path where store data")]
     pub database_path: Option<String>,
 }
