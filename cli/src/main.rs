@@ -48,8 +48,9 @@ async fn main() {
                         error!("[service_task] - {:?}", err);
                     }
                 });
-
-                let rpc_config = RpcConfig::default();
+                let RpcConfig { rpc_addr, rpc_port } = RpcConfig::default();
+                let port = opts.rpc_port.unwrap_or(rpc_port);
+                let rpc_config = RpcConfig::new(port, rpc_addr);
 
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
