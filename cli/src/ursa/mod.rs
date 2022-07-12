@@ -112,7 +112,7 @@ pub async fn _block_until_sigint() {
     let running = Arc::new(AtomicUsize::new(0));
     ctrlc::set_handler(move || {
         let prev = running.fetch_add(1, Ordering::SeqCst);
-        if prev == 0 {:
+        if prev == 0 {
             warn!("Got interrupt, shutting down...");
             // Send sig int in channel to blocking task
             if let Some(ctrlc_send) = ctrlc_send_c.try_borrow_mut().unwrap().take() {
