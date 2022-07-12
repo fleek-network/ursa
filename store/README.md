@@ -1,15 +1,15 @@
-# Ursa Infra
+# Ursa Store
 
-> Deploy and run an ursa node, with an nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
+> Ursa's Blockstore and BitswapStorage implementations.
 
 ## Prerequisites
+
+- Install [Rust](https://www.rust-lang.org/)
 
 ## Usage
 
 ```sh
-cd ursa
-
-docker build -t ursa -f ./Dockerfile .
+cargo build --release
 ```
 
 ## Contributing

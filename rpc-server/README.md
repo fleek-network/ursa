@@ -1,15 +1,15 @@
-# Ursa Infra
+# Ursa RPC Server
 
-> Deploy and run an ursa node, with an nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
+> Ursa's RPC server implementation to interact with Ursa network service. 
 
 ## Prerequisites
+
+- Install [Rust](https://www.rust-lang.org/)
 
 ## Usage
 
 ```sh
-cd ursa
-
-docker build -t ursa -f ./Dockerfile .
+cargo run --release
 ```
 
 ## Contributing

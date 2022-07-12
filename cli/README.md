@@ -1,12 +1,19 @@
 # Ursa CLI
 
-> Ursa's CLI.
+> Ursa's CLI. Runs the network service along with the RPC server.
 
 ## Prerequisites
+
+- Install [Rust](https://www.rust-lang.org/)
 
 ## Usage
 
 ```sh
+# build the cli
+cargo build --release --bin cli
+
+# install cli
+cargo install --locked --path cli --force
 ```
 
 ## Contributing
