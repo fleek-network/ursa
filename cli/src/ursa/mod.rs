@@ -51,6 +51,8 @@ pub struct CliOpts {
         requires("rpc")
     )]
     pub port: Option<String>,
+    #[structopt(short, long, help = "Database path where store data")]
+    pub database_path: Option<String>,
 }
 
 impl CliOpts {
