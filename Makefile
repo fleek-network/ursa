@@ -8,7 +8,7 @@ install: version
 	cargo install --locked --path cli --force
 
 build: version
-	cargo build --release --bin cli
+	cargo build --release --bin ursa
 
 all: build install
 
