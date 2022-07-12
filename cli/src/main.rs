@@ -3,7 +3,7 @@ mod ursa;
 use std::sync::Arc;
 
 use async_std::task;
-use db::rocks::RocksDb;
+use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
 use network::UrsaService;
@@ -37,7 +37,8 @@ async fn main() {
                     .unwrap_or(config_db_path.unwrap().to_string());
                 info!("Using {} as databse path", db_path);
 
-                let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");
+                let db = RocksDb::open(db_path, &RocksDbConfig::default())
+                    .expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
 
                 let store = Arc::new(Store::new(Arc::clone(&db)));

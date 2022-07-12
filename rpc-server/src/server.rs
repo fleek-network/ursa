@@ -39,7 +39,7 @@ where
 
         let http_address = SocketAddr::from(([0, 0, 0, 0], config.rpc_port));
 
-        println!("listening on {}", http_address);
+        info!("listening on {}", http_address);
         let builder = axum::Server::bind(&http_address)
             .serve(router.into_make_service())
             .await?;
@@ -52,7 +52,7 @@ where
 mod tests {
     use super::*;
 
-    use db::rocks::RocksDb;
+    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use store::Store;
@@ -87,7 +87,8 @@ mod tests {
             rpc_addr: "0.0.0.0".to_string(),
         };
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 

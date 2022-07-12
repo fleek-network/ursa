@@ -1,6 +1,7 @@
+use anyhow::anyhow;
 use async_std::io::Cursor;
 use axum::{
-    routing::{get, post},
+    routing::{get, post, put},
     Router, middleware,
 };
 use cid::Cid;
@@ -21,6 +22,7 @@ use crate::{
 use std::future::ready;
 use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
 
+use tracing::{error, info, warn};
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
@@ -28,6 +30,7 @@ pub fn init() -> Router {
 
     Router::new()
         .route("/rpc/v0", get(http_handler))
+        .route("/rpc/v0", put(http_handler))
         .route("/rpc/v0", post(http_handler))
         .route("/metrics", get(move || ready(metrics_handler.render())))
         .route_layer(middleware::from_fn(track_metrics))
@@ -73,10 +76,12 @@ pub async fn put_file_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = params.cid;
+    let cid = Cid::from_str(&params.cid).unwrap();
     let path = params.path;
 
-    let _ = data.0.put_file(cid, path).await;
+    if let Err(err) = data.0.put_file(cid, path).await {
+        error!("{:?}", err);
+    }
 
     Ok(true)
 }
