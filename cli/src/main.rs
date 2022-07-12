@@ -31,8 +31,11 @@ async fn main() {
 
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
+                let db_path = opts
+                    .database_path
+                    .unwrap_or(network::DEFAULT_DATABASE_PATH.to_string());
 
-                let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+                let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
 
                 let store = Arc::new(Store::new(Arc::clone(&db)));
