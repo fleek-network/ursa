@@ -30,4 +30,4 @@ services:
     expose:
       - "4069"
     volumes:
-      - ../../test_db:/app/ursa_db:rw
+      - ../../ursa_db:/app/ursa_db:rw
