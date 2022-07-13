@@ -31,9 +31,10 @@ async fn main() {
 
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
+                let config_db_path = config.database_path.as_path().to_str();
                 let db_path = opts
                     .database_path
-                    .unwrap_or(config.database_path.to_string());
+                    .unwrap_or(config_db_path.unwrap().to_string());
                 info!("Using {} as databse path", db_path);
 
                 let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");

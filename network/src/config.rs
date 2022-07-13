@@ -1,5 +1,6 @@
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub const DEFAULT_BOOTSTRAP: &[&str] = &[
     // URSA bootstrap nodes
@@ -8,6 +9,8 @@ pub const DEFAULT_BOOTSTRAP: &[&str] = &[
     // "/ip4/0.0.0.0/tcp/4001udp/4001/quic/p2p/Qm",
     "/ip4/127.0.0.1/tcp/6009",
 ];
+
+pub const DEFAULT_DB_PATH_STR: &'static str = "ursa_db";
 
 /// Ursa Configration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -23,7 +26,7 @@ pub struct UrsaConfig {
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// Database path.
-    pub database_path: String,
+    pub database_path: PathBuf,
 }
 
 impl Default for UrsaConfig {
@@ -39,7 +42,7 @@ impl Default for UrsaConfig {
             autonat: false,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
-            database_path: String::from("ursa_db"),
+            database_path: PathBuf::from(DEFAULT_DB_PATH_STR),
         }
     }
 }
