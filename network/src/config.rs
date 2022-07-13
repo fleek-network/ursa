@@ -9,8 +9,6 @@ pub const DEFAULT_BOOTSTRAP: &[&str] = &[
     "/ip4/127.0.0.1/tcp/6009",
 ];
 
-pub const DEFAULT_DATABASE_PATH: &str = "ursa_db";
-
 /// Ursa Configration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct UrsaConfig {
@@ -24,6 +22,8 @@ pub struct UrsaConfig {
     pub swarm_addr: Multiaddr,
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
+    /// Database path.
+    pub database_path: String,
 }
 
 impl Default for UrsaConfig {
@@ -39,6 +39,7 @@ impl Default for UrsaConfig {
             autonat: false,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
+            database_path: String::from("ursa_db"),
         }
     }
 }

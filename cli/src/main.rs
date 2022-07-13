@@ -33,7 +33,8 @@ async fn main() {
                 let keypair = Keypair::generate_ed25519();
                 let db_path = opts
                     .database_path
-                    .unwrap_or(network::DEFAULT_DATABASE_PATH.to_string());
+                    .unwrap_or(config.database_path.to_string());
+                info!("Using {} as databse path", db_path);
 
                 let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
