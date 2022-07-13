@@ -52,7 +52,8 @@ pub struct CliOpts {
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let cfg: UrsaConfig = if let Some(config_file) = &self.config {
+        let mut cfg = UrsaConfig::default();
+        if let Some(config_file) = &self.config {
             info!(
                 "Reading configuration from user provided config file {}",
                 config_file
@@ -61,12 +62,9 @@ impl CliOpts {
             let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
             // Parse and return the configuration file
             // read_toml(&toml)?
-            let toml_str = toml::from_str(&toml).unwrap();
-            toml_str
-        } else {
-            info!("No Configuration provided by the user, Using default config");
-            UrsaConfig::default()
-        };
+            let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
+            cfg = toml_str.merge(cfg);
+        }
 
         Ok(cfg)
     }
