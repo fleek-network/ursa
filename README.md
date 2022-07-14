@@ -30,12 +30,12 @@ database_path = "data/ursadb"
 
 ### Run with Docker
 
-You can run the docker image as a simple container or with docker compose. anyways you need o build the image first with `make docker-build` and `make docker-build-dev` to create **ursa** and **ursa-dev** docker images in any case.
+You can run the docker image as a simple container or with docker compose. anyways you need to build the image first with `make docker-build` and `make docker-build-dev` to create **ursa** and **ursa-dev** docker images in any case.
 
 1. `make docker-run / docker-run-dev` to run a node container.
 2. `make compose-up / compose-down` to run or shut down all the infra. This means node + gateway.
 
-Unless you want to loos the data once the container is restarted/dropped, share a volume with the database location. Default is always in `/app/ursa_db`.
+Unless you want to loose the data once the container is restarted/dropped, share a volume with the database location. Default is always in `/app/ursa_db`.
 
 ### Accessing rpc server
 
