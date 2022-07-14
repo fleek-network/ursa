@@ -1,11 +1,6 @@
 FROM rust:1.61.0 AS builder
 
-ENV DEBIAN_FRONTEND noninteractive
-RUN --mount=type=cache,target=/var/cache/apt \
-    rm -f /etc/apt/apt.conf.d/docker-clean &&\
-    apt-get update &&\
-	  apt-get install -yqq --no-install-recommends build-essential clang &&\
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
 
 # Make a fake Rust app to keep a cached layer of compiled crates
 RUN USER=root cargo new app
