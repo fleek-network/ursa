@@ -44,18 +44,16 @@ pub struct CliOpts {
     pub config: Option<String>,
     #[structopt(short, long, help = "Allow rpc to be active or not (default = true)")]
     pub rpc: bool,
-    #[structopt(
-        short,
-        long,
-        help = "Port used for JSON-RPC communication",
-        requires("rpc")
-    )]
-    pub port: Option<String>,
+    #[structopt(short, long, help = "Port used for JSON-RPC communication")]
+    pub rpc_port: Option<u16>,
+    #[structopt(short, long, help = "Database path where store data")]
+    pub database_path: Option<String>,
 }
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let cfg: UrsaConfig = if let Some(config_file) = &self.config {
+        let mut cfg = UrsaConfig::default();
+        if let Some(config_file) = &self.config {
             info!(
                 "Reading configuration from user provided config file {}",
                 config_file
@@ -64,12 +62,9 @@ impl CliOpts {
             let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
             // Parse and return the configuration file
             // read_toml(&toml)?
-            let toml_str = toml::from_str(&toml).unwrap();
-            toml_str
-        } else {
-            info!("No Configuration provided by the user, Using default config");
-            UrsaConfig::default()
-        };
+            let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
+            cfg = toml_str.merge(cfg);
+        }
 
         Ok(cfg)
     }

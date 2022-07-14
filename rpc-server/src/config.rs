@@ -6,6 +6,11 @@ pub struct RpcConfig {
     pub rpc_addr: String,
 }
 
+impl RpcConfig {
+    pub fn new(rpc_port: u16, rpc_addr: String) -> Self {
+        Self { rpc_port, rpc_addr }
+    }
+}
 impl Default for RpcConfig {
     fn default() -> Self {
         Self {

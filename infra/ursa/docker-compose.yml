@@ -29,3 +29,5 @@ services:
     restart: on-failure
     expose:
       - "4069"
+    volumes:
+      - ../../ursa_db:/app/ursa_db:rw

@@ -31,8 +31,13 @@ async fn main() {
 
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
+                let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
+                let db_path = opts
+                    .database_path
+                    .unwrap_or(config_db_path.unwrap().to_string());
+                info!("Using {} as databse path", db_path);
 
-                let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+                let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
 
                 let store = Arc::new(Store::new(Arc::clone(&db)));
@@ -45,8 +50,9 @@ async fn main() {
                         error!("[service_task] - {:?}", err);
                     }
                 });
-
-                let rpc_config = RpcConfig::default();
+                let RpcConfig { rpc_addr, rpc_port } = RpcConfig::default();
+                let port = opts.rpc_port.unwrap_or(rpc_port);
+                let rpc_config = RpcConfig::new(port, rpc_addr);
 
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
