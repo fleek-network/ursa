@@ -1,7 +1,7 @@
 use async_std::io::Cursor;
 use axum::{
     routing::{get, post},
-    Router,
+    Router, middleware,
 };
 use cid::Cid;
 use std::{str::FromStr, sync::Arc};
@@ -18,12 +18,19 @@ use crate::{
         rpc::http_handler,
     },
 };
+use std::future::ready;
+use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
+
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
+    let metrics_handler= setup_metrics_handler();
+
     Router::new()
         .route("/rpc/v0", get(http_handler))
         .route("/rpc/v0", post(http_handler))
+        .route("/metrics", get(move || ready(metrics_handler.render())))
+        .route_layer(middleware::from_fn(track_metrics))
 }
 
 pub async fn get_cid_handler<I>(
