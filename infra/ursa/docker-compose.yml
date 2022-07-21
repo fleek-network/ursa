@@ -22,6 +22,17 @@ services:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
 
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    depends_on:
+      - ursa
+    volumes:
+      - ./data/prom:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+
   ursa:
     build:
       context: ../../.
@@ -30,4 +41,4 @@ services:
     expose:
       - "4069"
     volumes:
-      - ../../ursa_db:/app/ursa_db:rw
+      - ../../test_db:/app/ursa_db:rw

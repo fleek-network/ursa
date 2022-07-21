@@ -4,6 +4,9 @@ version:
 	@echo "RUSTC_WRAPPER=$${RUSTC_WRAPPER}"
 	sccache --show-stats || true
 
+run: version
+	cargo run --bin cli
+
 install: version
 	cargo install --locked --path cli --force
 
