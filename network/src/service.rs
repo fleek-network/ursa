@@ -18,15 +18,16 @@ use async_std::{
     task,
 };
 
+use cid::Cid;
 use fnv::FnvHashMap;
 use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
-use libipld::{Block, Cid, DefaultParams};
+use libipld::DefaultParams;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
-    request_response::ResponseChannel,
+    request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
@@ -40,30 +41,42 @@ use crate::{
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
+    utils,
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
-#[derive(Debug)]
 pub enum UrsaCommand {
-    /// Rpc commands
     Get {
         cid: Cid,
-        sender: BlockSenderChannel,
+        sender: BlockSenderChannel<Vec<u8>>,
     },
+
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
     },
+
     GetPeers {
         sender: oneshot::Sender<HashSet<PeerId>>,
+    },
+
+    StartProviding {
+        cid: Cid,
+        sender: oneshot::Sender<Result<Cid>>,
     },
 
     SendRequest {
         peer_id: PeerId,
         request: UrsaExchangeRequest,
         channel: oneshot::Sender<Result<UrsaExchangeResponse>>,
+    },
+
+    SendResponse {
+        request_id: RequestId,
+        response: UrsaExchangeResponse,
+        channel: oneshot::Sender<Result<()>>,
     },
 
     GossipsubMessage {
@@ -103,7 +116,7 @@ pub struct UrsaService<S> {
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
-    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel>>,
+    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
 }
 
 impl<S> UrsaService<S>
@@ -190,6 +203,9 @@ where
         }
     }
 
+    pub fn command_sender(&self) -> &Sender<UrsaCommand> {
+        &self.command_sender
+    }
     /// Start the ursa network service loop.
     ///
     /// Poll `swarm` and `command_receiver` from [`UrsaService`].
@@ -216,10 +232,11 @@ where
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
-                                        if let true = block_found { loop { if blockstore.contains(&cid).unwrap() { break; } } }
+                                        let bitswap_cid = utils::convert_cid(cid.to_bytes());
+                                        if let true = block_found { loop { if blockstore.contains(&bitswap_cid).unwrap() { break; } } }
 
                                         for chan in chans.into_iter(){
-                                            if let Ok(Some(data)) = blockstore.get(&cid) {
+                                            if let Ok(Some(data)) = blockstore.get(&bitswap_cid) {
                                                 if chan.send(Ok(data)).is_err() {
                                                     error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
                                                 }
@@ -309,7 +326,7 @@ where
                     if let Some(command) = command {
                         match command {
                             UrsaCommand::Get { cid, sender } => {
-                                if let Ok(Some(data)) = blockstore.get(&cid) {
+                                if let Ok(Some(data)) = blockstore.get(&utils::convert_cid(cid.to_bytes())) {
                                     let _ = sender.send(Ok(data));
                                 } else {
                                     if let Some(chans) = self.response_channels.get_mut(&cid) {
@@ -327,9 +344,11 @@ where
                                 let peers = swarm.get_mut().behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
+                            UrsaCommand::StartProviding { cid, sender } => todo!(),
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
                                 let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
                             },
+                            UrsaCommand::SendResponse { request_id, response, channel } => todo!(),
                             UrsaCommand::GossipsubMessage { topic, message } => {
                                 if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
                                     warn!(
@@ -352,11 +371,11 @@ mod tests {
 
     use crate::codec::protocol::RequestType;
     use db::rocks::RocksDb;
-    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, DefaultParams, Ipld};
-    use log::LevelFilter;
+    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
     use store::Store;
+    use tracing::log::LevelFilter;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -615,9 +634,8 @@ mod tests {
         thread::sleep(delay);
 
         let (sender, receiver) = oneshot::channel();
-
         let msg = UrsaCommand::Get {
-            cid: *block.cid(),
+            cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
         node_2_sender.send(msg).await.unwrap();
@@ -625,9 +643,8 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
-            match value {
-                Ok(val) => assert_eq!(val, block.data()),
-                _ => {}
+            if let Ok(val) = value {
+                assert_eq!(val, block.data())
             }
         });
     }
@@ -675,7 +692,7 @@ mod tests {
         let (sender, receiver) = oneshot::channel();
 
         let msg = UrsaCommand::Get {
-            cid: *block.cid(),
+            cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
         node_2_sender.send(msg).await.unwrap();
@@ -683,6 +700,7 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
+            // TODO: fix the assertion for this test
             match value {
                 Err(val) => assert_eq!(
                     val.to_string(),
@@ -694,5 +712,38 @@ mod tests {
                 _ => {}
             }
         });
+    }
+
+    #[async_std::test]
+    async fn add_block() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let config = UrsaConfig::default();
+        let db = Arc::new(RocksDb::open("../test_db").expect("Opening RocksDB must succeed"));
+        let store = Arc::new(Store::new(Arc::clone(&db)));
+
+        let mut bitswap_store = BitswapStorage(store.clone());
+
+        let block = create_block(ipld!(&b"hello world"[..]));
+        info!("inserting block into bitswap store for node");
+        let cid = utils::convert_cid(block.cid().to_bytes());
+        let string_cid = Cid::to_string(&cid);
+        info!("block cid to string : {:?}", string_cid);
+
+        if let Err(err) = bitswap_store.insert(&block) {
+            error!(
+                "there was an error while inserting into the blockstore {:?}",
+                err
+            );
+        } else {
+            info!("block inserted successfully");
+        }
+        info!(
+            "{:?}",
+            bitswap_store.contains(&utils::convert_cid(cid.to_bytes()))
+        )
     }
 }

@@ -15,8 +15,21 @@ all: build install
 docker-build:
 	docker build -t ursa -f ./Dockerfile .
 
+docker-build-dev:
+	docker build -t ursa-dev -f ./Dockerfile.dev --progress tty .
+
+docker-run-dev:
+	docker run --name ursa-dev -it ursa-dev
+
 docker-run:
 	docker run --name ursa-cli -it ursa
+
+compose-up:
+	docker-compose -f infra/ursa/docker-compose.yml up
+
+compose-down:
+	docker-compose -f infra/ursa/docker-compose.yml down
+
 #	docker run ursa
 
 docker: docker-build docker-run

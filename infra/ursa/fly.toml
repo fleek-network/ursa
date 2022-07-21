@@ -1,12 +1,20 @@
-# fly.toml file generated for ursa-node on 2022-04-28T18:41:49+03:00
+# fly.toml file generated for ursa-ipfs on 2022-04-28T14:41:43+03:00
 
-app = "ursa-node"
+app = "ursa-ipfs"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
 processes = []
 
+[build]
+  image = "ipfs/go-ipfs:latest"
+
+[mounts]
+  source="ipfs_data"
+  destination="/data/ipfs"
+
 [env]
+  DATA="/data"
 
 [experimental]
   allowed_public_ports = []
@@ -15,7 +23,7 @@ processes = []
 [[services]]
   http_checks = []
   internal_port = 8080
-  processes = ["app"]
+  processes = ["ipfs"]
   protocol = "tcp"
   script_checks = []
 
@@ -38,3 +46,10 @@ processes = []
     interval = "15s"
     restart_limit = 0
     timeout = "2s"
+
+[[services]]
+  internal_port = 4001
+  protocol = "tcp"
+  
+  [[services.ports]]
+    port = "4001"

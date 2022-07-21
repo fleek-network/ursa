@@ -1,0 +1,33 @@
+version: '3'
+
+services: 
+  # Proxy to ipfs
+  nginx:
+    image: nginx:latest
+    restart: unless-stopped
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    volumes:
+      - ./data/nginx:/etc/nginx/conf.d
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+
+  ursa:
+    build:
+      context: ../../.
+      dockerfile: Dockerfile
+    restart: on-failure
+    expose:
+      - "4069"
+    volumes:
+      - ../../ursa_db:/app/ursa_db:rw

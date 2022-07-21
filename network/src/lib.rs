@@ -1,10 +1,11 @@
 mod behaviour;
 mod codec;
-mod config;
+pub mod config;
 mod discovery;
 mod gossipsub;
-mod service;
+pub mod service;
 mod transport;
+pub mod utils;
 
 pub use self::config::*;
 pub use self::service::*;

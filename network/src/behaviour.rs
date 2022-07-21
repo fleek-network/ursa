@@ -14,9 +14,10 @@
 //!   sent over a new substream on a connection.
 
 use anyhow::{Error, Result};
+use cid::Cid;
 use fnv::FnvHashMap;
 use futures::channel::oneshot;
-use libipld::{store::StoreParams, Cid};
+use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
         error::{PublishError, SubscriptionError},
@@ -50,9 +51,10 @@ use crate::{
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
+    utils,
 };
 
-pub type BlockSenderChannel = oneshot::Sender<Result<Vec<u8>, Error>>;
+pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
 
 #[derive(Debug)]
 pub struct BitswapInfo {
@@ -223,7 +225,9 @@ impl<P: StoreParams> Behaviour<P> {
     }
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
         info!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self.bitswap.get(cid, providers);
+        let id = self
+            .bitswap
+            .get(utils::convert_cid(cid.to_bytes()), providers);
         self.queries.insert(
             id,
             BitswapInfo {

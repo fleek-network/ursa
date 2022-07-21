@@ -1,0 +1,26 @@
+[package]
+name = "rpc-client"
+version = "0.1.0"
+edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>", "theBeardA <arslan@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's rpc client implementation"
+
+[dependencies]
+anyhow = "1.0.57"
+tiny-cid = "0.3.0"
+serde_json = "1.0.81"
+async-trait = "0.1.53"
+network = { path = "../network" }
+jsonrpc-v2 = "0.11.0"
+serde = { version = "1.0.137", features = ["derive"] }
+surf = { version = "2.3", default-features = true, features = ["curl-client"] }
+tracing = "0.1.35"
+cid = "0.8.5"
+tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
+rpc-server = { path = "../rpc-server" }
+
+[dependencies.libipld]
+version = "0.12.0"
+default-features = false

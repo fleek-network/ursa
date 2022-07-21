@@ -11,3 +11,6 @@ node/.vscode/launch.json
 config.toml
 
 Cargo.lock
+
+test_db*
+ursa_db*

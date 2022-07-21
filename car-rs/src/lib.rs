@@ -151,7 +151,7 @@ mod tests {
             roots: vec![cid],
             version: 1,
         };
-        assert_eq!(to_vec(&header).unwrap().len(), 60);
+        assert_eq!(to_vec(&header).unwrap().len(), 58);
 
         let (tx, mut rx) = bounded(10);
 

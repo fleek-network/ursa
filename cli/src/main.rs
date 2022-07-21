@@ -7,12 +7,11 @@ use db::rocks::RocksDb;
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
 use network::UrsaService;
+use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
 use store::Store;
 use structopt::StructOpt;
 use tracing::{error, info};
-use ursa::{cli_error_and_die, Cli};
-
-use crate::ursa::wait_until_ctrlc;
+use ursa::{cli_error_and_die, wait_until_ctrlc, Cli};
 
 #[async_std::main]
 async fn main() {
@@ -32,12 +31,18 @@ async fn main() {
 
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
+                let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
+                let db_path = opts
+                    .database_path
+                    .unwrap_or(config_db_path.unwrap().to_string());
+                info!("Using {} as databse path", db_path);
 
-                let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+                let db = RocksDb::open(db_path).expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
 
                 let store = Arc::new(Store::new(Arc::clone(&db)));
                 let service = UrsaService::new(keypair, &config, Arc::clone(&store));
+                let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
                 let service_task = task::spawn(async {
@@ -45,20 +50,21 @@ async fn main() {
                         error!("[service_task] - {:?}", err);
                     }
                 });
+                let RpcConfig { rpc_addr, rpc_port } = RpcConfig::default();
+                let port = opts.rpc_port.unwrap_or(rpc_port);
+                let rpc_config = RpcConfig::new(port, rpc_addr);
 
-                // let config = RpcConfig {
-                //     rpc_port: 4069,
-                //     rpc_addr: "0.0.0.0".to_string(),
-                // };
-
-                // let interface = Arc::new(NodeNetworkInterface { store });
-                // let rpc = Rpc::new(&config, interface);
+                let interface = Arc::new(NodeNetworkInterface {
+                    store,
+                    network_send: rpc_sender,
+                });
+                let rpc = Rpc::new(&rpc_config, interface);
 
                 // Start rpc service
-                let rpc_task = task::spawn(async {
-                    // if let Err(err) = rpc.start(config).await {
-                    //     error!("[rpc_task] - {:?}", err);
-                    // }
+                let rpc_task = task::spawn(async move {
+                    if let Err(err) = rpc.start(rpc_config).await {
+                        error!("[rpc_task] - {:?}", err);
+                    }
                 });
 
                 wait_until_ctrlc();
