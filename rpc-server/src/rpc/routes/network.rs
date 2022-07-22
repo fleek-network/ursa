@@ -1,14 +1,16 @@
 use anyhow::anyhow;
 use async_std::io::Cursor;
 use axum::{
+    middleware,
     routing::{get, post, put},
-    Router, middleware,
+    Router,
 };
 use cid::Cid;
 use std::{str::FromStr, sync::Arc};
 
 use jsonrpc_v2::{Data, Error, Params};
 
+use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
 use crate::{
     api::{NetworkPutFileParams, NetworkPutFileResult},
     rpc::{
@@ -20,13 +22,12 @@ use crate::{
     },
 };
 use std::future::ready;
-use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
 
 use tracing::{error, info, warn};
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
-    let metrics_handler= setup_metrics_handler();
+    let metrics_handler = setup_metrics_handler();
 
     Router::new()
         .route("/rpc/v0", get(http_handler))
