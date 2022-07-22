@@ -721,7 +721,6 @@ mod tests {
             .with_utc_timestamps()
             .init()
             .unwrap();
-        let config = UrsaConfig::default();
         let db = Arc::new(RocksDb::open("../test_db").expect("Opening RocksDB must succeed"));
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
