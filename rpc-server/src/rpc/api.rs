@@ -4,9 +4,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_std::{channel::Sender, fs::File};
 use async_trait::async_trait;
-use car_rs::load_car;
 use cid::Cid;
 use futures::{channel::oneshot, AsyncRead};
+use fvm_ipld_car::load_car;
 use ipld_blockstore::BlockStore;
 use jsonrpc_v2::Error;
 use network::UrsaCommand;
@@ -34,14 +34,16 @@ pub struct NetworkPutCarParams {
 }
 
 pub type NetworkPutCarResult = bool;
+pub const NETWORK_PUT_CAR: &str = "ursa_put_car";
 
 #[derive(Deserialize, Serialize)]
 pub struct NetworkPutFileParams {
-    pub cid: Cid,
+    pub cid: String,
     pub path: String,
 }
 
 pub type NetworkPutFileResult = bool;
+pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 
 /// Abstraction of Ursa's rpc commands
 #[async_trait]
@@ -74,6 +76,7 @@ where
     type Error = Error;
 
     async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
+        info!("Requesting block with the cid {cid:?}");
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::Get { cid, sender };
 
@@ -85,6 +88,8 @@ where
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<Cid> {
         let cids = load_car(self.store.blockstore(), reader).await?;
 
+        info!("The inserted cids for are: {cids:?}");
+
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cid, sender };
 
@@ -94,6 +99,7 @@ where
 
     /// Used through CLI
     async fn put_file(&self, cid: Cid, path: String) -> Result<Cid> {
+        info!("Putting the file on network: {path}");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
 

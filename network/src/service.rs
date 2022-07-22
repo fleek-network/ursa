@@ -344,7 +344,9 @@ where
                                 let peers = swarm.get_mut().behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
-                            UrsaCommand::StartProviding { cid, sender } => todo!(),
+                            UrsaCommand::StartProviding { cid, sender } => {
+                                sender.send(Ok(cid));
+                            },
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
                                 let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
                             },
@@ -370,7 +372,7 @@ mod tests {
     use super::*;
 
     use crate::codec::protocol::RequestType;
-    use db::rocks::RocksDb;
+    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
@@ -402,7 +404,8 @@ mod tests {
             .init()
             .unwrap();
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
@@ -421,7 +424,8 @@ mod tests {
         let mut config = UrsaConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
@@ -477,7 +481,8 @@ mod tests {
             ..Default::default()
         };
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
@@ -509,7 +514,8 @@ mod tests {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
@@ -541,7 +547,8 @@ mod tests {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
 
-        let db = RocksDb::open("test_db").expect("Opening RocksDB must succeed");
+        let db = RocksDb::open("test_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
@@ -592,8 +599,14 @@ mod tests {
             .unwrap();
         let mut config = UrsaConfig::default();
 
-        let db1 = Arc::new(RocksDb::open("test_db1").expect("Opening RocksDB must succeed"));
-        let db2 = Arc::new(RocksDb::open("test_db2").expect("Opening RocksDB must succeed"));
+        let db1 = Arc::new(
+            RocksDb::open("test_db1", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
+        let db2 = Arc::new(
+            RocksDb::open("test_db2", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
 
         let store1 = Arc::new(Store::new(Arc::clone(&db1)));
         let store2 = Arc::new(Store::new(Arc::clone(&db2)));
@@ -658,8 +671,14 @@ mod tests {
             .unwrap();
         let mut config = UrsaConfig::default();
 
-        let db1 = Arc::new(RocksDb::open("test_db1").expect("Opening RocksDB must succeed"));
-        let db2 = Arc::new(RocksDb::open("test_db2").expect("Opening RocksDB must succeed"));
+        let db1 = Arc::new(
+            RocksDb::open("test_db1", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
+        let db2 = Arc::new(
+            RocksDb::open("test_db2", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
 
         let store1 = Arc::new(Store::new(Arc::clone(&db1)));
         let store2 = Arc::new(Store::new(Arc::clone(&db2)));
@@ -721,7 +740,11 @@ mod tests {
             .with_utc_timestamps()
             .init()
             .unwrap();
-        let db = Arc::new(RocksDb::open("../test_db").expect("Opening RocksDB must succeed"));
+        let config = UrsaConfig::default();
+        let db = Arc::new(
+            RocksDb::open("../test_db", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
         let mut bitswap_store = BitswapStorage(store.clone());

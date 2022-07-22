@@ -60,4 +60,4 @@ features = [
 
 [dev-dependencies]
 simple_logger = "2.1.0"
-db = { package = "forest_db", version = "0.1" }
+db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }

@@ -40,7 +40,3 @@ Unless you want to loose the data once the container is restarted/dropped, share
 ### Accessing rpc server
 
 To access the rpc you can do through the http JSON-RPC api. The endpoint to request is **`/rpc/v0`**. The server can be accessible in port `4060` for local development and in port `80/443` through the gateway (nginx by the moment).
-
-#### Hacks
-
-
