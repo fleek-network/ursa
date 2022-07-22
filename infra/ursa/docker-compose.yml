@@ -21,15 +21,24 @@ services:
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-      
-  ipfs:
-    image: ipfs/go-ipfs:latest
-    environment:
-      - IPFS_PROFILE=server
-      - IPFS_PATH=/data/ipfs
-    volumes:
-      - ./data/ipfs:/data/ipfs
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
     ports:
-      - "4001:4001" # ipfs swarm - exposed to the outside world
-      - "127.0.0.1:8080:8080" # ipfs gateway - expose only on localhost
-      - "127.0.0.1:5001:5001" # ipfs api - exposed only on localhost
+      - "9090:9090"
+    depends_on:
+      - ursa
+    volumes:
+      - ./data/prom:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+
+  ursa:
+    build:
+      context: ../../.
+      dockerfile: Dockerfile
+    restart: on-failure
+    expose:
+      - "4069"
+    volumes:
+      - ../../test_db:/app/ursa_db:rw

@@ -4,11 +4,14 @@ version:
 	@echo "RUSTC_WRAPPER=$${RUSTC_WRAPPER}"
 	sccache --show-stats || true
 
+run: version
+	cargo run --bin cli
+
 install: version
 	cargo install --locked --path cli --force
 
 build: version
-	cargo build --release --bin cli
+	cargo build --release --bin ursa
 
 all: build install
 
@@ -23,6 +26,13 @@ docker-run-dev:
 
 docker-run:
 	docker run --name ursa-cli -it ursa
+
+compose-up:
+	docker-compose -f infra/ursa/docker-compose.yml up
+
+compose-down:
+	docker-compose -f infra/ursa/docker-compose.yml down
+
 #	docker run ursa
 
 docker: docker-build docker-run

@@ -53,9 +53,10 @@ where
         let api_url = format!("http://{}:{}/rpc/v0", rpc_addr, rpc_port);
 
         info!("Using JSON-RPC v2 HTTP URL: {}", api_url);
+        debug!("rpc_req {:?}", rpc_req);
 
+        // TODO(arslan): Add authentication
         if let Ok(from_json) = surf::Body::from_json(&rpc_req) {
-            debug!("from_json {:?}", from_json);
             let mut http_res = match method {
                 HttpMethod::Get => surf::get(api_url)
                     .content_type("application/json")
@@ -131,30 +132,69 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use simple_logger::SimpleLogger;
+    use tracing::log::LevelFilter;
 
-    use crate::functions::get_block;
+    use std::str::FromStr;
+
+    use crate::functions::{get_block, put_file};
 
     use cid::Cid;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use network::utils;
-    use rpc_server::rpc::api::NetworkGetParams;
+    use rpc_server::{
+        api::{NetworkPutCarParams, NetworkPutFileParams},
+        rpc::api::NetworkGetParams,
+    };
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
     }
 
+    fn setup_logger(level: LevelFilter) {
+        SimpleLogger::new()
+            .with_level(level)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn test_rpc_get_cid() {
+        setup_logger(LevelFilter::Info);
         let block = create_block(ipld!(&b"hello world"[..]));
         let cid = utils::convert_cid(block.cid().to_bytes());
         let string_cid = Cid::to_string(&cid);
-        println!("{:?}", string_cid);
-        let params = NetworkGetParams { cid: string_cid };
+        let params = NetworkGetParams {
+            cid: string_cid.clone(),
+        };
         match get_block(params).await {
             Ok(v) => {
-                println!("getting cid: {v:?}");
+                info!("Got the bytes ({v:?}) for cid({string_cid:?}) from server.");
             }
-            Err(_e) => println!("error while calling the client"),
+            Err(_e) => {
+                error!("There was an error while calling the server. Please Check Server Logs")
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn test_rpc_put_car() {
+        setup_logger(LevelFilter::Info);
+        let cid = ("bafy2bzaceccu5vqn5xw2morrqa2wtah3w6cs2rnmv64w3ry6st7uelnhxkg6w").to_string();
+        println!("{:?}", cid);
+        let params = NetworkPutFileParams {
+            cid,
+            path: "./car_files/ursa_major.car".to_string(),
+        };
+        match put_file(params).await {
+            Ok(v) => {
+                println!("Put car file done: {v:?}");
+            }
+            Err(_e) => {
+                println!("There was an error while calling the server. Please Check Server Logs")
+            }
         };
     }
 }

@@ -19,7 +19,7 @@ store = { path = "../store" }
 tracing-subscriber = "0.3.11"
 network = { path = "../network" }
 rpc-server = { path = "../rpc-server" }
-db = { package = "forest_db", version = "0.1" }
+db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 serde = { version = "1.0", features = ["derive"] }
 async-std = { version = "1.11.0", features = ["attributes", "tokio1"] }
 libp2p = { version = "0.44.0", default-features = false, features = ["identify", "serde"] }
