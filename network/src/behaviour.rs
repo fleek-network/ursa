@@ -228,6 +228,7 @@ impl<P: StoreParams> Behaviour<P> {
         let id = self
             .bitswap
             .get(utils::convert_cid(cid.to_bytes()), providers);
+
         self.queries.insert(
             id,
             BitswapInfo {
