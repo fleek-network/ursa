@@ -3,8 +3,6 @@
 //!
 //!
 
-use std::time::Duration;
-
 use async_std::task::block_on;
 use libp2p::{
     core::{
@@ -17,7 +15,7 @@ use libp2p::{
     identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    tcp::TcpTransport,
+    tcp::{GenTcpConfig, TcpTransport},
     yamux, PeerId, Transport,
 };
 
@@ -53,13 +51,13 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
             };
 
-            let tcp = TcpTransport::default()
-                .upgrade(upgrade::Version::V1)
+            let tcp = TcpTransport::new(GenTcpConfig::new());
+            let tcp = block_on(DnsConfig::system(tcp)).unwrap();
+
+            tcp.upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
-                .boxed();
-
-            block_on(DnsConfig::system(tcp)).unwrap()
+                .boxed()
         };
 
         // let quic = {
@@ -78,6 +76,6 @@ impl UrsaTransport {
         //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
         //     })
         //     .boxed()
-        tcp.boxed()
+        tcp
     }
 }
