@@ -4,6 +4,8 @@
 
 ## Prerequisites
 
+- Install [Rust](https://www.rust-lang.org/)
+
 ## Usage
 
 ```sh
