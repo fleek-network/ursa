@@ -1,4 +1,7 @@
+mod rpc_commands;
+
 use network::UrsaConfig;
+use rpc_commands::RpcCommands;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{prelude::*, Result};
@@ -27,15 +30,11 @@ pub struct Cli {
     pub cmd: Option<Subcommand>,
 }
 
-/// TODO:  be implemented when we add subcommands to this cli
-/// e.g.
-/// #[structopt(
-///     name = "fetch-params",
-///     about = "Download parameters for generating and verifying proofs for given size"
-/// )]
-/// Fetch(FetchCommands),
 #[derive(StructOpt)]
-pub enum Subcommand {}
+pub enum Subcommand {
+    #[structopt(name = "rpc", about = "run rpc commands from cli")]
+    Rpc(RpcCommands),
+}
 
 /// CLI options
 #[derive(StructOpt, Debug)]

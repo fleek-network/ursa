@@ -1,4 +1,4 @@
-mod functions;
+pub mod functions;
 
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
@@ -138,7 +138,7 @@ mod tests {
 
     use std::str::FromStr;
 
-    use crate::functions::{get_block, put_file};
+    use crate::functions::{get_block, put_car, put_file};
 
     use cid::Cid;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
@@ -182,10 +182,32 @@ mod tests {
     #[tokio::test]
     async fn test_rpc_put_car() {
         setup_logger(LevelFilter::Info);
+        let cid = ("bafybeiexgchhcmp5cp7qg2e4qpi3icd5fvjjfgtujpymi4jw4dnsewow4y").to_string();
+        let data: Vec<u8> = [
+            18, 59, 10, 36, 1, 85, 18, 32, 246, 20, 91, 36, 106, 112, 118, 109, 13, 105, 92, 170,
+            254, 85, 210, 116, 230, 210, 187, 152, 59, 153, 26, 75, 98, 76, 213, 234, 90, 17, 61,
+            71, 18, 15, 117, 114, 115, 97, 95, 109, 97, 106, 111, 114, 46, 106, 112, 101, 103, 24,
+            225, 209, 1, 10, 2, 8, 1,
+        ]
+        .to_vec();
+
+        let params = NetworkPutCarParams { cid, data };
+        match put_car(params).await {
+            Ok(v) => {
+                println!("Put car bytes done: {v:?}");
+            }
+            Err(_e) => {
+                println!("There was an error while calling the server. Please Check Server Logs")
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn test_rpc_put_file() {
+        setup_logger(LevelFilter::Info);
         let cid = ("bafy2bzaceccu5vqn5xw2morrqa2wtah3w6cs2rnmv64w3ry6st7uelnhxkg6w").to_string();
         println!("{:?}", cid);
         let params = NetworkPutFileParams {
-            cid,
             path: "./car_files/ursa_major.car".to_string(),
         };
         match put_file(params).await {

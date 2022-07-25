@@ -29,7 +29,7 @@ pub const NETWORK_GET: &str = "ursa_get_cid";
 
 #[derive(Deserialize, Serialize)]
 pub struct NetworkPutCarParams {
-    pub cid: Cid,
+    pub cid: String,
     pub data: Vec<u8>,
 }
 
@@ -38,7 +38,6 @@ pub const NETWORK_PUT_CAR: &str = "ursa_put_car";
 
 #[derive(Deserialize, Serialize)]
 pub struct NetworkPutFileParams {
-    pub cid: String,
     pub path: String,
 }
 
@@ -54,10 +53,10 @@ pub trait NetworkInterface: Sync + Send + 'static {
     async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
     /// Put a car file and start providing to the network
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<Cid>;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Cid>;
 
     // Put a file using a local path
-    async fn put_file(&self, cid: Cid, path: String) -> Result<Cid>;
+    async fn put_file(&self, path: String) -> Result<Cid>;
 }
 
 pub struct NodeNetworkInterface<S>
@@ -85,10 +84,11 @@ where
         receiver.await?
     }
 
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, cid: Cid, reader: R) -> Result<Cid> {
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Cid> {
         let cids = load_car(self.store.blockstore(), reader).await?;
+        let cid = cids[0];
 
-        info!("The inserted cids for are: {cids:?}");
+        info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cid, sender };
@@ -98,11 +98,11 @@ where
     }
 
     /// Used through CLI
-    async fn put_file(&self, cid: Cid, path: String) -> Result<Cid> {
+    async fn put_file(&self, path: String) -> Result<Cid> {
         info!("Putting the file on network: {path}");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
 
-        self.put_car(cid, reader).await
+        self.put_car(reader).await
     }
 }
