@@ -19,6 +19,10 @@ pub async fn get_block(params: NetworkGetParams) -> Result<NetworkGetResult> {
     call(NETWORK_GET, params, Get).await
 }
 
+pub async fn put_car(params: NetworkPutCarParams) -> Result<NetworkPutCarResult> {
+    call(NETWORK_PUT_CAR, params, Put).await
+}
+
 pub async fn put_file(params: NetworkPutFileParams) -> Result<NetworkPutFileResult> {
     call(NETWORK_PUT_FILE, params, Put).await
 }

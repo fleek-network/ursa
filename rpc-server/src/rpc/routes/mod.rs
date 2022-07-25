@@ -1,2 +1,2 @@
-pub mod network;
 pub mod metrics;
+pub mod network;
