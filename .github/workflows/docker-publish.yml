@@ -28,16 +28,16 @@ jobs:
 
       - name: Install cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@latest
+        uses: sigstore/cosign-installer@v2.5.0
         with:
           cosign-release: 'v1.9.0'
 
       - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@latest
+        uses: docker/setup-buildx-action@v2.0.0
 
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@latest
+        uses: docker/login-action@v2.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -45,13 +45,13 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@latest
+        uses: docker/metadata-action@v4.0.1
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@latest
+        uses: docker/build-push-action@v3.1.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
