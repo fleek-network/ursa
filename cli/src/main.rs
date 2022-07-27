@@ -11,7 +11,7 @@ use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
 use store::Store;
 use structopt::StructOpt;
 use tracing::{error, info};
-use ursa::{cli_error_and_die, wait_until_ctrlc, Cli};
+use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 
 #[async_std::main]
 async fn main() {
@@ -24,8 +24,12 @@ async fn main() {
 
     match opts.to_config() {
         Ok(config) => {
-            if let Some(_) = cmd {
-                todo!()
+            if let Some(command) = cmd {
+                match command {
+                    Subcommand::Rpc(cmd) => {
+                        cmd.run().await;
+                    }
+                }
             } else {
                 info!("Starting up with config {:?}", config);
 

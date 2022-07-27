@@ -1,13 +1,3 @@
-# Fly Deploy
-
-- flyctl launch --image ipfs/go-ipfs:latest
-- fly volumes create ipfs_data --region fra --size 3
-- fly status
-- fly ssh console -a ursa-ipfs
-- fly regions set lax -a ursa-ipfs
-- fly regions backup lax -a ursa-ipfs
-- flyctl ips list
-
 # Reverse Proxy Setup
 - Host
   - It is assumed that DNS records point to the Docker host
@@ -48,28 +38,32 @@
   - https://github.com/wmnnd/nginx-certbot
 
   
-  ## Deployment notes
-  
-  To deploy a node in DigitalOcean you can take the following notes.
+## Deployment notes
 
-* Basic requirements:
-	- Ubuntu 22.04 or later. By the moment, 20.04 is getting errors during the build.
-	- 4GB memory is recommended but 2GB should be enough.	- Real domain ownership.
+### Requirements
+- `Ubuntu 22.04 or later.`
+- `4GB memory is recommended but 2GB should be enough.`	
+- `A domain name.`
 
+### Digital Ocean
 
 1. Create Droplet and setup the basic for a user to run.
 	- Setup user: https://www.digitalocean.com/community/tutorials/initial-server-setup-with-ubuntu-22-04
 	- install docker: https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04
 		-  Setup buildkit: https://docs.docker.com/develop/develop-images/build_enhancements/
+
 2. Get a static ip address for your droplet with the available option at the panel.
-3. Configure DNS to use your droplet and DigitalOcean name servers.
-4. Clone the repo and build the image with `make docker-build`. You can use the `dev` command on the makefile but you also need to change the `infra/ursa/docker-compose.yml` to use `Dockerfile.dev`.
+
+3. Pount your Domain nameservers to Digital ocean.
+
+4. Clone the repo and build the image with `make docker-build`.
+
 5. Setup TLS.
-	- You need to change all the `ursanetwork.local` placeholders for your real domain and run the script in `infra/ursa/init-letsencrypt.sh`.
-		- If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.
+- Change all instances of `ursa.earth` and replace with your domain and run the script `infra/ursa/init-letsencrypt.sh`.
+
+- If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.
 
 6. Once you have the DNS configured, TLS certs ready, and the image built, you can run the node by doing `make compose-up` or `docker-compose -f infra/ursa/docker-compose.yml up`
-
 
 Now you are able to request your node.
 

@@ -1,5 +1,7 @@
 use anyhow::anyhow;
+use async_std::channel::bounded;
 use async_std::io::Cursor;
+use async_std::sync::RwLock;
 use axum::{
     middleware,
     routing::{get, post, put},
@@ -21,6 +23,7 @@ use crate::{
         rpc::http_handler,
     },
 };
+use fvm_ipld_car::CarHeader;
 use std::future::ready;
 
 use tracing::{error, info, warn};
@@ -62,10 +65,33 @@ pub async fn put_car_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = params.cid;
-    let buffer = params.data;
+    let cid = Cid::from_str(&params.cid).unwrap();
+    let buf = params.data;
 
-    let _ = data.0.put_car(cid, Cursor::new(&buffer)).await;
+    let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+    let header = CarHeader {
+        roots: vec![cid],
+        version: 1,
+    };
+
+    let (tx, mut rx) = bounded(10);
+
+    let buffer_cloned = buffer.clone();
+    let write_task = async_std::task::spawn(async move {
+        header
+            .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
+            .await
+            .unwrap()
+    });
+
+    tx.send((cid, buf)).await.unwrap();
+    drop(tx);
+    write_task.await;
+
+    let buffer: Vec<_> = buffer.read().await.clone();
+    if let Err(err) = data.0.put_car(Cursor::new(&buffer)).await {
+        error!("{:?}", err);
+    }
 
     Ok(true)
 }
@@ -77,10 +103,9 @@ pub async fn put_file_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = Cid::from_str(&params.cid).unwrap();
     let path = params.path;
 
-    if let Err(err) = data.0.put_file(cid, path).await {
+    if let Err(err) = data.0.put_file(path).await {
         error!("{:?}", err);
     }
 

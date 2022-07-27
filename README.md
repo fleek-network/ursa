@@ -1,13 +1,19 @@
-# ursa
+# Ursa
+
+> Ursa, a decentralized content delivery network.
 
 ## Run a node
 
 ### Run with cli
 
-To run a node through CLI you need to build and install it. You can run `make install` and this will build and install the latest *HEAD* version. 
+Build and install the latest *HEAD* version:
+```sh
+make install
+```
 
 You can run the node with `ursa` command. This will run the node with default parameters.
 
+##### CLI Commands
 - `--config` A toml file containing relevant configurations.
 	- Default value: *empty*. 
 - `--rpc` Allow rpc to be active or not.
@@ -17,7 +23,7 @@ You can run the node with `ursa` command. This will run the node with default pa
 - `--database-path` Database path where store data. This field can be also set on the config file but the cli option will override default and config values.
 	- Default value: *ursa_db*. Inside a container, the location will be `/app/ursa_db`.
 
-###### Config file
+##### Config file
 
 ```toml
 mdns = true
@@ -30,13 +36,37 @@ database_path = "data/ursadb"
 
 ### Run with Docker
 
-You can run the docker image as a simple container or with docker compose. anyways you need to build the image first with `make docker-build` and `make docker-build-dev` to create **ursa** and **ursa-dev** docker images in any case.
+You can run the docker image as a simple container or with docker compose. 
 
-1. `make docker-run / docker-run-dev` to run a node container.
-2. `make compose-up / compose-down` to run or shut down all the infra. This means node + gateway.
+Build the image to create **ursa** or **ursa-dev** docker images: 
+```sh
+make docker-build
+# or
+make docker-build-dev
+```
 
-Unless you want to loose the data once the container is restarted/dropped, share a volume with the database location. Default is always in `/app/ursa_db`.
+Run a node container:
+```sh
+make docker-run
+# or
+make docker-run-dev
+```
 
-### Accessing rpc server
+Run or shut down all the infra. This means node + gateway:
+```sh
+make compose-up
+# or
+make compose-down
+```
+
+### RPC
 
 To access the rpc you can do through the http JSON-RPC api. The endpoint to request is **`/rpc/v0`**. The server can be accessible in port `4060` for local development and in port `80/443` through the gateway (nginx by the moment).
+
+## Contributing
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+Please make sure to update tests as appropriate.
+
+## License
+[MIT](https://choosealicense.com/licenses/mit/)

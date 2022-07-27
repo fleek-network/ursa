@@ -5,10 +5,10 @@ if ! [ -x "$(command -v docker-compose)" ]; then
   exit 1
 fi
 
-domains=(ursanetwork.local www.ursanetwork.local)
+domains=(ursa.earth www.ursa.earth)
 rsa_key_size=4096
 data_path="./data/certbot"
-email="email@ursanetwork.local" # Adding a valid address is strongly recommended
+email="major@ursa.earth" # Adding a valid address is strongly recommended
 staging=1 # Set to 1 if you're testing your setup to avoid hitting request limits
 
 if [ -d "$data_path" ]; then

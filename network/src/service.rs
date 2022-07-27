@@ -329,13 +329,20 @@ where
                                 if let Ok(Some(data)) = blockstore.get(&utils::convert_cid(cid.to_bytes())) {
                                     let _ = sender.send(Ok(data));
                                 } else {
-                                    if let Some(chans) = self.response_channels.get_mut(&cid) {
-                                        chans.push(sender);
-                                    } else {
-                                        self.response_channels.insert(cid, vec![sender]);
-                                    }
                                     let peers = swarm.get_mut().behaviour_mut().peers();
-                                    swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
+                                    if peers.is_empty() {
+                                        error!("There were no peers provided and the block does not exist in local store");
+                                        let _ = sender.send(Err(anyhow!("There were no peers provided and the block does not exist in local store")));
+                                    }
+                                    else {
+                                        if let Some(chans) = self.response_channels.get_mut(&cid) {
+                                            chans.push(sender);
+                                        } else {
+                                            self.response_channels.insert(cid, vec![sender]);
+                                        }
+                                        swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
+                                    }
+
                                 }
 
                             },
