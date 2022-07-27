@@ -109,6 +109,7 @@ pub struct Behaviour<P: StoreParams> {
     identify: Identify,
 
     /// Bitswap for exchanging data between blocks between peers.
+    #[behaviour(ignore)]
     bitswap: Bitswap<P>,
 
     /// Ursa's gossiping protocol for message propagation.
@@ -227,6 +228,7 @@ impl<P: StoreParams> Behaviour<P> {
         let id = self
             .bitswap
             .get(utils::convert_cid(cid.to_bytes()), providers);
+
         self.queries.insert(
             id,
             BitswapInfo {
