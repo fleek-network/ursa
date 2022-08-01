@@ -1,6 +1,7 @@
 use anyhow::Result;
 use axum::{Extension, Router};
 use std::{net::SocketAddr, sync::Arc};
+use service_metrics::service::MetricsService;
 
 use crate::{
     config::RpcConfig,
@@ -67,8 +68,9 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+        let metrics = MetricsService::new();
 
-        let service = UrsaService::new(keypair, config, store);
+        let service = UrsaService::new(keypair, config, store, metrics);
 
         (service, local_peer_id)
     }
