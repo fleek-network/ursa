@@ -16,15 +16,43 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          # - 1.61.0
+        os:
+          - ubuntu-latest
+          # - macos-latest
     permissions:
       contents: read
       packages: write
       id-token: write
 
     steps:
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
+
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: ${{ matrix.toolchain }}
+            default: true
+            profile: minimal
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v1.3.0
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
         if: github.event_name != 'pull_request'
