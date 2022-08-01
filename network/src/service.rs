@@ -297,6 +297,7 @@ where
                                 BehaviourEvent::PeerDisconnected(peer) => {
                                     debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
                                     self.metrics_recorder.record(events::PEER_DISCONNECTED);
+
                                     if self
                                         .event_sender
                                         .send(UrsaEvent::PeerDisconnected(peer))
