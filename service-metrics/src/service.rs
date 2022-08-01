@@ -1,11 +1,21 @@
 use anyhow::Result;
-use axum::{http::StatusCode, routing::get, Router};
+use axum::{
+    http::{Request, StatusCode},
+    middlware::Next,
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 // use libp2p_metrics::{Metrics, Recorder};
 // use libp2p_swarm::{
 //     SwarmEvent,
 // };
 // use prometheus_client::{metrics::info::Info, registry::Registry};
-use metrics::{Gauge,register_gauge, increment_gauge, decrement_gauge};
+use metrics::{
+    Gauge,register_gauge, increment_gauge, decrement_gauge,
+    Counter, register_counter, increment_counter,
+    // Histogram, register_histogram, histogram,
+};
 use std::net::SocketAddr;
 use tracing::{info};
 
@@ -16,34 +26,20 @@ use crate::{
 };
 
 pub const ACTIVE_CONNECTED_PEERS: &str = "active_connected_peers";
+pub const REQUEST_RECEIVED: &str = "requests_receiveds";
 
 #[derive(Clone)]
 pub struct MetricsService {
-    active_connected_peers: Gauge,
+    active_connerted_peers: Gauge,
+    rpc_request_received: Counter,
 }
 impl MetricsService {
     pub fn new() -> Self {
         Self {
             active_connected_peers: register_gauge!(ACTIVE_CONNECTED_PEERS),
+            rpc_request_received: register_histogram!(REQUEST_RECEIVED),
         }
     }
-
-    // pub fn new() -> Self {
-    //     let mut metric_registry = Registry::default();
-    //     let metrics = Metrics::new(&mut metric_registry);
-    //     let build_info = Info::new(vec![("version".to_string(), env!("CARGO_PKG_VERSION"))]);
-
-    //     metric_registry.register(
-    //         "build",
-    //         "A sample metric with a constant value labeled by version",
-    //         Box::new(build_info),
-    //     );
-
-    //     Self {
-    //         metrics: metrics,
-    //         registry: metric_registry,
-    //     }
-    // }
 
     pub async fn start(&self, conf: &MetricsServiceConfig) -> Result<()> {
         let router = Router::new()
@@ -58,20 +54,27 @@ impl MetricsService {
 
         Ok(())
     }
+
+    pub async fn track_request<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
+
+    }
 }
 
 impl MetricsRecorder for MetricsService {
     fn record(&self, event_name: &str) {
+        info!("capturing event {:?}", event_name);
         match event_name {
             events::PEER_CONNECTED => {
-                info!("event {:?} captured", event_name);
                 increment_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
             }
             events::PEER_DISCONNECTED => {
-                info!("event {:?} captured", event_name);
                 decrement_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
             }
-            _ => info!("event name {:?} not match found", event_name)
+
+            events::RPC_REQUEST_RECEIVED => {
+                increment_counter!(REQUEST_RECEIVED);
+            }
+            _ => info!("event name {:?} no match found", event_name)
         }
     }
 }
@@ -99,6 +102,7 @@ mod tests {
                 msvc.record(events::PEER_CONNECTED);
             }
         }
+
         task::spawn(capture_events(metrics_svc.clone()));
     }
 }

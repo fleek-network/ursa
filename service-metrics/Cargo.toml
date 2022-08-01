@@ -9,7 +9,7 @@ description = "Ursa metrics"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libp2p = { version = "0.44.0", default-features = false, features = ["metrics"] }
+libp2p = { version = "0.46.1", default-features = false, features = ["metrics"] }
 libp2p-metrics = "0.7.0"
 prometheus-client = "0.16.0"
 anyhow = "1.0.56"

@@ -1,16 +1,23 @@
 FROM rust:1.61.0 AS builder
 
-RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
+# Install dependencies
+WORKDIR /usr/src/app
+# RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
+RUN apt-get update && apt-get install -y \
+    clang \
+    libclang-dev
 
 # Make a fake Rust app to keep a cached layer of compiled crates
 RUN USER=root cargo new app
-WORKDIR /usr/src/app
 
 # Copy the whole project
 COPY . .
 
+ENV RUST_BACKTRACE=1
+
 # Needs at least a main.rs file with a main function
 RUN mkdir src && echo "fn main(){}" > src/main.rs
+RUN apt-get install -y cmake
 
 # Install + build the actual binaries
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
