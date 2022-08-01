@@ -35,6 +35,7 @@ use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use std::{collections::HashSet, sync::Arc};
 use store::{BitswapStorage, Store};
 use tracing::{debug, error, info, warn};
+use service_metrics::{events, service::MetricsService, metrics::MetricsRecorder, config};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
@@ -117,6 +118,8 @@ pub struct UrsaService<S> {
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
+    // handle metrics for network
+    metrics_recorder: MetricsService,
 }
 
 impl<S> UrsaService<S>
@@ -136,7 +139,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
+    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>, metrics: MetricsService) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
@@ -194,6 +197,7 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
+            metrics_recorder: metrics,
         }
     }
 
@@ -279,6 +283,7 @@ where
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
                                     debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
+                                    self.metrics_recorder.record(events::PEER_CONNECTED);
 
                                     if self
                                         .event_sender
@@ -290,6 +295,8 @@ where
                                     }
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
+                                    debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
+                                    self.metrics_recorder.record(events::PEER_DISCONNECTED);
                                     if self
                                         .event_sender
                                         .send(UrsaEvent::PeerDisconnected(peer))
@@ -375,6 +382,7 @@ mod tests {
     use crate::codec::protocol::RequestType;
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
+    use service_metrics::service::MetricsService;
     use simple_logger::SimpleLogger;
     use std::{thread, time::Duration, vec};
     use store::Store;
@@ -390,8 +398,9 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+        let metrics = MetricsService::new();
 
-        let service = UrsaService::new(keypair, config, store);
+        let service = UrsaService::new(keypair, config, store, metrics);
 
         (service, local_peer_id)
     }
