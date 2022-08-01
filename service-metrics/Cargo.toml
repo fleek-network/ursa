@@ -1,0 +1,20 @@
+[package]
+name = "service_metrics"
+version = "0.1.0"
+edition = "2021"
+authors = ["mtavano <marcello@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa metrics"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libp2p = { version = "0.44.0", default-features = false, features = ["metrics"] }
+libp2p-metrics = "0.7.0"
+prometheus-client = "0.16.0"
+anyhow = "1.0.56"
+axum = "0.5.7"
+tracing = "0.1.33"
+libp2p-swarm = "0.37.0"
+metrics = "0.20.1"
+async-std = { version = "1.11.0", features = ["attributes"] }
