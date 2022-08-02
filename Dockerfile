@@ -3,6 +3,13 @@ FROM rust:latest as builder
 # Install dependencies
 WORKDIR /usr/src/app
 # RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
+# RUN apt-get update && apt-get install -y \
+#     make \
+#     curl \
+#     cmake \
+#     clang \
+#     libcurl4 \
+#     libclang-dev
 RUN apt-get update && apt-get install -y \
     clang \
     libclang-dev
@@ -28,6 +35,12 @@ RUN make install
 
 # Runtime image
 FROM debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y \
+    libcurl4-openssl-dev \
+    && apt-get clean \
+    && apt-get purge -y \
+    && rm -rf /var/lib/apt/lists*
 
 # Run as "app" user
 RUN useradd -ms /bin/bash app

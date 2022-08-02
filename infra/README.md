@@ -14,6 +14,22 @@ cd ursa
 docker build -t ursa -f ./Dockerfile .
 ```
 
+## Deploy
+
+```sh
+# Format your plans
+terraform fmt
+
+# Download your providers
+terraform init
+
+# Layout the plan of which resources will be deployed
+terraform plan
+
+# Create the resources in the plan
+terraform apply
+```
+
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
