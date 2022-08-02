@@ -13,7 +13,6 @@ use store::Store;
 use structopt::StructOpt;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursametrics::{Metrics, MetricsServerConfig};
 
 #[async_std::main]
 async fn main() {
