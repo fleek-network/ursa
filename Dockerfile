@@ -1,7 +1,6 @@
 FROM rust:latest as builder
 
 WORKDIR /usr/src/app
-
 RUN apt-get update && apt-get install -y \
     clang \
     cmake \
