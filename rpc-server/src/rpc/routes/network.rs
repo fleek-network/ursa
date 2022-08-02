@@ -12,7 +12,6 @@ use std::{str::FromStr, sync::Arc};
 
 use jsonrpc_v2::{Data, Error, Params};
 
-use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
 use crate::{
     api::{NetworkPutFileParams, NetworkPutFileResult},
     rpc::{
