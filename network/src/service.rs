@@ -119,7 +119,7 @@ pub struct UrsaService<S> {
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
     // handle metrics for network
-    metrics_recorder: MetricsService,
+    // metrics_recorder: MetricsService,
 }
 
 impl<S> UrsaService<S>
@@ -139,7 +139,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>, metrics: MetricsService) -> Self {
+    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
         info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
@@ -197,7 +197,6 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
-            metrics_recorder: metrics,
         }
     }
 
@@ -283,7 +282,7 @@ where
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
                                     debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
-                                    self.metrics_recorder.record(events::PEER_CONNECTED);
+                                    // self.metrics_recorder.record(events::PEER_CONNECTED);
 
                                     if self
                                         .event_sender
@@ -296,7 +295,7 @@ where
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
                                     debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
-                                    self.metrics_recorder.record(events::PEER_DISCONNECTED);
+                                    // self.metrics_recorder.record(events::PEER_DISCONNECTED);
 
                                     if self
                                         .event_sender
@@ -399,9 +398,8 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
-        let metrics = MetricsService::new();
 
-        let service = UrsaService::new(keypair, config, store, metrics);
+        let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
     }

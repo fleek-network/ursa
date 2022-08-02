@@ -68,9 +68,8 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
-        let metrics = MetricsService::new();
 
-        let service = UrsaService::new(keypair, config, store, metrics);
+        let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
     }

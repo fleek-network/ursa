@@ -50,10 +50,10 @@ async fn main() {
                 let store = Arc::new(Store::new(Arc::clone(&db)));
 
                 // Configure metrics service
-                let metrics_service = MetricsService::new();
+                // let metrics_service = MetricsService::new();
 
                 // Configure ursa service
-                let service = UrsaService::new(keypair, &config, Arc::clone(&store), metrics_service.clone());
+                let service = UrsaService::new(keypair, &config, Arc::clone(&store));
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
@@ -81,11 +81,11 @@ async fn main() {
                     }
                 });
 
-                task::spawn(async move {
-                    if let Err(err) = metrics_service.start(&MetricsServiceConfig::default()).await {
-                        error!("[metrics task] - {:?}", err);
-                    }
-                });
+                // task::spawn(async move {
+                //     if let Err(err) = metrics_service.start(&MetricsServiceConfig::default()).await {
+                //         error!("[metrics task] - {:?}", err);
+                //     }
+                // });
 
                 wait_until_ctrlc();
 
