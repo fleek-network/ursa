@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 pub const DEFAULT_BOOTSTRAP: &[&str] = &[
     // URSA bootstrap nodes
-    "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWMd2nE1v5msaRDn9oU9HudRb85X4ED2oKGurH2SntZ4wY",
-    "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWA6LcxGtUhPPe3XnkvAagfqTkWhUL4oqoPBVhNBnLYbNY",
+    "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWC8fC4hu8DKc2SLSs5BGTkmFzWN65d6do9zxA2WSZnDbP",
+    "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWCT69zoBuR9uNUwUteDCV9QvKWymruLcjd915AQgmsYem",
     // "/ip4/0.0.0.0/tcp/4001udp/4001/quic/p2p/Qm",
+    // "/ip4/127.0.0.1/tcp/6009",
 ];
 
 pub const DEFAULT_DB_PATH_STR: &'static str = "ursa_db";
