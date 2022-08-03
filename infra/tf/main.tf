@@ -3,7 +3,7 @@ resource "digitalocean_domain" "default" {
 }
 
 resource "digitalocean_record" "static" {
-  count  = var.worker_count
+  count  = var.node_count
   domain = digitalocean_domain.default.name
   type   = "A"
   name   = digitalocean_droplet.testnet-node[count.index].name
@@ -22,13 +22,18 @@ resource "digitalocean_project_resources" "node_droplets" {
   resources = digitalocean_droplet.testnet-node[*].urn
 }
 
+resource "digitalocean_project_resources" "bootstrap_droplets" {
+  project   = digitalocean_project.ursa-dev.id
+  resources = digitalocean_droplet.bootstrap-node[*].urn
+}
+
 resource "digitalocean_project_resources" "domain" {
   project   = digitalocean_project.ursa-dev.id
   resources = [digitalocean_domain.default.urn]
 }
 
 resource "digitalocean_droplet" "testnet-node" {
-  count      = var.worker_count
+  count      = var.node_count
   image      = var.droplet_image
   name       = "testnet-node-${count.index}"
   region     = var.droplet_region
@@ -58,11 +63,25 @@ resource "digitalocean_droplet" "testnet-node" {
   # }
 }
 
-resource "digitalocean_firewall" "testnet-node" {
-  count = var.worker_count
-  name  = "only-allow-ssh-http-and-https"
+resource "digitalocean_droplet" "bootstrap-node" {
+  count      = var.bootstrap_count
+  image      = var.droplet_image
+  name       = "bootstrap-node-${count.index}"
+  region     = var.droplet_region
+  size       = var.droplet_size
+  backups    = false
+  monitoring = true
+  user_data  = file(format("%s/bootstrap_node.yml", path.module))
+  ssh_keys = [
+    data.digitalocean_ssh_key.ursa-dev.id
+  ]
+}
 
-  droplet_ids = (digitalocean_droplet.testnet-node[*].id)
+resource "digitalocean_firewall" "ursa-network" {
+  count = var.node_count
+  name  = "ursa-network-only-allow-ssh-http-and-https"
+
+  droplet_ids = concat(digitalocean_droplet.testnet-node[*].id, digitalocean_droplet.bootstrap-node[*].id)
 
   inbound_rule {
     protocol         = "tcp"

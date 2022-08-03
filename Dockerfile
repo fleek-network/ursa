@@ -1,39 +1,25 @@
 FROM rust:latest as builder
 
-# Install dependencies
 WORKDIR /usr/src/app
-# RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
-# RUN apt-get update && apt-get install -y \
-#     make \
-#     curl \
-#     cmake \
-#     clang \
-#     libcurl4 \
-#     libclang-dev
+
 RUN apt-get update && apt-get install -y \
     clang \
+    cmake \
     libclang-dev
 
-# Make a fake Rust app to keep a cached layer of compiled crates
-RUN USER=root cargo new app
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo install cargo-strip
 
-# Copy the whole project
 COPY . .
 
 ENV RUST_BACKTRACE=1
 
-# Needs at least a main.rs file with a main function
-RUN mkdir src && echo "fn main(){}" > src/main.rs
-
-# Will build all dependent crates in release mode
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/src/app/target \
-    apt-get install -y cmake && cargo build --release
+    cargo build --release && \
+    cargo strip && \
+    mv /usr/src/app/target/release/ursa /usr/src/app/
 
-# Build (install) the actual binaries
-RUN make install
-
-# Runtime image
 FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y \
@@ -42,15 +28,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get purge -y \
     && rm -rf /var/lib/apt/lists*
 
-# Run as "app" user
-RUN useradd -ms /bin/bash app
-
-USER app
-WORKDIR /app
-
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/local/cargo/bin/ursa /usr/local/bin/ursa
+COPY --from=builder /usr/src/app/ /
 
 # run ursa node
 ENV RUST_LOG=info
-ENTRYPOINT ["/usr/local/bin/ursa"]
+ENTRYPOINT ["/ursa"]

@@ -36,9 +36,9 @@ variable "project_stage" {
 # }
 
 variable "droplet_image" {
-  type    = string
-  default = "docker-20-04"
   # default     = "ubuntu-20-04-x64"
+  type        = string
+  default     = "docker-20-04"
   description = "Image identifier of the OS in DigitalOcean"
 }
 
@@ -70,8 +70,14 @@ variable "ursa_domain" {
   description = "Ursa domain name"
 }
 
-variable "worker_count" {
+variable "node_count" {
   default     = 3
   type        = number
-  description = "How many instances to deploy"
+  description = "How many testnet nodes to deploy"
+}
+
+variable "bootstrap_count" {
+  default     = 2
+  type        = number
+  description = "How many bootstrap nodes to deploy"
 }
