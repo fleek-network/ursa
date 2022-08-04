@@ -71,6 +71,9 @@ async fn main() {
                 });
                 let rpc = Rpc::new(&rpc_config, interface);
 
+                // Configure metrics
+                let metrics_config = MetricsServiceConfig::default();
+
                 // Start rpc service
                 let rpc_task = task::spawn(async move {
                     if let Err(err) = rpc.start(rpc_config).await {
@@ -79,7 +82,7 @@ async fn main() {
                 });
 
                 task::spawn(async move {
-                    if let Err(err) = service::start(&MetricsServiceConfig::default()).await {
+                    if let Err(err) = service::start(&metrics_config).await {
                         error!("[metrics task] - {:?}", err);
                     }
                 });
