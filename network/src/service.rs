@@ -224,6 +224,7 @@ where
                                 BehaviourEvent::Bitswap(info)=> {
                                     let BitswapInfo {cid, query_id, block_found } = info;
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
+                                    events::track(events::BITSWAP);
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
@@ -254,6 +255,7 @@ where
                                 } => {
                                     debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
                                     let swarm_mut = swarm.get_mut();
+                                    events::track(events::GOSSIP_MESSAGE);
 
                                     if swarm_mut.is_connected(&peer) {
                                         if self
@@ -268,6 +270,7 @@ where
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
                                     debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
+                                    events::track(events::REQUEST_MESSAGE);
 
                                     if self
                                         .event_sender
