@@ -14,6 +14,14 @@ services:
       - "80:80"
       - "443:443"
 
+  nginxexporter:
+    image: fish/nginx-exporter
+    command:
+    - '-nginx.scrape_uri=http://nginx:80/stub_status'
+    ports:
+    - '9113:9113'
+
+
   certbot:
     image: certbot/certbot
     restart: unless-stopped
@@ -33,10 +41,25 @@ services:
       - ./data/prom:/etc/prometheus
     command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
 
+  grafana:
+    image: grafana/grafana:6.7.2
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./data/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    expose:
+      - 3000
+
   ursa:
     build:
       context: ../../.
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     restart: on-failure
     ports:
       # 6009 TCP and UDP, used by the P2P protocol running the network

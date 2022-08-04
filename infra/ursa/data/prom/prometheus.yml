@@ -15,3 +15,7 @@ scrape_configs:
 
     static_configs:
       - targets: ["ursa:4070"]
+
+  - job_name: 'nginxexporter'
+    static_configs:
+    - targets: ['nginxexporter:9113']
