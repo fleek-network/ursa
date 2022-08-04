@@ -28,6 +28,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Runtime image
 FROM debian:bullseye-slim
 
+RUN apt-get update && apt-get install -y \
+    libcurl4-openssl-dev \
+    && apt-get clean \
+    && apt-get purge -y \
+    && rm -rf /var/lib/apt/lists*
+
 # Run as "app" user
 RUN useradd -ms /bin/bash app
 
