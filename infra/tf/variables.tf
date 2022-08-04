@@ -71,7 +71,7 @@ variable "ursa_domain" {
 }
 
 variable "node_count" {
-  default     = 3
+  default     = 7
   type        = number
   description = "How many testnet nodes to deploy"
 }

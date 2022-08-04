@@ -172,12 +172,6 @@ where
                 .unwrap();
         }
 
-        for to_dial in &config.bootstrap_nodes {
-            Swarm::dial(&mut swarm, to_dial.clone())
-                .map_err(|err| anyhow!("{}", err))
-                .unwrap();
-        }
-
         // subscribe to topic
         let topic = Topic::new(URSA_GLOBAL);
         if let Err(error) = swarm.behaviour_mut().subscribe(&topic) {

@@ -2,7 +2,7 @@ use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const DEFAULT_BOOTSTRAP: &[&str] = &[
+pub const DEFAULT_BOOTSTRAP: [&'static str; 5] = [
     // URSA bootstrap nodes
     "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWC8fC4hu8DKc2SLSs5BGTkmFzWN65d6do9zxA2WSZnDbP",
     "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWCT69zoBuR9uNUwUteDCV9QvKWymruLcjd915AQgmsYem",
