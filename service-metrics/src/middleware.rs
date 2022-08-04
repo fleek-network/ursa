@@ -1,17 +1,17 @@
+use crate::events;
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use std::time::Instant;
-use crate::events;
 
 const REQUEST_DURATION_LABEL: &'static str = "http_requests_duration_seconds";
 
 pub fn setup_metrics_handler() -> PrometheusHandle {
     PrometheusBuilder::new()
-        .set_buckets_for_metric(
-            Matcher::Full(REQUEST_DURATION_LABEL.to_string()),
-            &[0.005, 0.01, 0.025, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
-        )
-        .unwrap()
+        //.set_buckets_for_metric(
+        //Matcher::Full(REQUEST_DURATION_LABEL.to_string()),
+        //&[0.005, 0.01, 0.025, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        //)
+        //.unwrap()
         .install_recorder()
         .unwrap()
 }
