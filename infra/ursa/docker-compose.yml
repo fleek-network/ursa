@@ -10,7 +10,6 @@ services:
       - ./data/nginx:/etc/nginx/conf.d
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-      - ./data/nginx/cache:/cache:rw
     ports:
       - "80:80"
       - "443:443"
@@ -40,11 +39,11 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     ports:
-      # HTTP server / GraphQL API
+      # 6009 TCP and UDP, used by the P2P protocol running the network
       - "6009:6009"
     expose:
       # 4069 TCP, used by the HTTP based JSON RPC API
-      # 6009 TCP and UDP, used by the P2P protocol running the network
-      - 4069
+      - "4069"
+      - "4070"
     volumes:
       - ../../test_db:/app/ursa_db:rw
