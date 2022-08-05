@@ -6,7 +6,7 @@ use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
-use service_metrics::{config::MetricsServiceConfig, service::MetricsService};
+use service_metrics::{service, config::MetricsServiceConfig};
 use network::UrsaService;
 use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
 use store::Store;
@@ -49,9 +49,6 @@ async fn main() {
                 let db = Arc::new(db);
                 let store = Arc::new(Store::new(Arc::clone(&db)));
 
-                // Configure metrics service
-                // let metrics_service = MetricsService::new();
-
                 // Configure ursa service
                 let service = UrsaService::new(keypair, &config, Arc::clone(&store));
                 let rpc_sender = service.command_sender().clone();
@@ -81,11 +78,11 @@ async fn main() {
                     }
                 });
 
-                // task::spawn(async move {
-                //     if let Err(err) = metrics_service.start(&MetricsServiceConfig::default()).await {
-                //         error!("[metrics task] - {:?}", err);
-                //     }
-                // });
+                task::spawn(async move {
+                    if let Err(err) = service::start(&MetricsServiceConfig::default()).await {
+                        error!("[metrics task] - {:?}", err);
+                    }
+                });
 
                 wait_until_ctrlc();
 

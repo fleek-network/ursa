@@ -1,7 +1,6 @@
 use anyhow::Result;
 use axum::{Extension, Router};
 use std::{net::SocketAddr, sync::Arc};
-use service_metrics::service::MetricsService;
 
 use crate::{
     config::RpcConfig,

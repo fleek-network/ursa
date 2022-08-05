@@ -14,4 +14,4 @@ scrape_configs:
     # scheme defaults to 'http'.
 
     static_configs:
-      - targets: ["ursa:4069"]
+      - targets: ["ursa:4070"]

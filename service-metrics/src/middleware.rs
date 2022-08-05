@@ -35,7 +35,6 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
         ("status", status),
     ];
 
-    metrics::increment_counter!("http_requests_total", &labels);
     events::track(events::RPC_REQUEST_RECEIVED);
     metrics::histogram!(REQUEST_DURATION_LABEL, latency, &labels);
 

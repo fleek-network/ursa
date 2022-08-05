@@ -30,13 +30,10 @@ use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
-    let metrics_handler = setup_metrics_handler();
-
     Router::new()
         .route("/rpc/v0", get(http_handler))
         .route("/rpc/v0", put(http_handler))
         .route("/rpc/v0", post(http_handler))
-        .route("/metrics", get(move || ready(metrics_handler.render())))
         .route_layer(middleware::from_fn(track_metrics))
 }
 
