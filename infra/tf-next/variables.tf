@@ -30,7 +30,7 @@ variable "project_stage" {
 # Regions      #
 ################
 variable "regions" {
-  type = list
+  type    = list(any)
   default = ["ams3"]
 }
 
