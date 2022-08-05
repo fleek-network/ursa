@@ -41,8 +41,6 @@ services:
     ports:
       # HTTP server / GraphQL API
       - 4069:4069
-      # Network listening port (P2P networking)
-      - 6009:6009
     expose:
       # 4069 TCP, used by the HTTP based JSON RPC API
       # 6009 TCP and UDP, used by the P2P protocol running the network
