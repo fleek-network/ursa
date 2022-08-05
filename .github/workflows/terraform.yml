@@ -4,12 +4,19 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'infra/tf-next/**'
   pull_request:
+    paths:
+      - 'infra/tf-next/**'
 
 jobs:
   terraform:
     name: "Terraform"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/tf-next
     steps:
       - name: Checkout
         uses: actions/checkout@v3
