@@ -37,7 +37,7 @@ simple_logger = "2.1.0"
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 
 [dependencies.libp2p]
-version = "0.43.0"
+version = "0.46.1"
 default-features = false
 features = [
     "identify",

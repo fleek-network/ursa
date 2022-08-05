@@ -109,6 +109,7 @@ pub struct Behaviour<P: StoreParams> {
     identify: Identify,
 
     /// Bitswap for exchanging data between blocks between peers.
+    #[behaviour(ignore)]
     bitswap: Bitswap<P>,
 
     /// Ursa's gossiping protocol for message propagation.
