@@ -5,7 +5,9 @@ members = [
   "store",
   "rpc-server",
   "rpc-client",
-]
+  "service-metrics",
+  ]
+
 
 exclude = [
   "infra",
