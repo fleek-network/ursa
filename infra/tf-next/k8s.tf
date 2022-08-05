@@ -2,12 +2,10 @@
 # Deploy the actual Kubernetes cluster
 resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
 
-  for_each = {
-    ams3 = "ams3"
-  }
+  for_each = toset(var.regions)
 
-  region = each.key
-  name   = "ursa-${each.key}"
+  region = each.value
+  name   = "ursa-${each.value}"
 
   version = "1.23.9-do.0"
 
@@ -24,6 +22,7 @@ resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
   }
 
 }
+
 
 # Another node pool in case we need node affinity etc
 # resource "digitalocean_kubernetes_node_pool" "app_node_pool" {

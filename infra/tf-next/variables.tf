@@ -27,7 +27,15 @@ variable "project_stage" {
 }
 
 ################
-#   Droplet    #
+# Regions      #
+################
+variable "regions" {
+  type = list
+  default = ["ams3"]
+}
+
+################
+# k8s Droplet  #
 ################
 
 variable "k8s_droplet_size" {
