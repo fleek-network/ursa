@@ -32,10 +32,10 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use service_metrics::events;
 use std::{collections::HashSet, sync::Arc};
 use store::{BitswapStorage, Store};
 use tracing::{debug, error, info, warn};
-use service_metrics::events;
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
@@ -44,6 +44,7 @@ use crate::{
     transport::UrsaTransport,
     utils,
 };
+use metrics::Label;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -223,8 +224,14 @@ where
                             SwarmEvent::Behaviour(event) => match event {
                                 BehaviourEvent::Bitswap(info)=> {
                                     let BitswapInfo {cid, query_id, block_found } = info;
+
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
-                                    events::track(events::BITSWAP);
+                                    let labels = vec![ 
+                                        Label::new("cid", format!("{}", cid)),
+                                        Label::new("query_id", format!("{}", query_id)),
+                                        Label::new("block_found", format!("{}", block_found)),
+                                     ];
+                                    events::track(events::BITSWAP, Some(labels), None);
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
@@ -255,7 +262,12 @@ where
                                 } => {
                                     debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
                                     let swarm_mut = swarm.get_mut();
-                                    events::track(events::GOSSIP_MESSAGE);
+                                    let labels =  vec![
+                                        Label::new("peer", format!("{}", peer)),
+                                        Label::new("topic", format!("{}", topic)),
+                                        Label::new("message", format!("{:?}", message)),
+                                    ];
+                                    events::track(events::GOSSIP_MESSAGE, Some(labels), None);
 
                                     if swarm_mut.is_connected(&peer) {
                                         if self
@@ -270,7 +282,12 @@ where
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
                                     debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
-                                    events::track(events::REQUEST_MESSAGE);
+                                    let labels = vec![ 
+                                        Label::new("peer", format!("{}", peer)),
+                                        Label::new("request", format!("{:?}", request)),
+                                        Label::new("channel", format!("{:?}", channel)),
+                                     ];
+                                    events::track(events::REQUEST_MESSAGE, Some(labels), None);
 
                                     if self
                                         .event_sender
@@ -283,7 +300,7 @@ where
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
                                     debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
-                                    events::track(events::PEER_CONNECTED);
+                                    events::track(events::PEER_CONNECTED, None, None);
 
                                     if self
                                         .event_sender
@@ -296,7 +313,7 @@ where
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
                                     debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
-                                    events::track(events::PEER_DISCONNECTED);
+                                    events::track(events::PEER_DISCONNECTED, None, None);
 
                                     if self
                                         .event_sender

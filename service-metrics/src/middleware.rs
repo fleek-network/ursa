@@ -1,6 +1,7 @@
 use crate::events;
+use metrics::Label;
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
-use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::time::Instant;
 
 const REQUEST_DURATION_LABEL: &'static str = "http_requests_duration_seconds";
@@ -29,14 +30,15 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
     let latency = start.elapsed().as_secs_f64();
     let status = response.status().as_u16().to_string();
 
-    let labels = [
-        ("method", method.to_string()),
-        ("path", path),
-        ("status", status),
+    let labels = vec![
+        Label::new("method", method.to_string()),
+        Label::new("path", path),
+        Label::new("status", status),
+        Label::new("latency", format!("{}", latency)),
     ];
 
-    events::track(events::RPC_REQUEST_RECEIVED);
-    metrics::histogram!(REQUEST_DURATION_LABEL, latency, &labels);
+    events::track(events::RPC_REQUEST_RECEIVED, None, None);
+    events::track(events::RPC_RESPONSE_SENT, Some(labels), Some(latency));
 
     response
 }
