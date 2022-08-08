@@ -33,6 +33,8 @@ services:
   prometheus:
     image: prom/prometheus
     restart: always
+    expose: 
+      - "9090"
     ports:
       - "9090:9090"
     depends_on:
@@ -59,7 +61,7 @@ services:
   ursa:
     build:
       context: ../../.
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     restart: on-failure
     ports:
       # 6009 TCP and UDP, used by the P2P protocol running the network
