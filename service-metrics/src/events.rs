@@ -20,9 +20,9 @@ const NODE_REQUEST_MESSAGES: &str = "request_messages_total";
 const NODE_RESPONSE_INFO: &str = "response_messages_info";
 
 pub fn track(event_name: &str, labels: Option<Vec<Label>>, value: Option<f64>) {
-    info!("capturing event {:?} with labels {:?}", event_name, labels);
     if let Some(label) = labels {
-       match event_name {
+        info!("capturing event {:?} with labels {:?}", event_name, label);
+        match event_name {
             BITSWAP => {
                 increment_counter!(NODE_BITSWAP_OPERATIONS, label);
             }
@@ -43,21 +43,22 @@ pub fn track(event_name: &str, labels: Option<Vec<Label>>, value: Option<f64>) {
             }
 
             _ => info!("event name {:?} no match found", event_name)
-       }
-    } else {
-            match event_name {
-                PEER_CONNECTED => {
-                    increment_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
-                }
-                PEER_DISCONNECTED => {
-                    decrement_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
-                }
-
-                RPC_REQUEST_RECEIVED => {
-                    increment_counter!(HTTP_RPC_REQUESTS);
-                }
-
-                _ => info!("event name {:?} no match found", event_name)
-            }
         }
+    } else {
+        info!("capturing event {:?}", event_name);
+        match event_name {
+            PEER_CONNECTED => {
+                increment_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
+            }
+            PEER_DISCONNECTED => {
+                decrement_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
+            }
+
+            RPC_REQUEST_RECEIVED => {
+                increment_counter!(HTTP_RPC_REQUESTS);
+            }
+
+            _ => info!("event name {:?} no match found", event_name)
+        }
+    }
 }
