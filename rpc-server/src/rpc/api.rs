@@ -12,7 +12,7 @@ use jsonrpc_v2::Error;
 use network::UrsaCommand;
 use serde::{Deserialize, Serialize};
 use store::Store;
-use tracing::{error, info, warn};
+use tracing::info;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;

@@ -170,8 +170,8 @@ impl DiscoveryBehaviour {
 
     fn handle_mdns_event(&mut self, event: MdnsEvent) {
         match event {
-            MdnsEvent::Discovered(discoverd_peers) => {
-                for (peer_id, address) in discoverd_peers {
+            MdnsEvent::Discovered(discovered_peers) => {
+                for (peer_id, address) in discovered_peers {
                     self.add_address(&peer_id, address)
                 }
             }

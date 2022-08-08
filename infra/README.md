@@ -1,6 +1,6 @@
 # Ursa Infra
 
-> Deploy and run an ursa node, with an nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
+> Deploy and run an ursa node, with nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
 
 ## Prerequisites
 

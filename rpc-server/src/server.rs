@@ -7,7 +7,7 @@ use crate::{
     rpc::{
         api::NetworkInterface,
         routes,
-        rpc::{http_handler, RpcServer},
+        rpc::RpcServer,
     },
 };
 use tracing::info;
@@ -40,7 +40,7 @@ where
         let http_address = SocketAddr::from(([0, 0, 0, 0], config.rpc_port));
 
         info!("listening on {}", http_address);
-        let builder = axum::Server::bind(&http_address)
+        axum::Server::bind(&http_address)
             .serve(router.into_make_service())
             .await?;
 

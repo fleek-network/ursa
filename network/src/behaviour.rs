@@ -4,10 +4,10 @@
 //!
 //! - [`Ping`] A `NetworkBehaviour` that responds to inbound pings and
 //!   periodically sends outbound pings on every established connection.
-//! - [`Identify`] A `Networkbehaviour` that automatically identifies nodes periodically, returns information
+//! - [`Identify`] A `NetworkBehaviour` that automatically identifies nodes periodically, returns information
 //!   about them, and answers identify queries from other nodes.
-//! - [`Bitswap`] A `Networkbehaviour` that handles sending and receiving blocks.
-//! - [`Gossipsub`] A `Networkbehaviour` that handles the gossipsub protocol.
+//! - [`Bitswap`] A `NetworkBehaviour` that handles sending and receiving blocks.
+//! - [`Gossipsub`] A `NetworkBehaviour` that handles the gossipsub protocol.
 //! - [`DiscoveryBehaviour`]
 //! - [`RequestResponse`] A `NetworkBehaviour` that implements a generic
 //!   request/response protocol or protocol family, whereby each request is
@@ -73,14 +73,14 @@ pub enum BehaviourEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
-    /// A Gossip message request was recieved from a peer.
+    /// A Gossip message request was received from a peer.
     Bitswap(BitswapInfo),
     GossipMessage {
         peer: PeerId,
         topic: TopicHash,
         message: GossipsubMessage,
     },
-    /// A message request was recieved from a peer.
+    /// A message request was received from a peer.
     /// Attached is a channel for returning a response.
     RequestMessage {
         peer: PeerId,
@@ -102,7 +102,7 @@ pub enum BehaviourEvent {
     event_process = true
 )]
 pub struct Behaviour<P: StoreParams> {
-    /// Aliving checks.
+    /// Alive checks.
     ping: Ping,
 
     // Identifying peer info to other peers.
@@ -250,7 +250,7 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn poll(
         &mut self,
-        cx: &mut Context,
+        _: &mut Context,
         _: &mut impl PollParameters,
     ) -> Poll<
         NetworkBehaviourAction<

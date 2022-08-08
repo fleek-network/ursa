@@ -39,7 +39,7 @@ async fn main() {
                 let db_path = opts
                     .database_path
                     .unwrap_or(config_db_path.unwrap().to_string());
-                info!("Using {} as databse path", db_path);
+                info!("Using {} as database path", db_path);
 
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");

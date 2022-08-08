@@ -136,8 +136,6 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
 
-    use std::str::FromStr;
-
     use crate::functions::{get_block, put_car, put_file};
 
     use cid::Cid;
