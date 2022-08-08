@@ -41,3 +41,32 @@ resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
 #     priority = "high"
 #   }
 # }
+
+
+# Kubernetes Provider
+
+resource "digitalocean_project_resources" "project_resources" {
+  project = digitalocean_project.ursa.id
+
+  for_each = toset(var.regions)
+
+  resources = [
+    digitalocean_kubernetes_cluster.ursa_cluster[each.value].urn
+  ]
+}
+
+resource "kubernetes_namespace" "ursa" {
+  metadata {
+    name = "ursa"
+  }
+}
+
+module "k8s_apps_ams3" {
+  source = "./apps"
+
+  k8s_host  = digitalocean_kubernetes_cluster.ursa_cluster.ams3.endpoint
+  k8s_token = digitalocean_kubernetes_cluster.ursa_cluster.ams3.kube_config[0].token
+  k8s_cluster_ca_certificate = base64decode(
+    digitalocean_kubernetes_cluster.ursa_cluster.ams3.kube_config[0].cluster_ca_certificate
+  )
+}

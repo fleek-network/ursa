@@ -27,6 +27,15 @@ jobs:
           # terraform_version: 0.13.0:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
+
+      # todo are we using docker image tags like ${{ github.sha }}?
+      - name: Setup Terraform variables
+        id: vars
+        run: |-
+          cat > pipeline.auto.tfvars <<EOF
+          k8s_ursa_docker_image = "ghcr.io/psychedelic/ursa:sha256-cc01da24eb8baac042aa3d9cbe3e8f56d892a4b916c11c4bfe8ef64d2682d1f1.sig"
+          EOF
+
       - name: Terraform Format
         id: fmt
         run: terraform fmt -check
