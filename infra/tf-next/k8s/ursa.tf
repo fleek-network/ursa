@@ -17,6 +17,10 @@ resource "kubernetes_deployment" "ursa_node" {
         }
       }
       spec {
+        image_pull_secrets {
+          name = "dockerconfigjson"
+        }
+
         container {
           image = var.k8s_ursa_docker_image
           name  = "ursa"
@@ -35,7 +39,7 @@ resource "kubernetes_service" "ursa" {
   }
   spec {
     selector = {
-      app = kubernetes_deployment.ursa.spec.0.template.0.metadata.0.labels.app
+      app = kubernetes_deployment.ursa_node.spec.0.template.0.metadata.0.labels.app
     }
     type = "NodePort"
 
