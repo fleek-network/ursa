@@ -19,7 +19,7 @@ pub async fn http_handler(
 }
 
 impl RpcServer {
-    pub fn new<I>(config: &RpcConfig, interface: Arc<I>) -> Self
+    pub fn new<I>(_config: &RpcConfig, interface: Arc<I>) -> Self
     where
         I: NetworkInterface,
     {

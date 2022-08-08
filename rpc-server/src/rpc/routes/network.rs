@@ -26,7 +26,7 @@ use crate::{
 use fvm_ipld_car::CarHeader;
 use std::future::ready;
 
-use tracing::{error, info, warn};
+use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {

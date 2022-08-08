@@ -8,7 +8,7 @@ The premise is that all connections between peers must be authenticated encrypte
 
 ## Transport
 
-Libp2p supports dialing/listening on different transports in parallel. We will have base line interoperability support for QUIC for both inbound and outbound connections, while also supporting tcp and others as fallbacks in case QUIC fails. IPV6 and IPV4 both are supported, with IPV4 being the default.
+Libp2p supports dialing/listening on different transports in parallel. We will have baseline interoperability support for QUIC for both inbound and outbound connections, while also supporting tcp and others as fallbacks in case QUIC fails. IPV6 and IPV4 both are supported, with IPV4 being the default.
 
 - QUIC over TCP?
     - QUIC requires not initial negotiation to agree on auth or multiplexing
@@ -201,7 +201,7 @@ Here we discuss Fleek Mesh Construction, we start with the default v1.0 paramete
     - Without a discovery service
         - Create and operate a set of stable bootstrapper nodes, whose addresses are known ahead of time by the application.
         - The bootstrappers should be configured without a mesh (ie set `D=D_lo=D_hi=D_out=0`) and with Peer Exchange enabled, utilizing Signed Peer Records.
-        - The application should assign a high application-specific score to the bootstrappers and set `AcceptPXThreshold` to a high enough value attainable only by the bootstrappers.
+        - The application should assign a high application-specific score to the bootstraps and set `AcceptPXThreshold` to a high enough value attainable only by the bootstrappers.
         - The bootstrap nodes will only act as gossip and peer exchange nodes only.
         - Network operators may configure the application-specific scoring function such that the bootstrappers enforce further constraints into accepting new nodes (eg protocol handshakes, staked participation, and so on).
     - With discovery service

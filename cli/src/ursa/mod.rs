@@ -20,7 +20,7 @@ use tracing::{error, info, warn};
     name = option_env!("CARGO_PKG_NAME").unwrap_or("ursa"),
     version = option_env!("URSA_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     about = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("The Great Bear"),
-    author = option_env!("CARGO_PKG_AUTHORS").unwrap_or("fleek")
+    author = option_env!("CARGO_PKG_AUTHORS").unwrap_or("Fleek")
 )]
 pub struct Cli {
     #[structopt(flatten)]

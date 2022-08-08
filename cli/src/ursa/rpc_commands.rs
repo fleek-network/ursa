@@ -1,7 +1,7 @@
 use rpc_client::functions::put_file;
 use rpc_server::api::NetworkPutFileParams;
 use structopt::StructOpt;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 #[derive(Debug, StructOpt)]
 pub enum RpcCommands {

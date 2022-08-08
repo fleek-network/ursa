@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[async_std::test]
-    async fn test_read_respose() {
+    async fn test_read_response() {
         todo!()
     }
 

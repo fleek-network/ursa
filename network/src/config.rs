@@ -10,7 +10,7 @@ pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
 
 pub const DEFAULT_DB_PATH_STR: &'static str = "ursa_db";
 
-/// Ursa Configration
+/// Ursa Configuration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct UrsaConfig {
     /// Optional mdns local discovery.

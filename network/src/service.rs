@@ -3,10 +3,10 @@
 //! The service is bootstrapped with the following premises:
 //!
 //! - Load or create a new [`Keypair`] by checking the local storage.
-//! - Instanitate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
-//! - A custome ['NetworkBehaviour'] is implemented based on [`UrsaConfig`] provided by node runner.
+//! - Instantiate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
+//! - A custom ['NetworkBehaviour'] is implemented based on [`UrsaConfig`] provided by node runner.
 //! - Using the [`UrsaTransport`] and [`Behaviour`] a new [`Swarm`] is built.
-//! - Two channels are created to serve (send/recieve) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
+//! - Two channels are created to serve (send/receive) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
 //!
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
@@ -92,9 +92,9 @@ pub enum UrsaEvent {
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
     BitswapEvent(BitswapEvent),
-    /// A Gossip message request was recieved from a peer.
+    /// A Gossip message request was received from a peer.
     GossipsubMessage(GossipsubMessage),
-    /// A message request was recieved from a peer.
+    /// A message request was received from a peer.
     /// Attached is a channel for returning a response.
     RequestMessage {
         request: UrsaExchangeRequest,
@@ -129,7 +129,7 @@ where
     /// checking for a local store or creating a new keypair.
     ///
     /// For ursa `transport` we build a default QUIC layer and
-    /// failover to tcp.
+    /// fail over to tcp.
     ///
     /// For ursa behaviour we use [`Behaviour`].
     ///
@@ -207,7 +207,7 @@ where
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
         info!(
-            "Node startig up with peerid {:?}",
+            "Node startingg up with peerId {:?}",
             self.swarm.local_peer_id()
         );
         let mut swarm = self.swarm.fuse();
