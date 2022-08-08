@@ -28,6 +28,7 @@ ipld_blockstore = "0.1.1"
 store = { path = "../store" }
 async-std = { version = "1.11.0", features = ["attributes"] }
 service_metrics = { path = "../service-metrics" }
+metrics = "0.20.1"
 
 [dependencies.libipld]
 version = "0.12.0"
