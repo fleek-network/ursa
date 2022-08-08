@@ -6,7 +6,7 @@ use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
-use service_metrics::{service, config::MetricsServiceConfig};
+use service_metrics::{metrics, config::MetricsServiceConfig};
 use network::UrsaService;
 use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
 use store::Store;
@@ -81,9 +81,9 @@ async fn main() {
                     }
                 });
 
-                task::spawn(async move {
-                    if let Err(err) = service::start(&metrics_config).await {
-                        error!("[metrics task] - {:?}", err);
+                let metrics_task = task::spawn(async move {
+                    if let Err(err) = metrics::start(&metrics_config).await {
+                        error!("[metrics_task] - {:?}", err);
                     }
                 });
 
@@ -93,6 +93,7 @@ async fn main() {
                 task::spawn(async {
                     rpc_task.cancel().await;
                     service_task.cancel().await;
+                    metrics_task.cancel().await;
                 });
             }
         }
