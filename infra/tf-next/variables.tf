@@ -30,10 +30,10 @@ variable "project_stage" {
 # ghcr.io #
 ###########
 variable "ghcr_registry_username" {
-    default = "user"
+  default = "user"
 }
 variable "ghcr_registry_password" {
-    default = "pass"
+  default = "pass"
 }
 
 ###########
