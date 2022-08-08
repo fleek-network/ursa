@@ -61,7 +61,7 @@ services:
   ursa:
     build:
       context: ../../.
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     restart: on-failure
     ports:
       # 6009 TCP and UDP, used by the P2P protocol running the network
