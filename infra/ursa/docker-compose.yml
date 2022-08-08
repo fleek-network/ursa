@@ -18,8 +18,8 @@ services:
     image: fish/nginx-exporter
     command:
     - '-nginx.scrape_uri=http://nginx:80/stub_status'
-    ports:
-    - '9113:9113'
+    expose:
+      - 9113
 
 
   certbot:
