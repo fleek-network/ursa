@@ -1,5 +1,5 @@
 use metrics::{
-    increment_gauge, decrement_gauge, increment_counter,
+    Label, increment_gauge, decrement_gauge, increment_counter,
 };
 use tracing::info;
 
@@ -32,17 +32,25 @@ pub fn track(event_name: &str) {
         RPC_REQUEST_RECEIVED => {
             increment_counter!(HTTP_RPC_REQUESTS);
         }
-        
+
+        _ => info!("event name {:?} no match found", event_name)
+    }
+}
+
+pub fn track_with_labels(event_name: &str, labels: Vec<Label>) {
+
+    info!("capturing event {:?} with labels {:?}", event_name, labels);
+    match event_name {
         BITSWAP => {
-            increment_counter!(NODE_BITSWAP_OPERATIONS);
+            increment_counter!(NODE_BITSWAP_OPERATIONS, labels);
         }
 
         GOSSIP_MESSAGE => {
-            increment_counter!(NODE_GOSSIP_MESSAGES);
+            increment_counter!(NODE_GOSSIP_MESSAGES, labels);
         }
 
         REQUEST_MESSAGE => {
-            increment_counter!(NODE_REQUEST_MESSAGES);
+            increment_counter!(NODE_REQUEST_MESSAGES, labels);
         }
 
         _ => info!("event name {:?} no match found", event_name)
