@@ -28,6 +28,10 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
 
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check
+
       # @todo: are we using docker image tags like ${{ github.sha }}?
       - name: Setup Terraform variables
         id: vars
@@ -37,10 +41,6 @@ jobs:
           ghcr_registry_username = "${{ secrets.TF_GHCR_USER }}"
           ghcr_registry_password = "${{ secrets.TF_GHCR_PASS }}"
           EOF
-
-      - name: Terraform Format
-        id: fmt
-        run: terraform fmt -check
 
       - name: Terraform Init
         id: init
