@@ -14,7 +14,7 @@ variable "k8s_ursa_docker_image" {
 
 variable "k8s_droplet_size" {
   type        = string
-  default     = "s-4vcpu-8gb"
+  default     = "s-2vcpu-4gb"
   description = "Default k8s droplet size identifier"
 }
 
