@@ -34,4 +34,3 @@ COPY --from=builder /usr/src/app/ /
 # run ursa node
 ENV RUST_LOG=info
 ENTRYPOINT ["/ursa"]
-
