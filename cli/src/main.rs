@@ -36,7 +36,6 @@ async fn main() {
 
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
-
                 let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
                 let db_path = opts
                     .database_path
@@ -47,7 +46,6 @@ async fn main() {
                     .expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
                 let store = Arc::new(Store::new(Arc::clone(&db)));
-
                 let service = UrsaService::new(keypair, &config, Arc::clone(&store));
                 let rpc_sender = service.command_sender().clone();
 
