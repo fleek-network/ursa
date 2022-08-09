@@ -15,10 +15,9 @@ use libp2p::{
     identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    tcp::TcpConfig,
+    tcp::{GenTcpConfig, TcpTransport},
     yamux, PeerId, Transport,
 };
-use std::time::Duration;
 
 use crate::config::UrsaConfig;
 
@@ -52,17 +51,13 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
             };
 
-            let tcp = TcpConfig::new()
-                .nodelay(true)
-                .port_reuse(true)
-                // .or_transport(Some(relay.0))
-                .upgrade(upgrade::Version::V1)
+            let tcp = TcpTransport::new(GenTcpConfig::new());
+            let tcp = block_on(DnsConfig::system(tcp)).unwrap();
+
+            tcp.upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
-                .timeout(Duration::from_secs(20))
-                .boxed();
-
-            block_on(DnsConfig::system(tcp)).unwrap()
+                .boxed()
         };
 
         // let quic = {
@@ -81,6 +76,6 @@ impl UrsaTransport {
         //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
         //     })
         //     .boxed()
-        tcp.boxed()
+        tcp
     }
 }
