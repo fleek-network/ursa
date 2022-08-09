@@ -32,6 +32,15 @@ resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
 
 }
 
+resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
+  cluster_id = digitalocean_kubernetes_cluster.ursa_cluster.id
+  auto_scale = false
+  name       = "ursa-bootstrap"
+  size       = var.k8s_droplet_size
+  node_count = 2
+  tags       = ["ursa-bootstrap"]
+}
+
 
 # Another node pool in case we need node affinity etc
 # resource "digitalocean_kubernetes_node_pool" "app_node_pool" {

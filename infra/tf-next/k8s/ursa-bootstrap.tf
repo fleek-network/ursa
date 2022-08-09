@@ -1,12 +1,12 @@
-resource "kubernetes_daemonset" "ursa_node" {
+resource "kubernetes_daemonset" "ursa_bootstrap_node" {
   metadata {
-    name      = "ursa-node"
+    name      = "ursa-bootstrap-node"
     namespace = kubernetes_namespace.ursa.metadata.0.name
   }
   spec {
     selector {
       match_labels = {
-        app = "UrsaNode"
+        app = "UrsaBootstrapNode"
       }
     }
 
@@ -21,7 +21,7 @@ resource "kubernetes_daemonset" "ursa_node" {
     template {
       metadata {
         labels = {
-          app = "UrsaNode"
+          app = "UrsaBootstrapNode"
         }
       }
       spec {
@@ -96,7 +96,7 @@ resource "kubernetes_daemonset" "ursa_node" {
                 match_expressions {
                   key      = "doks.digitalocean.com/node-pool"
                   operator = "In"
-                  values   = ["ursa-main"]
+                  values   = ["ursa-bootstrap"]
                 }
               }
             }

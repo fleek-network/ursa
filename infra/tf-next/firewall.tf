@@ -1,7 +1,7 @@
 resource "digitalocean_firewall" "ursa_peering" {
   name = "ursa-peering"
 
-  tags = ["ursa-main"]
+  tags = ["ursa-main", "ursa-bootstrap"]
 
   inbound_rule {
     protocol         = "tcp"
