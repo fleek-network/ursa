@@ -5,7 +5,7 @@ if ! [ -x "$(command -v docker-compose)" ]; then
   exit 1
 fi
 
-domains=(testnet-node-2.ursa.earth testnet-node-2.ursa.earth)
+domains=(ursa.earth www.ursa.earth)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="major@ursa.earth" # Adding a valid address is strongly recommended
