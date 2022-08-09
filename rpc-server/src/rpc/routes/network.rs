@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use async_std::channel::bounded;
 use async_std::io::Cursor;
 use async_std::sync::RwLock;
@@ -31,7 +30,6 @@ pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
     Router::new()
-        .route("/rpc/v0", get(http_handler))
         .route("/rpc/v0", put(http_handler))
         .route("/rpc/v0", post(http_handler))
         .route_layer(middleware::from_fn(track_metrics))
@@ -48,7 +46,7 @@ where
     match data.0.get(cid).await {
         Err(_err) => Err(Error::Full {
             data: None,
-            code: 200,
+            code: -32000,
             message: "There was an error while getting the block".to_string(),
         }),
         Ok(res) => Ok(res),
@@ -86,11 +84,17 @@ where
     write_task.await;
 
     let buffer: Vec<_> = buffer.read().await.clone();
-    if let Err(err) = data.0.put_car(Cursor::new(&buffer)).await {
-        error!("{:?}", err);
+    match data.0.put_car(Cursor::new(&buffer)).await {
+        Err(err) => {
+            error!("{:?}", err);
+            return Err(Error::Full {
+                data: None,
+                code: -32001,
+                message: "There was an error in put_car".to_string(),
+            });
+        }
+        Ok(res) => Ok(res.to_string()),
     }
-
-    Ok(true)
 }
 
 pub async fn put_file_handler<I>(
@@ -102,9 +106,15 @@ where
 {
     let path = params.path;
 
-    if let Err(err) = data.0.put_file(path).await {
-        error!("{:?}", err);
+    match data.0.put_file(path).await {
+        Err(err) => {
+            error!("{:?}", err);
+            return Err(Error::Full {
+                data: None,
+                code: -32001,
+                message: "There was an error in put_file".to_string(),
+            });
+        }
+        Ok(res) => Ok(res.to_string()),
     }
-
-    Ok(true)
 }

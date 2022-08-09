@@ -33,7 +33,7 @@ pub struct NetworkPutCarParams {
     pub data: Vec<u8>,
 }
 
-pub type NetworkPutCarResult = bool;
+pub type NetworkPutCarResult = String;
 pub const NETWORK_PUT_CAR: &str = "ursa_put_car";
 
 #[derive(Deserialize, Serialize)]
@@ -41,7 +41,7 @@ pub struct NetworkPutFileParams {
     pub path: String,
 }
 
-pub type NetworkPutFileResult = bool;
+pub type NetworkPutFileResult = String;
 pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 
 /// Abstraction of Ursa's rpc commands

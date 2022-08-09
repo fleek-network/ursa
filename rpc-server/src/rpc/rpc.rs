@@ -1,7 +1,12 @@
 use std::sync::Arc;
 
-use axum::{Extension, Json};
-use jsonrpc_v2::{Data, MapRouter, RequestObject, ResponseObjects, Server};
+use anyhow::Result;
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
+use jsonrpc_v2::{Data, Error, MapRouter, RequestObject, ResponseObject, ResponseObjects, Server};
 
 use crate::config::RpcConfig;
 
@@ -10,12 +15,38 @@ use super::{api::NetworkInterface, routes::network};
 #[derive(Clone)]
 pub struct RpcServer(Arc<Server<MapRouter>>);
 
+pub enum ServerErrors {
+    ApiError(Error),
+}
+impl IntoResponse for ServerErrors {
+    fn into_response(self) -> Response {
+        let body = match self {
+            ServerErrors::ApiError(e) => Json(e),
+        };
+        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+    }
+}
+
 pub async fn http_handler(
     Json(req): Json<RequestObject>,
     Extension(server): Extension<RpcServer>,
-) -> Json<ResponseObjects> {
-    let res = server.0.handle(req).await;
-    Json(res)
+) -> Result<Json<ResponseObjects>, ServerErrors> {
+    match server.0.handle(req).await {
+        ResponseObjects::One(r) => match r {
+            ResponseObject::Result {
+                jsonrpc,
+                result,
+                id,
+            } => Ok(Json(ResponseObjects::One(ResponseObject::Result {
+                jsonrpc,
+                result,
+                id,
+            }))),
+            ResponseObject::Error { jsonrpc, error, id } => Err(ServerErrors::ApiError(error)),
+        },
+        ResponseObjects::Many(_) => todo!(),
+        ResponseObjects::Empty => todo!(),
+    }
 }
 
 impl RpcServer {
