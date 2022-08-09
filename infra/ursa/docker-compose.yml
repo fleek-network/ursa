@@ -50,7 +50,7 @@ services:
       - ursa
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:6.7.2
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./data/grafana/provisioning:/etc/grafana/provisioning
