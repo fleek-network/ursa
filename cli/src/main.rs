@@ -6,9 +6,9 @@ use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
-use service_metrics::{metrics, config::MetricsServiceConfig};
 use network::UrsaService;
 use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
+use service_metrics::{config::MetricsServiceConfig, metrics};
 use store::Store;
 use structopt::StructOpt;
 use tracing::{error, info};
@@ -37,7 +37,6 @@ async fn main() {
                 // todo(botch): check local for a stored keypair
                 let keypair = Keypair::generate_ed25519();
 
-                // Database connection
                 let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
                 let db_path = opts
                     .database_path
@@ -49,7 +48,6 @@ async fn main() {
                 let db = Arc::new(db);
                 let store = Arc::new(Store::new(Arc::clone(&db)));
 
-                // Configure ursa service
                 let service = UrsaService::new(keypair, &config, Arc::clone(&store));
                 let rpc_sender = service.command_sender().clone();
 
@@ -60,7 +58,6 @@ async fn main() {
                     }
                 });
 
-                // Configure rpc server
                 let RpcConfig { rpc_addr, rpc_port } = RpcConfig::default();
                 let port = opts.rpc_port.unwrap_or(rpc_port);
                 let rpc_config = RpcConfig::new(port, rpc_addr);
@@ -71,7 +68,6 @@ async fn main() {
                 });
                 let rpc = Rpc::new(&rpc_config, interface);
 
-                // Configure metrics
                 let metrics_config = MetricsServiceConfig::default();
 
                 // Start rpc service
@@ -81,6 +77,7 @@ async fn main() {
                     }
                 });
 
+                // Start metrics service
                 let metrics_task = task::spawn(async move {
                     if let Err(err) = metrics::start(&metrics_config).await {
                         error!("[metrics_task] - {:?}", err);
