@@ -13,6 +13,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    expose:
+      - 80
+    depends_on:
+      - certbot
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -20,6 +24,8 @@ services:
     - '-nginx.scrape_uri=http://nginx:80/stub_status'
     expose:
       - 9113
+    depends_on:
+      - nginx
 
 
   certbot:
@@ -33,15 +39,15 @@ services:
   prometheus:
     image: prom/prometheus
     restart: always
-    expose: 
-      - "9090"
     ports:
       - "9090:9090"
-    depends_on:
-      - ursa
+    expose: 
+      - "9090"
     volumes:
       - ./data/prom:/etc/prometheus
     command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    depends_on:
+      - ursa
 
   grafana:
     image: grafana/grafana:6.7.2
@@ -57,6 +63,8 @@ services:
       - "3000:3000"
     expose:
       - 3000
+    depends_on:
+      - prometheus
 
   ursa:
     build:
