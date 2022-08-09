@@ -11,10 +11,15 @@ description = "Ursa's store implementation"
 tracing = "0.1.35"
 async-trait = "0.1.56"
 ipld_blockstore = "0.1.1"
-libp2p-bitswap = "0.22.0"
+# libp2p-bitswap = "0.22.0"
 libipld = { version = "0.12.0"}
 async-std = { version = "1.11.0", features = ["attributes"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+
+[dependencies.libp2p-bitswap]
+version = "0.22.0"
+git = "https://github.com/b0xtch/libp2p-bitswap"
+branch = "chore/upgrade-libp2p-0.46.1"
 
 [features]
 default = ["rocksdb"]
