@@ -17,6 +17,7 @@ serde = "1.0.137"
 futures = "0.3.21"
 tracing = "0.1.33"
 tiny-cid = "0.3.0"
+metrics = "0.20.1"
 jsonrpc-v2 = "0.11.0"
 # Temp quic lib
 libp2p-quic = "0.6.1"
@@ -26,6 +27,7 @@ futures-util = "0.3.21"
 # libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
 store = { path = "../store" }
+service_metrics = { path = "../service-metrics" }
 async-std = { version = "1.11.0", features = ["attributes"] }
 
 [dependencies.libipld]

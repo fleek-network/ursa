@@ -13,6 +13,20 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    expose:
+      - 80
+    depends_on:
+      - certbot
+
+  nginxexporter:
+    image: fish/nginx-exporter
+    command:
+    - '-nginx.scrape_uri=http://nginx:80/stub_status'
+    expose:
+      - 9113
+    depends_on:
+      - nginx
+
 
   certbot:
     image: certbot/certbot
@@ -27,11 +41,30 @@ services:
     restart: always
     ports:
       - "9090:9090"
-    depends_on:
-      - ursa
+    expose: 
+      - "9090"
     volumes:
       - ./data/prom:/etc/prometheus
     command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    depends_on:
+      - ursa
+
+  grafana:
+    image: grafana/grafana:6.7.2
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./data/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    expose:
+      - 3000
+    depends_on:
+      - prometheus
 
   ursa:
     build:
@@ -39,12 +72,14 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     ports:
-      # HTTP server / GraphQL API
-      - "4069:4069"
+      # 6009 TCP and UDP, used by the P2P protocol running the network
+      - "6009:6009"
     expose:
       # 4069 TCP, used by the HTTP based JSON RPC API
+      - "4069"
+      # 4070 TCP, used by the HTTP metrics server
+      - "4070"
       # 6009 TCP and UDP, used by the P2P protocol running the network
-      - 4069
-      - 6009
+      - "6009"
     volumes:
       - ../../test_db:/app/ursa_db:rw

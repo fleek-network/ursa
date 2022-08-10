@@ -14,4 +14,8 @@ scrape_configs:
     # scheme defaults to 'http'.
 
     static_configs:
-      - targets: ["ursa:4069"]
+      - targets: ["ursa:4070"]
+
+  - job_name: 'nginxexporter'
+    static_configs:
+    - targets: ['nginxexporter:9113']

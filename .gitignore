@@ -1,6 +1,5 @@
 .DS_Store
-node/.vscode/launch.json
-.vscode/launch.json
+**/.vscode/
 
 car_files*
 
@@ -17,3 +16,10 @@ Cargo.lock
 
 test_db*
 ursa_db*
+
+
+infra/ursa/data/nginx/cache
+infra/ursa/data/grafana/grafana.db
+infra/ursa/data/grafana/plugins
+infra/ursa/data/grafana/png
+

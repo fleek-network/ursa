@@ -8,11 +8,11 @@ use axum::{
     Router,
 };
 use cid::Cid;
+use service_metrics::middleware::{setup_metrics_handler, track_metrics};
 use std::{str::FromStr, sync::Arc};
 
 use jsonrpc_v2::{Data, Error, Params};
 
-use crate::rpc::routes::metrics::{setup_metrics_handler, track_metrics};
 use crate::{
     api::{NetworkPutFileParams, NetworkPutFileResult},
     rpc::{
@@ -30,13 +30,10 @@ use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
-    let metrics_handler = setup_metrics_handler();
-
     Router::new()
         .route("/rpc/v0", get(http_handler))
         .route("/rpc/v0", put(http_handler))
         .route("/rpc/v0", post(http_handler))
-        .route("/metrics", get(move || ready(metrics_handler.render())))
         .route_layer(middleware::from_fn(track_metrics))
 }
 
