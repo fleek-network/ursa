@@ -1,26 +1,24 @@
-use std::future::ready;
 use anyhow::Result;
 use axum::{
     http::{Request, StatusCode},
-    middleware::{Next, self},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::get,
     Router,
 };
+use std::future::ready;
 use std::net::SocketAddr;
-use tracing::{info};
+use tracing::info;
 
-use crate::{
-    config::MetricsServiceConfig,
-    middleware::setup_metrics_handler,
-};
+use crate::{config::MetricsServiceConfig, middleware::setup_metrics_handler};
 
 pub async fn start(conf: &MetricsServiceConfig) -> Result<()> {
     let prometheus_handler = setup_metrics_handler();
 
-    let router = Router::new()
-        .route("/ping", get(get_ping_handler))
-        .route(conf.api_path.as_str(), get(move || ready(prometheus_handler.render())));
+    let router = Router::new().route("/ping", get(get_ping_handler)).route(
+        conf.api_path.as_str(),
+        get(move || ready(prometheus_handler.render())),
+    );
 
     let http_address = SocketAddr::from(([0, 0, 0, 0], conf.port.parse::<u16>().unwrap()));
     info!("listening on {}", http_address);

@@ -4,11 +4,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
     config::RpcConfig,
-    rpc::{
-        api::NetworkInterface,
-        routes,
-        rpc::RpcServer,
-    },
+    rpc::{api::NetworkInterface, routes, rpc::RpcServer},
 };
 use tracing::info;
 

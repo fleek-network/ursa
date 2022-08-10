@@ -1,7 +1,5 @@
-use metrics::{
-    Label, increment_gauge, decrement_gauge, increment_counter, histogram,
-};
-use tracing::{info, error};
+use metrics::{decrement_gauge, histogram, increment_counter, increment_gauge, Label};
+use tracing::{error, info};
 
 pub const PEER_CONNECTED: &str = "peer_connected";
 pub const PEER_DISCONNECTED: &str = "peer_disconnected";
@@ -10,7 +8,6 @@ pub const GOSSIP_MESSAGE: &str = "gossip_message";
 pub const REQUEST_MESSAGE: &str = "request_message";
 pub const RPC_REQUEST_RECEIVED: &str = "rpc_request_received";
 pub const RPC_RESPONSE_SENT: &str = "rpc_response_sent";
-
 
 const ACTIVE_CONNECTED_PEERS: &str = "active_connected_peers";
 const HTTP_RPC_REQUESTS: &str = "http_rpc_requests_total";
@@ -35,14 +32,12 @@ pub fn track(event_name: &str, labels: Option<Vec<Label>>, value: Option<f64>) {
                 increment_counter!(NODE_REQUEST_MESSAGES, label);
             }
 
-            RPC_RESPONSE_SENT => {
-                match value {
-                    Some(latency) => histogram!(NODE_RESPONSE_INFO, latency,  label),
-                    None => error!("mising required value for {} event", NODE_RESPONSE_INFO)
-                }
-            }
+            RPC_RESPONSE_SENT => match value {
+                Some(latency) => histogram!(NODE_RESPONSE_INFO, latency, label),
+                None => error!("mising required value for {} event", NODE_RESPONSE_INFO),
+            },
 
-            _ => info!("event name {:?} no match found", event_name)
+            _ => info!("event name {:?} no match found", event_name),
         }
     } else {
         info!("capturing event {:?}", event_name);
@@ -58,7 +53,7 @@ pub fn track(event_name: &str, labels: Option<Vec<Label>>, value: Option<f64>) {
                 increment_counter!(HTTP_RPC_REQUESTS);
             }
 
-            _ => info!("event name {:?} no match found", event_name)
+            _ => info!("event name {:?} no match found", event_name),
         }
     }
 }

@@ -8,8 +8,8 @@ use axum::{
     Router,
 };
 use cid::Cid;
+use service_metrics::middleware::{setup_metrics_handler, track_metrics};
 use std::{str::FromStr, sync::Arc};
-use service_metrics::middleware::{track_metrics, setup_metrics_handler};
 
 use jsonrpc_v2::{Data, Error, Params};
 

@@ -226,7 +226,7 @@ where
                                     let BitswapInfo {cid, query_id, block_found } = info;
 
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
-                                    let labels = vec![ 
+                                    let labels = vec![
                                         Label::new("cid", format!("{}", cid)),
                                         Label::new("query_id", format!("{}", query_id)),
                                         Label::new("block_found", format!("{}", block_found)),
@@ -282,7 +282,7 @@ where
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
                                     debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
-                                    let labels = vec![ 
+                                    let labels = vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),
                                         Label::new("channel", format!("{:?}", channel)),
