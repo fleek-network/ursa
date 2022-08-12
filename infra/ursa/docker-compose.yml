@@ -83,4 +83,4 @@ services:
       # 6009 TCP and UDP, used by the P2P protocol running the network
       - "6009"
     volumes:
-      - ../../test_db:/app/ursa_db:rw
+      - ../../ursa_db:/app/ursa_db:rw
