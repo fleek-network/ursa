@@ -7,7 +7,7 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::identity::Keypair;
 use network::UrsaService;
-use rpc_server::{api::NodeNetworkInterface, config::RpcConfig, server::Rpc};
+use rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
 use service_metrics::{config::MetricsServiceConfig, metrics};
 use store::Store;
 use structopt::StructOpt;
@@ -56,22 +56,22 @@ async fn main() {
                     }
                 });
 
-                let RpcConfig { rpc_addr, rpc_port } = RpcConfig::default();
-                let port = opts.rpc_port.unwrap_or(rpc_port);
-                let rpc_config = RpcConfig::new(port, rpc_addr);
+                let ServerConfig { addr, port } = ServerConfig::default();
+                let port = opts.rpc_port.unwrap_or(port);
+                let server_config = ServerConfig::new(port, addr);
 
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
                     network_send: rpc_sender,
                 });
-                let rpc = Rpc::new(&rpc_config, interface);
+                let server = Server::new(&server_config, interface);
 
                 let metrics_config = MetricsServiceConfig::default();
 
-                // Start rpc service
+                // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {
-                    if let Err(err) = rpc.start(rpc_config).await {
-                        error!("[rpc_task] - {:?}", err);
+                    if let Err(err) = server.start(server_config).await {
+                        error!("[server] - {:?}", err);
                     }
                 });
 

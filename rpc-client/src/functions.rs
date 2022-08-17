@@ -1,11 +1,11 @@
 use jsonrpc_v2::Error;
 
 use rpc_server::{
-    api::{NetworkPutFileParams, NetworkPutFileResult, NETWORK_PUT_FILE},
-    rpc::api::{
+    api::{
         NetworkGetParams, NetworkGetResult, NetworkPutCarParams, NetworkPutCarResult, NETWORK_GET,
         NETWORK_PUT_CAR,
     },
+    api::{NetworkPutFileParams, NetworkPutFileResult, NETWORK_PUT_FILE},
 };
 
 use crate::{

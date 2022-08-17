@@ -8,9 +8,9 @@ use axum::{
 };
 use jsonrpc_v2::{Data, Error, MapRouter, RequestObject, ResponseObject, ResponseObjects, Server};
 
-use crate::config::RpcConfig;
+use crate::{api::NetworkInterface, config::ServerConfig};
 
-use super::{api::NetworkInterface, routes::network};
+use super::routes::network;
 
 #[derive(Clone)]
 pub struct RpcServer(Arc<Server<MapRouter>>);
@@ -27,7 +27,7 @@ impl IntoResponse for ServerErrors {
     }
 }
 
-pub async fn http_handler(
+pub async fn rpc_handler(
     Json(req): Json<RequestObject>,
     Extension(server): Extension<RpcServer>,
 ) -> Result<Json<ResponseObjects>, ServerErrors> {
@@ -42,7 +42,11 @@ pub async fn http_handler(
                 result,
                 id,
             }))),
-            ResponseObject::Error { jsonrpc, error, id } => Err(ServerErrors::ApiError(error)),
+            ResponseObject::Error {
+                jsonrpc: _,
+                error,
+                id: _,
+            } => Err(ServerErrors::ApiError(error)),
         },
         ResponseObjects::Many(_) => todo!(),
         ResponseObjects::Empty => todo!(),
@@ -50,7 +54,7 @@ pub async fn http_handler(
 }
 
 impl RpcServer {
-    pub fn new<I>(_config: &RpcConfig, interface: Arc<I>) -> Self
+    pub fn new<I>(_config: &ServerConfig, interface: Arc<I>) -> Self
     where
         I: NetworkInterface,
     {
