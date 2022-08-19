@@ -1,43 +1,53 @@
 use anyhow::Result;
 use axum::{Extension, Router};
+use ipld_blockstore::BlockStore;
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
-    config::RpcConfig,
-    rpc::{api::NetworkInterface, routes, rpc::RpcServer},
+    api::NodeNetworkInterface,
+    config::ServerConfig,
+    http,
+    rpc::{self, rpc::RpcServer},
+    service::MultiplexService,
 };
 use tracing::info;
 
-pub struct Rpc<I>
+pub struct Server<S>
 where
-    I: NetworkInterface,
+    S: BlockStore + Sync + Send + 'static,
 {
-    server: RpcServer,
-    interface: Arc<I>,
+    rpc_server: RpcServer,
+    interface: Arc<NodeNetworkInterface<S>>,
 }
 
-impl<I> Rpc<I>
+impl<S> Server<S>
 where
-    I: NetworkInterface,
+    S: BlockStore + Sync + Send + 'static,
 {
-    pub fn new(config: &RpcConfig, interface: Arc<I>) -> Self {
+    pub fn new(config: &ServerConfig, interface: Arc<NodeNetworkInterface<S>>) -> Self {
         Self {
-            server: RpcServer::new(&config, Arc::clone(&interface)),
+            rpc_server: RpcServer::new(&config, Arc::clone(&interface)),
             interface: interface.clone(),
         }
     }
 
-    pub async fn start(&self, config: RpcConfig) -> Result<()> {
-        info!("Rpc server starting up");
-        let router = Router::new()
-            .merge(routes::network::init())
-            .layer(Extension(self.server.clone()));
+    pub async fn start(&self, config: ServerConfig) -> Result<()> {
+        info!("Server (Rpc and http) starting up");
+        let rpc_router = Router::new()
+            .merge(rpc::routes::network::init())
+            .layer(Extension(self.rpc_server.clone()));
 
-        let http_address = SocketAddr::from(([0, 0, 0, 0], config.rpc_port));
+        let http = Router::new()
+            .merge(http::routes::network::init::<S>())
+            .layer(Extension(self.interface.clone()));
+
+        let http_address = SocketAddr::from(([0, 0, 0, 0], config.port));
+
+        let service = MultiplexService::new(http, rpc_router);
 
         info!("listening on {}", http_address);
         axum::Server::bind(&http_address)
-            .serve(router.into_make_service())
+            .serve(tower::make::Shared::new(service))
             .await?;
 
         Ok(())
@@ -54,7 +64,6 @@ mod tests {
     use store::Store;
     use tracing::log::LevelFilter;
 
-    use crate::rpc::api::NodeNetworkInterface;
     use network::{config::UrsaConfig, service::UrsaService};
 
     fn ursa_network_init(
@@ -78,9 +87,9 @@ mod tests {
             .init()
             .unwrap();
 
-        let config = RpcConfig {
-            rpc_port: 4069,
-            rpc_addr: "0.0.0.0".to_string(),
+        let config = ServerConfig {
+            port: 4069,
+            addr: "0.0.0.0".to_string(),
         };
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
@@ -97,7 +106,7 @@ mod tests {
             network_send: ursa_node_sender,
         });
 
-        let rpc = Rpc::new(&config, interface);
+        let rpc = Server::new(&config, interface);
 
         let _ = rpc.start(config).await;
     }

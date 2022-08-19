@@ -5,11 +5,13 @@ edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
 license = "MIT"
 repository = "https://github.com/Psychedelic/ursa"
-description = "Ursa's rpc server implementation"
+description = "Ursa's multiplex server implementation"
 
 [dependencies]
 cid = "0.8.5"
-axum = "0.5.7"
+tower = "0.4.13"
+hyper = "0.14.20"
+axum = { version = "0.5.7", features = ["multipart"] }
 bytes = "1.1.0"
 anyhow = "1.0.56"
 futures = "0.3.21"

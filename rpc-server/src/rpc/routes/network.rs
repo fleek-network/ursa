@@ -3,35 +3,31 @@ use async_std::io::Cursor;
 use async_std::sync::RwLock;
 use axum::{
     middleware,
-    routing::{get, post, put},
+    routing::{post, put},
     Router,
 };
 use cid::Cid;
-use service_metrics::middleware::{setup_metrics_handler, track_metrics};
+use service_metrics::middleware::track_metrics;
 use std::{str::FromStr, sync::Arc};
 
 use jsonrpc_v2::{Data, Error, Params};
 
 use crate::{
-    api::{NetworkPutFileParams, NetworkPutFileResult},
-    rpc::{
-        api::{
-            NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
-            NetworkPutCarResult,
-        },
-        rpc::http_handler,
+    api::{
+        NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
+        NetworkPutCarResult, NetworkPutFileParams, NetworkPutFileResult,
     },
+    rpc::rpc::rpc_handler,
 };
 use fvm_ipld_car::CarHeader;
-use std::future::ready;
 
 use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {
     Router::new()
-        .route("/rpc/v0", put(http_handler))
-        .route("/rpc/v0", post(http_handler))
+        .route("/rpc/v0", put(rpc_handler))
+        .route("/rpc/v0", post(rpc_handler))
         .route_layer(middleware::from_fn(track_metrics))
 }
 
@@ -93,7 +89,7 @@ where
                 message: "There was an error in put_car".to_string(),
             });
         }
-        Ok(res) => Ok(res.to_string()),
+        Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }
 }
 
@@ -115,6 +111,6 @@ where
                 message: "There was an error in put_file".to_string(),
             });
         }
-        Ok(res) => Ok(res.to_string()),
+        Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }
 }

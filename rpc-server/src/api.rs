@@ -1,14 +1,14 @@
-use async_std::io::BufReader;
 use std::sync::Arc;
 
+use async_std::{channel::Sender, io::BufReader};
+
 use anyhow::Result;
-use async_std::{channel::Sender, fs::File};
+use async_std::fs::File;
 use async_trait::async_trait;
 use cid::Cid;
 use futures::{channel::oneshot, AsyncRead};
 use fvm_ipld_car::load_car;
 use ipld_blockstore::BlockStore;
-use jsonrpc_v2::Error;
 use network::UrsaCommand;
 use serde::{Deserialize, Serialize};
 use store::Store;
@@ -44,21 +44,19 @@ pub struct NetworkPutFileParams {
 pub type NetworkPutFileResult = String;
 pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 
-/// Abstraction of Ursa's rpc commands
+/// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
-    type Error;
-
     /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
     /// Put a car file and start providing to the network
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Cid>;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>>;
 
     // Put a file using a local path
-    async fn put_file(&self, path: String) -> Result<Cid>;
+    async fn put_file(&self, path: String) -> Result<Vec<Cid>>;
 }
-
+#[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
     S: BlockStore + Sync + Send + 'static,
@@ -72,8 +70,6 @@ impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    type Error = Error;
-
     async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
         info!("Requesting block with the cid {cid:?}");
         let (sender, receiver) = oneshot::channel();
@@ -84,21 +80,20 @@ where
         receiver.await?
     }
 
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Cid> {
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
         let cids = load_car(self.store.blockstore(), reader).await?;
-        let cid = cids[0];
 
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = UrsaCommand::StartProviding { cid, sender };
+        let request = UrsaCommand::StartProviding { cids, sender };
 
         self.network_send.send(request).await?;
         receiver.await?
     }
 
     /// Used through CLI
-    async fn put_file(&self, path: String) -> Result<Cid> {
+    async fn put_file(&self, path: String) -> Result<Vec<Cid>> {
         info!("Putting the file on network: {path}");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);

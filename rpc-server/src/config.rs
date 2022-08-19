@@ -1,21 +1,21 @@
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub struct RpcConfig {
-    pub rpc_port: u16,
-    pub rpc_addr: String,
+pub struct ServerConfig {
+    pub port: u16,
+    pub addr: String,
 }
 
-impl RpcConfig {
-    pub fn new(rpc_port: u16, rpc_addr: String) -> Self {
-        Self { rpc_port, rpc_addr }
+impl ServerConfig {
+    pub fn new(port: u16, addr: String) -> Self {
+        Self { port, addr }
     }
 }
-impl Default for RpcConfig {
+impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            rpc_port: 4069,
-            rpc_addr: "0.0.0.0".to_string(),
+            port: 4069,
+            addr: "0.0.0.0".to_string(),
         }
     }
 }

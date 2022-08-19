@@ -65,8 +65,8 @@ pub enum UrsaCommand {
     },
 
     StartProviding {
-        cid: Cid,
-        sender: oneshot::Sender<Result<Cid>>,
+        cids: Vec<Cid>,
+        sender: oneshot::Sender<Result<Vec<Cid>>>,
     },
 
     SendRequest {
@@ -370,8 +370,8 @@ where
                                 let peers = swarm.get_mut().behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
-                            UrsaCommand::StartProviding { cid, sender } => {
-                                sender.send(Ok(cid));
+                            UrsaCommand::StartProviding { cids, sender } => {
+                                let _channel = sender.send(Ok(cids));
                             },
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
                                 let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
@@ -401,7 +401,7 @@ mod tests {
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
-    use std::{thread, time::Duration, vec};
+    use std::{str::FromStr, thread, time::Duration, vec};
     use store::Store;
     use tracing::log::LevelFilter;
 
@@ -792,5 +792,28 @@ mod tests {
             "{:?}",
             bitswap_store.contains(&utils::convert_cid(cid.to_bytes()))
         )
+    }
+
+    #[async_std::test]
+    async fn get_block_local() {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Info)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+        let db1 = Arc::new(
+            RocksDb::open("test_db", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
+
+        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let mut bitswap_store_1 = BitswapStorage(store1.clone());
+
+        let cid =
+            Cid::from_str("bafybeie2be3h4cyqaeb2fuo4vlrgjavg6vp645dipql3d3fdfxdgtx63pi").unwrap();
+
+        if let Ok(res) = bitswap_store_1.contains(&utils::convert_cid(cid.to_bytes())) {
+            println!("block exists in current db: {:?}", res);
+        }
     }
 }

@@ -3,7 +3,7 @@ pub mod functions;
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
-use rpc_server::config::RpcConfig;
+use rpc_server::config::ServerConfig;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
@@ -49,8 +49,8 @@ where
             .with_id(1)
             .finish();
 
-        let RpcConfig { rpc_port, rpc_addr } = RpcConfig::default();
-        let api_url = format!("http://{}:{}/rpc/v0", rpc_addr, rpc_port);
+        let ServerConfig { port, addr } = ServerConfig::default();
+        let api_url = format!("http://{}:{}/rpc/v0", addr, port);
 
         info!("Using JSON-RPC v2 HTTP URL: {}", api_url);
         debug!("rpc_req {:?}", rpc_req);
@@ -141,10 +141,7 @@ mod tests {
     use cid::Cid;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use network::utils;
-    use rpc_server::{
-        api::{NetworkPutCarParams, NetworkPutFileParams},
-        rpc::api::NetworkGetParams,
-    };
+    use rpc_server::api::{NetworkGetParams, NetworkPutCarParams, NetworkPutFileParams};
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
