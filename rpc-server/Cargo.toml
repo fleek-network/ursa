@@ -9,6 +9,7 @@ description = "Ursa's multiplex server implementation"
 
 [dependencies]
 cid = "0.8.5"
+fnv = "1.0.7"
 tower = "0.4.13"
 hyper = "0.14.20"
 axum = { version = "0.5.7", features = ["multipart"] }
@@ -26,7 +27,7 @@ serde = { version = "1.0.137", features = ["derive"] }
 # tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
 async-std = { version = "1.11.0", features = ["attributes"] }
 tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
-fvm_ipld_car = "0.4.1"
+fvm_ipld_car = "0.5.0"
 service_metrics = { path = "../service-metrics"}
 
 [dependencies.libipld]

@@ -10,13 +10,13 @@ use rpc_server::{
 
 use crate::{
     call,
-    HttpMethod::{Get, Put},
+    RpcMethod::{Post, Put},
 };
 
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub async fn get_block(params: NetworkGetParams) -> Result<NetworkGetResult> {
-    call(NETWORK_GET, params, Get).await
+    call(NETWORK_GET, params, Post).await
 }
 
 pub async fn put_car(params: NetworkPutCarParams) -> Result<NetworkPutCarResult> {

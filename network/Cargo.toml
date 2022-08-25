@@ -26,6 +26,7 @@ async-trait = "0.1.53"
 futures-util = "0.3.21"
 # libp2p-bitswap = "0.22.0"
 ipld_blockstore = "0.1.1"
+fvm_ipld_car = "0.5.0"
 store = { path = "../store" }
 service_metrics = { path = "../service-metrics" }
 async-std = { version = "1.11.0", features = ["attributes"] }

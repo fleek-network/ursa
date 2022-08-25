@@ -42,7 +42,7 @@ use crate::{
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
-    utils,
+    utils::convert_cid,
 };
 use metrics::Label;
 
@@ -50,9 +50,10 @@ pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 pub enum UrsaCommand {
-    Get {
+    GetBitswap {
         cid: Cid,
-        sender: BlockSenderChannel<Vec<u8>>,
+        query: BitswapType,
+        sender: BlockSenderChannel<()>,
     },
 
     Put {
@@ -87,6 +88,11 @@ pub enum UrsaCommand {
     },
 }
 
+pub enum BitswapType {
+    Get,
+    Sync,
+}
+
 #[derive(Debug)]
 pub enum UrsaEvent {
     /// An event trigger when remote peer connects.
@@ -118,7 +124,7 @@ pub struct UrsaService<S> {
     /// Handles events received by the ursa network
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
-    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
+    response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
 }
 
 impl<S> UrsaService<S>
@@ -235,15 +241,14 @@ where
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
-                                        let bitswap_cid = utils::convert_cid(cid.to_bytes());
+                                        let bitswap_cid = convert_cid(cid.to_bytes());
                                         if let true = block_found { loop { if blockstore.contains(&bitswap_cid).unwrap() { break; } } }
 
                                         for chan in chans.into_iter(){
-                                            if let Ok(Some(data)) = blockstore.get(&bitswap_cid) {
-                                                if chan.send(Ok(data)).is_err() {
+                                            if blockstore.contains(&bitswap_cid).unwrap() {
+                                                if chan.send(Ok(())).is_err() {
                                                     error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
                                                 }
-                                                info!("[BehaviourEvent::Bitswap] - Send Bitswap block with cid {:?}, via oneshot channel", cid);
                                             } else {
                                                 error!("[BehaviourEvent::Bitswap] - block not found.");
                                                 if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
@@ -344,26 +349,24 @@ where
                 command = command_receiver.next() => {
                     if let Some(command) = command {
                         match command {
-                            UrsaCommand::Get { cid, sender } => {
-                                if let Ok(Some(data)) = blockstore.get(&utils::convert_cid(cid.to_bytes())) {
-                                    let _ = sender.send(Ok(data));
-                                } else {
-                                    let peers = swarm.get_mut().behaviour_mut().peers();
-                                    if peers.is_empty() {
-                                        error!("There were no peers provided and the block does not exist in local store");
-                                        let _ = sender.send(Err(anyhow!("There were no peers provided and the block does not exist in local store")));
+                            UrsaCommand::GetBitswap { cid, query, sender } => {
+                                let peers = swarm.get_mut().behaviour_mut().peers();
+                                if peers.is_empty() {
+                                    error!("There were no peers provided and the block does not exist in local store");
+                                    let _ = sender.send(Err(anyhow!("There were no peers provided and the block does not exist in local store")));
+                                }
+                                else {
+                                    if let Some(chans) = self.response_channels.get_mut(&cid) {
+                                        chans.push(sender);
+                                    } else {
+                                        self.response_channels.insert(cid, vec![sender]);
                                     }
-                                    else {
-                                        if let Some(chans) = self.response_channels.get_mut(&cid) {
-                                            chans.push(sender);
-                                        } else {
-                                            self.response_channels.insert(cid, vec![sender]);
-                                        }
-                                        swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
+                                    match query{
+                                        BitswapType::Get => swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied()),
+                                        BitswapType::Sync => swarm.get_mut().behaviour_mut().sync_block(cid, peers.into_iter().collect()),
                                     }
 
                                 }
-
                             },
                             UrsaCommand::Put { cid, sender } => {},
                             UrsaCommand::GetPeers { sender } => {
@@ -398,7 +401,9 @@ mod tests {
     use super::*;
 
     use crate::codec::protocol::RequestType;
+    use async_std::{fs::File, io::BufReader};
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
+    use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{str::FromStr, thread, time::Duration, vec};
@@ -410,32 +415,61 @@ mod tests {
     }
 
     fn network_init(
-        config: &UrsaConfig,
+        config: &mut UrsaConfig,
         store: Arc<Store<RocksDb>>,
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+        config.bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
+            .iter()
+            .map(|node| node.parse().unwrap())
+            .collect();
 
         let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
     }
 
+    fn setup_logger(level: LevelFilter) {
+        SimpleLogger::new()
+            .with_level(level)
+            .with_utc_timestamps()
+            .init()
+            .unwrap()
+    }
+
+    fn get_store(path: &str) -> Arc<Store<RocksDb>> {
+        let db = Arc::new(
+            RocksDb::open(path, &RocksDbConfig::default()).expect("Opening RocksDB must succeed"),
+        );
+        Arc::new(Store::new(Arc::clone(&db)))
+    }
+
+    fn get_block(content: &[u8]) -> Block<DefaultParams> {
+        create_block(ipld!(&content[..]))
+    }
+
+    fn insert_block(mut s: BitswapStorage<RocksDb>, b: &Block<DefaultParams>) {
+        match s.insert(b) {
+            Err(err) => error!(
+                "there was an error while inserting into the blockstore {:?}",
+                err
+            ),
+            Ok(()) => info!("block inserted successfully"),
+        }
+    }
+
     // Network Starts
     #[test]
     fn test_network_start() {
-        SimpleLogger::new()
-            .with_utc_timestamps()
-            .with_colors(true)
-            .init()
-            .unwrap();
+        setup_logger(LevelFilter::Debug);
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (service, _) = network_init(&UrsaConfig::default(), Arc::clone(&store));
+        let (service, _) = network_init(&mut UrsaConfig::default(), Arc::clone(&store));
 
         task::spawn(async {
             if let Err(err) = service.start().await {
@@ -446,7 +480,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_network_gossip() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        setup_logger(LevelFilter::Debug);
         let mut config = UrsaConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
@@ -455,10 +489,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
 
         let node_1_sender = node_1.command_sender.clone();
         let node_2_receiver = node_2.event_receiver.clone();
@@ -501,7 +535,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_network_mdns() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        setup_logger(LevelFilter::Debug);
         let mut config = UrsaConfig {
             mdns: true,
             ..Default::default()
@@ -512,10 +546,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
 
         task::spawn(async {
             if let Err(err) = node_1.start().await {
@@ -537,7 +571,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_network_discovery() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        setup_logger(LevelFilter::Debug);
         let mut config = UrsaConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
@@ -545,10 +579,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
 
         task::spawn(async {
             if let Err(err) = node_1.start().await {
@@ -570,7 +604,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_network_req_res() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        setup_logger(LevelFilter::Debug);
         let mut config = UrsaConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
@@ -578,10 +612,10 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, peer_2) = network_init(&config, Arc::clone(&store));
+        let (node_2, peer_2) = network_init(&mut config, Arc::clone(&store));
 
         let node_1_sender = node_1.command_sender.clone();
 
@@ -618,42 +652,23 @@ mod tests {
 
     #[async_std::test]
     async fn test_bitswap_get() {
-        SimpleLogger::new()
-            .with_level(LevelFilter::Info)
-            .with_utc_timestamps()
-            .init()
-            .unwrap();
+        setup_logger(LevelFilter::Info);
         let mut config = UrsaConfig::default();
 
-        let db1 = Arc::new(
-            RocksDb::open("test_db1", &RocksDbConfig::default())
-                .expect("Opening RocksDB must succeed"),
-        );
-        let db2 = Arc::new(
-            RocksDb::open("test_db2", &RocksDbConfig::default())
-                .expect("Opening RocksDB must succeed"),
-        );
+        let store1 = get_store("test_db1");
+        let store2 = get_store("test_db2");
 
-        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
-        let store2 = Arc::new(Store::new(Arc::clone(&db2)));
+        let bitswap_store_1 = BitswapStorage(store1.clone());
+        let mut bitswap_store_2 = BitswapStorage(store2.clone());
 
-        let mut bitswap_store_1 = BitswapStorage(store1.clone());
-
-        let (node_1, _) = network_init(&config, Arc::clone(&store1));
-
-        let block = create_block(ipld!(&b"hello world"[..]));
+        let block = get_block(&b"hello world"[..]);
         info!("inserting block into bitswap store for node 1");
-        if let Err(err) = bitswap_store_1.insert(&block) {
-            error!(
-                "there was an error while inserting into the blockstore {:?}",
-                err
-            );
-        } else {
-            info!("block inserted successfully");
-        }
+        insert_block(bitswap_store_1, &block);
+
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&config, Arc::clone(&store2));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
 
         let node_2_sender = node_2.command_sender.clone();
 
@@ -673,8 +688,9 @@ mod tests {
         thread::sleep(delay);
 
         let (sender, receiver) = oneshot::channel();
-        let msg = UrsaCommand::Get {
-            cid: utils::convert_cid(block.cid().to_bytes()),
+        let msg = UrsaCommand::GetBitswap {
+            cid: convert_cid(block.cid().to_bytes()),
+            query: BitswapType::Get,
             sender,
         };
         node_2_sender.send(msg).await.unwrap();
@@ -682,42 +698,32 @@ mod tests {
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
             let value = receiver.await.expect("Unable to receive from channel");
-            if let Ok(val) = value {
-                assert_eq!(val, block.data())
+            if let Ok(_val) = value {
+                let store_2_block = bitswap_store_2
+                    .get(&convert_cid(block.cid().to_bytes()))
+                    .unwrap();
+                assert_eq!(store_2_block, Some(block.data().to_vec()));
             }
         });
     }
 
     #[async_std::test]
     async fn test_bitswap_get_block_not_found() {
-        SimpleLogger::new()
-            .with_level(LevelFilter::Info)
-            .with_utc_timestamps()
-            .init()
-            .unwrap();
+        setup_logger(LevelFilter::Info);
         let mut config = UrsaConfig::default();
 
-        let db1 = Arc::new(
-            RocksDb::open("test_db1", &RocksDbConfig::default())
-                .expect("Opening RocksDB must succeed"),
-        );
-        let db2 = Arc::new(
-            RocksDb::open("test_db2", &RocksDbConfig::default())
-                .expect("Opening RocksDB must succeed"),
-        );
+        let store1 = get_store("test_db1");
+        let store2 = get_store("test_db2");
 
-        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
-        let store2 = Arc::new(Store::new(Arc::clone(&db2)));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
 
-        let (node_1, _) = network_init(&config, Arc::clone(&store1));
-
-        let block = create_block(ipld!(&b"hello world"[..]));
+        let block = get_block(&b"hello world"[..]);
+        
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&config, Arc::clone(&store2));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
 
         let node_2_sender = node_2.command_sender.clone();
-        // let node_2_receiver = node_2.event_receiver.clone();
 
         task::spawn(async {
             if let Err(err) = node_1.start().await {
@@ -736,8 +742,9 @@ mod tests {
 
         let (sender, receiver) = oneshot::channel();
 
-        let msg = UrsaCommand::Get {
-            cid: utils::convert_cid(block.cid().to_bytes()),
+        let msg = UrsaCommand::GetBitswap {
+            cid: convert_cid(block.cid().to_bytes()),
+            query: BitswapType::Get,
             sender,
         };
         node_2_sender.send(msg).await.unwrap();
@@ -761,11 +768,7 @@ mod tests {
 
     #[async_std::test]
     async fn add_block() {
-        SimpleLogger::new()
-            .with_level(LevelFilter::Info)
-            .with_utc_timestamps()
-            .init()
-            .unwrap();
+        setup_logger(LevelFilter::Info);
         let db = Arc::new(
             RocksDb::open("../test_db", &RocksDbConfig::default())
                 .expect("Opening RocksDB must succeed"),
@@ -774,9 +777,9 @@ mod tests {
 
         let mut bitswap_store = BitswapStorage(store.clone());
 
-        let block = create_block(ipld!(&b"hello world"[..]));
+        let block = get_block(&b"hello world"[..]);
         info!("inserting block into bitswap store for node");
-        let cid = utils::convert_cid(block.cid().to_bytes());
+        let cid = convert_cid(block.cid().to_bytes());
         let string_cid = Cid::to_string(&cid);
         info!("block cid to string : {:?}", string_cid);
 
@@ -788,21 +791,14 @@ mod tests {
         } else {
             info!("block inserted successfully");
         }
-        info!(
-            "{:?}",
-            bitswap_store.contains(&utils::convert_cid(cid.to_bytes()))
-        )
+        info!("{:?}", bitswap_store.contains(&convert_cid(cid.to_bytes())))
     }
 
     #[async_std::test]
     async fn get_block_local() {
-        SimpleLogger::new()
-            .with_level(LevelFilter::Info)
-            .with_utc_timestamps()
-            .init()
-            .unwrap();
+        setup_logger(LevelFilter::Info);
         let db1 = Arc::new(
-            RocksDb::open("test_db", &RocksDbConfig::default())
+            RocksDb::open("test_db2", &RocksDbConfig::default())
                 .expect("Opening RocksDB must succeed"),
         );
 
@@ -810,10 +806,80 @@ mod tests {
         let mut bitswap_store_1 = BitswapStorage(store1.clone());
 
         let cid =
-            Cid::from_str("bafybeie2be3h4cyqaeb2fuo4vlrgjavg6vp645dipql3d3fdfxdgtx63pi").unwrap();
+            Cid::from_str("bafkreif2opfibjypwkjzzry3jbibcjqcjwnpoqpeiqw75eu3s3u3zbdszq").unwrap();
 
-        if let Ok(res) = bitswap_store_1.contains(&utils::convert_cid(cid.to_bytes())) {
+        if let Ok(res) = bitswap_store_1.contains(&convert_cid(cid.to_bytes())) {
             println!("block exists in current db: {:?}", res);
         }
+    }
+
+    #[async_std::test]
+    async fn test_bitswap_sync() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = UrsaConfig::default();
+
+        let store1 = get_store("test_db1");
+        let store2 = get_store("test_db2");
+
+        let mut bitswap_store2 = BitswapStorage(store2.clone());
+
+        let path = "../car_files/text_mb.car";
+
+        // put the car file in store 1
+        let file = File::open(path).await?;
+        let reader = BufReader::new(file);
+        let cids = load_car(store1.blockstore(), reader).await?;
+
+        let file_h = File::open(path).await?;
+        let reader_h = BufReader::new(file_h);
+        let mut car_reader = CarReader::new(reader_h).await?;
+
+        let mut cids_vec = Vec::<Cid>::new();
+        while let Some(block) = car_reader.next_block().await? {
+            cids_vec.push(block.cid);
+        }
+
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
+
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
+        let node_2_sender = node_2.command_sender.clone();
+
+        task::spawn(async {
+            if let Err(err) = node_1.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        task::spawn(async {
+            if let Err(err) = node_2.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        let delay = Duration::from_millis(2000);
+        thread::sleep(delay);
+
+        let (sender, receiver) = oneshot::channel();
+
+        let msg = UrsaCommand::GetBitswap {
+            cid: cids[0],
+            query: BitswapType::Sync,
+            sender,
+        };
+        node_2_sender.send(msg).await.unwrap();
+
+        futures::executor::block_on(async {
+            info!("waiting for msg on block receive channel...");
+            let value = receiver.await.expect("Unable to receive from channel");
+            if let Ok(_val) = value {
+                for cid in cids_vec {
+                    assert!(bitswap_store2
+                        .contains(&convert_cid(cid.to_bytes()))
+                        .unwrap());
+                }
+            }
+        });
+        Ok(())
     }
 }
