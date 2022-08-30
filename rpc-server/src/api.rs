@@ -1,15 +1,22 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use async_std::{channel::Sender, io::BufReader};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_std::fs::File;
 use async_trait::async_trait;
 use cid::Cid;
+use fnv::FnvHashSet;
 use futures::{channel::oneshot, AsyncRead};
-use fvm_ipld_car::load_car;
+use fvm_ipld_car::{load_car, Block};
 use ipld_blockstore::BlockStore;
-use network::UrsaCommand;
+use libipld::{
+    prelude::{Codec, References},
+    store::StoreParams,
+    Cid as ipldCid, DefaultParams, Ipld,
+};
+use network::utils::convert_cid;
+use network::{BitswapType, UrsaCommand};
 use serde::{Deserialize, Serialize};
 use store::Store;
 use tracing::info;
@@ -48,7 +55,10 @@ pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
     /// Get a bitswap block from the network
-    async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
+    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
+
+    // stream the car file from server
+    async fn stream(&self, root_cid: Cid) -> Result<Vec<Vec<u8>>>;
 
     /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>>;
@@ -70,14 +80,71 @@ impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
-        info!("Requesting block with the cid {cid:?}");
-        let (sender, receiver) = oneshot::channel();
-        let request = UrsaCommand::Get { cid, sender };
+    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
+        if !self.store.blockstore().has(&cid).unwrap() {
+            info!("Requesting block with the cid {cid:?}");
+            let (sender, receiver) = oneshot::channel();
+            let request = UrsaCommand::GetBitswap {
+                cid,
+                query: BitswapType::Get,
+                sender,
+            };
 
-        // use network sender to send command
-        self.network_send.send(request).await?;
-        receiver.await?
+            // use network sender to send command
+            self.network_send.send(request).await?;
+            if let Err(e) = receiver.await? {
+                return Err(anyhow!(format!(
+                    "The bitswap failed, please check server logs {:?}",
+                    e
+                )));
+            }
+        }
+        self.store.blockstore().get(&cid)
+    }
+
+    async fn stream(&self, root_cid: Cid) -> Result<Vec<Vec<u8>>> {
+        if !self.store.blockstore().has(&root_cid).unwrap() {
+            let (sender, receiver) = oneshot::channel();
+            let request = UrsaCommand::GetBitswap {
+                cid: root_cid,
+                query: BitswapType::Sync,
+                sender,
+            };
+
+            // use network sender to send command
+            self.network_send.send(request).await?;
+            if let Err(e) = receiver.await? {
+                return Err(anyhow!(format!(
+                    "The bitswap failed, please check server logs {:?}",
+                    e
+                )));
+            }
+        }
+        let mut res = Vec::new();
+        // get full dag starting with root id
+        let mut current = FnvHashSet::default();
+        let mut refs = FnvHashSet::default();
+        current.insert(convert_cid::<ipldCid>(root_cid.to_bytes()));
+
+        while let Some(cid) = current.iter().next().copied() {
+            current.remove(&cid);
+            if refs.contains(&cid) {
+                continue;
+            }
+            match self.store.blockstore().get(&convert_cid(cid.to_bytes()))? {
+                Some(data) => {
+                    res.push(data.clone());
+                    let next_block = Block {
+                        cid: convert_cid(cid.to_bytes()),
+                        data,
+                    };
+                    let _action = next_block.references(&mut current)?;
+                    refs.insert(cid);
+                }
+                None => todo!(),
+            }
+        }
+        Ok(res)
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
@@ -95,9 +162,27 @@ where
     /// Used through CLI
     async fn put_file(&self, path: String) -> Result<Vec<Cid>> {
         info!("Putting the file on network: {path}");
-        let file = File::open(path).await?;
+        let file = File::open(path.clone()).await?;
         let reader = BufReader::new(file);
+        let cids = load_car(self.store.blockstore(), reader).await?;
+        Ok(cids)
+    }
+}
 
-        self.put_car(reader).await
+pub trait BlockLinks {
+    type Params: StoreParams;
+    fn references<E: Extend<ipldCid>>(&self, set: &mut E) -> Result<()>;
+}
+
+impl BlockLinks for Block {
+    type Params = DefaultParams;
+
+    /// Returns the references.
+    fn references<E: Extend<ipldCid>>(&self, set: &mut E) -> Result<()>
+    where
+        Ipld: References<<DefaultParams as StoreParams>::Codecs>,
+    {
+        <DefaultParams as StoreParams>::Codecs::try_from(self.cid.codec())?
+            .references::<Ipld, E>(&self.data, set)
     }
 }
