@@ -415,7 +415,7 @@ mod tests {
     }
 
     // Network Starts
-    #[test]
+    #[tokio::test]
     fn test_network_start() {
         SimpleLogger::new()
             .with_utc_timestamps()
@@ -568,7 +568,7 @@ mod tests {
                 swarm_2.next().await
             {
                 info!("Node 2 PeerConnected: {:?}", peer_id);
-                // break;
+                break;
             }
         }
     }

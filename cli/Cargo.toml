@@ -20,8 +20,8 @@ tracing-subscriber = "0.3.11"
 network = { path = "../network" }
 rpc-client = { path = "../rpc-client" }
 rpc-server = { path = "../rpc-server" }
+service_metrics = { path = "../service-metrics" }
 serde = { version = "1.0", features = ["derive"] }
-async-std = { version = "1.11.0", features = ["attributes", "tokio1"] }
+tokio = { version = "1.20.1", features = ["full"] }
 libp2p = { version = "0.47.0", default-features = false, features = ["identify", "serde"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
-service_metrics = { path = "../service-metrics" }

@@ -5,8 +5,8 @@ use axum::{
 };
 use cid::Cid;
 use service_metrics::middleware::track_metrics;
-use std::{str::FromStr, sync::Arc};
 use std::io::Cursor;
+use std::{str::FromStr, sync::Arc};
 
 use jsonrpc_v2::{Data, Error, Params};
 

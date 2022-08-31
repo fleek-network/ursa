@@ -10,11 +10,10 @@ use libp2p::{
         transport::{upgrade, Boxed, OrTransport},
         upgrade::SelectUpgrade,
     },
-    dns::DnsConfig,
     identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    tcp::GenTcpConfig,
+    tcp::{GenTcpConfig, TokioTcpTransport},
     yamux, PeerId,
 };
 
@@ -54,9 +53,6 @@ impl UrsaTransport {
                 .upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
-                .outbound_timeout(std::time::Duration::from_secs(
-                    p2p_config.outbound_connection_timeout,
-                ))
                 .boxed()
         };
 

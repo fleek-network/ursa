@@ -1,7 +1,6 @@
 pub const BASE_PATH: &str = "./car_files";
 pub const MAX_FILE_SIZE: u64 = 1024 * 1024 * 100;
 
-use std::io::Cursor;
 use crate::api::{NetworkInterface, NodeNetworkInterface};
 use axum::{
     extract::{ContentLengthLimit, Multipart},
@@ -9,6 +8,7 @@ use axum::{
     routing::post,
     Extension, Json, Router,
 };
+use std::io::Cursor;
 
 use hyper::StatusCode;
 use ipld_blockstore::BlockStore;
@@ -43,7 +43,7 @@ where
                     )
                 }
                 Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
-            }
+            };
         } else {
             (
                 StatusCode::BAD_REQUEST,

@@ -84,11 +84,9 @@ async fn main() {
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
-                tokio::spawn(async {
-                    rpc_task.cancel().await;
-                    service_task.cancel().await;
-                    metrics_task.cancel().await;
-                });
+                rpc_task.abort();
+                service_task.abort();
+                metrics_task.abort();
             }
         }
         Err(e) => {

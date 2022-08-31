@@ -5,7 +5,8 @@ WORKDIR /usr/src/app
 RUN apt-get update && apt-get install -y \
     clang \
     cmake \
-    libclang-dev
+    libclang-dev \
+    protobuf-compiler
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo install cargo-strip

@@ -44,7 +44,6 @@ version = "0.47.0"
 default-features = false
 features = [
     "autonat",
-    "dns-async-std",
     "identify",
     "kad",
     "gossipsub",
@@ -56,10 +55,12 @@ features = [
     "relay",
     "request-response",
     "tcp-tokio",
+    "dns-tokio",
     "yamux",
     "serde",
 ]
 
 [dev-dependencies]
 simple_logger = "2.1.0"
+tokio = { version = "1.20.1", features = ["full"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
