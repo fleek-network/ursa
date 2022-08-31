@@ -11,7 +11,6 @@ use std::{
 
 use crate::config::UrsaConfig;
 use anyhow::{anyhow, Error, Result};
-use async_std::task::block_on;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
     core::{connection::ConnectionId, ConnectedPoint},
@@ -29,6 +28,7 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
+use tokio::task::spawn_blocking;
 use tracing::warn;
 
 const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
@@ -61,7 +61,7 @@ pub struct DiscoveryBehaviour {
     relay: Relay,
     /// Optional MDNS protocol.
     mdns: Toggle<Mdns>,
-    /// Optional autonat.
+    /// Optional Autonat.
     autonat: Toggle<Autonat>,
 }
 
@@ -101,7 +101,7 @@ impl DiscoveryBehaviour {
         };
 
         let mdns = if config.mdns {
-            Some(block_on(async {
+            Some(spawn_blocking(async {
                 Mdns::new(MdnsConfig::default()).await.expect("mdns start")
             }))
         } else {

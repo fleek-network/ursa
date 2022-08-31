@@ -13,14 +13,9 @@
 
 use anyhow::{anyhow, Result};
 
-use async_std::{
-    channel::{unbounded, Receiver, Sender},
-    task,
-};
-
 use cid::Cid;
 use fnv::FnvHashMap;
-use futures::{channel::oneshot, select};
+use futures::select;
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
@@ -45,6 +40,8 @@ use crate::{
     utils,
 };
 use metrics::Label;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, oneshot};
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -110,13 +107,13 @@ pub struct UrsaService<S> {
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
-    command_sender: Sender<UrsaCommand>,
+    command_sender: UnboundedSender<UrsaCommand>,
     /// Handles inbound messages from peers
-    command_receiver: Receiver<UrsaCommand>,
+    command_receiver: UnboundedReceiver<UrsaCommand>,
     /// Handles events emitted by the ursa network
-    event_sender: Sender<UrsaEvent>,
+    event_sender: UnboundedSender<UrsaEvent>,
     /// Handles events received by the ursa network
-    event_receiver: Receiver<UrsaEvent>,
+    event_receiver: UnboundedReceiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<Vec<u8>>>>,
 }
@@ -162,7 +159,7 @@ where
             // .connection_event_buffer_size(todo!())
             .connection_limits(limits)
             .executor(Box::new(|future| {
-                task::spawn(future);
+                tokio::spawn(future);
             }))
             .build();
 
@@ -185,8 +182,8 @@ where
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        let (event_sender, event_receiver) = unbounded();
-        let (command_sender, command_receiver) = unbounded();
+        let (event_sender, event_receiver) = mpsc::unbounded_channel();
+        let (command_sender, command_receiver) = mpsc::unbounded_channel();
 
         UrsaService {
             swarm,
@@ -199,7 +196,7 @@ where
         }
     }
 
-    pub fn command_sender(&self) -> &Sender<UrsaCommand> {
+    pub fn command_sender(&self) -> &UnboundedSender<UrsaCommand> {
         &self.command_sender
     }
     /// Start the ursa network service loop.
@@ -209,7 +206,7 @@ where
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
         info!(
-            "Node startingg up with peerId {:?}",
+            "Node starting up with peerId {:?}",
             self.swarm.local_peer_id()
         );
         let mut swarm = self.swarm.fuse();
@@ -273,7 +270,6 @@ where
                                         if self
                                             .event_sender
                                             .send(UrsaEvent::GossipsubMessage(message))
-                                            .await
                                             .is_err()
                                         {
                                             warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
@@ -292,7 +288,6 @@ where
                                     if self
                                         .event_sender
                                         .send(UrsaEvent::RequestMessage { request, channel })
-                                        .await
                                         .is_err()
                                     {
                                         warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
@@ -305,7 +300,6 @@ where
                                     if self
                                         .event_sender
                                         .send(UrsaEvent::PeerConnected(peer))
-                                        .await
                                         .is_err()
                                     {
                                         warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
@@ -318,7 +312,6 @@ where
                                     if self
                                         .event_sender
                                         .send(UrsaEvent::PeerDisconnected(peer))
-                                        .await
                                         .is_err()
                                     {
                                         warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
@@ -437,16 +430,23 @@ mod tests {
 
         let (service, _) = network_init(&UrsaConfig::default(), Arc::clone(&store));
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = service.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_network_gossip() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        // SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        SimpleLogger::new()
+            .with_utc_timestamps()
+            .with_level(LevelFilter::Debug)
+            .with_colors(true)
+            .init()
+            .unwrap();
+
         let mut config = UrsaConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
@@ -463,13 +463,13 @@ mod tests {
         let node_1_sender = node_1.command_sender.clone();
         let node_2_receiver = node_2.event_receiver.clone();
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -487,7 +487,7 @@ mod tests {
                 topic: topic.hash(),
             },
         };
-        node_1_sender.send(msg).await.unwrap();
+        node_1_sender.send(msg).unwrap();
 
         let mut command_receiver = node_2_receiver.fuse();
 
@@ -499,9 +499,14 @@ mod tests {
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_network_mdns() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+        SimpleLogger::new()
+            .with_level(LevelFilter::Debug)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+
         let mut config = UrsaConfig {
             mdns: true,
             ..Default::default()
@@ -517,7 +522,7 @@ mod tests {
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -535,7 +540,7 @@ mod tests {
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_network_discovery() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
@@ -550,7 +555,7 @@ mod tests {
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&config, Arc::clone(&store));
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -563,12 +568,12 @@ mod tests {
                 swarm_2.next().await
             {
                 info!("Node 2 PeerConnected: {:?}", peer_id);
-                break;
+                // break;
             }
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_network_req_res() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
         let mut config = UrsaConfig::default();
@@ -585,7 +590,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -602,7 +607,7 @@ mod tests {
             channel: sender,
         };
 
-        node_1_sender.send(msg).await.unwrap();
+        node_1_sender.send(msg).unwrap();
 
         let mut swarm_2 = node_2.swarm.fuse();
 
@@ -616,10 +621,10 @@ mod tests {
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_get() {
         SimpleLogger::new()
-            .with_level(LevelFilter::Info)
+            .with_level(LevelFilter::Debug)
             .with_utc_timestamps()
             .init()
             .unwrap();
@@ -657,13 +662,13 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -677,7 +682,7 @@ mod tests {
             cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
-        node_2_sender.send(msg).await.unwrap();
+        node_2_sender.send(msg).unwrap();
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
@@ -688,7 +693,7 @@ mod tests {
         });
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_get_block_not_found() {
         SimpleLogger::new()
             .with_level(LevelFilter::Info)
@@ -719,13 +724,13 @@ mod tests {
         let node_2_sender = node_2.command_sender.clone();
         // let node_2_receiver = node_2.event_receiver.clone();
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        task::spawn(async {
+        tokio::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -740,7 +745,7 @@ mod tests {
             cid: utils::convert_cid(block.cid().to_bytes()),
             sender,
         };
-        node_2_sender.send(msg).await.unwrap();
+        node_2_sender.send(msg).unwrap();
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
@@ -759,7 +764,7 @@ mod tests {
         });
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn add_block() {
         SimpleLogger::new()
             .with_level(LevelFilter::Info)
@@ -794,7 +799,7 @@ mod tests {
         )
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn get_block_local() {
         SimpleLogger::new()
             .with_level(LevelFilter::Info)

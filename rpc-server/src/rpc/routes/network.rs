@@ -1,6 +1,3 @@
-use async_std::channel::bounded;
-use async_std::io::Cursor;
-use async_std::sync::RwLock;
 use axum::{
     middleware,
     routing::{post, put},
@@ -9,6 +6,7 @@ use axum::{
 use cid::Cid;
 use service_metrics::middleware::track_metrics;
 use std::{str::FromStr, sync::Arc};
+use std::io::Cursor;
 
 use jsonrpc_v2::{Data, Error, Params};
 
@@ -20,6 +18,8 @@ use crate::{
     rpc::rpc::rpc_handler,
 };
 use fvm_ipld_car::CarHeader;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::RwLock;
 
 use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
@@ -68,7 +68,7 @@ where
     let (tx, mut rx) = bounded(10);
 
     let buffer_cloned = buffer.clone();
-    let write_task = async_std::task::spawn(async move {
+    let write_task = tokio::spawn(async move {
         header
             .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
             .await
@@ -77,7 +77,7 @@ where
 
     tx.send((cid, buf)).await.unwrap();
     drop(tx);
-    write_task.await;
+    let _ = write_task.await;
 
     let buffer: Vec<_> = buffer.read().await.clone();
     match data.0.put_car(Cursor::new(&buffer)).await {

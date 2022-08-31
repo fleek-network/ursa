@@ -1,8 +1,8 @@
 pub const BASE_PATH: &str = "./car_files";
 pub const MAX_FILE_SIZE: u64 = 1024 * 1024 * 100;
 
+use std::io::Cursor;
 use crate::api::{NetworkInterface, NodeNetworkInterface};
-use async_std::io::Cursor;
 use axum::{
     extract::{ContentLengthLimit, Multipart},
     response::IntoResponse,
@@ -34,15 +34,15 @@ where
             let vec_data = data.to_vec();
             let reader = Cursor::new(&vec_data);
 
-            match interface.put_car(reader).await {
+            return match interface.put_car(reader).await {
                 Err(err) => {
                     error!("{:?}", err);
-                    return (
+                    (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(format!("{:?}", err)),
-                    );
+                    )
                 }
-                Ok(res) => return (StatusCode::OK, Json(format!("{:?}", res))),
+                Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
             }
         } else {
             (

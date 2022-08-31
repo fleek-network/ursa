@@ -3,7 +3,6 @@
 //!
 //!
 
-use async_std::task::block_on;
 use libp2p::{
     core::{
         either::EitherOutput,
@@ -15,8 +14,8 @@ use libp2p::{
     identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    tcp::{GenTcpConfig, TcpTransport},
-    yamux, PeerId, Transport,
+    tcp::GenTcpConfig,
+    yamux, PeerId,
 };
 
 use crate::config::UrsaConfig;
@@ -51,12 +50,13 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
             };
 
-            let tcp = TcpTransport::new(GenTcpConfig::new());
-            let tcp = block_on(DnsConfig::system(tcp)).unwrap();
-
-            tcp.upgrade(upgrade::Version::V1)
+            TokioTcpTransport::new(GenTcpConfig::new().nodelay(true))
+                .upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
+                .outbound_timeout(std::time::Duration::from_secs(
+                    p2p_config.outbound_connection_timeout,
+                ))
                 .boxed()
         };
 

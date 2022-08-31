@@ -16,7 +16,6 @@
 use anyhow::{Error, Result};
 use cid::Cid;
 use fnv::FnvHashMap;
-use futures::channel::oneshot;
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
@@ -44,6 +43,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use tokio::sync::oneshot;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{

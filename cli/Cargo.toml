@@ -22,6 +22,6 @@ rpc-client = { path = "../rpc-client" }
 rpc-server = { path = "../rpc-server" }
 serde = { version = "1.0", features = ["derive"] }
 async-std = { version = "1.11.0", features = ["attributes", "tokio1"] }
-libp2p = { version = "0.46.1", default-features = false, features = ["identify", "serde"] }
+libp2p = { version = "0.47.0", default-features = false, features = ["identify", "serde"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 service_metrics = { path = "../service-metrics" }

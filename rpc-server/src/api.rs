@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use async_std::{channel::Sender, io::BufReader};
-
 use anyhow::Result;
-use async_std::fs::File;
 use async_trait::async_trait;
 use cid::Cid;
-use futures::{channel::oneshot, AsyncRead};
 use fvm_ipld_car::load_car;
 use ipld_blockstore::BlockStore;
 use network::UrsaCommand;
 use serde::{Deserialize, Serialize};
 use store::Store;
+use tokio::fs::File;
+use tokio::io::{AsyncRead, BufReader};
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 use tracing::info;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
@@ -62,7 +62,7 @@ where
     S: BlockStore + Sync + Send + 'static,
 {
     pub store: Arc<Store<S>>,
-    pub network_send: Sender<UrsaCommand>,
+    pub network_send: UnboundedSender<UrsaCommand>,
 }
 
 #[async_trait]
