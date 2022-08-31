@@ -40,6 +40,7 @@ use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
+    marker::PhantomData,
     task::{Context, Poll},
     time::Duration,
 };
@@ -68,7 +69,7 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
-pub enum BehaviourEvent {
+pub enum BehaviourEvent<P> {
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
@@ -87,6 +88,7 @@ pub enum BehaviourEvent {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
+    _Marker(PhantomData<P>),
 }
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
@@ -96,11 +98,7 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(
-    out_event = "BehaviourEvent",
-    poll_method = "poll",
-    event_process = true
-)]
+#[behaviour(out_event = "BehaviourEvent", poll_method = "poll")]
 pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
@@ -122,17 +120,19 @@ pub struct Behaviour<P: StoreParams> {
 
     /// Ursa's emitted events.
     #[behaviour(ignore)]
-    events: VecDeque<BehaviourEvent>,
+    events: VecDeque<BehaviourEvent<P>>,
 
-    /// Pending responses
+    /// Bitswap queries.
+    #[behaviour(ignore)]
+    queries: FnvHashMap<QueryId, BitswapInfo>,
+
+    /// Pending responses.
     #[behaviour(ignore)]
     pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
 
-    /// Pending requests
+    /// Pending requests.
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
-    #[behaviour(ignore)]
-    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {

@@ -15,7 +15,6 @@ use anyhow::{anyhow, Result};
 
 use cid::Cid;
 use fnv::FnvHashMap;
-use futures::select;
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
@@ -40,8 +39,11 @@ use crate::{
     utils,
 };
 use metrics::Label;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    select,
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -209,20 +211,18 @@ where
             "Node starting up with peerId {:?}",
             self.swarm.local_peer_id()
         );
-        let mut swarm = self.swarm.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());
-        let mut command_receiver = self.command_receiver.fuse();
 
         loop {
             select! {
-                event = swarm.next() => {
+                event = self.swarm.select_next_some() => {
                     if let Some(event) = event {
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
-                                BehaviourEvent::Bitswap(info)=> {
+                                BehaviourEvent::Bitswap(info) => {
                                     let BitswapInfo {cid, query_id, block_found } = info;
 
-                                    swarm.get_mut().behaviour_mut().cancel(query_id);
+                                    self.swarm.behaviour_mut().cancel(query_id);
                                     let labels = vec![
                                         Label::new("cid", format!("{}", cid)),
                                         Label::new("query_id", format!("{}", query_id)),
@@ -251,14 +251,13 @@ where
                                     } else {
                                         debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                                     }
-                    },
+                                },
                                 BehaviourEvent::GossipMessage {
                                     peer,
                                     topic,
                                     message,
                                 } => {
                                     debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
-                                    let swarm_mut = swarm.get_mut();
                                     let labels =  vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("topic", format!("{}", topic)),
@@ -266,7 +265,7 @@ where
                                     ];
                                     events::track(events::GOSSIP_MESSAGE, Some(labels), None);
 
-                                    if swarm_mut.is_connected(&peer) {
+                                    if self.swarm.is_connected(&peer) {
                                         if self
                                             .event_sender
                                             .send(UrsaEvent::GossipsubMessage(message))
@@ -316,7 +315,8 @@ where
                                     {
                                         warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
                                     }
-                                }
+                                },
+                                BehaviourEvent::_Marker(_) => todo!()
                             },
 
                             // Do we need to handle any of the below events?
@@ -334,14 +334,14 @@ where
                         }
                     }
                 },
-                command = command_receiver.next() => {
+                command = self.command_receiver.recv() => {
                     if let Some(command) = command {
                         match command {
                             UrsaCommand::Get { cid, sender } => {
                                 if let Ok(Some(data)) = blockstore.get(&utils::convert_cid(cid.to_bytes())) {
                                     let _ = sender.send(Ok(data));
                                 } else {
-                                    let peers = swarm.get_mut().behaviour_mut().peers();
+                                    let peers = self.swarm.behaviour_mut().peers();
                                     if peers.is_empty() {
                                         error!("There were no peers provided and the block does not exist in local store");
                                         let _ = sender.send(Err(anyhow!("There were no peers provided and the block does not exist in local store")));
@@ -352,7 +352,7 @@ where
                                         } else {
                                             self.response_channels.insert(cid, vec![sender]);
                                         }
-                                        swarm.get_mut().behaviour_mut().get_block(cid, peers.iter().copied());
+                                        self.swarm.behaviour_mut().get_block(cid, peers.iter().copied());
                                     }
 
                                 }
@@ -360,18 +360,18 @@ where
                             },
                             UrsaCommand::Put { cid, sender } => {},
                             UrsaCommand::GetPeers { sender } => {
-                                let peers = swarm.get_mut().behaviour_mut().peers();
+                                let peers = self.swarm.behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
                             UrsaCommand::StartProviding { cids, sender } => {
                                 let _channel = sender.send(Ok(cids));
                             },
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
-                                let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
+                                let _ = self.swarm.behaviour_mut().send_request(peer_id, request, channel);
                             },
                             UrsaCommand::SendResponse { request_id, response, channel } => todo!(),
                             UrsaCommand::GossipsubMessage { topic, message } => {
-                                if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
+                                if let Err(error) = self.swarm.behaviour_mut().publish(topic.clone(), message.clone()) {
                                     warn!(
                                         "[UrsaCommand::GossipsubMessage] - Failed to publish message top topic {:?} with error {:?}:",
                                         URSA_GLOBAL, error
