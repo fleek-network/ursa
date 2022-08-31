@@ -416,7 +416,7 @@ mod tests {
 
     // Network Starts
     #[tokio::test]
-    fn test_network_start() {
+    async fn test_network_start() {
         SimpleLogger::new()
             .with_utc_timestamps()
             .with_colors(true)

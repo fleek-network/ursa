@@ -4,8 +4,6 @@ use metrics::Label;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::time::Instant;
 
-const REQUEST_DURATION_LABEL: &'static str = "http_requests_duration_seconds";
-
 pub fn setup_metrics_handler() -> PrometheusHandle {
     PrometheusBuilder::new().install_recorder().unwrap()
 }
