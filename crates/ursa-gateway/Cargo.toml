@@ -9,8 +9,8 @@ description = "Ursa's proxy gateway"
 
 [dependencies]
 axum = "0.5.7"
-tracing = "0.1"
-tokio = { version = "1", features = ["full"] }
-hyper = { version = "0.14", features = ["full"] }
 axum-server = { version = "0.4.2", features = ["tls-rustls"] }
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
