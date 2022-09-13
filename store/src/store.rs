@@ -3,6 +3,7 @@ use libipld::store::DefaultParams;
 use libipld::{Block, Cid, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
+use tracing;
 
 pub struct Store<S> {
     pub db: Arc<S>,
@@ -61,5 +62,40 @@ where
         }
 
         Ok(missing)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
+    // use tracing::log::LevelFilter;
+    use crate::utils;
+    use simple_logger::SimpleLogger;
+
+    use super::*;
+
+    #[async_std::test]
+    async fn get_missing_blocks() {
+        // SimpleLogger::new()
+        //     .with_level(LevelFilter::Info)
+        //     .with_utc_timestamps()
+        //     .init()
+        //     .unwrap();
+        let db1 = Arc::new(
+            RocksDb::open("ursa_db", &RocksDbConfig::default())
+                .expect("Opening RocksDB must succeed"),
+        );
+
+        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let mut bitswap_store_1 = BitswapStorage(store1.clone());
+
+        let cid =
+            Cid::from_str("bafybeihybv5apjuvkpaw62l34ui7t363pt3hwxbz7rltrpjklvzrbviq5m").unwrap();
+
+        if let Ok(res) = bitswap_store_1.missing_blocks(&utils::convert_cid(cid.to_bytes())) {
+            println!("vec of missing blocks: {:?}", res);
+        }
     }
 }

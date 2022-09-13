@@ -9,6 +9,7 @@ description = "Ursa's multiplex server implementation"
 
 [dependencies]
 cid = "0.8.5"
+fnv = "1.0.7"
 tower = "0.4.13"
 hyper = "0.14.20"
 axum = { version = "0.5.7", features = ["multipart"] }
@@ -25,6 +26,7 @@ store = { path = "../store" }
 network = { path = "../network" }
 service_metrics = { path = "../service-metrics"}
 serde = { version = "1.0.137", features = ["derive"] }
+# tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
 tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 
 [dependencies.libipld]

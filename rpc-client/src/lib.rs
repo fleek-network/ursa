@@ -30,14 +30,13 @@ pub enum JsonRpcResponse<R> {
     },
 }
 
-pub enum HttpMethod {
-    Get,
+pub enum RpcMethod {
     Put,
     Post,
 }
 
 /// Utility method for sending RPC requests over HTTP
-async fn call<P, R>(method_name: &str, params: P, method: HttpMethod) -> Result<R, Error>
+async fn call<P, R>(method_name: &str, params: P, method: RpcMethod) -> Result<R, Error>
 where
     P: Serialize,
     R: DeserializeOwned,
@@ -58,17 +57,16 @@ where
         // TODO(arslan): Add authentication
         if let Ok(from_json) = surf::Body::from_json(&rpc_req) {
             let mut http_res = match method {
-                HttpMethod::Get => surf::get(api_url)
+                RpcMethod::Post => surf::post(api_url)
                     .content_type("application/json")
                     .body(from_json)
                     .await
                     .unwrap(),
-                HttpMethod::Put => surf::put(api_url)
+                RpcMethod::Put => surf::put(api_url)
                     .content_type("application/json")
                     .body(from_json)
                     .await
                     .unwrap(),
-                HttpMethod::Post => todo!(),
             };
             let res = http_res.body_string().await.unwrap();
 
@@ -200,8 +198,6 @@ mod tests {
     #[tokio::test]
     async fn test_rpc_put_file() {
         setup_logger(LevelFilter::Info);
-        let cid = ("bafy2bzaceccu5vqn5xw2morrqa2wtah3w6cs2rnmv64w3ry6st7uelnhxkg6w").to_string();
-        println!("{:?}", cid);
         let params = NetworkPutFileParams {
             path: "./car_files/ursa_major.car".to_string(),
         };

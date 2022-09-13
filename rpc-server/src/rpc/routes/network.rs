@@ -45,7 +45,7 @@ where
             code: -32000,
             message: "There was an error while getting the block".to_string(),
         }),
-        Ok(res) => Ok(res),
+        Ok(res) => Ok(res.unwrap()),
     }
 }
 

@@ -238,8 +238,21 @@ impl<P: StoreParams> Behaviour<P> {
         );
     }
 
-    pub fn sync_block() {
-        todo!()
+    pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) {
+        info!(
+            "sync block via http called, the requested root cid is: {:?}",
+            cid
+        );
+        let c_cid = utils::convert_cid(cid.to_bytes());
+        let id = self.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
+        self.queries.insert(
+            id,
+            BitswapInfo {
+                query_id: id,
+                cid,
+                block_found: false,
+            },
+        );
     }
 
     pub fn cancel(&mut self, id: QueryId) {
@@ -346,8 +359,10 @@ impl<P: StoreParams> Behaviour<P> {
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
             BitswapEvent::Progress(id, missing) => {
-                // only required if need to handle sync queries
-                todo!();
+                info!(
+                    "progress in bitswap sync query, id: {}, missing: {}",
+                    id, missing
+                );
             }
             BitswapEvent::Complete(id, result) => {
                 info!(
@@ -363,7 +378,7 @@ impl<P: StoreParams> Behaviour<P> {
                         self.events.push_back(BehaviourEvent::Bitswap(info));
                     }
                     _ => {
-                        debug!(
+                        error!(
                             "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
                             id
                         )
