@@ -17,9 +17,10 @@ Cargo.lock
 test_db*
 ursa_db*
 
-
 infra/ursa/data/nginx/cache
 infra/ursa/data/grafana/grafana.db
 infra/ursa/data/grafana/plugins
 infra/ursa/data/grafana/png
 
+# ide files
+.idea

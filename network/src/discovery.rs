@@ -101,9 +101,10 @@ impl DiscoveryBehaviour {
         };
 
         let mdns = if config.mdns {
-            Some(spawn_blocking(async {
-                Mdns::new(MdnsConfig::default()).await.expect("mdns start")
-            }))
+            // Some(spawn_blocking(async {
+            //     Mdns::new(MdnsConfig::default()).await.expect("mdns start")
+            // }))
+            None
         } else {
             None
         };

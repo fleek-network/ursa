@@ -121,7 +121,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         res: Self::Response,
     ) -> io::Result<()>
     where
-        T: futures::AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
         let data = serde_json::to_vec(&res).unwrap();
         write_length_prefixed(io, &data).await?;

@@ -12,7 +12,6 @@ cid = "0.8.5"
 fnv = "1.0.7"
 tower = "0.4.13"
 hyper = "0.14.20"
-axum = { version = "0.5.7", features = ["multipart"] }
 bytes = "1.1.0"
 anyhow = "1.0.56"
 futures = "0.3.21"
@@ -25,8 +24,8 @@ ipld_blockstore = "0.1.1"
 store = { path = "../store" }
 network = { path = "../network" }
 service_metrics = { path = "../service-metrics"}
+axum = { version = "0.5.7", features = ["multipart"] }
 serde = { version = "1.0.137", features = ["derive"] }
-# tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
 tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 
 [dependencies.libipld]
@@ -38,7 +37,7 @@ simple_logger = "2.1.0"
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 
 [dependencies.libp2p]
-version = "0.47.0"
+version = "0.46.1"
 default-features = false
 features = [
     "identify",

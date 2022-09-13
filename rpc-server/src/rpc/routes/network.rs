@@ -18,8 +18,7 @@ use crate::{
     rpc::rpc::rpc_handler,
 };
 use fvm_ipld_car::CarHeader;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc::channel};
 
 use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
@@ -65,7 +64,7 @@ where
         version: 1,
     };
 
-    let (tx, mut rx) = bounded(10);
+    let (tx, mut rx) = channel(10);
 
     let buffer_cloned = buffer.clone();
     let write_task = tokio::spawn(async move {

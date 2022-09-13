@@ -19,14 +19,12 @@ tracing = "0.1.33"
 tiny-cid = "0.3.0"
 metrics = "0.20.1"
 jsonrpc-v2 = "0.11.0"
-# Temp quic lib
 libp2p-quic = "0.6.1"
 serde_json = "1.0.81"
 async-trait = "0.1.53"
-futures-util = "0.3.21"
-# libp2p-bitswap = "0.22.0"
-ipld_blockstore = "0.1.1"
 fvm_ipld_car = "0.5.0"
+futures-util = "0.3.21"
+ipld_blockstore = "0.1.1"
 store = { path = "../store" }
 service_metrics = { path = "../service-metrics" }
 tokio = { version = "1.20.1", features = ["full"] }
@@ -38,10 +36,10 @@ default-features = false
 [dependencies.libp2p-bitswap]
 version = "0.22.0"
 git = "https://github.com/b0xtch/libp2p-bitswap"
-branch = "chore/upgrade-libp2p-0.46.1"
+rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [dependencies.libp2p]
-version = "0.47.0"
+version = "0.46.1"
 default-features = false
 features = [
     "autonat",

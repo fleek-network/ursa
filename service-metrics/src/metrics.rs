@@ -28,5 +28,5 @@ pub async fn get_ping_handler() -> (StatusCode, String) {
 }
 
 pub async fn get_metrics_handler() -> (StatusCode, String) {
-    (StatusCode::OK, "/metrics handler".to_string())
+    (StatusCode::OK, "/service-metrics handler".to_string())
 }

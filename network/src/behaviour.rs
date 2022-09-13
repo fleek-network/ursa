@@ -40,7 +40,6 @@ use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
-    marker::PhantomData,
     task::{Context, Poll},
     time::Duration,
 };
@@ -69,7 +68,7 @@ pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
-pub enum BehaviourEvent<P> {
+pub enum BehaviourEvent {
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
@@ -88,7 +87,6 @@ pub enum BehaviourEvent<P> {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
-    _Marker(PhantomData<P>),
 }
 
 /// A `Networkbehaviour` that handles Ursa's different protocol implementations.
@@ -98,7 +96,7 @@ pub enum BehaviourEvent<P> {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "BehaviourEvent", poll_method = "poll")]
+#[behaviour(out_event = "BehaviourEvent", event_process = true)]
 pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
@@ -120,19 +118,17 @@ pub struct Behaviour<P: StoreParams> {
 
     /// Ursa's emitted events.
     #[behaviour(ignore)]
-    events: VecDeque<BehaviourEvent<P>>,
+    events: VecDeque<BehaviourEvent>,
 
-    /// Bitswap queries.
-    #[behaviour(ignore)]
-    queries: FnvHashMap<QueryId, BitswapInfo>,
-
-    /// Pending responses.
+    /// Pending responses
     #[behaviour(ignore)]
     pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
 
-    /// Pending requests.
+    /// Pending requests
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    #[behaviour(ignore)]
+    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -244,7 +240,9 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = utils::convert_cid(cid.to_bytes());
-        let id = self.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
+        let id = self
+            .bitswap
+            .sync(c_cid, providers, iter::once(c_cid.clone()));
         self.queries.insert(
             id,
             BitswapInfo {
@@ -258,23 +256,6 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
-    }
-
-    fn poll(
-        &mut self,
-        _: &mut Context,
-        _: &mut impl PollParameters,
-    ) -> Poll<
-        NetworkBehaviourAction<
-            <Self as NetworkBehaviour>::OutEvent,
-            <Self as NetworkBehaviour>::ConnectionHandler,
-        >,
-    > {
-        if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-        }
-
-        Poll::Pending
     }
 
     fn handle_ping(&mut self, event: PingEvent) {

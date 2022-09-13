@@ -1,8 +1,8 @@
 [workspace]
 members = [
   "cli",
-  "network",
   "store",
+  "network",
   "rpc-server",
   "rpc-client",
   "service-metrics",

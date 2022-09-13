@@ -3,18 +3,15 @@
 //!
 //!
 
+use libp2p::core::transport::{upgrade, Boxed};
+use libp2p::tcp::GenTcpConfig;
+use libp2p::Transport;
 use libp2p::{
-    core::{
-        either::EitherOutput,
-        muxing::StreamMuxerBox,
-        transport::{upgrade, Boxed, OrTransport},
-        upgrade::SelectUpgrade,
-    },
+    core::{either::EitherOutput, muxing::StreamMuxerBox, upgrade::SelectUpgrade},
     identity::Keypair,
     mplex, noise,
     relay::v2::client::Client as RelayClient,
-    tcp::{GenTcpConfig, TokioTcpTransport},
-    yamux, PeerId,
+    tcp, yamux, PeerId,
 };
 
 use crate::config::UrsaConfig;
@@ -49,8 +46,9 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
             };
 
-            TokioTcpTransport::new(GenTcpConfig::new().nodelay(true))
-                .upgrade(upgrade::Version::V1)
+            let tcp = libp2p::tcp::TokioTcpTransport::new(GenTcpConfig::default().nodelay(true));
+
+            tcp.upgrade(upgrade::Version::V1)
                 .authenticate(noise)
                 .multiplex(mplex)
                 .boxed()

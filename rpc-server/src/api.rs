@@ -1,13 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
-
-use async_std::{channel::Sender, io::BufReader};
-
 use anyhow::{anyhow, Result};
-use async_std::fs::File;
 use async_trait::async_trait;
 use cid::Cid;
 use fnv::FnvHashSet;
-use futures::{channel::oneshot, AsyncRead};
 use fvm_ipld_car::{load_car, Block};
 use ipld_blockstore::BlockStore;
 use libipld::{
@@ -18,6 +12,7 @@ use libipld::{
 use network::utils::convert_cid;
 use network::{BitswapType, UrsaCommand};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use store::Store;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, BufReader};
@@ -95,7 +90,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request);
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -116,7 +111,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request);
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -159,7 +154,7 @@ where
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cids, sender };
 
-        self.network_send.send(request).await?;
+        self.network_send.send(request);
         receiver.await?
     }
 
