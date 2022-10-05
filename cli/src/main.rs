@@ -66,14 +66,16 @@ async fn main() {
                 });
                 let server = Server::new(&server_config, interface);
 
-                let metrics_config = MetricsServiceConfig::default();
-
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {
                     if let Err(err) = server.start(server_config).await {
                         error!("[server] - {:?}", err);
                     }
                 });
+
+                let MetricsServiceConfig { port , api_path} = MetricsServiceConfig::default();
+                let port = opts.metrics_port.unwrap_or(port);
+                let metrics_config = MetricsServiceConfig::new(port, api_path);
 
                 // Start metrics service
                 let metrics_task = task::spawn(async move {

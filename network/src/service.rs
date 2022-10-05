@@ -174,10 +174,13 @@ where
 
         Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
 
-        for to_dial in &config.bootstrap_nodes {
-            Swarm::dial(&mut swarm, to_dial.clone())
+        let bootstrap_nodes = swarm.behaviour_mut().bootstrap_nodes();
+
+        for to_dial in bootstrap_nodes {
+            Swarm::dial(&mut swarm, to_dial.1)
                 .map_err(|err| anyhow!("{}", err))
                 .unwrap();
+        //     swarm.behaviour_mut().get_closest_peers(to_dial.0);
         }
 
         // subscribe to topic
@@ -215,7 +218,7 @@ where
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
         info!(
-            "Node startingg up with peerId {:?}",
+            "Node starting up with peerId {:?}",
             self.swarm.local_peer_id()
         );
         let mut swarm = self.swarm.fuse();
@@ -420,11 +423,6 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
-        config.bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
-            .iter()
-            .map(|node| node.parse().unwrap())
-            .collect();
-
         let service = UrsaService::new(keypair, config, store);
 
         (service, local_peer_id)
@@ -579,7 +577,7 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_1, peer_1) = network_init(&mut config, Arc::clone(&store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store));
@@ -591,7 +589,7 @@ mod tests {
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
-
+        
         loop {
             if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
                 swarm_2.next().await

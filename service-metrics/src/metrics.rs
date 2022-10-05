@@ -14,13 +14,13 @@ use crate::{config::MetricsServiceConfig, middleware::setup_metrics_handler};
 
 pub async fn start(conf: &MetricsServiceConfig) -> Result<()> {
     let prometheus_handler = setup_metrics_handler();
-
+;
     let router = Router::new().route("/ping", get(get_ping_handler)).route(
         conf.api_path.as_str(),
         get(move || ready(prometheus_handler.render())),
     );
 
-    let http_address = SocketAddr::from(([0, 0, 0, 0], conf.port.parse::<u16>().unwrap()));
+    let http_address = SocketAddr::from(([0, 0, 0, 0], conf.port));
     info!("listening on {}", http_address);
     axum::Server::bind(&http_address)
         .serve(router.into_make_service())

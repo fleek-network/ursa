@@ -43,8 +43,10 @@ pub struct CliOpts {
     pub config: Option<String>,
     #[structopt(short, long, help = "Allow rpc to be active or not (default = true)")]
     pub rpc: bool,
-    #[structopt(short, long, help = "Port used for JSON-RPC communication")]
+    #[structopt(short = "p", long, help = "Port used for JSON-RPC/http apis")]
     pub rpc_port: Option<u16>,
+    #[structopt(short, long, help = "Port used for serving metrics")]
+    pub metrics_port: Option<u16>,
     #[structopt(short, long, help = "Database path where store data")]
     pub database_path: Option<String>,
 }

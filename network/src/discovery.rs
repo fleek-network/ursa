@@ -6,7 +6,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::NonZeroUsize,
-    task::{Context, Poll},
+    task::{Context, Poll}, str::FromStr,
 };
 
 use crate::config::UrsaConfig;
@@ -144,13 +144,22 @@ impl DiscoveryBehaviour {
         &self.peers
     }
 
+    pub fn bootstrap_nodes(&self) -> &Vec<(PeerId, Multiaddr)> {
+        &self.bootstrap_nodes
+    }
+
     pub fn peer_info(&self) -> &HashMap<PeerId, PeerInfo> {
         &self.peer_info
+    }
+
+    pub fn get_closest_peers(&mut self, peer_id: PeerId) -> QueryId {
+        self.kademlia.get_closest_peers(peer_id)
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
         for (peer_id, address) in &self.bootstrap_nodes {
             self.kademlia.add_address(peer_id, address.clone());
+            // self.peers.insert(*peer_id);
         }
 
         self.kademlia
@@ -158,7 +167,8 @@ impl DiscoveryBehaviour {
             .map_err(|err| anyhow!("{:?}", err))
     }
 
-    fn handle_kad_event(&self, event: KademliaEvent) {
+    fn handle_kad_event(&mut self, event: KademliaEvent) {
+        println!("{:?}", event);
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
             if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
                 let peers = closest_peers.peers;

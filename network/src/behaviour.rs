@@ -35,7 +35,7 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour, PeerId,
+    NetworkBehaviour, PeerId, Multiaddr,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
@@ -63,7 +63,7 @@ pub struct BitswapInfo {
     pub block_found: bool,
 }
 
-pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
+pub const URSA_PROTOCOL: &str = "ursa/0.0.1";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
@@ -160,7 +160,7 @@ impl<P: StoreParams> Behaviour<P> {
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
+        let identify = Identify::new(IdentifyConfig::new(URSA_PROTOCOL.into(), local_public_key));
 
         let request_response = {
             let mut cfg = RequestResponseConfig::default();
@@ -197,6 +197,10 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn peers(&self) -> HashSet<PeerId> {
         self.discovery.peers().clone()
+    }
+
+    pub fn bootstrap_nodes(&self) -> Vec<(PeerId, Multiaddr)> {
+        self.discovery.bootstrap_nodes().clone()
     }
 
     pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
@@ -340,7 +344,7 @@ impl<P: StoreParams> Behaviour<P> {
                 if info
                     .protocols
                     .iter()
-                    .any(|name| name.as_bytes() == IPFS_PROTOCOL.as_bytes())
+                    .any(|name| name.as_bytes() == URSA_PROTOCOL.as_bytes())
                 {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
