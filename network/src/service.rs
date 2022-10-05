@@ -180,7 +180,7 @@ where
             Swarm::dial(&mut swarm, to_dial.1)
                 .map_err(|err| anyhow!("{}", err))
                 .unwrap();
-        //     swarm.behaviour_mut().get_closest_peers(to_dial.0);
+            //     swarm.behaviour_mut().get_closest_peers(to_dial.0);
         }
 
         // subscribe to topic
@@ -589,7 +589,7 @@ mod tests {
         });
 
         let mut swarm_2 = node_2.swarm.fuse();
-        
+
         loop {
             if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
                 swarm_2.next().await
@@ -716,7 +716,6 @@ mod tests {
         let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
 
         let block = get_block(&b"hello world"[..]);
-        
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store2));

@@ -11,10 +11,7 @@ pub struct MetricsServiceConfig {
 
 impl MetricsServiceConfig {
     pub fn new(port: u16, api_path: String) -> Self {
-        Self {
-            port,
-            api_path,
-        }
+        Self { port, api_path }
     }
 }
 

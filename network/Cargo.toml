@@ -55,6 +55,7 @@ features = [
     "noise",
     "ping",
     "relay",
+    "dcutr",
     "request-response",
     "tcp-async-io",
     "yamux",

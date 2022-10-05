@@ -73,7 +73,7 @@ async fn main() {
                     }
                 });
 
-                let MetricsServiceConfig { port , api_path} = MetricsServiceConfig::default();
+                let MetricsServiceConfig { port, api_path } = MetricsServiceConfig::default();
                 let port = opts.metrics_port.unwrap_or(port);
                 let metrics_config = MetricsServiceConfig::new(port, api_path);
 

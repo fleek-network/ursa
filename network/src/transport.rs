@@ -16,12 +16,15 @@ use libp2p::{
     mplex, noise,
     relay::v2::client::Client as RelayClient,
     tcp::{GenTcpConfig, TcpTransport},
-    yamux, PeerId, Transport,
+    yamux, PeerId, Transport, swarm::behaviour::toggle::Toggle, dcutr::behaviour::Behaviour as Dcutr,
 };
 
 use crate::config::UrsaConfig;
 
-pub struct UrsaTransport;
+pub struct UrsaTransport {
+    /// Hole punching
+    dcutr: Toggle<Dcutr>,
+}
 
 impl UrsaTransport {
     /// Creates a new [`UrsaTransport`].
@@ -32,11 +35,11 @@ impl UrsaTransport {
         let id_keys = keypair;
         let local_peer_id = PeerId::from(keypair.public());
 
-        // let relay = if config.relay {
-        //     Some(RelayClient::new_transport_and_behaviour(local_peer_id))
-        // } else {
-        //     None
-        // };
+        let relay = if config.relay {
+            Some(RelayClient::new_transport_and_behaviour(local_peer_id))
+        } else {
+            None
+        };
 
         let tcp = {
             let noise = {
