@@ -147,8 +147,6 @@ where
     pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
-
         let transport = UrsaTransport::new(&keypair, config);
 
         let bitswap_store = BitswapStorage(store.clone());
@@ -215,8 +213,8 @@ where
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
         info!(
-            "Node startingg up with peerId {:?}",
-            self.swarm.local_peer_id()
+            "Node starting up with peerId {:?}",
+            self.swarm.local_peer_id().to_base58()
         );
         let mut swarm = self.swarm.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());

@@ -16,10 +16,11 @@ libipld = { version = "0.12.0"}
 async-std = { version = "1.11.0", features = ["attributes"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 simple_logger = "2.2.0"
+
 [dependencies.libp2p-bitswap]
 version = "0.22.0"
 git = "https://github.com/b0xtch/libp2p-bitswap"
-branch = "chore/upgrade-libp2p-0.46.1"
+rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [features]
 default = ["rocksdb"]
