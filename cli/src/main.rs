@@ -14,6 +14,7 @@ use structopt::StructOpt;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 
+use crate::ursa::{store_key_pair, get_key_pair};
 #[async_std::main]
 async fn main() {
     dotenv().ok();
@@ -34,8 +35,18 @@ async fn main() {
             } else {
                 info!("Starting up with config {:?}", config);
 
-                // todo(botch): check local for a stored keypair
-                let keypair = Keypair::generate_ed25519();
+                let path = config.data_dir.join("keypair");
+                
+                let keypair: Keypair = match get_key_pair(&path)
+                .expect("the keypair file exist, but got issues with reading or decoding the file"){
+                    Some(k) => k,
+                    None => {
+                        let new_key = Keypair::generate_ed25519();
+                        store_key_pair(new_key.clone(), &config.data_dir).expect("Key storing failed");
+                        new_key
+                    }
+                };
+
                 let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
                 let db_path = opts
                     .database_path

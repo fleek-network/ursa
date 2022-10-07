@@ -1,16 +1,18 @@
 mod rpc_commands;
 
+use libp2p::identity::Keypair;
 use network::UrsaConfig;
 use rpc_commands::RpcCommands;
-use std::cell::RefCell;
-use std::fs::File;
-use std::io::{prelude::*, Result};
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-use std::{process, thread};
+use std::{
+    cell::RefCell,
+    fs::{self, File},
+    io::{prelude::*, Result},
+    os::unix::prelude::PermissionsExt,
+    path::{Path,PathBuf},
+    sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}},
+    time::Duration,
+    process, thread,
+};
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 
@@ -62,12 +64,39 @@ impl CliOpts {
             // Read from config file
             let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
             // Parse and return the configuration file
-            // read_toml(&toml)?
             let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
             cfg = toml_str.merge(cfg);
         }
 
         Ok(cfg)
+    }
+}
+
+pub fn store_key_pair(keypair: Keypair, path: &Path) -> Result<()> {
+    let buf = keypair.to_protobuf_encoding().expect("Failed to encode keypair");
+    fs::create_dir_all(path)?;
+    let mut file = File::create(path.join("keypair"))?;
+    file.write_all(&buf)?;
+
+    // set owner permissions
+    let mut perm = file.metadata()?.permissions();
+    perm.set_mode(0o600);
+    file.set_permissions(perm)?;
+
+    Ok(())
+}
+
+pub fn get_key_pair(path: &Path) -> Result<Option<Keypair>> {
+    match File::open(path) {
+        Ok(mut file) => {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+        
+            let keypair = Keypair::from_protobuf_encoding(&buf).expect("failed to decode the keypair file");
+        
+            return Ok(Some(keypair));
+        }
+        Err(_e) => { return Ok(None); }
     }
 }
 
