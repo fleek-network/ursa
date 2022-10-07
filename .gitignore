@@ -16,6 +16,7 @@ Cargo.lock
 
 test_db*
 ursa_db*
+data*
 
 
 infra/ursa/data/nginx/cache

@@ -38,7 +38,7 @@ default-features = false
 [dependencies.libp2p-bitswap]
 version = "0.22.0"
 git = "https://github.com/b0xtch/libp2p-bitswap"
-branch = "chore/upgrade-libp2p-0.46.1"
+rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [dependencies.libp2p]
 version = "0.46.1"
