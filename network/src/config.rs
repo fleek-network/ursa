@@ -8,8 +8,8 @@ pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
     // "/ip4/0.0.0.0/tcp/4001udp/4001/quic/p2p/Qm",
 ];
 
-pub const DEFAULT_DB_PATH_STR: &'static str = "ursa_db";
-pub const DEFAULT_DATA_PATH_STR: &'static str = "data";
+pub const DEFAULT_DB_PATH_STR: &str = "ursa_db";
+pub const DEFAULT_KEYSTORE_PATH_STR: &str = ".config/ursa/keystore";
 
 /// Ursa Configuration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -26,8 +26,10 @@ pub struct UrsaConfig {
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// Database path.
     pub database_path: Option<PathBuf>,
-    /// data directory
-    pub data_dir: PathBuf,
+    /// user identity name
+    pub identity: String,
+    /// Keystore path. Defaults to ~/.config/ursa/keystore
+    pub keystore_path: PathBuf,
 }
 
 impl Default for UrsaConfig {
@@ -44,7 +46,8 @@ impl Default for UrsaConfig {
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
-            data_dir: PathBuf::from(DEFAULT_DATA_PATH_STR),
+            identity: "default".to_string(),
+            keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
         }
     }
 }
@@ -55,10 +58,11 @@ impl UrsaConfig {
             mdns: self.mdns | other.mdns,
             relay: self.relay | other.relay,
             autonat: self.autonat | other.autonat,
+            identity: self.identity,
             swarm_addr: self.swarm_addr,
             bootstrap_nodes: self.bootstrap_nodes,
             database_path: self.database_path.or(other.database_path),
-            data_dir: self.data_dir,
+            keystore_path: self.keystore_path,
         }
     }
 }
