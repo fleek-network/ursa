@@ -49,7 +49,7 @@ pub struct CliOpts {
     pub rpc_port: Option<u16>,
     #[structopt(short, long, help = "Database path where store data")]
     pub database_path: Option<String>,
-    #[structopt(short, long, help = "Path to the keystore directory")]
+    #[structopt(short, long, help = "Path to the keystore directory. Defaults to ~/.config/ursa/keystore")]
     pub keystore_path: Option<String>,
     #[structopt(short, long, help = "Identity name. If not provided, a default identity will be created and reused automatically")]
     pub identity: Option<String>,

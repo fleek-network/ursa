@@ -1,19 +1,31 @@
 use libp2p::identity::Keypair;
 
-use std::{fs::{self, File}, io::{prelude::*, Result}, path::{Path}};
+use libp2p::PeerId;
 use std::fs::create_dir_all;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use tracing::error;
+use std::{
+    fs::{self, File},
+    io::{prelude::*, Result},
+    path::Path,
+};
+use tracing::{error, info};
 
 pub trait Identity {
+    fn id(&self) -> PeerId;
     fn keypair(&self) -> Keypair;
     fn encode_pem(&self) -> String;
     fn save(&self, path: &PathBuf) -> Result<()>;
-    fn load(path: &PathBuf) -> Result<Self> where Self: Sized;
+    fn load(path: &PathBuf) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 impl Identity for Keypair {
+    fn id(&self) -> PeerId {
+        PeerId::from(self.public())
+    }
+
     fn keypair(&self) -> Keypair {
         self.clone()
     }
@@ -22,10 +34,15 @@ impl Identity for Keypair {
         let pem_data = match self {
             Keypair::Ed25519(keypair) => {
                 {
-                    // todo(oz): A bit static, find a lib that encodes this properly
+                    // note(oz): This approach is a bit static, find a lib that does this properly
+                    // if we ever accept other signature schemes/pem encodings
+
                     let key = keypair.encode();
                     // ASN.1 header id-ed25519
-                    let mut buf: Vec<u8> = vec![0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2B, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20];
+                    let mut buf: Vec<u8> = vec![
+                        0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2B, 0x65, 0x70,
+                        0x04, 0x22, 0x04, 0x20,
+                    ];
                     // extend with secret key
                     buf.extend(key[..32].iter());
                     // extend with pubkey separator
@@ -57,7 +74,10 @@ impl Identity for Keypair {
         Ok(())
     }
 
-    fn load(path: &PathBuf) -> Result<Self> where Self: Sized {
+    fn load(path: &PathBuf) -> Result<Self>
+    where
+        Self: Sized,
+    {
         // read the file
         let mut file = File::open(path)?;
         let mut contents = String::new();
@@ -69,10 +89,13 @@ impl Identity for Keypair {
             "PRIVATE KEY" => {
                 if parsed.contents.len() != 85 {
                     error!("Invalid ed25519 pkcs#8 v2 key length (is the encoding correct?)");
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ed25519 key length"));
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Invalid ed25519 key length",
+                    ));
                 }
 
-                let mut buf= [0; 64];
+                let mut buf = [0; 64];
                 // private key - offset 16; 32bytes long
                 buf[..32].copy_from_slice(&parsed.contents[16..48]);
                 // public key - offset 53; 32bytes long
@@ -88,9 +111,9 @@ impl Identity for Keypair {
 }
 
 pub struct IdentityManager<I: Identity> {
-    name: String,
-    identity: I,
-    data_dir: PathBuf,
+    pub name: String,
+    pub identity: I,
+    pub dir: PathBuf,
 }
 
 impl Default for IdentityManager<Keypair> {
@@ -98,69 +121,66 @@ impl Default for IdentityManager<Keypair> {
         Self {
             name: "random".to_string(),
             identity: Keypair::generate_ed25519(),
-            data_dir: PathBuf::from("data"),
+            dir: PathBuf::from(""),
         }
     }
 }
 
 impl IdentityManager<Keypair> {
-    /// Create a new identity manager with the default id, or create it if it doesn't exist
-    pub fn new(data_dir: PathBuf) -> Self {
-        let name = "default".to_string();
-        let mut path = Path::new(&data_dir).join(&name);
-        path.set_extension("pem");
-        if path.exists() {
-            Self::load(name, data_dir).unwrap()
-        } else {
-            let im = Self {
-                name,
-                data_dir,
-                ..Self::default()
-            };
-            im.identity.save(&path).unwrap();
-            im
-        }
+    pub fn random() -> Self {
+        Self::default()
     }
-    
-    pub fn random(data_dir: PathBuf) -> Self {
-        let name = "random".to_string();
-        let path = Path::new(&data_dir).join("random.pem");
+
+    /// Create a new identity with the given name
+    pub fn new<S: Into<String>>(name: S, dir: PathBuf) -> Self {
+        let name = name.into();
+        let mut path = dir.join(&name);
+        path.set_extension("pem");
+
         let im = Self {
-            name,
-            data_dir,
-            ..Self::default()
+            name: name.clone(),
+            dir,
+            identity: Keypair::generate_ed25519(),
         };
         im.identity.save(&path).unwrap();
+
+        info!("Created identity `{}` ({})", name, im.identity.id());
+
         im
     }
 
     /// Load a known identity
-    pub fn load<S: Into<String>>(name: S, data_dir: PathBuf) -> Option<Self> {
+    pub fn load<S: Into<String>>(name: S, dir: PathBuf) -> Option<Self> {
         let name = name.into();
 
-        let mut path = data_dir.join(&name);
+        let mut path = dir.join(&name);
         path.set_extension("pem");
 
         let identity = match Keypair::load(&path) {
             Ok(identity) => identity,
             Err(e) => {
-                error!("Failed to load identity: {}", e);
+                error!("Failed to load identity `{}`", e);
                 return None;
             }
         };
 
+        info!("Loaded identity `{}` ({})", name, identity.id());
+
         Some(IdentityManager {
             name,
             identity,
-            data_dir,
+            dir,
         })
     }
 
-    /// Save the current identity
-    pub fn save(&self) -> Result<()> {
-        let mut path = self.data_dir.join(&self.name);
-        path.set_extension("pem");
-        self.identity.save(&path)
+    /// Load or create a new identity
+    pub fn load_or_new<S: Into<String> + Clone>(name: S, dir: PathBuf) -> Self {
+        let name = name.into();
+        Self::load(name.clone(), dir.clone()).unwrap_or_else(|| {
+            // if not found
+            let im = Self::new(name, dir);
+            im
+        })
     }
 
     pub fn current(&self) -> Keypair {

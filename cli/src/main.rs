@@ -3,7 +3,6 @@ extern crate core;
 mod ursa;
 
 use std::sync::Arc;
-
 use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
@@ -34,16 +33,14 @@ async fn main() {
                     }
                 }
             } else {
-                info!("Starting up with config {:?}", config);
+                info!("UrsaConfig: {:?}", config);
 
-                let identity_dir = config.data_dir.join("keystore");
+                let keystore_path = config.keystore_path.clone();
                 let im = match config.identity.clone().as_str() {
-                    // new or default identity
-                    "default" => IdentityManager::new(identity_dir),
                     // ephemeral random identity
-                    "random" => IdentityManager::random(identity_dir),
-                    // other identity
-                    _ => IdentityManager::load(config.identity.clone(),identity_dir).unwrap()
+                    "random" => IdentityManager::random(),
+                    // load or create a new identity
+                    _ => IdentityManager::load_or_new(config.identity.clone(),keystore_path)
                 };
 
                 let keypair = im.current();
