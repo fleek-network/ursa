@@ -1,11 +1,11 @@
+extern crate core;
+
 mod ursa;
 
 use std::sync::Arc;
-
 use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
-use libp2p::identity::Keypair;
 use network::UrsaService;
 use rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
 use service_metrics::{config::MetricsServiceConfig, metrics};
@@ -14,7 +14,7 @@ use structopt::StructOpt;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 
-use crate::ursa::{store_key_pair, get_key_pair};
+use crate::ursa::identity::IdentityManager;
 #[async_std::main]
 async fn main() {
     dotenv().ok();
@@ -33,24 +33,24 @@ async fn main() {
                     }
                 }
             } else {
-                info!("Starting up with config {:?}", config);
+                info!("UrsaConfig: {:?}", config);
 
-                let path = config.data_dir.join("keypair");
-                
-                let keypair: Keypair = match get_key_pair(&path)
-                .expect("the keypair file exist, but got issues with reading or decoding the file"){
-                    Some(k) => k,
-                    None => {
-                        let new_key = Keypair::generate_ed25519();
-                        store_key_pair(new_key.clone(), &config.data_dir).expect("Key storing failed");
-                        new_key
-                    }
+                let keystore_path = config.keystore_path.clone();
+                let im = match config.identity.clone().as_str() {
+                    // ephemeral random identity
+                    "random" => IdentityManager::random(),
+                    // load or create a new identity
+                    _ => IdentityManager::load_or_new(config.identity.clone(),keystore_path)
                 };
 
-                let config_db_path = config.database_path.as_ref().unwrap().as_path().to_str();
-                let db_path = opts
-                    .database_path
-                    .unwrap_or(config_db_path.unwrap().to_string());
+                let keypair = im.current();
+
+                let db_path = if let Some(path) = opts.database_path {
+                    path
+                } else {
+                    config.database_path.as_ref().unwrap().to_str().unwrap().to_string()
+                };
+
                 info!("Using {} as database path", db_path);
 
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())

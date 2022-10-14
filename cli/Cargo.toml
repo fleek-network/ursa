@@ -10,6 +10,7 @@ description = "Ursa's cli"
 [dependencies]
 toml = "0.5"
 ctrlc = "3.1"
+pem = "1.1.0"
 futures = "0.3.21"
 structopt = "0.3"
 dotenv = "0.15.0"
