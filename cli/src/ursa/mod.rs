@@ -11,6 +11,7 @@ use std::{
     time::Duration,
     process, thread,
 };
+use libp2p::Multiaddr;
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 
@@ -53,6 +54,8 @@ pub struct CliOpts {
     pub keystore_path: Option<String>,
     #[structopt(short, long, help = "Identity name. If not provided, a default identity will be created and reused automatically")]
     pub identity: Option<String>,
+    #[structopt(short, long, help = "Swarm address")]
+    pub swarm_addr: Option<Multiaddr>,
 }
 
 impl CliOpts {
@@ -72,6 +75,10 @@ impl CliOpts {
 
         if let Some(identity) = &self.identity {
             cfg.identity = identity.to_string();
+        }
+
+        if let Some(swarm_addr) = &self.swarm_addr {
+            cfg.swarm_addr = swarm_addr.clone();
         }
 
         Ok(cfg)
