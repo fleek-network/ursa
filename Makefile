@@ -1,11 +1,17 @@
+.PHONY: local
+.SILENT: version
+
 version:
 	cargo --version
 	rustc --version
-	@echo "RUSTC_WRAPPER=$${RUSTC_WRAPPER}"
+	echo "RUSTC_WRAPPER=${RUSTC_WRAPPER}"
 	sccache --show-stats || true
 
 run: version
-	cargo run --bin cli
+	cargo run --bin ursa --release
+
+regtest: version build
+	./regtest/startup.sh
 
 install: version
 	cargo install --locked --path cli --force
