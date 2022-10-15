@@ -3,8 +3,7 @@ relay = false
 autonat = false
 bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009/p2p/12D3KooWG1yWxsa7W8uFHoHteevcmMTJYVDCQx49krdgpLpVrhSy"]
 
-# todo: make these optional
+identity = "node1"
 swarm_addr = "/ip4/0.0.0.0/tcp/6010"
 database_path = "test_db/node1"
-identity = "node1"
 keystore_path = "keystore/"

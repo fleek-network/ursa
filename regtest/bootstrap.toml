@@ -2,7 +2,8 @@ mdns = false
 relay = false
 autonat = false
 bootstrap_nodes = []
+
+identity = "bootstrap"
 swarm_addr = "/ip4/0.0.0.0/tcp/6009"
 database_path = "test_db/bootstrap/"
-identity = "bootstrap"
 keystore_path = "keystore/"
