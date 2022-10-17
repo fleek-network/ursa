@@ -43,7 +43,7 @@ where
                     )
                 }
                 Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
-            }
+            };
         } else {
             (
                 StatusCode::BAD_REQUEST,
