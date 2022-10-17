@@ -16,7 +16,6 @@
 use anyhow::{Error, Result};
 use cid::Cid;
 use fnv::FnvHashMap;
-use futures::channel::oneshot;
 use libipld::store::StoreParams;
 use libp2p::{
     gossipsub::{
@@ -44,6 +43,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use tokio::sync::oneshot;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
@@ -96,11 +96,7 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(
-    out_event = "BehaviourEvent",
-    poll_method = "poll",
-    event_process = true
-)]
+#[behaviour(out_event = "BehaviourEvent", event_process = true)]
 pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
@@ -244,7 +240,9 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = utils::convert_cid(cid.to_bytes());
-        let id = self.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
+        let id = self
+            .bitswap
+            .sync(c_cid, providers, iter::once(c_cid.clone()));
         self.queries.insert(
             id,
             BitswapInfo {
@@ -258,23 +256,6 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
-    }
-
-    fn poll(
-        &mut self,
-        _: &mut Context,
-        _: &mut impl PollParameters,
-    ) -> Poll<
-        NetworkBehaviourAction<
-            <Self as NetworkBehaviour>::OutEvent,
-            <Self as NetworkBehaviour>::ConnectionHandler,
-        >,
-    > {
-        if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-        }
-
-        Poll::Pending
     }
 
     fn handle_ping(&mut self, event: PingEvent) {

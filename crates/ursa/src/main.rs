@@ -3,9 +3,9 @@ extern crate core;
 mod ursa;
 
 use crate::ursa::identity::IdentityManager;
-use async_std::task;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
+use libp2p::identity::Keypair;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tracing::{error, info};
@@ -15,7 +15,7 @@ use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
 use ursa_store::Store;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() {
     dotenv().ok();
 
@@ -67,7 +67,7 @@ async fn main() {
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
-                let service_task = task::spawn(async {
+                let service_task = tokio::spawn(async {
                     if let Err(err) = service.start().await {
                         error!("[service_task] - {:?}", err);
                     }
@@ -86,14 +86,14 @@ async fn main() {
                 let metrics_config = MetricsServiceConfig::default();
 
                 // Start multiplex server service(rpc and http)
-                let rpc_task = task::spawn(async move {
+                let rpc_task = tokio::spawn(async move {
                     if let Err(err) = server.start(server_config).await {
                         error!("[server] - {:?}", err);
                     }
                 });
 
                 // Start metrics service
-                let metrics_task = task::spawn(async move {
+                let metrics_task = tokio::spawn(async move {
                     if let Err(err) = metrics::start(&metrics_config).await {
                         error!("[metrics_task] - {:?}", err);
                     }
@@ -102,11 +102,9 @@ async fn main() {
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
-                task::spawn(async {
-                    rpc_task.cancel().await;
-                    service_task.cancel().await;
-                    metrics_task.cancel().await;
-                });
+                rpc_task.abort();
+                service_task.abort();
+                metrics_task.abort();
             }
         }
         Err(e) => {

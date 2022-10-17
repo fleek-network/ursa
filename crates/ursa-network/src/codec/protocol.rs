@@ -121,7 +121,7 @@ impl RequestResponseCodec for UrsaExchangeCodec {
         res: Self::Response,
     ) -> io::Result<()>
     where
-        T: futures::AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
         let data = serde_json::to_vec(&res).unwrap();
         write_length_prefixed(io, &data).await?;
@@ -135,22 +135,22 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 mod tests {
     use super::*;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_read_request() {
         todo!()
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_read_response() {
         todo!()
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_write_request() {
         todo!()
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_write_response() {
         todo!()
     }

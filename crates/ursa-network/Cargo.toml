@@ -19,17 +19,15 @@ tracing = "0.1.33"
 tiny-cid = "0.3.0"
 metrics = "0.20.1"
 jsonrpc-v2 = "0.11.0"
-# Temp quic lib
 libp2p-quic = "0.6.1"
 serde_json = "1.0.81"
 async-trait = "0.1.53"
-futures-util = "0.3.21"
-# libp2p-bitswap = "0.22.0"
-ipld_blockstore = "0.1.1"
 fvm_ipld_car = "0.5.0"
+futures-util = "0.3.21"
+ipld_blockstore = "0.1.1"
 ursa-store = { path = "../ursa-store" }
 ursa-metrics = { path = "../ursa-metrics" }
-async-std = { version = "1.11.0", features = ["attributes"] }
+tokio = { version = "1.20.1", features = ["full"] }
 
 [dependencies.libipld]
 version = "0.12.0"
@@ -45,7 +43,6 @@ version = "0.46.1"
 default-features = false
 features = [
     "autonat",
-    "dns-async-std",
     "identify",
     "kad",
     "gossipsub",
@@ -56,11 +53,13 @@ features = [
     "ping",
     "relay",
     "request-response",
-    "tcp-async-io",
+    "tcp-tokio",
+    "dns-tokio",
     "yamux",
     "serde",
 ]
 
 [dev-dependencies]
 simple_logger = "2.1.0"
+tokio = { version = "1.20.1", features = ["full"] }
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }

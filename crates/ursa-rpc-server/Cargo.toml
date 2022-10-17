@@ -26,9 +26,7 @@ ursa-metrics = { path = "../ursa-metrics"}
 ursa-network = { path = "../ursa-network" }
 serde = { version = "1.0.137", features = ["derive"] }
 axum = { version = "0.5.7", features = ["multipart"] }
-# tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
-async-std = { version = "1.11.0", features = ["attributes"] }
-tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
+tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 
 [dependencies.libipld]
 version = "0.12.0"

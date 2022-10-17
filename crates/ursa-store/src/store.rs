@@ -3,7 +3,6 @@ use libipld::store::DefaultParams;
 use libipld::{Block, Cid, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
-use tracing;
 
 pub struct Store<S> {
     pub db: Arc<S>,
@@ -21,6 +20,7 @@ where
         &self.db
     }
 }
+
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where
     P: BlockStore + Sync + Send + 'static;
@@ -67,22 +67,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
-    // use tracing::log::LevelFilter;
-    use crate::utils;
-    use simple_logger::SimpleLogger;
-
     use super::*;
 
-    #[async_std::test]
+    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
+    use simple_logger::SimpleLogger;
+    use std::str::FromStr;
+
+    use crate::utils;
+
+    #[tokio::test]
     async fn get_missing_blocks() {
-        // SimpleLogger::new()
-        //     .with_level(LevelFilter::Info)
-        //     .with_utc_timestamps()
-        //     .init()
-        //     .unwrap();
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+
         let db1 = Arc::new(
             RocksDb::open("ursa_db", &RocksDbConfig::default())
                 .expect("Opening RocksDB must succeed"),

@@ -1,19 +1,15 @@
 mod rpc_commands;
 
 use rpc_commands::RpcCommands;
-use std::{
-    cell::RefCell,
-    fs::File,
-    io::{prelude::*, Result},
-    path::{Path, PathBuf},
-    process,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
-    },
-    thread,
-    time::Duration,
-};
+use std::cell::RefCell;
+use std::fs::File;
+use std::io::{prelude::*, Result};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use std::{process, thread};
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 use ursa_network::UrsaConfig;
@@ -144,5 +140,5 @@ pub async fn _block_until_sigint() {
 /// Used for handling high level errors such as invalid params
 pub(super) fn cli_error_and_die(msg: &str, code: i32) {
     error!("Error: {}", msg);
-    std::process::exit(code);
+    process::exit(code);
 }
