@@ -1,11 +1,12 @@
 [workspace]
 members = [
-  "cli",
-  "network",
-  "store",
-  "rpc-server",
-  "rpc-client",
-  "service-metrics",
+  "crates/ursa",
+  "crates/ursa-gateway",
+  "crates/ursa-metrics",
+  "crates/ursa-network",
+  "crates/ursa-rpc-client",
+  "crates/ursa-rpc-server",
+  "crates/ursa-store",
 ]
 
 exclude = [
