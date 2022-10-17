@@ -127,6 +127,7 @@ pub struct Behaviour<P: StoreParams> {
     /// Pending requests
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    
     #[behaviour(ignore)]
     queries: FnvHashMap<QueryId, BitswapInfo>,
 }

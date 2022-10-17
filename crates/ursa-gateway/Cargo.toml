@@ -8,9 +8,9 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's proxy gateway"
 
 [dependencies]
-axum = "0.5.7"
-tracing = "0.1"
-tokio = { version = "1", features = ["full"] }
-hyper = { version = "0.14", features = ["full"] }
+axum = "0.5.16"
+tracing = "0.1.37"
+tokio = { version = "1.21.2", features = ["full"] }
+hyper = { version = "0.14.20", features = ["full"] }
 axum-server = { version = "0.4.2", features = ["tls-rustls"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

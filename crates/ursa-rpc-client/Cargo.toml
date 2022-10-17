@@ -8,20 +8,20 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's rpc client implementation"
 
 [dependencies]
-cid = "0.8.5"
-anyhow = "1.0.57"
+cid = "0.8.6"
+anyhow = "1.0.65"
 tiny-cid = "0.3.0"
-tracing = "0.1.35"
-serde_json = "1.0.81"
+tracing = "0.1.37"
+serde_json = "1.0.86"
 jsonrpc-v2 = "0.11.0"
-async-trait = "0.1.53"
-simple_logger = "2.1.0"
+async-trait = "0.1.57"
+simple_logger = "2.3.0"
 ursa-network = { path = "../ursa-network" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
-serde = { version = "1.0.137", features = ["derive"] }
-tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
-surf = { version = "2.3", default-features = true, features = ["curl-client"] }
+serde = { version = "1.0.145", features = ["derive"] }
+tokio = { version = "1.21.2", features = ["rt", "net", "macros", "sync"] }
+surf = { version = "2.3.2", default-features = true, features = ["curl-client"] }
 
 [dependencies.libipld]
-version = "0.12.0"
+version = "0.14.0"
 default-features = false
