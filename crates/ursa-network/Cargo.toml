@@ -8,37 +8,36 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's libp2p implementation"
 
 [dependencies]
+anyhow = "1.0.56"
+async-std = { version = "1.11.0", features = ["attributes"] }
+async-trait = "0.1.53"
+bytes = "1.1.0"
 cid = "0.8.5"
 fnv = "1.0.7"
-log = "0.4.17"
-bytes = "1.1.0"
-anyhow = "1.0.56"
-serde = "1.0.137"
+forest_encoding = "0.2.2"
+forest_ipld = "0.1.1"
 futures = "0.3.21"
-tracing = "0.1.33"
-tiny-cid = "0.3.0"
-metrics = "0.20.1"
+futures-util = "0.3.21"
+fvm_ipld_car = "0.5.0"
+# libp2p-bitswap = "0.22.0"
+ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
 # Temp quic lib
 libp2p-quic = "0.6.1"
+log = "0.4.17"
+metrics = "0.20.1"
+serde = "1.0.137"
 serde_json = "1.0.81"
-async-trait = "0.1.53"
-futures-util = "0.3.21"
-# libp2p-bitswap = "0.22.0"
-ipld_blockstore = "0.1.1"
-fvm_ipld_car = "0.5.0"
-ursa-store = { path = "../ursa-store" }
+tiny-cid = "0.3.0"
+tracing = "0.1.33"
+ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
-async-std = { version = "1.11.0", features = ["attributes"] }
+ursa-store = { path = "../ursa-store" }
+ursa-utils = { path = "../ursa-utils" }
 
 [dependencies.libipld]
 version = "0.12.0"
 default-features = false
-
-[dependencies.libp2p-bitswap]
-version = "0.22.0"
-git = "https://github.com/b0xtch/libp2p-bitswap"
-rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [dependencies.libp2p]
 version = "0.46.1"
@@ -62,6 +61,11 @@ features = [
     "serde",
 ]
 
+[dependencies.libp2p-bitswap]
+version = "0.22.0"
+git = "https://github.com/b0xtch/libp2p-bitswap"
+rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
+
 [dev-dependencies]
-simple_logger = "2.1.0"
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+simple_logger = "2.1.0"

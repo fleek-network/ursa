@@ -45,13 +45,13 @@ use std::{
     time::Duration,
 };
 use tracing::{debug, error, info, trace, warn};
+use ursa_utils::convert_cid;
 
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    utils,
 };
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
@@ -86,6 +86,11 @@ pub enum BehaviourEvent {
         peer: PeerId,
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
+    },
+    PublishAd {
+        root_cid: Cid,
+        context_id: Vec<u8>,
+        is_rm: bool,
     },
 }
 
@@ -124,11 +129,11 @@ pub struct Behaviour<P: StoreParams> {
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
 
-    /// Pending responses
+    /// Pending requests
     #[behaviour(ignore)]
     pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
 
-    /// Pending requests
+    /// Pending responses
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
     #[behaviour(ignore)]
@@ -228,9 +233,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
         info!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self
-            .bitswap
-            .get(utils::convert_cid(cid.to_bytes()), providers);
+        let id = self.bitswap.get(convert_cid(cid.to_bytes()), providers);
 
         self.queries.insert(
             id,
@@ -247,7 +250,7 @@ impl<P: StoreParams> Behaviour<P> {
             "sync block via http called, the requested root cid is: {:?}",
             cid
         );
-        let c_cid = utils::convert_cid(cid.to_bytes());
+        let c_cid = convert_cid(cid.to_bytes());
         let id = self.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
         self.queries.insert(
             id,
@@ -262,6 +265,16 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
+    }
+
+    pub fn publish_ad(&mut self, root_cids: Vec<Cid>) {
+        for cid in root_cids {
+            self.events.push_back(BehaviourEvent::PublishAd {
+                root_cid: cid,
+                context_id: cid.to_bytes(),
+                is_rm: false,
+            })
+        }
     }
 
     fn poll(

@@ -1,25 +1,23 @@
 use std::sync::Arc;
 
-use async_std::{channel::Sender, io::BufReader};
+use async_std::{
+    channel::{unbounded, Sender},
+    io::BufReader,
+    sync::RwLock,
+};
 
 use anyhow::{anyhow, Result};
 use async_std::fs::File;
 use async_trait::async_trait;
 use cid::Cid;
-use fnv::FnvHashSet;
 use futures::{channel::oneshot, AsyncRead};
-use fvm_ipld_car::{load_car, Block};
+use fvm_ipld_car::{load_car, CarHeader};
 use ipld_blockstore::BlockStore;
-use libipld::{
-    prelude::{Codec, References},
-    store::StoreParams,
-    Cid as ipldCid, DefaultParams, Ipld,
-};
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use ursa_network::utils::convert_cid;
 use ursa_network::{BitswapType, UrsaCommand};
-use ursa_store::Store;
+use ursa_store::{Dag, Store};
+use ursa_utils::convert_cid;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
@@ -58,7 +56,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
 
     // stream the car file from server
-    async fn stream(&self, root_cid: Cid) -> Result<Vec<Vec<u8>>>;
+    async fn stream(&self, root_cid: Cid) -> Result<Vec<u8>>;
 
     /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>>;
@@ -102,7 +100,7 @@ where
         self.store.blockstore().get(&cid)
     }
 
-    async fn stream(&self, root_cid: Cid) -> Result<Vec<Vec<u8>>> {
+    async fn stream(&self, root_cid: Cid) -> Result<Vec<u8>> {
         if !self.store.blockstore().has(&root_cid).unwrap() {
             let (sender, receiver) = oneshot::channel();
             let request = UrsaCommand::GetBitswap {
@@ -120,31 +118,33 @@ where
                 )));
             }
         }
-        let mut res = Vec::new();
-        // get full dag starting with root id
-        let mut current = FnvHashSet::default();
-        let mut refs = FnvHashSet::default();
-        current.insert(convert_cid::<ipldCid>(root_cid.to_bytes()));
+        let dag = self
+            .store
+            .dag_traversal(&convert_cid(root_cid.to_bytes()))?;
 
-        while let Some(cid) = current.iter().next().copied() {
-            current.remove(&cid);
-            if refs.contains(&cid) {
-                continue;
-            }
-            match self.store.blockstore().get(&convert_cid(cid.to_bytes()))? {
-                Some(data) => {
-                    res.push(data.clone());
-                    let next_block = Block {
-                        cid: convert_cid(cid.to_bytes()),
-                        data,
-                    };
-                    let _action = next_block.references(&mut current)?;
-                    refs.insert(cid);
-                }
-                None => todo!(),
-            }
+        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+        let header = CarHeader {
+            roots: vec![root_cid],
+            version: 1,
+        };
+
+        let (tx, mut rx) = unbounded();
+        let buffer_cloned = buffer.clone();
+        let write_task = async_std::task::spawn(async move {
+            header
+                .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
+                .await
+                .unwrap()
+        });
+
+        for (cid, data) in dag {
+            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
         }
-        Ok(res)
+        drop(tx);
+        write_task.await;
+        let data = buffer.read().await.clone();
+
+        Ok(data)
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
@@ -169,20 +169,67 @@ where
     }
 }
 
-pub trait BlockLinks {
-    type Params: StoreParams;
-    fn references<E: Extend<ipldCid>>(&self, set: &mut E) -> Result<()>;
-}
+#[cfg(test)]
+mod tests {
 
-impl BlockLinks for Block {
-    type Params = DefaultParams;
+    use super::*;
+    use async_std::task;
+    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
+    use libp2p::identity::Keypair;
+    use simple_logger::SimpleLogger;
+    use tracing::{error, log::LevelFilter};
+    use ursa_index_provider::provider::Provider;
+    use ursa_network::{UrsaConfig, UrsaService};
+    use ursa_store::Store;
 
-    /// Returns the references.
-    fn references<E: Extend<ipldCid>>(&self, set: &mut E) -> Result<()>
-    where
-        Ipld: References<<DefaultParams as StoreParams>::Codecs>,
-    {
-        <DefaultParams as StoreParams>::Codecs::try_from(self.cid.codec())?
-            .references::<Ipld, E>(&self.data, set)
+    fn setup_logger(level: LevelFilter) {
+        SimpleLogger::new()
+            .with_level(level)
+            .with_utc_timestamps()
+            .init()
+            .unwrap()
+    }
+
+    fn get_store(path: &str) -> Arc<Store<RocksDb>> {
+        let db = Arc::new(
+            RocksDb::open(path, &RocksDbConfig::default()).expect("Opening RocksDB must succeed"),
+        );
+        Arc::new(Store::new(Arc::clone(&db)))
+    }
+
+    #[async_std::test]
+    async fn test_stream() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = UrsaConfig::default();
+        let keypair = Keypair::generate_ed25519();
+
+        let store = get_store("test_db1");
+
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+
+        let service =
+            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+        let rpc_sender = service.command_sender().clone();
+
+        // Start libp2p service
+        let service_task = task::spawn(async {
+            if let Err(err) = service.start().await {
+                error!("[service_task] - {:?}", err);
+            }
+        });
+
+        let interface = Arc::new(NodeNetworkInterface {
+            store,
+            network_send: rpc_sender,
+        });
+
+        let cids = interface
+            .put_file("../car_files/text_mb.car".to_string())
+            .await?;
+        let data = interface.stream(cids[0]).await?;
+
+        Ok(())
     }
 }

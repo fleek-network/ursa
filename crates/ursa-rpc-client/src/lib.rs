@@ -138,8 +138,8 @@ mod tests {
 
     use cid::Cid;
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
-    use ursa_network::utils;
     use ursa_rpc_server::api::{NetworkGetParams, NetworkPutCarParams, NetworkPutFileParams};
+    use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -157,7 +157,7 @@ mod tests {
     async fn test_rpc_get_cid() {
         setup_logger(LevelFilter::Info);
         let block = create_block(ipld!(&b"hello world"[..]));
-        let cid = utils::convert_cid(block.cid().to_bytes());
+        let cid = convert_cid(block.cid().to_bytes());
         let string_cid = Cid::to_string(&cid);
         let params = NetworkGetParams {
             cid: string_cid.clone(),

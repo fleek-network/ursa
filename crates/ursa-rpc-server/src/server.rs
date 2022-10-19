@@ -58,10 +58,12 @@ where
 mod tests {
     use super::*;
 
+    use async_std::sync::RwLock;
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
+    use ursa_index_provider::provider::Provider;
     use ursa_store::Store;
 
     use ursa_network::{config::UrsaConfig, service::UrsaService};
@@ -73,7 +75,12 @@ mod tests {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
 
-        let service = UrsaService::new(keypair, config, store);
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+
+        let service =
+            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 
         (service, local_peer_id)
     }

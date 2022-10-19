@@ -1,11 +1,5 @@
 use anyhow::Result;
-use axum::{
-    http::{Request, StatusCode},
-    middleware::{self, Next},
-    response::IntoResponse,
-    routing::get,
-    Router,
-};
+use axum::{http::StatusCode, routing::get, Router};
 use std::future::ready;
 use std::net::SocketAddr;
 use tracing::info;

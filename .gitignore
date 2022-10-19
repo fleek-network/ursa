@@ -14,9 +14,11 @@ config.toml
 
 Cargo.lock
 
+index_provider_db*
 test_db*
 ursa_db*
 data*
+
 
 
 infra/ursa/data/nginx/cache
