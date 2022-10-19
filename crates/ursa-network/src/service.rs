@@ -20,31 +20,37 @@ use async_std::{
 
 use cid::Cid;
 use fnv::FnvHashMap;
+use forest_ipld::Ipld;
 use futures::{channel::oneshot, select};
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
-    gossipsub::{GossipsubMessage, IdentTopic as Topic},
+    gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use serde::Serialize;
 use std::{collections::HashSet, sync::Arc};
 use tracing::{debug, error, info, warn};
+use ursa_index_provider::{
+    advertisement::{Advertisement, MAX_ENTRIES},
+    provider::{Provider, ProviderInterface},
+};
 use ursa_metrics::events;
-use ursa_store::{BitswapStorage, Store};
+use ursa_store::{BitswapStorage, Dag, Store};
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
-    utils::convert_cid,
 };
 use metrics::Label;
+use ursa_utils::convert_cid;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -125,6 +131,8 @@ pub struct UrsaService<S> {
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
+    /// index provider
+    index_provider: Provider<S>,
 }
 
 impl<S> UrsaService<S>
@@ -144,7 +152,12 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
+    pub fn new(
+        keypair: Keypair,
+        config: &UrsaConfig,
+        store: Arc<Store<S>>,
+        index_provider: Provider<S>,
+    ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
         let transport = UrsaTransport::new(&keypair, config);
@@ -173,7 +186,8 @@ where
         Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
 
         for to_dial in &config.bootstrap_nodes {
-            Swarm::dial(&mut swarm, to_dial.clone())
+            swarm
+                .dial(to_dial.clone())
                 .map_err(|err| anyhow!("{}", err))
                 .unwrap();
         }
@@ -200,6 +214,7 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
+            index_provider,
         }
     }
 
@@ -212,10 +227,11 @@ where
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
-        info!(
-            "Node starting up with peerId {:?}",
-            self.swarm.local_peer_id().to_base58()
-        );
+        let peer_id = self.swarm.local_peer_id().clone();
+        let provider = self.index_provider;
+
+        info!("Node starting up with peerId {:?}", peer_id);
+
         let mut swarm = self.swarm.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());
         let mut command_receiver = self.command_receiver.fuse();
@@ -327,8 +343,40 @@ where
                                         warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
                                     }
                                 }
-                            },
+                                BehaviourEvent::PublishAd { root_cid, context_id, is_rm } => {
+                                    let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed");
 
+                                    info!("creating advertisement for cids under root cid: {:?}", root_cid);
+                                    let addresses: Vec<String> = swarm.get_mut().listeners().cloned().map(|m| m.to_string()).collect();
+
+                                    let ad = Advertisement::new(context_id.clone(), peer_id, addresses, is_rm);
+                                    let id = provider.create(ad).await.unwrap();
+
+                                    let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                                    let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
+                                    let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+
+                                    info!("inserting the chunks");
+                                    for chunk in chunks.iter() {
+                                        let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                                        provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
+                                    }
+                                    info!("Publishing the advertisement now");
+                                    provider.publish(id).await.expect("publishing the ad should not fail");
+                                    let announce_msg = provider.announce_msg(peer_id).await.unwrap();
+
+                                    let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                                    let i_topic = Topic::new("indexer/ingest/mainnet");
+                                    let g_msg = GossipsubMessage {data:announce_msg, source: None, sequence_number: None, topic: i_topic_hash };
+                                    match swarm.get_mut().behaviour_mut().publish(i_topic, g_msg.clone()) {
+                                        Ok(res) => {},
+                                        Err(e) => {
+                                            error!("there was an error while gossiping the announcement");
+                                            error!("{:?}", e);
+                                        }
+                                    }
+                                }
+                            },
                             // Do we need to handle any of the below events?
                             SwarmEvent::Dialing { .. }
                             | SwarmEvent::BannedPeer { .. }
@@ -372,6 +420,8 @@ where
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
                             UrsaCommand::StartProviding { cids, sender } => {
+                                // TODO: start providing via gossip and/or publish ad to the indexer
+                                let _ = swarm.get_mut().behaviour_mut().publish_ad(cids.clone());
                                 let _channel = sender.send(Ok(cids));
                             },
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
@@ -381,7 +431,7 @@ where
                             UrsaCommand::GossipsubMessage { topic, message } => {
                                 if let Err(error) = swarm.get_mut().behaviour_mut().publish(topic.clone(), message.clone()) {
                                     warn!(
-                                        "[UrsaCommand::GossipsubMessage] - Failed to publish message top topic {:?} with error {:?}:",
+                                        "[UrsaCommand::GossipsubMessage] - Failed to publish message to topic {:?} with error {:?}:",
                                         URSA_GLOBAL, error
                                     );
                                 }
@@ -399,7 +449,7 @@ mod tests {
     use super::*;
 
     use crate::codec::protocol::RequestType;
-    use async_std::{fs::File, io::BufReader};
+    use async_std::{fs::File, io::BufReader, sync::RwLock};
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
@@ -423,7 +473,12 @@ mod tests {
             .map(|node| node.parse().unwrap())
             .collect();
 
-        let service = UrsaService::new(keypair, config, store);
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+
+        let service =
+            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 
         (service, local_peer_id)
     }

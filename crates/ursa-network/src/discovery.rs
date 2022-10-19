@@ -161,7 +161,7 @@ impl DiscoveryBehaviour {
     fn handle_kad_event(&self, event: KademliaEvent) {
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
             if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
-                let peers = closest_peers.peers;
+                let _peers = closest_peers.peers;
 
                 todo!()
             }

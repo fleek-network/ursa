@@ -81,7 +81,6 @@ impl CliOpts {
             let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
             cfg = toml_str.merge(cfg);
         }
-
         if let Some(identity) = &self.identity {
             cfg.identity = identity.to_string();
         }
