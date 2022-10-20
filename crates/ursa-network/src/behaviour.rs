@@ -207,7 +207,7 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn bootstrap_nodes(&self) -> Vec<(PeerId, Multiaddr)> {
         self.discovery.bootstrap_nodes().clone()
     }
-
+    
     pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
         self.discovery.bootstrap()
     }

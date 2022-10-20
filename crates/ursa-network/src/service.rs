@@ -469,7 +469,6 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
-
         config.bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
             .iter()
             .map(|node| node.parse().unwrap())

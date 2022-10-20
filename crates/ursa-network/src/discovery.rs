@@ -166,7 +166,7 @@ impl DiscoveryBehaviour {
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
     }
-
+    
     fn handle_kad_event(&mut self, event: KademliaEvent) {
         println!("{:?}", event);
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
