@@ -14,6 +14,17 @@ use libp2p::{
     identity::Keypair,
 };
 
+const BOOTSTRAP_MESH_N: usize = 0;
+const BOOTSTRAP_MESH_LOW: usize = 0;
+const BOOTSTRAP_MESH_HIGH: usize = 0;
+// D out
+const BOOTSTRAP_MESH_OUTBOUND_MIN: usize = 0;
+
+const NODE_MESH_N: usize = 8;
+const NODE_MESH_LOW: usize = 4;
+const NODE_MESH_HIGH: usize = 12;
+const NODE_MESH_OUTBOUND_MIN: usize = (NODE_MESH_N / 2) - 1;
+
 const URSA_GOSSIP_PROTOCOL: &str = "ursa/gossipsub/0.0.1";
 
 ///
@@ -22,14 +33,25 @@ pub struct UrsaGossipsub;
 
 impl UrsaGossipsub {
     pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Gossipsub {
-        let mesh_n = 8;
-        let mesh_n_low = 4;
-        let mesh_n_high = 12;
+        let (mesh_n, mesh_n_low, mesh_n_high, mesh_outbound_min) = if config.bootstrap_mode {
+            (
+                BOOTSTRAP_MESH_N,
+                BOOTSTRAP_MESH_LOW,
+                BOOTSTRAP_MESH_HIGH,
+                BOOTSTRAP_MESH_OUTBOUND_MIN,
+            )
+        } else {
+            (
+                NODE_MESH_N,
+                NODE_MESH_LOW,
+                NODE_MESH_HIGH,
+                NODE_MESH_OUTBOUND_MIN,
+            )
+        };
+
         let gossip_lazy = mesh_n;
         let heartbeat_interval = Duration::from_secs(1);
         let fanout_ttl = Duration::from_secs(60);
-        // D_out
-        let mesh_outbound_min = (mesh_n / 2) - 1;
         let max_transmit_size = 4 * 1024 * 1024;
         // todo(botch): should we limit the number here?
         let max_msgs_per_rpc = 1;

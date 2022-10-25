@@ -31,7 +31,7 @@ relay = false
 autonat = false
 bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
 swarm_addr = "/ip4/0.0.0.0/tcp/6009"
-database_path = "data/ursadb"
+database_path = "data/ursa_db"
 ```
 
 ### Run with Docker

@@ -22,6 +22,8 @@ pub struct UrsaConfig {
     pub autonat: bool,
     /// Swarm listening Address.
     pub swarm_addr: Multiaddr,
+    /// Run with bootstrap node configuration.
+    pub bootstrap_mode: bool,
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// Database path.
@@ -43,6 +45,7 @@ impl Default for UrsaConfig {
             mdns: false,
             relay: false,
             autonat: false,
+            bootstrap_mode: false,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
@@ -60,6 +63,7 @@ impl UrsaConfig {
             autonat: self.autonat | other.autonat,
             identity: self.identity,
             swarm_addr: self.swarm_addr,
+            bootstrap_mode: self.bootstrap_mode | other.bootstrap_mode,
             bootstrap_nodes: self.bootstrap_nodes,
             database_path: self.database_path.or(other.database_path),
             keystore_path: self.keystore_path,

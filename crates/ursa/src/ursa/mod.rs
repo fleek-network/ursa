@@ -65,11 +65,17 @@ pub struct CliOpts {
         help = "Identity name. If not provided, a default identity will be created and reused automatically"
     )]
     pub identity: Option<String>,
+    #[structopt(
+        long,
+        help = "Run the node in bootstrap mode, using a slightly different mesh configuration. Defaults to false"
+    )]
+    pub boostrap_mode: Option<bool>,
 }
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
         let mut cfg = UrsaConfig::default();
+
         if let Some(config_file) = &self.config {
             info!(
                 "Reading configuration from user provided config file {}",
@@ -83,6 +89,9 @@ impl CliOpts {
         }
         if let Some(identity) = &self.identity {
             cfg.identity = identity.to_string();
+        }
+        if let Some(bootstrap_mode) = self.boostrap_mode {
+            cfg.bootstrap_mode = bootstrap_mode;
         }
 
         Ok(cfg)

@@ -1,5 +1,6 @@
 .DS_Store
 **/.vscode/
+**/.idea/
 
 car_files*
 
@@ -15,6 +16,7 @@ config.toml
 Cargo.lock
 
 index_provider_db*
+keystore*
 test_db*
 ursa_db*
 data*
