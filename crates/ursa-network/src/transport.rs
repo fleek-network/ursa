@@ -14,7 +14,7 @@ use libp2p::{
     dns::DnsConfig,
     identity::Keypair,
     mplex, noise,
-    relay::v2::client::Client as RelayClient,
+    relay::v2::client::transport::ClientTransport,
     tcp::{GenTcpConfig, TcpTransport},
     yamux, PeerId, Transport,
 };
@@ -28,15 +28,9 @@ impl UrsaTransport {
     ///
     /// Defaults to QUIC transport over TCP.
     /// If QUIC fails to establish a connection, we fail over to TCP.
-    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Boxed<(PeerId, StreamMuxerBox)> {
+    pub fn new(keypair: &Keypair, config: &UrsaConfig, relay_transport: Option<ClientTransport>) -> Boxed<(PeerId, StreamMuxerBox)> {
         let id_keys = keypair;
         let local_peer_id = PeerId::from(keypair.public());
-
-        // let relay = if config.relay {
-        //     Some(RelayClient::new_transport_and_behaviour(local_peer_id))
-        // } else {
-        //     None
-        // };
 
         let tcp = {
             let noise = {
@@ -54,10 +48,18 @@ impl UrsaTransport {
             let tcp = TcpTransport::new(GenTcpConfig::new());
             let tcp = block_on(DnsConfig::system(tcp)).unwrap();
 
-            tcp.upgrade(upgrade::Version::V1)
-                .authenticate(noise)
-                .multiplex(mplex)
-                .boxed()
+            if let Some(relay) = relay_transport {
+                tcp.or_transport(relay)
+                    .upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            } else {
+                tcp.upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            }
         };
 
         // let quic = {

@@ -18,7 +18,13 @@ use cid::Cid;
 use fnv::FnvHashMap;
 use futures::channel::oneshot;
 use libipld::store::StoreParams;
+use libp2p::autonat::{Event, NatStatus, OutboundProbeEvent};
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::multiaddr::Protocol;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
+    autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
     gossipsub::{
         error::{PublishError, SubscriptionError},
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
@@ -28,6 +34,10 @@ use libp2p::{
     identity::Keypair,
     kad,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    relay::v2::{
+        client::{Client as RelayClient, Event as RelayClientEvent},
+        relay::{Config as RelayConfig, Event as RelayServerEvent, Relay as RelayServer},
+    },
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
@@ -35,16 +45,17 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour, PeerId,
+    Multiaddr, NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
+use std::num::NonZeroUsize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, event, info, trace, warn};
 use ursa_utils::convert_cid;
 
 use crate::{
@@ -63,12 +74,16 @@ pub struct BitswapInfo {
     pub block_found: bool,
 }
 
-pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
+pub const IPFS_PROTOCOL: &str = "ursa/0.1.0";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
+    NatStatusChanged {
+        old: NatStatus,
+        new: NatStatus,
+    },
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
@@ -107,11 +122,24 @@ pub enum BehaviourEvent {
     event_process = true
 )]
 pub struct Behaviour<P: StoreParams> {
+    /// public address reported by others
+    #[behaviour(ignore)]
+    pub public_address: Option<Multiaddr>,
+
     /// Alive checks.
     ping: Ping,
 
     // Identifying peer info to other peers.
     identify: Identify,
+
+    /// autonat
+    autonat: Toggle<Autonat>,
+
+    /// Relay client. Used to route through other peers
+    relay_client: Toggle<RelayClient>,
+
+    /// Relay server. Used to allow other peers to route through the node
+    relay_server: Toggle<RelayServer>,
 
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
@@ -145,8 +173,10 @@ impl<P: StoreParams> Behaviour<P> {
         keypair: &Keypair,
         config: &UrsaConfig,
         bitswap_store: S,
+        relay_behaviour: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
         let local_public_key = keypair.public();
+        let local_peer_id = PeerId::from(local_public_key.clone());
 
         // Setup the ping behaviour
         let ping = Ping::default();
@@ -165,7 +195,10 @@ impl<P: StoreParams> Behaviour<P> {
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
+        let identify = Identify::new(IdentifyConfig::new(
+            IPFS_PROTOCOL.into(),
+            local_public_key.clone(),
+        ));
 
         let request_response = {
             let mut cfg = RequestResponseConfig::default();
@@ -178,8 +211,30 @@ impl<P: StoreParams> Behaviour<P> {
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
 
+
+
+        // autonat is off by default
+        let autonat = config
+            .autonat
+            .then(|| {
+                let config = AutonatConfig {
+                    throttle_server_period: Duration::from_secs(30),
+                    ..AutonatConfig::default()
+                };
+
+                Autonat::new(local_peer_id, config)
+            })
+            .into();
+
+        let relay_server = config
+            .relay
+            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default()));
+
         Behaviour {
             ping,
+            autonat,
+            relay_server: relay_server.into(),
+            relay_client: relay_behaviour.into(),
             bitswap,
             identify,
             gossipsub,
@@ -189,6 +244,7 @@ impl<P: StoreParams> Behaviour<P> {
             pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
             queries: Default::default(),
+            public_address: None,
         }
     }
 
@@ -200,8 +256,24 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.publish(topic, data.data)
     }
 
+    pub fn autonat(&mut self) -> Option<&mut Autonat> {
+        self.autonat.as_mut()
+    }
+
     pub fn peers(&self) -> HashSet<PeerId> {
         self.discovery.peers().clone()
+    }
+
+    pub fn _add_relay_server(&mut self, relay: RelayServer) {
+        self.relay_server = Some(relay).into();
+    }
+
+    pub fn is_relay_client_enabled(&self) -> bool {
+        self.relay_client.is_enabled()
+    }
+
+    pub fn discovery(&mut self) -> &mut DiscoveryBehaviour {
+        &mut self.discovery
     }
 
     pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
@@ -334,6 +406,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
+        info!("[IdentifyEvent] {:?}", event);
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -349,17 +422,15 @@ impl<P: StoreParams> Behaviour<P> {
                     );
                 }
 
-                // check if received identify is from a peer on the same network
-                if info
-                    .protocols
-                    .iter()
-                    .any(|name| name.as_bytes() == IPFS_PROTOCOL.as_bytes())
-                {
-                    self.gossipsub.add_explicit_peer(&peer_id);
+                for protocol in info.protocols {
+                    // check if received identify is from a peer on the same network
+                    if let crate::discovery::URSA_KAD_PROTOCOL = protocol.as_str() {
+                        self.gossipsub.add_explicit_peer(&peer_id);
 
-                    for address in info.listen_addrs {
-                        self.discovery.add_address(&peer_id, address.clone());
-                        self.request_response.add_address(&peer_id, address.clone());
+                        for address in info.listen_addrs.clone() {
+                            self.discovery.add_address(&peer_id, address.clone());
+                            self.request_response.add_address(&peer_id, address.clone());
+                        }
                     }
                 }
             }
@@ -367,6 +438,41 @@ impl<P: StoreParams> Behaviour<P> {
             | IdentifyEvent::Pushed { .. }
             | IdentifyEvent::Error { .. } => {}
         }
+    }
+
+    fn handle_autonat(&mut self, event: AutonatEvent) {
+        info!("[AutonatEvent] {:?}", event);
+        match event {
+            AutonatEvent::StatusChanged { old, new } => {
+                if let NatStatus::Public(addr) = new.clone() {
+                    self.public_address = Some(addr);
+                }
+
+                self.events
+                    .push_back(BehaviourEvent::NatStatusChanged { old, new });
+            }
+            Event::OutboundProbe(_)
+            | Event::InboundProbe(_) => {}
+        }
+    }
+
+    fn handle_relay_server(&mut self, event: RelayServerEvent) {
+        info!("[RelayServerEvent] {:?}", event);
+        if let RelayServerEvent::ReservationReqAccepted {
+            src_peer_id,
+            renewed,
+        } = event
+        {
+            if !renewed {
+                let address = self.public_address.clone().expect("public address not set").with(Protocol::P2pCircuit).with(Protocol::P2p(src_peer_id.into()));
+                info!("adding relay address {} for peer {} ", address, src_peer_id);
+                self.discovery.add_address(&src_peer_id, address);
+            }
+        }
+    }
+
+    fn handle_relay_client(&mut self, event: RelayClientEvent) {
+        info!("[RelayClientEvent] {:?}", event);
     }
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
@@ -556,6 +662,23 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P>
 impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: DiscoveryEvent) {
         self.handle_discovery(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<AutonatEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: AutonatEvent) {
+        self.handle_autonat(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<RelayServerEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: RelayServerEvent) {
+        self.handle_relay_server(event)
+    }
+}
+impl<P: StoreParams> NetworkBehaviourEventProcess<RelayClientEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: RelayClientEvent) {
+        self.handle_relay_client(event)
     }
 }
 

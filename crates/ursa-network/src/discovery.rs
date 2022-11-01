@@ -13,7 +13,6 @@ use crate::config::UrsaConfig;
 use anyhow::{anyhow, Error, Result};
 use async_std::task::block_on;
 use libp2p::{
-    autonat::{Behaviour as Autonat, Config as AutonatConfig},
     core::{connection::ConnectionId, ConnectedPoint},
     identity::Keypair,
     kad::{
@@ -22,17 +21,15 @@ use libp2p::{
     },
     mdns::{Mdns, MdnsConfig, MdnsEvent},
     multiaddr::Protocol,
-    relay::v2::relay::{Config as RelayConfig, Relay},
     swarm::{
         behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
         NetworkBehaviourAction, PollParameters,
     },
     Multiaddr, PeerId,
 };
-use tracing::warn;
+use tracing::{warn, info};
 
-const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
-// const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/ursa/kad/0.0.1";
+pub const URSA_KAD_PROTOCOL: &str = "/ursa/kad/0.0.1";
 
 pub struct PeerInfo {
     peer_id: PeerId,
@@ -57,12 +54,8 @@ pub struct DiscoveryBehaviour {
     peer_info: HashMap<PeerId, PeerInfo>,
     /// events
     events: VecDeque<DiscoveryEvent>,
-    /// Relay v2 for routing through peers.
-    relay: Relay,
     /// Optional MDNS protocol.
     mdns: Toggle<Mdns>,
-    /// Optional autonat.
-    autonat: Toggle<Autonat>,
 }
 
 impl DiscoveryBehaviour {
@@ -94,7 +87,7 @@ impl DiscoveryBehaviour {
 
             let mut kad_config = KademliaConfig::default();
             kad_config
-                .set_protocol_name(URSA_KAD_PROTOCOL)
+                .set_protocol_name(URSA_KAD_PROTOCOL.as_bytes())
                 .set_replication_factor(replication_factor);
 
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
@@ -108,21 +101,6 @@ impl DiscoveryBehaviour {
             None
         };
 
-        // autonat is off by default
-        let autonat = if config.autonat {
-            let mut behaviour = Autonat::new(local_peer_id, AutonatConfig::default());
-
-            // for (peer_id, address) in bootstrap_nodes {
-            //     behaviour.add_server(peer_id, Some(address));
-            // }
-
-            Some(behaviour)
-        } else {
-            None
-        };
-
-        let relay = Relay::new(local_peer_id, RelayConfig::default());
-
         Self {
             local_peer_id,
             kademlia,
@@ -130,9 +108,7 @@ impl DiscoveryBehaviour {
             peers: HashSet::new(),
             peer_info: HashMap::new(),
             events: VecDeque::new(),
-            relay,
             mdns: mdns.into(),
-            autonat: autonat.into(),
         }
     }
 
@@ -149,21 +125,35 @@ impl DiscoveryBehaviour {
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
-        for (peer_id, address) in &self.bootstrap_nodes {
-            self.kademlia.add_address(peer_id, address.clone());
+        for (peer_id, address) in self.bootstrap_addrs() {
+            self.add_address(&peer_id, address.clone());
         }
 
-        self.kademlia
-            .bootstrap()
-            .map_err(|err| anyhow!("{:?}", err))
+        if self.bootstrap_nodes.is_empty() {
+            return Err(anyhow!("No bootstrap nodes configured"));
+        }
+
+        info!("Bootstrapping with {:?}", self.bootstrap_nodes);
+
+        Ok(self.kademlia.get_closest_peers(self.local_peer_id))
+
+        // self.kademlia
+        //     .bootstrap()
+
+    }
+
+    pub fn bootstrap_addrs(&self) -> Vec<(PeerId, Multiaddr)> {
+        self.bootstrap_nodes
+            .clone()
     }
 
     fn handle_kad_event(&self, event: KademliaEvent) {
+        info!("[KademliaEvent] {:?}", event);
+
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
             if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
-                let _peers = closest_peers.peers;
-
-                todo!()
+                let peers = closest_peers.peers;
+                info!("Closest peers: {:?}", peers);
             }
         }
     }
@@ -304,6 +294,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
             }
         }
 
+        // Poll mdns for events
         while let Poll::Ready(action) = self.mdns.poll(cx, params) {
             match action {
                 NetworkBehaviourAction::GenerateEvent(event) => self.handle_mdns_event(event),

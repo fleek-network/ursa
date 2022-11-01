@@ -26,16 +26,20 @@ use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
+    core::multiaddr::{Protocol, Multiaddr},
     gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
+    relay::v2::client::Client as RelayClient,
+    autonat::NatStatus,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
+    kad::kbucket::Key,
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use serde::Serialize;
 use std::{collections::HashSet, sync::Arc};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
+use rand::seq::SliceRandom;
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -160,11 +164,19 @@ where
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        let transport = UrsaTransport::new(&keypair, config);
+        let (relay_transport, relay_behavior) = if config.relay {
+            let (relay_transport, relay_behavior) =
+                RelayClient::new_transport_and_behaviour(keypair.public().into());
+            (Some(relay_transport), Some(relay_behavior))
+        } else {
+            (None, None)
+        };
+
+        let transport = UrsaTransport::new(&keypair, config, relay_transport);
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store);
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_behavior);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(10))
@@ -183,7 +195,7 @@ where
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
+        swarm.listen_on(config.swarm_addr.clone()).unwrap();
 
         for to_dial in &config.bootstrap_nodes {
             swarm
@@ -242,9 +254,7 @@ where
                     if let Some(event) = event {
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
-                                BehaviourEvent::Bitswap(info)=> {
-                                    let BitswapInfo {cid, query_id, block_found } = info;
-
+                                BehaviourEvent::Bitswap(BitswapInfo {cid, query_id, block_found })=> {
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
                                     let labels = vec![
                                         Label::new("cid", format!("{}", cid)),
@@ -271,7 +281,7 @@ where
                                             }
                                         }
                                     } else {
-                                        debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
+                                        info!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                                     }
                     },
                                 BehaviourEvent::GossipMessage {
@@ -279,7 +289,7 @@ where
                                     topic,
                                     message,
                                 } => {
-                                    debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
+                                    info!("[BehaviourEvent::Gossip] - received from {:?}", peer);
                                     let swarm_mut = swarm.get_mut();
                                     let labels =  vec![
                                         Label::new("peer", format!("{}", peer)),
@@ -289,18 +299,19 @@ where
                                     events::track(events::GOSSIP_MESSAGE, Some(labels), None);
 
                                     if swarm_mut.is_connected(&peer) {
-                                        if self
+                                        let status = self
                                             .event_sender
                                             .send(UrsaEvent::GossipsubMessage(message))
-                                            .await
-                                            .is_err()
+                                            .await;
+
+                                        if status.is_err()
                                         {
                                             warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
                                         }
                                     }
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
-                                    debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
+                                    info!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
                                     let labels = vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),
@@ -318,7 +329,7 @@ where
                                     }
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
-                                    debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
+                                    info!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
                                     events::track(events::PEER_CONNECTED, None, None);
 
                                     if self
@@ -331,7 +342,7 @@ where
                                     }
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
-                                    debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
+                                    info!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
                                     events::track(events::PEER_DISCONNECTED, None, None);
 
                                     if self
@@ -373,6 +384,25 @@ where
                                         Err(e) => {
                                             error!("there was an error while gossiping the announcement");
                                             error!("{:?}", e);
+                                        }
+                                    }
+                                }
+                                BehaviourEvent::NatStatusChanged{ old, new } => {
+                                    if (NatStatus::Unknown, NatStatus::Private) == (old, new) {
+                                        let swarm = swarm.get_mut();
+                                        let behaviour = swarm.behaviour_mut();
+                                        if behaviour.is_relay_client_enabled() {
+                                            // get random bootstrap node and listen on their relay
+                                            if let Some((relay_peer, relay_addr)) = behaviour
+                                                .discovery()
+                                                .bootstrap_addrs()
+                                                .choose(&mut rand::thread_rng())
+                                            {
+                                                let addr = relay_addr.clone().with(Protocol::P2p((*relay_peer).into())).with(Protocol::P2pCircuit);
+                                                warn!("Private NAT detected. Establishing public relay address: {}", addr);
+                                                swarm.listen_on(addr)
+                                                    .expect("failed to listen on relay");
+                                            }
                                         }
                                     }
                                 }
