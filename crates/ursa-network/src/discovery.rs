@@ -27,6 +27,8 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
+use libp2p::core::transport::ListenerId;
+use libp2p::kad::KademliaBucketInserts;
 use tracing::{warn, info};
 
 pub const URSA_KAD_PROTOCOL: &str = "/ursa/kad/0.0.1";
@@ -88,7 +90,8 @@ impl DiscoveryBehaviour {
             let mut kad_config = KademliaConfig::default();
             kad_config
                 .set_protocol_name(URSA_KAD_PROTOCOL.as_bytes())
-                .set_replication_factor(replication_factor);
+                .set_replication_factor(replication_factor)
+                .set_kbucket_inserts(KademliaBucketInserts::Manual);
 
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
@@ -240,6 +243,10 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         }
     }
 
+    fn inject_address_change(&mut self, peer_id: &PeerId, connection_id: &ConnectionId, old: &ConnectedPoint, new: &ConnectedPoint) {
+        self.kademlia.inject_address_change(peer_id, connection_id, old, new);
+    }
+
     fn inject_event(
         &mut self,
         peer_id: PeerId,
@@ -247,6 +254,30 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent,
     ) {
         self.kademlia.inject_event(peer_id, connection, event);
+    }
+
+    fn inject_new_listener(&mut self, id: ListenerId) {
+        self.kademlia.inject_new_listener(id);
+    }
+
+    fn inject_new_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
+        self.kademlia.inject_new_listen_addr(id, addr);
+    }
+
+    fn inject_expired_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
+        self.kademlia.inject_expired_listen_addr(_id, _addr);
+    }
+
+    fn inject_listener_closed(&mut self, _id: ListenerId, _reason: std::result::Result<(), &std::io::Error>) {
+        self.kademlia.inject_listener_closed(_id, _reason);
+    }
+
+    fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
+        self.kademlia.inject_new_external_addr(addr);
+    }
+
+    fn inject_expired_external_addr(&mut self, _addr: &Multiaddr) {
+        self.kademlia.inject_expired_external_addr(_addr);
     }
 
     fn poll(

@@ -18,9 +18,7 @@ use cid::Cid;
 use fnv::FnvHashMap;
 use futures::channel::oneshot;
 use libipld::store::StoreParams;
-use libp2p::autonat::{Event, NatStatus, OutboundProbeEvent};
-use libp2p::kad::store::MemoryStore;
-use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::autonat::{Event, NatStatus};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -30,6 +28,7 @@ use libp2p::{
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
         PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
+    dcutr::behaviour::{Behaviour as Dcutr, Event as DcutrEvent},
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
     kad,
@@ -48,14 +47,13 @@ use libp2p::{
     Multiaddr, NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
-use std::num::NonZeroUsize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     iter,
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, error, event, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use ursa_utils::convert_cid;
 
 use crate::{
@@ -64,6 +62,7 @@ use crate::{
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
 };
+use crate::discovery::URSA_KAD_PROTOCOL;
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
 
@@ -141,6 +140,9 @@ pub struct Behaviour<P: StoreParams> {
     /// Relay server. Used to allow other peers to route through the node
     relay_server: Toggle<RelayServer>,
 
+    /// DCUtR
+    dcutr: Toggle<Dcutr>,
+
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
 
@@ -168,12 +170,14 @@ pub struct Behaviour<P: StoreParams> {
     queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
+
+
 impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &UrsaConfig,
         bitswap_store: S,
-        relay_behaviour: Option<libp2p::relay::v2::client::Client>,
+        relay_client: Toggle<libp2p::relay::v2::client::Client>,
     ) -> Self {
         let local_public_key = keypair.public();
         let local_peer_id = PeerId::from(local_public_key.clone());
@@ -211,9 +215,7 @@ impl<P: StoreParams> Behaviour<P> {
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
 
-
-
-        // autonat is off by default
+        // autonat is on by default
         let autonat = config
             .autonat
             .then(|| {
@@ -228,13 +230,18 @@ impl<P: StoreParams> Behaviour<P> {
 
         let relay_server = config
             .relay
-            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default()));
+            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default())).into();
+
+        let dcutr = config
+            .relay
+            .then(|| Dcutr::new()).into();
 
         Behaviour {
             ping,
             autonat,
-            relay_server: relay_server.into(),
-            relay_client: relay_behaviour.into(),
+            relay_server,
+            relay_client,
+            dcutr,
             bitswap,
             identify,
             gossipsub,
@@ -416,15 +423,18 @@ impl<P: StoreParams> Behaviour<P> {
                 );
 
                 if self.peers().contains(&peer_id) {
-                    trace!(
+                    info!(
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
+                    return
                 }
 
                 for protocol in info.protocols {
                     // check if received identify is from a peer on the same network
-                    if let crate::discovery::URSA_KAD_PROTOCOL = protocol.as_str() {
+                    if let URSA_KAD_PROTOCOL = protocol.as_str() {
+                        info!("IdentifyEvent::Received] - peer {} identified with {} ", peer_id, URSA_KAD_PROTOCOL);
+
                         self.gossipsub.add_explicit_peer(&peer_id);
 
                         for address in info.listen_addrs.clone() {
@@ -473,6 +483,10 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {
         info!("[RelayClientEvent] {:?}", event);
+    }
+
+    fn handle_dcutr(&mut self, event: DcutrEvent) {
+        info!("[DcutrEvent] {:?}", event);
     }
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
@@ -676,9 +690,16 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<RelayServerEvent> for Behaviou
         self.handle_relay_server(event)
     }
 }
+
 impl<P: StoreParams> NetworkBehaviourEventProcess<RelayClientEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: RelayClientEvent) {
         self.handle_relay_client(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<DcutrEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: DcutrEvent) {
+        self.handle_dcutr(event)
     }
 }
 

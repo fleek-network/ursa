@@ -164,7 +164,7 @@ where
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        let (relay_transport, relay_behavior) = if config.relay {
+        let (relay_transport, relay_client) = if config.relay {
             let (relay_transport, relay_behavior) =
                 RelayClient::new_transport_and_behaviour(keypair.public().into());
             (Some(relay_transport), Some(relay_behavior))
@@ -176,7 +176,7 @@ where
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_behavior);
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client.into());
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(10))
