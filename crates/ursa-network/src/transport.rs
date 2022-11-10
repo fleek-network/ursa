@@ -6,7 +6,6 @@
 use async_std::task::block_on;
 use libp2p::{
     core::{
-        either::EitherOutput,
         muxing::StreamMuxerBox,
         transport::{upgrade, Boxed, OrTransport},
         upgrade::SelectUpgrade,
@@ -42,7 +41,18 @@ impl UrsaTransport {
             };
 
             let mplex = {
-                SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
+                let mut mplex_config = mplex::MplexConfig::new();
+                mplex_config.set_max_buffer_behaviour(mplex::MaxBufferBehaviour::Block);
+                mplex_config.set_max_buffer_size(usize::MAX);
+
+                let mut yamux_config = yamux::YamuxConfig::default();
+                // Enable proper flow-control: window updates are only sent when
+                // buffered data has been consumed.
+                yamux_config.set_window_update_mode(yamux::WindowUpdateMode::on_read());
+
+                // SelectUpgrade::new(yamux_config, mplex_config)
+
+                yamux_config
             };
 
             let tcp = TcpTransport::new(GenTcpConfig::new());
@@ -69,7 +79,7 @@ impl UrsaTransport {
         //     // ))
         //     // .unwrap()
         //     todo!()
-        // };
+        // }
         // self.quic.or_transport(self.tcp)
 
         // OrTransport::new(tcp, tcp)
