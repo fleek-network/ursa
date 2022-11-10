@@ -12,6 +12,9 @@ use std::{
 use crate::config::UrsaConfig;
 use anyhow::{anyhow, Error, Result};
 use async_std::task::block_on;
+use libp2p::core::transport::ListenerId;
+use libp2p::kad::KademliaBucketInserts;
+use libp2p::swarm::DialError;
 use libp2p::{
     core::{connection::ConnectionId, ConnectedPoint},
     identity::Keypair,
@@ -27,9 +30,7 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
-use libp2p::core::transport::ListenerId;
-use libp2p::kad::KademliaBucketInserts;
-use tracing::{warn, info};
+use tracing::{info, warn};
 
 pub const URSA_KAD_PROTOCOL: &str = "/ursa/kad/0.0.1";
 
@@ -90,8 +91,7 @@ impl DiscoveryBehaviour {
             let mut kad_config = KademliaConfig::default();
             kad_config
                 .set_protocol_name(URSA_KAD_PROTOCOL.as_bytes())
-                .set_replication_factor(replication_factor)
-                .set_kbucket_inserts(KademliaBucketInserts::Manual);
+                .set_replication_factor(replication_factor);
 
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
@@ -142,12 +142,10 @@ impl DiscoveryBehaviour {
 
         // self.kademlia
         //     .bootstrap()
-
     }
 
     pub fn bootstrap_addrs(&self) -> Vec<(PeerId, Multiaddr)> {
-        self.bootstrap_nodes
-            .clone()
+        self.bootstrap_nodes.clone()
     }
 
     fn handle_kad_event(&self, event: KademliaEvent) {
@@ -183,21 +181,9 @@ impl NetworkBehaviour for DiscoveryBehaviour {
     }
 
     fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-        let addresses = self
-            .peer_info
-            .get(peer_id)
-            .map(|peer_info| peer_info.addresses.clone());
-
-        // if let Some(addresses) = addresses {
-        //     addresses
-        //         .as_mut()
-        //         .extend(self.mdns.addresses_of_peer(peer_id));
-        //     addresses
-        //         .as_mut()
-        //         .extend(self.kademlia.addresses_of_peer(peer_id));
-        // }
-
-        addresses.unwrap_or_default()
+        let mut addrs = Vec::new();
+        addrs.extend(self.kademlia.addresses_of_peer(peer_id));
+        addrs
     }
 
     fn inject_connection_established(
@@ -208,17 +194,17 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         failed_addresses: Option<&Vec<Multiaddr>>,
         other_established: usize,
     ) {
-        if self.peers.insert(*peer_id) {
-            self.kademlia.inject_connection_established(
-                peer_id,
-                connection_id,
-                endpoint,
-                failed_addresses,
-                other_established,
-            );
+        self.peers.insert(*peer_id);
 
-            self.events.push_back(DiscoveryEvent::Connected(*peer_id));
-        }
+        self.kademlia.inject_connection_established(
+            peer_id,
+            connection_id,
+            endpoint,
+            failed_addresses,
+            other_established,
+        );
+
+        self.events.push_back(DiscoveryEvent::Connected(*peer_id));
     }
 
     fn inject_connection_closed(
@@ -229,22 +215,29 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
         remaining_established: usize,
     ) {
-        if self.peers.remove(peer_id) {
-            self.kademlia.inject_connection_closed(
-                peer_id,
-                connection_id,
-                endpoint,
-                handler,
-                remaining_established,
-            );
+        self.peers.remove(peer_id);
 
-            self.events
-                .push_back(DiscoveryEvent::Disconnected(*peer_id));
-        }
+        self.kademlia.inject_connection_closed(
+            peer_id,
+            connection_id,
+            endpoint,
+            handler,
+            remaining_established,
+        );
+
+        self.events
+            .push_back(DiscoveryEvent::Disconnected(*peer_id));
     }
 
-    fn inject_address_change(&mut self, peer_id: &PeerId, connection_id: &ConnectionId, old: &ConnectedPoint, new: &ConnectedPoint) {
-        self.kademlia.inject_address_change(peer_id, connection_id, old, new);
+    fn inject_address_change(
+        &mut self,
+        peer_id: &PeerId,
+        connection_id: &ConnectionId,
+        old: &ConnectedPoint,
+        new: &ConnectedPoint,
+    ) {
+        self.kademlia
+            .inject_address_change(peer_id, connection_id, old, new);
     }
 
     fn inject_event(
@@ -254,6 +247,25 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent,
     ) {
         self.kademlia.inject_event(peer_id, connection, event);
+    }
+
+    fn inject_dial_failure(
+        &mut self,
+        peer_id: Option<PeerId>,
+        handler: Self::ConnectionHandler,
+        error: &DialError,
+    ) {
+        self.kademlia.inject_dial_failure(peer_id, handler, error);
+    }
+
+    fn inject_listen_failure(
+        &mut self,
+        local_addr: &Multiaddr,
+        send_back_addr: &Multiaddr,
+        handler: Self::ConnectionHandler,
+    ) {
+        self.kademlia
+            .inject_listen_failure(local_addr, send_back_addr, handler);
     }
 
     fn inject_new_listener(&mut self, id: ListenerId) {
@@ -268,16 +280,24 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         self.kademlia.inject_expired_listen_addr(_id, _addr);
     }
 
-    fn inject_listener_closed(&mut self, _id: ListenerId, _reason: std::result::Result<(), &std::io::Error>) {
-        self.kademlia.inject_listener_closed(_id, _reason);
+    fn inject_listener_error(&mut self, id: ListenerId, err: &(dyn std::error::Error + 'static)) {
+        self.kademlia.inject_listener_error(id, err);
+    }
+
+    fn inject_listener_closed(
+        &mut self,
+        id: ListenerId,
+        reason: std::result::Result<(), &std::io::Error>,
+    ) {
+        self.kademlia.inject_listener_closed(id, reason);
     }
 
     fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
         self.kademlia.inject_new_external_addr(addr);
     }
 
-    fn inject_expired_external_addr(&mut self, _addr: &Multiaddr) {
-        self.kademlia.inject_expired_external_addr(_addr);
+    fn inject_expired_external_addr(&mut self, addr: &Multiaddr) {
+        self.kademlia.inject_expired_external_addr(addr);
     }
 
     fn poll(
