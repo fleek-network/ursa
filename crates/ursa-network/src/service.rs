@@ -26,20 +26,19 @@ use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
-    core::multiaddr::{Protocol, Multiaddr},
+    autonat::NatStatus,
+    core::multiaddr::{Multiaddr, Protocol},
     gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
     relay::v2::client::Client as RelayClient,
-    autonat::NatStatus,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
-    kad::kbucket::Key,
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use std::{collections::HashSet, sync::Arc};
-use tracing::{error, info, warn};
 use rand::seq::SliceRandom;
+use std::{collections::HashSet, sync::Arc, str::FromStr};
+use tracing::{error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -239,7 +238,7 @@ where
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
-        let peer_id = self.swarm.local_peer_id().clone();
+        let peer_id = *self.swarm.local_peer_id();
         let provider = self.index_provider;
 
         info!("Node starting up with peerId {:?}", peer_id);
@@ -260,7 +259,7 @@ where
                                         Label::new("cid", format!("{}", cid)),
                                         Label::new("query_id", format!("{}", query_id)),
                                         Label::new("block_found", format!("{}", block_found)),
-                                     ];
+                                    ];
                                     events::track(events::BITSWAP, Some(labels), None);
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
@@ -388,8 +387,8 @@ where
                                     }
                                 }
                                 BehaviourEvent::NatStatusChanged{ old, new } => {
-                                    if (NatStatus::Unknown, NatStatus::Private) == (old, new) {
-                                        let swarm = swarm.get_mut();
+                                    let swarm = swarm.get_mut();
+                                    if (NatStatus::Unknown, NatStatus::Private) == (old.clone(), new.clone()) {
                                         let behaviour = swarm.behaviour_mut();
                                         if behaviour.is_relay_client_enabled() {
                                             // get random bootstrap node and listen on their relay
@@ -399,17 +398,21 @@ where
                                                 .choose(&mut rand::thread_rng())
                                             {
                                                 let addr = relay_addr.clone().with(Protocol::P2p((*relay_peer).into())).with(Protocol::P2pCircuit);
-                                                warn!("Private NAT detected. Establishing public relay address: {}", addr);
+                                                warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
                                                 swarm.listen_on(addr)
                                                     .expect("failed to listen on relay");
                                             }
                                         }
+                                    } else {
+                                        warn!("NAT status changed from {:?} to {:?}", old, new);
                                     }
                                 }
                             },
                             // Do we need to handle any of the below events?
-                            SwarmEvent::Dialing { .. }
-                            | SwarmEvent::BannedPeer { .. }
+                            SwarmEvent::Dialing(a) => {
+                                info!("dialing {}", a)
+                            }
+                            SwarmEvent::BannedPeer { .. }
                             | SwarmEvent::NewListenAddr { .. }
                             | SwarmEvent::ListenerError { .. }
                             | SwarmEvent::ListenerClosed { .. }

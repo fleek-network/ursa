@@ -53,6 +53,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use libp2p::ping::PingConfig;
 use tracing::{debug, error, info, trace, warn};
 use ursa_utils::convert_cid;
 
@@ -73,7 +74,7 @@ pub struct BitswapInfo {
     pub block_found: bool,
 }
 
-pub const IPFS_PROTOCOL: &str = "ursa/0.1.0";
+pub const IPFS_PROTOCOL: &str = "ursa/0.0.1";
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
@@ -141,7 +142,7 @@ pub struct Behaviour<P: StoreParams> {
     relay_server: Toggle<RelayServer>,
 
     /// DCUtR
-    dcutr: Toggle<Dcutr>,
+    dcutr: Dcutr,
 
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
@@ -183,7 +184,7 @@ impl<P: StoreParams> Behaviour<P> {
         let local_peer_id = PeerId::from(local_public_key.clone());
 
         // Setup the ping behaviour
-        let ping = Ping::default();
+        let ping =  Ping::new(PingConfig::new().with_keep_alive(true));
 
         // Setup the gossip behaviour
         let mut gossipsub = UrsaGossipsub::new(keypair, config);
@@ -232,9 +233,7 @@ impl<P: StoreParams> Behaviour<P> {
             .relay
             .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default())).into();
 
-        let dcutr = config
-            .relay
-            .then(|| Dcutr::new()).into();
+        let dcutr = Dcutr::new();
 
         Behaviour {
             ping,
@@ -306,6 +305,7 @@ impl<P: StoreParams> Behaviour<P> {
 
         Ok(())
     }
+
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
         info!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(convert_cid(cid.to_bytes()), providers);
@@ -427,7 +427,6 @@ impl<P: StoreParams> Behaviour<P> {
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
-                    return
                 }
 
                 for protocol in info.protocols {
@@ -435,7 +434,7 @@ impl<P: StoreParams> Behaviour<P> {
                     if let URSA_KAD_PROTOCOL = protocol.as_str() {
                         info!("IdentifyEvent::Received] - peer {} identified with {} ", peer_id, URSA_KAD_PROTOCOL);
 
-                        self.gossipsub.add_explicit_peer(&peer_id);
+                        // self.gossipsub.add_explicit_peer(&peer_id);
 
                         for address in info.listen_addrs.clone() {
                             self.discovery.add_address(&peer_id, address.clone());
@@ -468,17 +467,6 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_relay_server(&mut self, event: RelayServerEvent) {
         info!("[RelayServerEvent] {:?}", event);
-        if let RelayServerEvent::ReservationReqAccepted {
-            src_peer_id,
-            renewed,
-        } = event
-        {
-            if !renewed {
-                let address = self.public_address.clone().expect("public address not set").with(Protocol::P2pCircuit).with(Protocol::P2p(src_peer_id.into()));
-                info!("adding relay address {} for peer {} ", address, src_peer_id);
-                self.discovery.add_address(&src_peer_id, address);
-            }
-        }
     }
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {
