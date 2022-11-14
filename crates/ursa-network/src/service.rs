@@ -37,7 +37,7 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
-use std::{collections::HashSet, sync::Arc, str::FromStr};
+use std::{collections::HashSet, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},

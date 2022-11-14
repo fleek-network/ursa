@@ -27,7 +27,11 @@ impl UrsaTransport {
     ///
     /// Defaults to QUIC transport over TCP.
     /// If QUIC fails to establish a connection, we fail over to TCP.
-    pub fn new(keypair: &Keypair, config: &UrsaConfig, relay_transport: Option<ClientTransport>) -> Boxed<(PeerId, StreamMuxerBox)> {
+    pub fn new(
+        keypair: &Keypair,
+        config: &UrsaConfig,
+        relay_transport: Option<ClientTransport>,
+    ) -> Boxed<(PeerId, StreamMuxerBox)> {
         let id_keys = keypair;
         let local_peer_id = PeerId::from(keypair.public());
 

@@ -19,16 +19,17 @@ use fnv::FnvHashMap;
 use futures::channel::oneshot;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
-use libp2p::multiaddr::Protocol;
+use libp2p::dcutr;
+use libp2p::ping::PingConfig;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
+    dcutr::behaviour::Event as DcutrEvent,
     gossipsub::{
         error::{PublishError, SubscriptionError},
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
         PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
-    dcutr::behaviour::{Behaviour as Dcutr, Event as DcutrEvent},
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
     kad,
@@ -53,17 +54,16 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use libp2p::ping::PingConfig;
 use tracing::{debug, error, info, trace, warn};
 use ursa_utils::convert_cid;
 
+use crate::discovery::URSA_KAD_PROTOCOL;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
 };
-use crate::discovery::URSA_KAD_PROTOCOL;
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
 
@@ -74,7 +74,11 @@ pub struct BitswapInfo {
     pub block_found: bool,
 }
 
-pub const IPFS_PROTOCOL: &str = "ursa/0.0.1";
+pub const IPFS_PROTOCOL: &str = "ipfs/0.0.1";
+
+fn ursa_agent() -> String {
+    format!("ursa/{}", env!("CARGO_PKG_VERSION"))
+}
 
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
@@ -142,7 +146,7 @@ pub struct Behaviour<P: StoreParams> {
     relay_server: Toggle<RelayServer>,
 
     /// DCUtR
-    dcutr: Dcutr,
+    dcutr: Toggle<dcutr::behaviour::Behaviour>,
 
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
@@ -171,20 +175,18 @@ pub struct Behaviour<P: StoreParams> {
     queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
-
-
 impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &UrsaConfig,
         bitswap_store: S,
-        relay_client: Toggle<libp2p::relay::v2::client::Client>,
+        relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
         let local_public_key = keypair.public();
         let local_peer_id = PeerId::from(local_public_key.clone());
 
         // Setup the ping behaviour
-        let ping =  Ping::new(PingConfig::new().with_keep_alive(true));
+        let ping = Ping::new(PingConfig::new().with_keep_alive(true));
 
         // Setup the gossip behaviour
         let mut gossipsub = UrsaGossipsub::new(keypair, config);
@@ -200,10 +202,10 @@ impl<P: StoreParams> Behaviour<P> {
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(
-            IPFS_PROTOCOL.into(),
-            local_public_key.clone(),
-        ));
+        let identify = Identify::new(
+            IdentifyConfig::new(IPFS_PROTOCOL.into(), keypair.public())
+                .with_agent_version(ursa_agent()),
+        );
 
         let request_response = {
             let mut cfg = RequestResponseConfig::default();
@@ -231,16 +233,23 @@ impl<P: StoreParams> Behaviour<P> {
 
         let relay_server = config
             .relay
-            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default())).into();
+            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default()))
+            .into();
 
-        let dcutr = Dcutr::new();
+        let (relay_client, dcutr) = if config.relay_client {
+            let relay_client = relay_client.expect("relay client");
+
+            (Some(relay_client), Some(dcutr::behaviour::Behaviour::new()))
+        } else {
+            (None, None)
+        };
 
         Behaviour {
             ping,
             autonat,
             relay_server,
-            relay_client,
-            dcutr,
+            relay_client: relay_client.into(),
+            dcutr: dcutr.into(),
             bitswap,
             identify,
             gossipsub,
@@ -432,7 +441,10 @@ impl<P: StoreParams> Behaviour<P> {
                 for protocol in info.protocols {
                     // check if received identify is from a peer on the same network
                     if let URSA_KAD_PROTOCOL = protocol.as_str() {
-                        info!("IdentifyEvent::Received] - peer {} identified with {} ", peer_id, URSA_KAD_PROTOCOL);
+                        info!(
+                            "IdentifyEvent::Received] - peer {} identified with {} ",
+                            peer_id, URSA_KAD_PROTOCOL
+                        );
 
                         // self.gossipsub.add_explicit_peer(&peer_id);
 
@@ -460,8 +472,7 @@ impl<P: StoreParams> Behaviour<P> {
                 self.events
                     .push_back(BehaviourEvent::NatStatusChanged { old, new });
             }
-            Event::OutboundProbe(_)
-            | Event::InboundProbe(_) => {}
+            Event::OutboundProbe(_) | Event::InboundProbe(_) => {}
         }
     }
 

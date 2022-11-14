@@ -5,7 +5,6 @@ use std::path::PathBuf;
 pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
     "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWC8fC4hu8DKc2SLSs5BGTkmFzWN65d6do9zxA2WSZnDbP",
     "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWCT69zoBuR9uNUwUteDCV9QvKWymruLcjd915AQgmsYem",
-    // "/ip4/0.0.0.0/tcp/4001udp/4001/quic/p2p/Qm",
 ];
 
 pub const DEFAULT_DB_PATH_STR: &str = "ursa_db";
@@ -20,6 +19,8 @@ pub struct UrsaConfig {
     pub relay: bool,
     /// Optional autonat.
     pub autonat: bool,
+    /// Optional relay client.
+    pub relay_client: bool,
     /// Swarm listening Address.
     pub swarm_addr: Multiaddr,
     /// Bootstrap nodes.
@@ -41,8 +42,9 @@ impl Default for UrsaConfig {
 
         Self {
             mdns: false,
-            relay: false,
-            autonat: false,
+            relay: true,
+            autonat: true,
+            relay_client: true,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
@@ -58,6 +60,7 @@ impl UrsaConfig {
             mdns: self.mdns | other.mdns,
             relay: self.relay | other.relay,
             autonat: self.autonat | other.autonat,
+            relay_client: self.relay_client | other.relay_client,
             identity: self.identity,
             swarm_addr: self.swarm_addr,
             bootstrap_nodes: self.bootstrap_nodes,
