@@ -167,12 +167,11 @@ where
         let behaviour = Behaviour::new(&keypair, config, bitswap_store);
 
         let limits = ConnectionLimits::default()
-            .with_max_pending_incoming(Some(10))
-            .with_max_pending_outgoing(Some(10))
-            .with_max_established_incoming(Some(10))
-            .with_max_established_outgoing(Some(10))
-            .with_max_established(Some(10))
-            .with_max_established_per_peer(Some(10));
+            .with_max_pending_incoming(Some(2 << 9))
+            .with_max_pending_outgoing(Some(2 << 9))
+            .with_max_established_incoming(Some(2 << 9))
+            .with_max_established_outgoing(Some(2 << 9))
+            .with_max_established_per_peer(Some(8));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             // .notify_handler_buffer_size(todo!())
