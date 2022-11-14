@@ -33,7 +33,7 @@ use libp2p::{
     relay::v2::client::Client as RelayClient,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
-    PeerId, Swarm, Multiaddr,
+    Multiaddr, PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
@@ -431,16 +431,16 @@ where
                                         let root_cid = cid_queue.pop_front().unwrap();
                                         let context_id = root_cid.to_bytes();
                                         info!("creating advertisement for cids under root cid: {:?}", root_cid);
-    
+
                                         info!("inserting the chunks");
                                         let addresses: Vec<String> = [address.clone()].iter().map(|m| m.to_string()).collect();
                                         let ad = Advertisement::new(context_id.clone(), peer_id, addresses, false);
                                         let id = provider.create(ad).await.unwrap();
-    
+
                                         let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
                                         let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
                                         let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
-    
+
                                         for chunk in chunks.iter() {
                                             let entries_bytes = forest_encoding::to_vec(&chunk)?;
                                             provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
@@ -554,9 +554,9 @@ mod tests {
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
-    use ursa_index_provider::config::ProviderConfig;
     use std::{str::FromStr, thread, time::Duration, vec};
     use tracing::log::LevelFilter;
+    use ursa_index_provider::config::ProviderConfig;
     use ursa_store::Store;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
@@ -577,9 +577,13 @@ mod tests {
         let config = NetworkConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-            let provider_config = ProviderConfig::default();
-            let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
-    
+        let provider_config = ProviderConfig::default();
+        let index_provider = Provider::new(
+            keypair.clone(),
+            Arc::new(RwLock::new(provider_db)),
+            provider_config.clone(),
+        );
+
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 

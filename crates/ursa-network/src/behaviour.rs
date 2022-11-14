@@ -118,8 +118,8 @@ pub enum BehaviourEvent {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
-    StartPublish{ 
-        public_address: Multiaddr
+    StartPublish {
+        public_address: Multiaddr,
     },
 }
 
@@ -307,10 +307,11 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn publish_ad(&mut self, public_address: Multiaddr) -> Result<()> {
-        self.events.push_back(BehaviourEvent::StartPublish{ public_address});
+        self.events
+            .push_back(BehaviourEvent::StartPublish { public_address });
         Ok(())
     }
-    
+
     pub fn send_request(
         &mut self,
         peer: PeerId,

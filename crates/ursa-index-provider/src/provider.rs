@@ -30,7 +30,11 @@ use multihash::Code;
 use rand;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::{HashMap, VecDeque}, io::Write, str::FromStr};
+use std::{
+    collections::{HashMap, VecDeque},
+    io::Write,
+    str::FromStr,
+};
 use tracing::{error, info, warn};
 use ursa_utils::convert_cid;
 
@@ -96,7 +100,6 @@ where
             .route("/head", get(head::<S>))
             .route("/:cid", get(get_block::<S>))
             .layer(Extension(self.clone()));
-
 
         let app_address = format!("{}:{}", provider_config.local_address, provider_config.port)
             .parse()
@@ -208,7 +211,8 @@ where
 
     async fn create_announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>> {
         let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
-        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs.to_string(), peer_id))?;
+        multiaddrs =
+            Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs.to_string(), peer_id))?;
         let msg_addrs = [multiaddrs].to_vec();
         let head = self.head.read().await;
         let head_cid: Cid = (*head).expect("no head found for announcement");
@@ -273,13 +277,16 @@ mod tests {
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
-        
+
         let provider_config = ProviderConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
         let provider_config = ProviderConfig::default();
-        let provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
-
+        let provider = Provider::new(
+            keypair.clone(),
+            Arc::new(RwLock::new(provider_db)),
+            provider_config.clone(),
+        );
 
         let provider_interface = provider.clone();
         async_std::task::spawn(async move {
