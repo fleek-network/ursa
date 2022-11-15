@@ -74,7 +74,7 @@ pub struct BitswapInfo {
     pub block_found: bool,
 }
 
-pub const IPFS_PROTOCOL: &str = "ipfs/0.0.1";
+pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
 fn ursa_agent() -> String {
     format!("ursa/{}", env!("CARGO_PKG_VERSION"))
@@ -126,10 +126,6 @@ pub enum BehaviourEvent {
     event_process = true
 )]
 pub struct Behaviour<P: StoreParams> {
-    /// public address reported by others
-    #[behaviour(ignore)]
-    pub public_address: Option<Multiaddr>,
-
     /// Alive checks.
     ping: Ping,
 
@@ -139,7 +135,7 @@ pub struct Behaviour<P: StoreParams> {
     /// autonat
     autonat: Toggle<Autonat>,
 
-    /// Relay client. Used to route through other peers
+    /// Relay client. Used to listen on a relay for incoming connections.
     relay_client: Toggle<RelayClient>,
 
     /// Relay server. Used to allow other peers to route through the node
@@ -232,24 +228,26 @@ impl<P: StoreParams> Behaviour<P> {
             .into();
 
         let relay_server = config
-            .relay
+            .relay_server
             .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default()))
             .into();
 
-        let (relay_client, dcutr) = if config.relay_client {
-            let relay_client = relay_client.expect("relay client");
-
-            (Some(relay_client), Some(dcutr::behaviour::Behaviour::new()))
-        } else {
-            (None, None)
-        };
+        let dcutr = config
+            .relay_client
+            .then(|| {
+                if relay_client.is_none() {
+                    panic!("relay client not instantiated");
+                }
+                dcutr::behaviour::Behaviour::new()
+            })
+            .into();
 
         Behaviour {
             ping,
             autonat,
             relay_server,
             relay_client: relay_client.into(),
-            dcutr: dcutr.into(),
+            dcutr,
             bitswap,
             identify,
             gossipsub,
@@ -259,7 +257,6 @@ impl<P: StoreParams> Behaviour<P> {
             pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
             queries: Default::default(),
-            public_address: None,
         }
     }
 
@@ -271,16 +268,12 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.publish(topic, data.data)
     }
 
-    pub fn autonat(&mut self) -> Option<&mut Autonat> {
-        self.autonat.as_mut()
+    pub fn public_address(&self) -> Option<&Multiaddr> {
+        self.autonat.as_ref().and_then(|a| a.public_address())
     }
 
     pub fn peers(&self) -> HashSet<PeerId> {
         self.discovery.peers().clone()
-    }
-
-    pub fn _add_relay_server(&mut self, relay: RelayServer) {
-        self.relay_server = Some(relay).into();
     }
 
     pub fn is_relay_client_enabled(&self) -> bool {
@@ -438,20 +431,18 @@ impl<P: StoreParams> Behaviour<P> {
                     );
                 }
 
-                for protocol in info.protocols {
-                    // check if received identify is from a peer on the same network
-                    if let URSA_KAD_PROTOCOL = protocol.as_str() {
-                        info!(
-                            "IdentifyEvent::Received] - peer {} identified with {} ",
-                            peer_id, URSA_KAD_PROTOCOL
-                        );
+                // check if received identify is from a peer on the same network
+                if info.protocols.iter().any(|name| name == URSA_KAD_PROTOCOL) {
+                    info!(
+                        "IdentifyEvent::Received] - peer {} identified with {} ",
+                        peer_id, URSA_KAD_PROTOCOL
+                    );
 
-                        // self.gossipsub.add_explicit_peer(&peer_id);
+                    self.gossipsub.add_explicit_peer(&peer_id);
 
-                        for address in info.listen_addrs.clone() {
-                            self.discovery.add_address(&peer_id, address.clone());
-                            self.request_response.add_address(&peer_id, address.clone());
-                        }
+                    for address in info.listen_addrs {
+                        self.discovery.add_address(&peer_id, address.clone());
+                        self.request_response.add_address(&peer_id, address.clone());
                     }
                 }
             }
@@ -465,10 +456,6 @@ impl<P: StoreParams> Behaviour<P> {
         info!("[AutonatEvent] {:?}", event);
         match event {
             AutonatEvent::StatusChanged { old, new } => {
-                if let NatStatus::Public(addr) = new.clone() {
-                    self.public_address = Some(addr);
-                }
-
                 self.events
                     .push_back(BehaviourEvent::NatStatusChanged { old, new });
             }

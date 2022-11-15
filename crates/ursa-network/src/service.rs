@@ -163,7 +163,7 @@ where
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        let (relay_transport, relay_client) = if config.relay {
+        let (relay_transport, relay_client) = if config.relay_client {
             let (relay_transport, relay_behavior) =
                 RelayClient::new_transport_and_behaviour(keypair.public().into());
             (Some(relay_transport), Some(relay_behavior))
@@ -388,8 +388,10 @@ where
                                 }
                                 BehaviourEvent::NatStatusChanged{ old, new } => {
                                     let swarm = swarm.get_mut();
-                                    if (NatStatus::Unknown, NatStatus::Private) == (old.clone(), new.clone()) {
-                                        let behaviour = swarm.behaviour_mut();
+
+                                    match (old, new) {
+                                        (NatStatus::Unknown, NatStatus::Private) => {
+                                            let behaviour = swarm.behaviour_mut();
                                         if behaviour.is_relay_client_enabled() {
                                             // get random bootstrap node and listen on their relay
                                             if let Some((relay_peer, relay_addr)) = behaviour
@@ -403,16 +405,19 @@ where
                                                     .expect("failed to listen on relay");
                                             }
                                         }
-                                    } else {
-                                        warn!("NAT status changed from {:?} to {:?}", old, new);
+                                        },
+                                        (_, NatStatus::Public(addr)) => {
+                                            info!("Public Nat verified! Public listening address: {}", addr);
+                                        },
+                                        (old, new) => {
+                                            warn!("NAT status changed from {:?} to {:?}", old, new);
+                                        }
                                     }
                                 }
                             },
                             // Do we need to handle any of the below events?
-                            SwarmEvent::Dialing(a) => {
-                                info!("dialing {}", a)
-                            }
-                            SwarmEvent::BannedPeer { .. }
+                            SwarmEvent::Dialing { .. }
+                            | SwarmEvent::BannedPeer { .. }
                             | SwarmEvent::NewListenAddr { .. }
                             | SwarmEvent::ListenerError { .. }
                             | SwarmEvent::ListenerClosed { .. }
