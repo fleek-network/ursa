@@ -27,7 +27,7 @@ use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
     autonat::NatStatus,
-    core::multiaddr::{Multiaddr, Protocol},
+    core::multiaddr::{Protocol},
     gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
     relay::v2::client::Client as RelayClient,
@@ -169,6 +169,10 @@ where
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
+            if !config.autonat {
+                error!("Relay client requires autonat to know if we are behind a NAT");
+            }
+
             let (relay_transport, relay_behavior) =
                 RelayClient::new_transport_and_behaviour(keypair.public().into());
             (Some(relay_transport), Some(relay_behavior))
@@ -180,7 +184,7 @@ where
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client.into());
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(2 << 9))
@@ -318,7 +322,7 @@ where
                                     }
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
-                                    debug!("[BehaviourEvent::RequestMessage] {} - {} - {}", peer, request, channel);
+                                    debug!("[BehaviourEvent::RequestMessage] {} ", peer);
                                     let labels = vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),

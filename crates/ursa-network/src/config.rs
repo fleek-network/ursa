@@ -19,7 +19,8 @@ pub struct UrsaConfig {
     pub relay_server: bool,
     /// Optional autonat. This is used to determine if we are behind a NAT and need to use a relay.
     pub autonat: bool,
-    /// Optional Enable listening on a relay server if not publically available. Connections will attempt to upgrade using dcutr.
+    /// Optional Enable listening on a relay server if not publicly available. Requires autonat.
+    /// Connections will attempt to upgrade using dcutr.
     pub relay_client: bool,
     /// Swarm listening Address.
     pub swarm_addr: Multiaddr,

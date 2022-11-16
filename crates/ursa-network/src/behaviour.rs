@@ -4,7 +4,7 @@
 //!
 //! - [`Ping`] A `NetworkBehaviour` that responds to inbound pings and
 //!   periodically sends outbound pings on every established connection.
-//! - [`Identify`] A `NetworkBehaviour` that automatically identifies nodes periodically, returns debugrmation
+//! - [`Identify`] A `NetworkBehaviour` that automatically identifies nodes periodically, returns information
 //!   about them, and answers identify queries from other nodes.
 //! - [`Bitswap`] A `NetworkBehaviour` that handles sending and receiving blocks.
 //! - [`Gossipsub`] A `NetworkBehaviour` that handles the gossipsub protocol.
