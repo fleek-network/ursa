@@ -43,7 +43,7 @@ use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
 };
-use ursa_metrics::events;
+use ursa_metrics::events::{track, MetricEvent};
 use ursa_store::{BitswapStorage, Dag, Store};
 
 use crate::{
@@ -260,7 +260,9 @@ where
                                         Label::new("query_id", format!("{}", query_id)),
                                         Label::new("block_found", format!("{}", block_found)),
                                     ];
-                                    events::track(events::BITSWAP, Some(labels), None);
+
+                                    track(MetricEvent::Bitswap, Some(labels), None);
+
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
@@ -295,7 +297,8 @@ where
                                         Label::new("topic", format!("{}", topic)),
                                         Label::new("message", format!("{:?}", message)),
                                     ];
-                                    events::track(events::GOSSIP_MESSAGE, Some(labels), None);
+
+                                    track(MetricEvent::GossipMessage, Some(labels), None);
 
                                     if swarm_mut.is_connected(&peer) {
                                         let status = self
@@ -315,8 +318,9 @@ where
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),
                                         Label::new("channel", format!("{:?}", channel)),
-                                     ];
-                                    events::track(events::REQUEST_MESSAGE, Some(labels), None);
+                                    ];
+
+                                    track(MetricEvent::RequestMessage, Some(labels), None);
 
                                     if self
                                         .event_sender
@@ -329,7 +333,8 @@ where
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
                                     info!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
-                                    events::track(events::PEER_CONNECTED, None, None);
+
+                                    track(MetricEvent::PeerConnected, None, None);
 
                                     if self
                                         .event_sender
@@ -342,7 +347,8 @@ where
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
                                     info!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
-                                    events::track(events::PEER_DISCONNECTED, None, None);
+
+                                    track(MetricEvent::PeerDisconnected, None, None);
 
                                     if self
                                         .event_sender
