@@ -92,7 +92,6 @@ pub enum BehaviourEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
-
     /// An event trigger when relay reservation is opened
     RelayReservationOpened {
         peer_id: PeerId,
@@ -105,7 +104,6 @@ pub enum BehaviourEvent {
     RelayCircuitOpened,
     /// An event trigger when a relay circuit is closed
     RelayCircuitClosed,
-
     /// A Gossip message request was received from a peer.
     Bitswap(BitswapInfo),
     GossipMessage {
@@ -181,6 +179,7 @@ pub struct Behaviour<P: StoreParams> {
     /// Pending responses
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+
     #[behaviour(ignore)]
     queries: FnvHashMap<QueryId, BitswapInfo>,
 }
@@ -228,7 +227,6 @@ impl<P: StoreParams> Behaviour<P> {
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
 
-        // autonat is on by default
         let autonat = config
             .autonat
             .then(|| {
@@ -439,19 +437,14 @@ impl<P: StoreParams> Behaviour<P> {
                 );
 
                 if self.peers().contains(&peer_id) {
-                    debug!(
+                    trace!(
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
                 }
 
                 // check if received identify is from a peer on the same network
-                if info.protocols.iter().any(|name| name == URSA_KAD_PROTOCOL) {
-                    debug!(
-                        "IdentifyEvent::Received] - peer {} identified with {} ",
-                        peer_id, URSA_KAD_PROTOCOL
-                    );
-
+                if info.protocols.iter().any(|name| name.as_bytes() == URSA_KAD_PROTOCOL) {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
@@ -539,12 +532,12 @@ impl<P: StoreParams> Behaviour<P> {
                     id
                 );
                 match self.queries.remove(&id) {
-                    Some(mut debug) => {
+                    Some(mut info) => {
                         match result {
                             Err(err) => error!("{:?}", err),
-                            Ok(_res) => debug.block_found = true,
+                            Ok(_res) => info.block_found = true,
                         }
-                        self.events.push_back(BehaviourEvent::Bitswap(debug));
+                        self.events.push_back(BehaviourEvent::Bitswap(info));
                     }
                     _ => {
                         error!(

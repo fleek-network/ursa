@@ -250,7 +250,7 @@ where
         let peer_id = *self.swarm.local_peer_id();
         let provider = self.index_provider;
 
-        debug!("Node starting up with peerId {:?}", peer_id);
+        info!("Node starting up with peerId {:?}", peer_id);
 
         let mut swarm = self.swarm.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());

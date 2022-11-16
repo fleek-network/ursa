@@ -32,7 +32,7 @@ use libp2p::{
 };
 use tracing::{info, warn};
 
-pub const URSA_KAD_PROTOCOL: &str = "/ursa/kad/0.0.1";
+pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
 pub struct PeerInfo {
     peer_id: PeerId,
@@ -90,7 +90,7 @@ impl DiscoveryBehaviour {
 
             let mut kad_config = KademliaConfig::default();
             kad_config
-                .set_protocol_name(URSA_KAD_PROTOCOL.as_bytes())
+                .set_protocol_name(URSA_KAD_PROTOCOL)
                 .set_replication_factor(replication_factor);
 
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
@@ -138,10 +138,11 @@ impl DiscoveryBehaviour {
 
         info!("Bootstrapping with {:?}", self.bootstrap_nodes);
 
-        Ok(self.kademlia.get_closest_peers(self.local_peer_id))
+        // Ok(self.kademlia.get_closest_peers(self.local_peer_id))
 
-        // self.kademlia
-        //     .bootstrap()
+        self.kademlia
+            .bootstrap()
+            .map_err(|err| anyhow!("{:?}", err))
     }
 
     pub fn bootstrap_addrs(&self) -> Vec<(PeerId, Multiaddr)> {

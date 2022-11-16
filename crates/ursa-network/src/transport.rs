@@ -50,13 +50,9 @@ impl UrsaTransport {
                 mplex_config.set_max_buffer_size(usize::MAX);
 
                 let mut yamux_config = yamux::YamuxConfig::default();
-                // Enable proper flow-control: window updates are only sent when
-                // buffered data has been consumed.
                 yamux_config.set_window_update_mode(yamux::WindowUpdateMode::on_read());
 
-                // SelectUpgrade::new(yamux_config, mplex_config)
-
-                yamux_config
+                SelectUpgrade::new(yamux_config, mplex_config)
             };
 
             let tcp = TcpTransport::new(GenTcpConfig::new());
