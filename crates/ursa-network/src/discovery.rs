@@ -248,57 +248,6 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         self.kademlia.inject_event(peer_id, connection, event);
     }
 
-    fn inject_dial_failure(
-        &mut self,
-        peer_id: Option<PeerId>,
-        handler: Self::ConnectionHandler,
-        error: &DialError,
-    ) {
-        self.kademlia.inject_dial_failure(peer_id, handler, error);
-    }
-
-    fn inject_listen_failure(
-        &mut self,
-        local_addr: &Multiaddr,
-        send_back_addr: &Multiaddr,
-        handler: Self::ConnectionHandler,
-    ) {
-        self.kademlia
-            .inject_listen_failure(local_addr, send_back_addr, handler);
-    }
-
-    fn inject_new_listener(&mut self, id: ListenerId) {
-        self.kademlia.inject_new_listener(id);
-    }
-
-    fn inject_new_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
-        self.kademlia.inject_new_listen_addr(id, addr);
-    }
-
-    fn inject_expired_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
-        self.kademlia.inject_expired_listen_addr(_id, _addr);
-    }
-
-    fn inject_listener_error(&mut self, id: ListenerId, err: &(dyn std::error::Error + 'static)) {
-        self.kademlia.inject_listener_error(id, err);
-    }
-
-    fn inject_listener_closed(
-        &mut self,
-        id: ListenerId,
-        reason: std::result::Result<(), &std::io::Error>,
-    ) {
-        self.kademlia.inject_listener_closed(id, reason);
-    }
-
-    fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
-        self.kademlia.inject_new_external_addr(addr);
-    }
-
-    fn inject_expired_external_addr(&mut self, addr: &Multiaddr) {
-        self.kademlia.inject_expired_external_addr(addr);
-    }
-
     fn poll(
         &mut self,
         cx: &mut Context<'_>,
