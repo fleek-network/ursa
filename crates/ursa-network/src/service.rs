@@ -420,6 +420,22 @@ where
                                         }
                                     }
                                 }
+                                BehaviourEvent::RelayReservationOpened { peer_id } => {
+                                    info!("Relay reservation opened for peer {}", peer_id);
+                                    track(MetricEvent::RelayReservationOpened, None, None);
+                                }
+                                BehaviourEvent::RelayReservationClosed { peer_id } => {
+                                    info!("Relay reservation closed for peer {}", peer_id);
+                                    track(MetricEvent::RelayReservationClosed, None, None);
+                                }
+                                BehaviourEvent::RelayCircuitOpened => {
+                                    info!("Relay circuit opened");
+                                    track(MetricEvent::RelayCircuitOpened, None, None);
+                                }
+                                BehaviourEvent::RelayCircuitClosed => {
+                                    info!("Relay circuit closed");
+                                    track(MetricEvent::RelayCircuitClosed, None, None);
+                                }
                             },
                             // Do we need to handle any of the below events?
                             SwarmEvent::Dialing { .. }

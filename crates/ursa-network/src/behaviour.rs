@@ -92,6 +92,20 @@ pub enum BehaviourEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
+
+    /// An event trigger when relay reservation is opened
+    RelayReservationOpened {
+        peer_id: PeerId,
+    },
+    /// An event trigger when relay reservation is closed
+    RelayReservationClosed {
+        peer_id: PeerId,
+    },
+    /// An event trigger when a relay circuit is opened
+    RelayCircuitOpened,
+    /// An event trigger when a relay circuit is closed
+    RelayCircuitClosed,
+
     /// A Gossip message request was received from a peer.
     Bitswap(BitswapInfo),
     GossipMessage {
@@ -465,6 +479,40 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_relay_server(&mut self, event: RelayServerEvent) {
         info!("[RelayServerEvent] {:?}", event);
+
+        match event {
+            RelayServerEvent::ReservationReqAccepted { src_peer_id, renewed } => {
+                if !renewed {
+                    self.events
+                        .push_back(BehaviourEvent::RelayReservationOpened {
+                            peer_id: src_peer_id,
+                        });
+                }
+            }
+            RelayServerEvent::ReservationReqAcceptFailed { src_peer_id, .. } => {
+                self.events
+                    .push_back(BehaviourEvent::RelayReservationClosed {
+                        peer_id: src_peer_id,
+                    });
+            }
+            RelayServerEvent::ReservationTimedOut { src_peer_id } => {
+                self.events
+                    .push_back(BehaviourEvent::RelayReservationClosed {
+                        peer_id: src_peer_id,
+                    });
+            }
+            RelayServerEvent::CircuitReqAccepted { .. } => {
+                self.events
+                    .push_back(BehaviourEvent::RelayCircuitOpened);
+            }
+            RelayServerEvent::CircuitReqAcceptFailed { .. }
+            | RelayServerEvent::CircuitReqReceiveFailed { .. }
+            | RelayServerEvent::CircuitReqOutboundConnectFailed { .. }
+            | RelayServerEvent::CircuitClosed { .. } => {
+                self.events.push_back(BehaviourEvent::RelayCircuitClosed);
+            }
+            _ => {}
+        }
     }
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {

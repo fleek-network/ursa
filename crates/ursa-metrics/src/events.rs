@@ -7,6 +7,10 @@ use tracing::{error, info};
 pub enum MetricEvent {
     PeerConnected,
     PeerDisconnected,
+    RelayReservationOpened,
+    RelayReservationClosed,
+    RelayCircuitOpened,
+    RelayCircuitClosed,
     Bitswap,
     GossipMessage,
     RequestMessage,
@@ -17,6 +21,8 @@ pub enum MetricEvent {
 #[derive(Debug, Clone)]
 pub enum Metric {
     ActiveConnectedPeers,
+    ActiveRelayReservations,
+    ActiveRelayCircuits,
     HttpRpcRequests,
     NodeBitswapOperations,
     NodeGossipMessages,
@@ -29,6 +35,8 @@ impl Display for Metric {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Metric::ActiveConnectedPeers => write!(f, "active_connected_peers"),
+            Metric::ActiveRelayReservations => write!(f, "active_relay_reservations"),
+            Metric::ActiveRelayCircuits => write!(f, "active_relay_circuits"),
             Metric::HttpRpcRequests => write!(f, "http_rpc_requests"),
             Metric::NodeBitswapOperations => write!(f, "node_bitswap_operations"),
             Metric::NodeGossipMessages => write!(f, "node_gossip_messages"),
@@ -86,6 +94,18 @@ pub fn track(event_name: MetricEvent, labels: Option<Vec<Label>>, value: Option<
             }
             MetricEvent::RpcRequestReceived => {
                 increment_counter!(Metric::ActiveConnectedPeers.to_string());
+            }
+            MetricEvent::RelayReservationOpened => {
+                increment_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
+            }
+            MetricEvent::RelayReservationClosed => {
+                decrement_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
+            }
+            MetricEvent::RelayCircuitOpened => {
+                increment_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
+            }
+            MetricEvent::RelayCircuitClosed => {
+                decrement_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
             }
             _ => info!("missing label for {:?}", event_name),
         }
