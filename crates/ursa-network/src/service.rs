@@ -37,8 +37,13 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
-use std::{collections::HashSet, str::FromStr, sync::Arc};
-use tracing::{error, info, warn};
+use std::{
+    collections::HashSet,
+    num::{NonZeroU8, NonZeroUsize},
+    str::FromStr,
+    sync::Arc,
+};
+use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -178,16 +183,16 @@ where
         let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client.into());
 
         let limits = ConnectionLimits::default()
-            .with_max_pending_incoming(Some(10))
-            .with_max_pending_outgoing(Some(10))
-            .with_max_established_incoming(Some(10))
-            .with_max_established_outgoing(Some(10))
-            .with_max_established(Some(10))
-            .with_max_established_per_peer(Some(10));
+            .with_max_pending_incoming(Some(2 << 9))
+            .with_max_pending_outgoing(Some(2 << 9))
+            .with_max_established_incoming(Some(2 << 9))
+            .with_max_established_outgoing(Some(2 << 9))
+            .with_max_established_per_peer(Some(8));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
-            // .notify_handler_buffer_size(todo!())
-            // .connection_event_buffer_size(todo!())
+            .notify_handler_buffer_size(NonZeroUsize::new(2 << 7).unwrap())
+            .connection_event_buffer_size(2 << 7)
+            .dial_concurrency_factor(NonZeroU8::new(8).unwrap())
             .connection_limits(limits)
             .executor(Box::new(|future| {
                 task::spawn(future);
