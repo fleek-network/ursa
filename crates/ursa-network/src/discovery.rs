@@ -182,6 +182,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
     fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
         let mut addrs = Vec::new();
         addrs.extend(self.kademlia.addresses_of_peer(peer_id));
+        addrs.extend(self.mdns.addresses_of_peer(peer_id));
         addrs
     }
 
