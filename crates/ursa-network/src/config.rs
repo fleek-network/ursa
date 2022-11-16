@@ -45,7 +45,7 @@ impl Default for UrsaConfig {
             mdns: false,
             autonat: true,
             relay_client: true,
-            relay_server: false,
+            relay_server: true,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
