@@ -33,8 +33,11 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
-use serde::Serialize;
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    num::{NonZeroU8, NonZeroUsize},
+    sync::Arc,
+};
 use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
@@ -174,8 +177,9 @@ where
             .with_max_established_per_peer(Some(8));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
-            // .notify_handler_buffer_size(todo!())
-            // .connection_event_buffer_size(todo!())
+            .notify_handler_buffer_size(NonZeroUsize::new(2 << 7).unwrap())
+            .connection_event_buffer_size(2 << 7)
+            .dial_concurrency_factor(NonZeroU8::new(8).unwrap())
             .connection_limits(limits)
             .executor(Box::new(|future| {
                 task::spawn(future);
