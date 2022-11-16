@@ -241,7 +241,7 @@ where
         let peer_id = *self.swarm.local_peer_id();
         let provider = self.index_provider;
 
-        info!("Node starting up with peerId {:?}", peer_id);
+        debug!("Node starting up with peerId {:?}", peer_id);
 
         let mut swarm = self.swarm.fuse();
         let mut blockstore = BitswapStorage(self.store.clone());
@@ -282,7 +282,7 @@ where
                                             }
                                         }
                                     } else {
-                                        info!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
+                                        debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                                     }
                     },
                                 BehaviourEvent::GossipMessage {
@@ -290,7 +290,7 @@ where
                                     topic,
                                     message,
                                 } => {
-                                    info!("[BehaviourEvent::Gossip] - received from {:?}", peer);
+                                    debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
                                     let swarm_mut = swarm.get_mut();
                                     let labels =  vec![
                                         Label::new("peer", format!("{}", peer)),
@@ -313,7 +313,7 @@ where
                                     }
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
-                                    info!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
+                                    debug!("[BehaviourEvent::RequestMessage] {} - {} - {}", peer, request, channel);
                                     let labels = vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),
@@ -332,7 +332,7 @@ where
                                     }
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
-                                    info!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
+                                    debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
 
                                     track(MetricEvent::PeerConnected, None, None);
 
@@ -346,7 +346,7 @@ where
                                     }
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
-                                    info!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
+                                    debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
 
                                     track(MetricEvent::PeerDisconnected, None, None);
 
@@ -362,7 +362,7 @@ where
                                 BehaviourEvent::PublishAd { root_cid, context_id, is_rm } => {
                                     let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed");
 
-                                    info!("creating advertisement for cids under root cid: {:?}", root_cid);
+                                    debug!("creating advertisement for cids under root cid: {:?}", root_cid);
                                     let addresses: Vec<String> = swarm.get_mut().listeners().cloned().map(|m| m.to_string()).collect();
 
                                     let ad = Advertisement::new(context_id.clone(), peer_id, addresses, is_rm);
@@ -372,12 +372,12 @@ where
                                     let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
                                     let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
 
-                                    info!("inserting the chunks");
+                                    debug!("inserting the chunks");
                                     for chunk in chunks.iter() {
                                         let entries_bytes = forest_encoding::to_vec(&chunk)?;
                                         provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
                                     }
-                                    info!("Publishing the advertisement now");
+                                    debug!("Publishing the advertisement now");
                                     provider.publish(id).await.expect("publishing the ad should not fail");
                                     let announce_msg = provider.announce_msg(peer_id).await.unwrap();
 
@@ -421,19 +421,19 @@ where
                                     }
                                 }
                                 BehaviourEvent::RelayReservationOpened { peer_id } => {
-                                    info!("Relay reservation opened for peer {}", peer_id);
+                                    debug!("Relay reservation opened for peer {}", peer_id);
                                     track(MetricEvent::RelayReservationOpened, None, None);
                                 }
                                 BehaviourEvent::RelayReservationClosed { peer_id } => {
-                                    info!("Relay reservation closed for peer {}", peer_id);
+                                    debug!("Relay reservation closed for peer {}", peer_id);
                                     track(MetricEvent::RelayReservationClosed, None, None);
                                 }
                                 BehaviourEvent::RelayCircuitOpened => {
-                                    info!("Relay circuit opened");
+                                    debug!("Relay circuit opened");
                                     track(MetricEvent::RelayCircuitOpened, None, None);
                                 }
                                 BehaviourEvent::RelayCircuitClosed => {
-                                    info!("Relay circuit closed");
+                                    debug!("Relay circuit closed");
                                     track(MetricEvent::RelayCircuitClosed, None, None);
                                 }
                             },

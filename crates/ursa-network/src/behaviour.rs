@@ -4,7 +4,7 @@
 //!
 //! - [`Ping`] A `NetworkBehaviour` that responds to inbound pings and
 //!   periodically sends outbound pings on every established connection.
-//! - [`Identify`] A `NetworkBehaviour` that automatically identifies nodes periodically, returns information
+//! - [`Identify`] A `NetworkBehaviour` that automatically identifies nodes periodically, returns debugrmation
 //!   about them, and answers identify queries from other nodes.
 //! - [`Bitswap`] A `NetworkBehaviour` that handles sending and receiving blocks.
 //! - [`Gossipsub`] A `NetworkBehaviour` that handles the gossipsub protocol.
@@ -54,7 +54,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, debug, trace, warn};
 use ursa_utils::convert_cid;
 
 use crate::discovery::URSA_KAD_PROTOCOL;
@@ -143,7 +143,7 @@ pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
 
-    // Identifying peer info to other peers.
+    // Identify and exchange info with other peers.
     identify: Identify,
 
     /// autonat
@@ -323,7 +323,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
-        info!("get block via rpc called, the requested cid is: {:?}", cid);
+        debug!("get block via rpc called, the requested cid is: {:?}", cid);
         let id = self.bitswap.get(convert_cid(cid.to_bytes()), providers);
 
         self.queries.insert(
@@ -337,7 +337,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) {
-        info!(
+        debug!(
             "sync block via http called, the requested root cid is: {:?}",
             cid
         );
@@ -429,7 +429,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
-        info!("[IdentifyEvent] {:?}", event);
+        debug!("[IdentifyEvent] {:?}", event);
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -439,7 +439,7 @@ impl<P: StoreParams> Behaviour<P> {
                 );
 
                 if self.peers().contains(&peer_id) {
-                    info!(
+                    debug!(
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
                     );
@@ -447,7 +447,7 @@ impl<P: StoreParams> Behaviour<P> {
 
                 // check if received identify is from a peer on the same network
                 if info.protocols.iter().any(|name| name == URSA_KAD_PROTOCOL) {
-                    info!(
+                    debug!(
                         "IdentifyEvent::Received] - peer {} identified with {} ",
                         peer_id, URSA_KAD_PROTOCOL
                     );
@@ -467,7 +467,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_autonat(&mut self, event: AutonatEvent) {
-        info!("[AutonatEvent] {:?}", event);
+        debug!("[AutonatEvent] {:?}", event);
         match event {
             AutonatEvent::StatusChanged { old, new } => {
                 self.events
@@ -478,7 +478,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_relay_server(&mut self, event: RelayServerEvent) {
-        info!("[RelayServerEvent] {:?}", event);
+        debug!("[RelayServerEvent] {:?}", event);
 
         match event {
             RelayServerEvent::ReservationReqAccepted { src_peer_id, renewed } => {
@@ -516,33 +516,33 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {
-        info!("[RelayClientEvent] {:?}", event);
+        debug!("[RelayClientEvent] {:?}", event);
     }
 
     fn handle_dcutr(&mut self, event: DcutrEvent) {
-        info!("[DcutrEvent] {:?}", event);
+        debug!("[DcutrEvent] {:?}", event);
     }
 
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
             BitswapEvent::Progress(id, missing) => {
-                info!(
+                debug!(
                     "progress in bitswap sync query, id: {}, missing: {}",
                     id, missing
                 );
             }
             BitswapEvent::Complete(id, result) => {
-                info!(
+                debug!(
                     "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
                     id
                 );
                 match self.queries.remove(&id) {
-                    Some(mut info) => {
+                    Some(mut debug) => {
                         match result {
                             Err(err) => error!("{:?}", err),
-                            Ok(_res) => info.block_found = true,
+                            Ok(_res) => debug.block_found = true,
                         }
-                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                        self.events.push_back(BehaviourEvent::Bitswap(debug));
                     }
                     _ => {
                         error!(
