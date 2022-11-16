@@ -215,18 +215,18 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
         remaining_established: usize,
     ) {
-        self.peers.remove(peer_id);
+        if self.peers.remove(peer_id) {
+            self.kademlia.inject_connection_closed(
+                peer_id,
+                connection_id,
+                endpoint,
+                handler,
+                remaining_established,
+            );
 
-        self.kademlia.inject_connection_closed(
-            peer_id,
-            connection_id,
-            endpoint,
-            handler,
-            remaining_established,
-        );
-
-        self.events
-            .push_back(DiscoveryEvent::Disconnected(*peer_id));
+            self.events
+                .push_back(DiscoveryEvent::Disconnected(*peer_id));
+        }
     }
 
     fn inject_address_change(
