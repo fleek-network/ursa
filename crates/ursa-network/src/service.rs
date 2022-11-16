@@ -27,7 +27,7 @@ use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
     autonat::NatStatus,
-    core::multiaddr::{Protocol},
+    core::multiaddr::Protocol,
     gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
     relay::v2::client::Client as RelayClient,

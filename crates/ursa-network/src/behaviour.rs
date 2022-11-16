@@ -54,7 +54,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{error, debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 use ursa_utils::convert_cid;
 
 use crate::discovery::URSA_KAD_PROTOCOL;
@@ -481,7 +481,10 @@ impl<P: StoreParams> Behaviour<P> {
         debug!("[RelayServerEvent] {:?}", event);
 
         match event {
-            RelayServerEvent::ReservationReqAccepted { src_peer_id, renewed } => {
+            RelayServerEvent::ReservationReqAccepted {
+                src_peer_id,
+                renewed,
+            } => {
                 if !renewed {
                     self.events
                         .push_back(BehaviourEvent::RelayReservationOpened {
@@ -502,8 +505,7 @@ impl<P: StoreParams> Behaviour<P> {
                     });
             }
             RelayServerEvent::CircuitReqAccepted { .. } => {
-                self.events
-                    .push_back(BehaviourEvent::RelayCircuitOpened);
+                self.events.push_back(BehaviourEvent::RelayCircuitOpened);
             }
             RelayServerEvent::CircuitReqAcceptFailed { .. }
             | RelayServerEvent::CircuitReqReceiveFailed { .. }

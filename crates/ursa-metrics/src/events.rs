@@ -1,6 +1,6 @@
+use metrics::{decrement_gauge, histogram, increment_counter, increment_gauge, Label};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use metrics::{decrement_gauge, histogram, increment_counter, increment_gauge, Label};
 use tracing::{error, info};
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,6 @@ impl FromStr for Metric {
     }
 }
 
-
 pub fn track(event_name: MetricEvent, labels: Option<Vec<Label>>, value: Option<f64>) {
     if let Some(label) = labels {
         info!("capturing event {:?} with labels {:?}", event_name, label);
@@ -79,7 +78,10 @@ pub fn track(event_name: MetricEvent, labels: Option<Vec<Label>>, value: Option<
             }
             MetricEvent::RpcResponseSent => match value {
                 Some(latency) => histogram!(Metric::NodeResponseInfo.to_string(), latency, label),
-                None => error!("missing required value for {} event", Metric::NodeResponseInfo),
+                None => error!(
+                    "missing required value for {} event",
+                    Metric::NodeResponseInfo
+                ),
             },
             _ => error!("label on non-labeled event {:?}", event_name),
         }
