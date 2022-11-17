@@ -195,17 +195,18 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         failed_addresses: Option<&Vec<Multiaddr>>,
         other_established: usize,
     ) {
-        self.peers.insert(*peer_id);
+        if self.peers.insert(*peer_id) {
+            self.kademlia.inject_connection_established(
+                peer_id,
+                connection_id,
+                endpoint,
+                failed_addresses,
+                other_established,
+            );
 
-        self.kademlia.inject_connection_established(
-            peer_id,
-            connection_id,
-            endpoint,
-            failed_addresses,
-            other_established,
-        );
 
-        self.events.push_back(DiscoveryEvent::Connected(*peer_id));
+            self.events.push_back(DiscoveryEvent::Connected(*peer_id));
+        }
     }
 
     fn inject_connection_closed(
