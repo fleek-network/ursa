@@ -204,7 +204,6 @@ impl NetworkBehaviour for DiscoveryBehaviour {
                 other_established,
             );
 
-
             self.events.push_back(DiscoveryEvent::Connected(*peer_id));
         }
     }

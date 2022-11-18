@@ -407,19 +407,19 @@ where
                                     match (old, new) {
                                         (NatStatus::Unknown, NatStatus::Private) => {
                                             let behaviour = swarm.behaviour_mut();
-                                        if behaviour.is_relay_client_enabled() {
-                                            // get random bootstrap node and listen on their relay
-                                            if let Some((relay_peer, relay_addr)) = behaviour
-                                                .discovery()
-                                                .bootstrap_addrs()
-                                                .choose(&mut rand::thread_rng())
-                                            {
-                                                let addr = relay_addr.clone().with(Protocol::P2p((*relay_peer).into())).with(Protocol::P2pCircuit);
-                                                warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
-                                                swarm.listen_on(addr)
-                                                    .expect("failed to listen on relay");
+                                            if behaviour.is_relay_client_enabled() {
+                                                // get random bootstrap node and listen on their relay
+                                                if let Some((relay_peer, relay_addr)) = behaviour
+                                                    .discovery()
+                                                    .bootstrap_addrs()
+                                                    .choose(&mut rand::thread_rng())
+                                                {
+                                                    let addr = relay_addr.clone().with(Protocol::P2p((*relay_peer).into())).with(Protocol::P2pCircuit);
+                                                    warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                                                    swarm.listen_on(addr)
+                                                        .expect("failed to listen on relay");
+                                                }
                                             }
-                                        }
                                         },
                                         (_, NatStatus::Public(addr)) => {
                                             info!("Public Nat verified! Public listening address: {}", addr);

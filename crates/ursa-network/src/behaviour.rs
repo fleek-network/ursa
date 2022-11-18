@@ -444,7 +444,11 @@ impl<P: StoreParams> Behaviour<P> {
                 }
 
                 // check if received identify is from a peer on the same network
-                if info.protocols.iter().any(|name| name.as_bytes() == URSA_KAD_PROTOCOL) {
+                if info
+                    .protocols
+                    .iter()
+                    .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
+                {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
@@ -485,12 +489,6 @@ impl<P: StoreParams> Behaviour<P> {
                         });
                 }
             }
-            RelayServerEvent::ReservationReqAcceptFailed { src_peer_id, .. } => {
-                self.events
-                    .push_back(BehaviourEvent::RelayReservationClosed {
-                        peer_id: src_peer_id,
-                    });
-            }
             RelayServerEvent::ReservationTimedOut { src_peer_id } => {
                 self.events
                     .push_back(BehaviourEvent::RelayReservationClosed {
@@ -500,10 +498,7 @@ impl<P: StoreParams> Behaviour<P> {
             RelayServerEvent::CircuitReqAccepted { .. } => {
                 self.events.push_back(BehaviourEvent::RelayCircuitOpened);
             }
-            RelayServerEvent::CircuitReqAcceptFailed { .. }
-            | RelayServerEvent::CircuitReqReceiveFailed { .. }
-            | RelayServerEvent::CircuitReqOutboundConnectFailed { .. }
-            | RelayServerEvent::CircuitClosed { .. } => {
+            RelayServerEvent::CircuitClosed { .. } => {
                 self.events.push_back(BehaviourEvent::RelayCircuitClosed);
             }
             _ => {}
