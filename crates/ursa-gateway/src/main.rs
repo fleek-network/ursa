@@ -1,3 +1,6 @@
+mod config;
+
+use crate::config::GatewayConfig;
 use axum::{
     extract::Extension,
     http::{uri::Uri, Request, Response},
@@ -20,30 +23,40 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tokio::spawn(server());
+    tokio::spawn(server(GatewayConfig::default()));
 
-    let client = Client::new();
-    let config =
-        RustlsConfig::from_pem_file("self_signed_certs/cert.pem", "self_signed_certs/key.pem")
-            .await
-            .unwrap();
+    let config = GatewayConfig::default();
+
+    let rustls_config = RustlsConfig::from_pem_file(
+        config.cert_config.cert_path,
+        config.cert_config.key_path,
+    )
+    .await
+    .unwrap();
 
     let app = Router::new()
         .route("/", get(handler))
-        .layer(Extension(client));
+        .layer(Extension((Client::new(), GatewayConfig::default())));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
+    let addr = SocketAddr::from((
+        config
+            .reverse_proxy
+            .addr
+            .parse::<std::net::Ipv4Addr>()
+            .unwrap(),
+        config.reverse_proxy.port,
+    ));
+
     println!("reverse proxy listening on {}", addr);
-    axum_server::bind_rustls(addr, config)
+
+    axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())
         .await
         .unwrap();
 }
 
 async fn handler(
-    Extension(client): Extension<Client>,
-    // NOTE: Make sure to put the request extractor last because once the request
-    // is extracted, extensions can't be extracted anymore.
+    Extension((client, config)): Extension<(Client, GatewayConfig)>,
     mut req: Request<Body>,
 ) -> Response<Body> {
     let path = req.uri().path();
@@ -53,18 +66,27 @@ async fn handler(
         .map(|v| v.as_str())
         .unwrap_or(path);
 
-    let uri = format!("http://127.0.0.1:3000{}", path_query);
+    let uri = format!(
+        "http://{}:{}{}",
+        config.server.addr, config.server.port, path_query
+    );
 
     *req.uri_mut() = Uri::try_from(uri).unwrap();
 
     client.request(req).await.unwrap()
 }
 
-async fn server() {
+async fn server(config: GatewayConfig) {
+    // TODO: forward node
     let app = Router::new().route("/", get(|| async { "Hello, world!" }));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from((
+        config.server.addr.parse::<std::net::Ipv4Addr>().unwrap(),
+        config.server.port,
+    ));
+
     println!("server listening on {}", addr);
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
