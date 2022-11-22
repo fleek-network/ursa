@@ -26,16 +26,21 @@ use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::{
+    autonat::NatStatus,
+    core::multiaddr::Protocol,
     gossipsub::{GossipsubMessage, IdentTopic as Topic, TopicHash},
     identity::Keypair,
+    relay::v2::client::Client as RelayClient,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use rand::seq::SliceRandom;
 use std::{
     collections::HashSet,
     num::{NonZeroU8, NonZeroUsize},
+    str::FromStr,
     sync::Arc,
 };
 use tracing::{debug, error, info, warn};
@@ -43,7 +48,7 @@ use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
 };
-use ursa_metrics::events;
+use ursa_metrics::events::{track, MetricEvent};
 use ursa_store::{BitswapStorage, Dag, Store};
 
 use crate::{
@@ -163,11 +168,23 @@ where
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        let transport = UrsaTransport::new(&keypair, config);
+        let (relay_transport, relay_client) = if config.relay_client {
+            if !config.autonat {
+                error!("Relay client requires autonat to know if we are behind a NAT");
+            }
+
+            let (relay_transport, relay_behavior) =
+                RelayClient::new_transport_and_behaviour(keypair.public().into());
+            (Some(relay_transport), Some(relay_behavior))
+        } else {
+            (None, None)
+        };
+
+        let transport = UrsaTransport::new(&keypair, config, relay_transport);
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store);
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(2 << 9))
@@ -186,7 +203,7 @@ where
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
+        swarm.listen_on(config.swarm_addr.clone()).unwrap();
 
         for to_dial in &config.bootstrap_nodes {
             swarm
@@ -230,7 +247,7 @@ where
     /// - `swarm` handles the network events [Event].
     /// - `command_receiver` handles inbound commands [Command].
     pub async fn start(mut self) -> Result<()> {
-        let peer_id = self.swarm.local_peer_id().clone();
+        let peer_id = *self.swarm.local_peer_id();
         let provider = self.index_provider;
 
         info!("Node starting up with peerId {:?}", peer_id);
@@ -245,16 +262,16 @@ where
                     if let Some(event) = event {
                         match event {
                             SwarmEvent::Behaviour(event) => match event {
-                                BehaviourEvent::Bitswap(info)=> {
-                                    let BitswapInfo {cid, query_id, block_found } = info;
-
+                                BehaviourEvent::Bitswap(BitswapInfo {cid, query_id, block_found })=> {
                                     swarm.get_mut().behaviour_mut().cancel(query_id);
                                     let labels = vec![
                                         Label::new("cid", format!("{}", cid)),
                                         Label::new("query_id", format!("{}", query_id)),
                                         Label::new("block_found", format!("{}", block_found)),
-                                     ];
-                                    events::track(events::BITSWAP, Some(labels), None);
+                                    ];
+
+                                    track(MetricEvent::Bitswap, Some(labels), None);
+
                                     if let Some (chans) = self.response_channels.remove(&cid) {
                                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                                         // wait for block to be inserted
@@ -289,27 +306,30 @@ where
                                         Label::new("topic", format!("{}", topic)),
                                         Label::new("message", format!("{:?}", message)),
                                     ];
-                                    events::track(events::GOSSIP_MESSAGE, Some(labels), None);
+
+                                    track(MetricEvent::GossipMessage, Some(labels), None);
 
                                     if swarm_mut.is_connected(&peer) {
-                                        if self
+                                        let status = self
                                             .event_sender
                                             .send(UrsaEvent::GossipsubMessage(message))
-                                            .await
-                                            .is_err()
+                                            .await;
+
+                                        if status.is_err()
                                         {
                                             warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
                                         }
                                     }
                                 },
                                 BehaviourEvent::RequestMessage { peer, request, channel } => {
-                                    debug!("[BehaviourEvent::RequestMessage] - Peer connected {:?}", peer);
+                                    debug!("[BehaviourEvent::RequestMessage] {} ", peer);
                                     let labels = vec![
                                         Label::new("peer", format!("{}", peer)),
                                         Label::new("request", format!("{:?}", request)),
                                         Label::new("channel", format!("{:?}", channel)),
-                                     ];
-                                    events::track(events::REQUEST_MESSAGE, Some(labels), None);
+                                    ];
+
+                                    track(MetricEvent::RequestMessage, Some(labels), None);
 
                                     if self
                                         .event_sender
@@ -322,7 +342,8 @@ where
                                 },
                                 BehaviourEvent::PeerConnected(peer) => {
                                     debug!("[BehaviourEvent::PeerConnected] - Peer connected {:?}", peer);
-                                    events::track(events::PEER_CONNECTED, None, None);
+
+                                    track(MetricEvent::PeerConnected, None, None);
 
                                     if self
                                         .event_sender
@@ -335,7 +356,8 @@ where
                                 }
                                 BehaviourEvent::PeerDisconnected(peer) => {
                                     debug!("[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}", peer);
-                                    events::track(events::PEER_DISCONNECTED, None, None);
+
+                                    track(MetricEvent::PeerDisconnected, None, None);
 
                                     if self
                                         .event_sender
@@ -349,7 +371,7 @@ where
                                 BehaviourEvent::PublishAd { root_cid, context_id, is_rm } => {
                                     let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed");
 
-                                    info!("creating advertisement for cids under root cid: {:?}", root_cid);
+                                    debug!("creating advertisement for cids under root cid: {:?}", root_cid);
                                     let addresses: Vec<String> = swarm.get_mut().listeners().cloned().map(|m| m.to_string()).collect();
 
                                     let ad = Advertisement::new(context_id.clone(), peer_id, addresses, is_rm);
@@ -359,12 +381,12 @@ where
                                     let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
                                     let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
 
-                                    info!("inserting the chunks");
+                                    debug!("inserting the chunks");
                                     for chunk in chunks.iter() {
                                         let entries_bytes = forest_encoding::to_vec(&chunk)?;
                                         provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
                                     }
-                                    info!("Publishing the advertisement now");
+                                    debug!("Publishing the advertisement now");
                                     provider.publish(id).await.expect("publishing the ad should not fail");
                                     let announce_msg = provider.announce_msg(peer_id).await.unwrap();
 
@@ -378,6 +400,50 @@ where
                                             error!("{:?}", e);
                                         }
                                     }
+                                }
+                                BehaviourEvent::NatStatusChanged{ old, new } => {
+                                    let swarm = swarm.get_mut();
+
+                                    match (old, new) {
+                                        (NatStatus::Unknown, NatStatus::Private) => {
+                                            let behaviour = swarm.behaviour_mut();
+                                            if behaviour.is_relay_client_enabled() {
+                                                // get random bootstrap node and listen on their relay
+                                                if let Some((relay_peer, relay_addr)) = behaviour
+                                                    .discovery()
+                                                    .bootstrap_addrs()
+                                                    .choose(&mut rand::thread_rng())
+                                                {
+                                                    let addr = relay_addr.clone().with(Protocol::P2p((*relay_peer).into())).with(Protocol::P2pCircuit);
+                                                    warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                                                    swarm.listen_on(addr)
+                                                        .expect("failed to listen on relay");
+                                                }
+                                            }
+                                        },
+                                        (_, NatStatus::Public(addr)) => {
+                                            info!("Public Nat verified! Public listening address: {}", addr);
+                                        },
+                                        (old, new) => {
+                                            warn!("NAT status changed from {:?} to {:?}", old, new);
+                                        }
+                                    }
+                                }
+                                BehaviourEvent::RelayReservationOpened { peer_id } => {
+                                    debug!("Relay reservation opened for peer {}", peer_id);
+                                    track(MetricEvent::RelayReservationOpened, None, None);
+                                }
+                                BehaviourEvent::RelayReservationClosed { peer_id } => {
+                                    debug!("Relay reservation closed for peer {}", peer_id);
+                                    track(MetricEvent::RelayReservationClosed, None, None);
+                                }
+                                BehaviourEvent::RelayCircuitOpened => {
+                                    debug!("Relay circuit opened");
+                                    track(MetricEvent::RelayCircuitOpened, None, None);
+                                }
+                                BehaviourEvent::RelayCircuitClosed => {
+                                    debug!("Relay circuit closed");
+                                    track(MetricEvent::RelayCircuitClosed, None, None);
                                 }
                             },
                             // Do we need to handle any of the below events?

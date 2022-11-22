@@ -6,7 +6,6 @@
 use async_std::task::block_on;
 use libp2p::{
     core::{
-        either::EitherOutput,
         muxing::StreamMuxerBox,
         transport::{upgrade, Boxed, OrTransport},
         upgrade::SelectUpgrade,
@@ -14,7 +13,7 @@ use libp2p::{
     dns::DnsConfig,
     identity::Keypair,
     mplex, noise,
-    relay::v2::client::Client as RelayClient,
+    relay::v2::client::transport::ClientTransport,
     tcp::{GenTcpConfig, TcpTransport},
     yamux, PeerId, Transport,
 };
@@ -28,15 +27,13 @@ impl UrsaTransport {
     ///
     /// Defaults to QUIC transport over TCP.
     /// If QUIC fails to establish a connection, we fail over to TCP.
-    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Boxed<(PeerId, StreamMuxerBox)> {
+    pub fn new(
+        keypair: &Keypair,
+        config: &UrsaConfig,
+        relay_transport: Option<ClientTransport>,
+    ) -> Boxed<(PeerId, StreamMuxerBox)> {
         let id_keys = keypair;
         let local_peer_id = PeerId::from(keypair.public());
-
-        // let relay = if config.relay {
-        //     Some(RelayClient::new_transport_and_behaviour(local_peer_id))
-        // } else {
-        //     None
-        // };
 
         let tcp = {
             let noise = {
@@ -48,16 +45,31 @@ impl UrsaTransport {
             };
 
             let mplex = {
-                SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
+                let mut mplex_config = mplex::MplexConfig::new();
+                mplex_config.set_max_buffer_behaviour(mplex::MaxBufferBehaviour::Block);
+                mplex_config.set_max_buffer_size(usize::MAX);
+
+                let mut yamux_config = yamux::YamuxConfig::default();
+                yamux_config.set_window_update_mode(yamux::WindowUpdateMode::on_read());
+
+                SelectUpgrade::new(yamux_config, mplex_config)
             };
 
             let tcp = TcpTransport::new(GenTcpConfig::new());
             let tcp = block_on(DnsConfig::system(tcp)).unwrap();
 
-            tcp.upgrade(upgrade::Version::V1)
-                .authenticate(noise)
-                .multiplex(mplex)
-                .boxed()
+            if let Some(relay) = relay_transport {
+                tcp.or_transport(relay)
+                    .upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            } else {
+                tcp.upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            }
         };
 
         // let quic = {
@@ -67,7 +79,7 @@ impl UrsaTransport {
         //     // ))
         //     // .unwrap()
         //     todo!()
-        // };
+        // }
         // self.quic.or_transport(self.tcp)
 
         // OrTransport::new(tcp, tcp)

@@ -1,4 +1,4 @@
-use crate::events;
+use crate::events::{track, MetricEvent};
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
 use metrics::Label;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -28,8 +28,8 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
         Label::new("latency", format!("{}", latency)),
     ];
 
-    events::track(events::RPC_REQUEST_RECEIVED, None, None);
-    events::track(events::RPC_RESPONSE_SENT, Some(labels), Some(latency));
+    track(MetricEvent::RpcRequestReceived, None, None);
+    track(MetricEvent::RpcResponseSent, Some(labels), Some(latency));
 
     response
 }

@@ -1,59 +1,115 @@
 use metrics::{decrement_gauge, histogram, increment_counter, increment_gauge, Label};
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use tracing::{error, info};
 
-pub const PEER_CONNECTED: &str = "peer_connected";
-pub const PEER_DISCONNECTED: &str = "peer_disconnected";
-pub const BITSWAP: &str = "bitswap";
-pub const GOSSIP_MESSAGE: &str = "gossip_message";
-pub const REQUEST_MESSAGE: &str = "request_message";
-pub const RPC_REQUEST_RECEIVED: &str = "rpc_request_received";
-pub const RPC_RESPONSE_SENT: &str = "rpc_response_sent";
+#[derive(Debug, Clone)]
+pub enum MetricEvent {
+    PeerConnected,
+    PeerDisconnected,
+    RelayReservationOpened,
+    RelayReservationClosed,
+    RelayCircuitOpened,
+    RelayCircuitClosed,
+    Bitswap,
+    GossipMessage,
+    RequestMessage,
+    RpcRequestReceived,
+    RpcResponseSent,
+}
 
-const ACTIVE_CONNECTED_PEERS: &str = "active_connected_peers";
-const HTTP_RPC_REQUESTS: &str = "http_rpc_requests_total";
-const NODE_BITSWAP_OPERATIONS: &str = "bitswap_operations_total";
-const NODE_GOSSIP_MESSAGES: &str = "gossip_messages_total";
-const NODE_REQUEST_MESSAGES: &str = "request_messages_total";
-const NODE_RESPONSE_INFO: &str = "response_messages_info";
+#[derive(Debug, Clone)]
+pub enum Metric {
+    ActiveConnectedPeers,
+    ActiveRelayReservations,
+    ActiveRelayCircuits,
+    HttpRpcRequests,
+    NodeBitswapOperations,
+    NodeGossipMessages,
+    NodeRequestMessages,
+    NodeResponseInfo,
+    Unknown(String),
+}
 
-pub fn track(event_name: &str, labels: Option<Vec<Label>>, value: Option<f64>) {
+impl Display for Metric {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Metric::ActiveConnectedPeers => write!(f, "active_connected_peers"),
+            Metric::ActiveRelayReservations => write!(f, "active_relay_reservations"),
+            Metric::ActiveRelayCircuits => write!(f, "active_relay_circuits"),
+            Metric::HttpRpcRequests => write!(f, "http_rpc_requests"),
+            Metric::NodeBitswapOperations => write!(f, "node_bitswap_operations"),
+            Metric::NodeGossipMessages => write!(f, "node_gossip_messages"),
+            Metric::NodeRequestMessages => write!(f, "node_request_messages"),
+            Metric::NodeResponseInfo => write!(f, "node_response_info"),
+            Metric::Unknown(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl FromStr for Metric {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "active_connected_peers" => Ok(Metric::ActiveConnectedPeers),
+            "http_rpc_requests" => Ok(Metric::HttpRpcRequests),
+            "node_bitswap_operations" => Ok(Metric::NodeBitswapOperations),
+            "node_gossip_messages" => Ok(Metric::NodeGossipMessages),
+            "node_request_messages" => Ok(Metric::NodeRequestMessages),
+            "node_response_info" => Ok(Metric::NodeResponseInfo),
+            _ => Ok(Metric::Unknown(s.to_string())),
+        }
+    }
+}
+
+pub fn track(event_name: MetricEvent, labels: Option<Vec<Label>>, value: Option<f64>) {
     if let Some(label) = labels {
         info!("capturing event {:?} with labels {:?}", event_name, label);
         match event_name {
-            BITSWAP => {
-                increment_counter!(NODE_BITSWAP_OPERATIONS, label);
+            MetricEvent::Bitswap => {
+                increment_counter!(Metric::NodeBitswapOperations.to_string(), label);
             }
-
-            GOSSIP_MESSAGE => {
-                increment_counter!(NODE_GOSSIP_MESSAGES, label);
+            MetricEvent::GossipMessage => {
+                increment_counter!(Metric::NodeGossipMessages.to_string(), label);
             }
-
-            REQUEST_MESSAGE => {
-                increment_counter!(NODE_REQUEST_MESSAGES, label);
+            MetricEvent::RequestMessage => {
+                increment_counter!(Metric::NodeRequestMessages.to_string(), label);
             }
-
-            RPC_RESPONSE_SENT => match value {
-                Some(latency) => histogram!(NODE_RESPONSE_INFO, latency, label),
-                None => error!("mising required value for {} event", NODE_RESPONSE_INFO),
+            MetricEvent::RpcResponseSent => match value {
+                Some(latency) => histogram!(Metric::NodeResponseInfo.to_string(), latency, label),
+                None => error!(
+                    "missing required value for {} event",
+                    Metric::NodeResponseInfo
+                ),
             },
-
-            _ => info!("event name {:?} no match found", event_name),
+            _ => error!("label on non-labeled event {:?}", event_name),
         }
     } else {
         info!("capturing event {:?}", event_name);
         match event_name {
-            PEER_CONNECTED => {
-                increment_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
+            MetricEvent::PeerConnected => {
+                increment_gauge!(Metric::ActiveConnectedPeers.to_string(), 1.0);
             }
-            PEER_DISCONNECTED => {
-                decrement_gauge!(ACTIVE_CONNECTED_PEERS, 1.0);
+            MetricEvent::PeerDisconnected => {
+                decrement_gauge!(Metric::ActiveConnectedPeers.to_string(), 1.0);
             }
-
-            RPC_REQUEST_RECEIVED => {
-                increment_counter!(HTTP_RPC_REQUESTS);
+            MetricEvent::RpcRequestReceived => {
+                increment_counter!(Metric::ActiveConnectedPeers.to_string());
             }
-
-            _ => info!("event name {:?} no match found", event_name),
+            MetricEvent::RelayReservationOpened => {
+                increment_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
+            }
+            MetricEvent::RelayReservationClosed => {
+                decrement_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
+            }
+            MetricEvent::RelayCircuitOpened => {
+                increment_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
+            }
+            MetricEvent::RelayCircuitClosed => {
+                decrement_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
+            }
+            _ => info!("missing label for {:?}", event_name),
         }
     }
 }
