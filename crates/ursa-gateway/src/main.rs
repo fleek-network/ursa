@@ -10,29 +10,22 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 use hyper::{client::HttpConnector, Body};
 use std::{convert::TryFrom, net::SocketAddr};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::info;
 
 type Client = hyper::client::Client<HttpConnector, Body>;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "example_tls_rustls=debug".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    tracing_subscriber::fmt::init();
 
     tokio::spawn(server(GatewayConfig::default()));
 
     let config = GatewayConfig::default();
 
-    let rustls_config = RustlsConfig::from_pem_file(
-        config.cert_config.cert_path,
-        config.cert_config.key_path,
-    )
-    .await
-    .unwrap();
+    let rustls_config =
+        RustlsConfig::from_pem_file(config.cert_config.cert_path, config.cert_config.key_path)
+            .await
+            .unwrap();
 
     let app = Router::new()
         .route("/", get(handler))
@@ -47,7 +40,7 @@ async fn main() {
         config.reverse_proxy.port,
     ));
 
-    println!("reverse proxy listening on {}", addr);
+    info!("reverse proxy listening on {}", addr);
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())
@@ -85,7 +78,7 @@ async fn server(config: GatewayConfig) {
         config.server.port,
     ));
 
-    println!("server listening on {}", addr);
+    info!("server listening on {}", addr);
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
