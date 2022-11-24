@@ -1,22 +1,19 @@
 mod config;
+mod routes;
 
 use crate::config::GatewayConfig;
+use crate::routes::api::v1::get::get_block_handler;
+use crate::routes::api::v1::put::{put_car_handler, put_file_handler};
 use axum::{
-    extract::{Extension, Query},
+    extract::Extension,
     http::{uri::Uri, Request, Response},
-    response::IntoResponse,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
-use hyper::StatusCode;
 use hyper::{client::HttpConnector, Body};
-use jsonrpc_v2::Error::{Full, Provided};
-use serde_json::{json, Value};
 use std::{convert::TryFrom, net::SocketAddr};
 use tracing::info;
-use ursa_rpc_client::functions::{get_block, put_car, put_file};
-use ursa_rpc_server::api::{NetworkGetParams, NetworkPutCarParams, NetworkPutFileParams};
 
 type Client = hyper::client::Client<HttpConnector, Body>;
 
@@ -34,9 +31,9 @@ async fn main() {
             .unwrap();
 
     let app = Router::new()
-        .route("/get-cid", get(handler))
-        .route("/put-car", post(handler))
-        .route("/put-file", post(handler))
+        .route("/get-cid", get(forward_handler))
+        .route("/put-car", post(forward_handler))
+        .route("/put-file", post(forward_handler))
         .layer(Extension((Client::new(), GatewayConfig::default())));
 
     let addr = SocketAddr::from((
@@ -56,7 +53,7 @@ async fn main() {
         .unwrap();
 }
 
-async fn handler(
+async fn forward_handler(
     Extension((client, config)): Extension<(Client, GatewayConfig)>,
     mut req: Request<Body>,
 ) -> Response<Body> {
@@ -94,34 +91,4 @@ async fn server(config: GatewayConfig) {
         .serve(app.into_make_service())
         .await
         .unwrap();
-}
-
-async fn get_block_handler(Query(params): Query<NetworkGetParams>) -> impl IntoResponse {
-    match get_block(params).await {
-        Ok(res) => (StatusCode::OK, Json(json!(res))),
-        Err(err) => handle_error(err),
-    }
-}
-
-async fn put_car_handler(Json(params): Json<NetworkPutCarParams>) -> impl IntoResponse {
-    match put_car(params).await {
-        Ok(res) => (StatusCode::OK, Json(json!(res))),
-        Err(err) => handle_error(err),
-    }
-}
-
-async fn put_file_handler(Json(params): Json<NetworkPutFileParams>) -> impl IntoResponse {
-    match put_file(params).await {
-        Ok(res) => (StatusCode::OK, Json(json!(res))),
-        Err(err) => handle_error(err),
-    }
-}
-
-fn handle_error(err: jsonrpc_v2::Error) -> (StatusCode, Json<Value>) {
-    match err {
-        Full { code: 200, .. } => (StatusCode::OK, Json(json!(err))),
-        Provided { code: 200, .. } => (StatusCode::OK, Json(json!(err))),
-        Full { .. } => (StatusCode::BAD_REQUEST, Json(json!(err))),
-        Provided { .. } => (StatusCode::BAD_REQUEST, Json(json!(err))),
-    }
 }
