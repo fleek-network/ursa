@@ -33,7 +33,7 @@ use libp2p::{
     relay::v2::client::Client as RelayClient,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
-    PeerId, Swarm,
+    PeerId, Swarm, Multiaddr,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
@@ -62,6 +62,7 @@ use ursa_utils::convert_cid;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
+pub const LOCAL_ADDRESSES: [&'static str; 2] = ["/ip4/127.0.0.1/tcp/6009", "/ip4/0.0.0.0/tcp/6009"];
 
 pub enum UrsaCommand {
     GetBitswap {
@@ -79,7 +80,7 @@ pub enum UrsaCommand {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
-    StartProviding {
+    Index {
         cids: Vec<Cid>,
         sender: oneshot::Sender<Result<Vec<Cid>>>,
     },
@@ -368,39 +369,6 @@ where
                                         warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
                                     }
                                 }
-                                BehaviourEvent::PublishAd { root_cid, context_id, is_rm } => {
-                                    let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed");
-
-                                    debug!("creating advertisement for cids under root cid: {:?}", root_cid);
-                                    let addresses: Vec<String> = swarm.get_mut().listeners().cloned().map(|m| m.to_string()).collect();
-
-                                    let ad = Advertisement::new(context_id.clone(), peer_id, addresses, is_rm);
-                                    let id = provider.create(ad).await.unwrap();
-
-                                    let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
-                                    let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
-                                    let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
-
-                                    debug!("inserting the chunks");
-                                    for chunk in chunks.iter() {
-                                        let entries_bytes = forest_encoding::to_vec(&chunk)?;
-                                        provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
-                                    }
-                                    debug!("Publishing the advertisement now");
-                                    provider.publish(id).await.expect("publishing the ad should not fail");
-                                    let announce_msg = provider.announce_msg(peer_id).await.unwrap();
-
-                                    let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
-                                    let i_topic = Topic::new("indexer/ingest/mainnet");
-                                    let g_msg = GossipsubMessage {data:announce_msg, source: None, sequence_number: None, topic: i_topic_hash };
-                                    match swarm.get_mut().behaviour_mut().publish(i_topic, g_msg.clone()) {
-                                        Ok(res) => {},
-                                        Err(e) => {
-                                            error!("there was an error while gossiping the announcement");
-                                            error!("{:?}", e);
-                                        }
-                                    }
-                                }
                                 BehaviourEvent::NatStatusChanged{ old, new } => {
                                     let swarm = swarm.get_mut();
 
@@ -423,6 +391,8 @@ where
                                         },
                                         (_, NatStatus::Public(addr)) => {
                                             info!("Public Nat verified! Public listening address: {}", addr);
+                                            let public_address = addr.clone();
+                                            swarm.behaviour_mut().publish_ad(public_address);
                                         },
                                         (old, new) => {
                                             warn!("NAT status changed from {:?} to {:?}", old, new);
@@ -444,6 +414,56 @@ where
                                 BehaviourEvent::RelayCircuitClosed => {
                                     debug!("Relay circuit closed");
                                     track(MetricEvent::RelayCircuitClosed, None, None);
+                                }
+                                BehaviourEvent::StartPublish { public_address } => {
+                                    let mut address = Multiaddr::empty();
+                                    for protocol in public_address.into_iter() {
+                                        match protocol {
+                                            Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
+                                            Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
+                                            Protocol::Tcp(port) =>  address.push(Protocol::Tcp(port)),
+                                            _ => {},
+                                        }
+                                    }
+                                    let root_cids = provider.get_mut_root_cids();
+                                    let mut cid_queue = root_cids.write().await;
+                                    while !cid_queue.is_empty() {
+                                        let root_cid = cid_queue.pop_front().unwrap();
+                                        let context_id = root_cid.to_bytes();
+                                        info!("creating advertisement for cids under root cid: {:?}", root_cid);
+    
+                                        info!("inserting the chunks");
+                                        let addresses: Vec<String> = [address.clone()].iter().map(|m| m.to_string()).collect();
+                                        let ad = Advertisement::new(context_id.clone(), peer_id, addresses, false);
+                                        let id = provider.create(ad).await.unwrap();
+    
+                                        let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                                        let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
+                                        let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+    
+                                        for chunk in chunks.iter() {
+                                            let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                                            provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
+                                        }
+                                        info!("Publishing the advertisement now");
+                                        provider.publish(id).await.expect("publishing the ad should not fail");
+                                        if let Ok(announce_msg) = provider.create_announce_msg(peer_id).await {
+                                            let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                                            let i_topic = Topic::new("indexer/ingest/mainnet");
+                                            let g_msg = GossipsubMessage {data:announce_msg.clone(), source: None, sequence_number: None, topic: i_topic_hash };
+                                            match swarm.get_mut().behaviour_mut().publish(i_topic, g_msg.clone()) {
+                                                Ok(res) => {
+                                                    info!("gossiping the new advertisement done : {:}", res);
+                                                },
+                                                Err(e) => {
+                                                    warn!("there was an error while gossiping the announcement, will try to announce via http");
+                                                    warn!("{:?}", e);
+                                                    // make an http announcement if gossiping fails
+                                                    let _ = provider.announce_http_message(announce_msg).await;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             // Do we need to handle any of the below events?
@@ -488,11 +508,22 @@ where
                                 let peers = swarm.get_mut().behaviour_mut().peers();
                                 let _ = sender.send(peers).map_err(|_| anyhow!("Failed to get Libp2p peers"));
                             }
-                            UrsaCommand::StartProviding { cids, sender } => {
+                            UrsaCommand::Index { cids, sender } => {
                                 // TODO: start providing via gossip and/or publish ad to the indexer
-                                let _ = swarm.get_mut().behaviour_mut().publish_ad(cids.clone());
+                                let root_cid = cids[0];
+                                let root_cids = provider.get_mut_root_cids();
+                                let mut rlock = root_cids.write().await;
+                                rlock.push_back(root_cid);
+                                let addrs = swarm.get_mut().behaviour_mut().public_address();
+                                if addrs.is_some() {
+                                    let public_address = addrs.unwrap().clone();
+                                    swarm.get_mut().behaviour_mut().publish_ad(public_address)?;
+                                } else {
+                                    warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
+                                     Otherwise the autonat will get the public address soon and node will start indexing the content");
+                                }
                                 let _channel = sender.send(Ok(cids));
-                            },
+                            }
                             UrsaCommand::SendRequest { peer_id, request, channel } => {
                                 let _ = swarm.get_mut().behaviour_mut().send_request(peer_id, request, channel);
                             },
