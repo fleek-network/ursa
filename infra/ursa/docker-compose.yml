@@ -82,5 +82,7 @@ services:
       - "4070"
       # 6009 TCP and UDP, used by the P2P protocol running the network
       - "6009"
+      # 8070 TCP, used by the HTTP based index provider
+      - "8070"
     volumes:
-      - ../../ursa_db:/app/ursa_db:rw
+      - ${HOME}/.ursa/:/root/.ursa/:rw

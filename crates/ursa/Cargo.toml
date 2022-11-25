@@ -27,3 +27,13 @@ ursa-network = { path = "../ursa-network" }
 ursa-rpc-client = { path = "../ursa-rpc-client" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-store = { path = "../ursa-store" }
+ursa-gateway = { path = "../ursa-gateway" }
+
+[build-dependencies]
+toml = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+ursa-index-provider = { path = "../ursa-index-provider" }
+ursa-network = { path = "../ursa-network" }
+ursa-rpc-client = { path = "../ursa-rpc-client" }
+ursa-rpc-server = { path = "../ursa-rpc-server" }
+ursa-metrics = { path = "../ursa-metrics" }

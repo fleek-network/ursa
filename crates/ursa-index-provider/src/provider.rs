@@ -66,34 +66,35 @@ pub struct Provider<S> {
     keypair: Keypair,
     blockstore: Arc<RwLock<S>>,
     temp_ads: Arc<RwLock<HashMap<usize, Advertisement>>>,
-    address: Multiaddr,
+    config: Arc<ProviderConfig>,
 }
 
 impl<S> Provider<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    pub fn new(keypair: Keypair, blockstore: Arc<RwLock<S>>) -> Self {
+    pub fn new(keypair: Keypair, blockstore: Arc<RwLock<S>>, config: ProviderConfig) -> Self {
         Provider {
             keypair,
             blockstore,
             head: Arc::new(RwLock::new(None)),
             temp_ads: Arc::new(RwLock::new(HashMap::new())),
-            address: Multiaddr::empty(),
+            config: Arc::new(config),
         }
     }
 
-    pub async fn start(mut self, config: &ProviderConfig) -> Result<()> {
+    pub async fn start(self, provider_config: &ProviderConfig) -> Result<()> {
         info!("index provider starting up");
-        let ProviderConfig { addr, port } = config;
-        self.address = format!("/ip4/{}/tcp/{}", *addr, *port).parse().unwrap();
 
         let app_router = Router::new()
             .route("/head", get(head::<S>))
             .route("/:cid", get(get_block::<S>))
             .layer(Extension(self.clone()));
 
-        let app_address = format!("{}:{}", *addr, *port).parse().unwrap();
+
+        let app_address = format!("{}:{}", provider_config.local_address, provider_config.port)
+            .parse()
+            .unwrap();
 
         info!("index provider listening on: {:?}", &app_address);
         let _server = axum::Server::bind(&app_address)
@@ -113,7 +114,7 @@ where
             keypair: self.keypair.clone(),
             blockstore: Arc::clone(&self.blockstore),
             temp_ads: Arc::clone(&self.temp_ads),
-            address: self.address.clone(),
+            config: Arc::clone(&self.config),
         }
     }
 }
@@ -198,10 +199,7 @@ where
     }
 
     async fn announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>> {
-        let msg_addrs = [format!("{}/http/p2p/{}", self.address, peer_id)
-            .parse()
-            .unwrap()]
-        .to_vec();
+        let msg_addrs = [self.config.domain.clone().parse().unwrap()].to_vec();
         let head = self.head.read().await;
         let head_cid: Cid = (*head).expect("no head found for announcement");
         let message = Message {
@@ -257,8 +255,9 @@ mod tests {
         let peer_id = PeerId::from(keypair.public());
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
         let provider_config = ProviderConfig::default();
+        let provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+
 
         let provider_interface = provider.clone();
         async_std::task::spawn(async move {

@@ -1,4 +1,4 @@
-use crate::config::UrsaConfig;
+use crate::config::NetworkConfig;
 use anyhow::anyhow;
 use std::{
     collections::hash_map::DefaultHasher,
@@ -21,7 +21,7 @@ const URSA_GOSSIP_PROTOCOL: &str = "ursa/gossipsub/0.0.1";
 pub struct UrsaGossipsub;
 
 impl UrsaGossipsub {
-    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Gossipsub {
+    pub fn new(keypair: &Keypair, config: &NetworkConfig) -> Gossipsub {
         let mesh_n = 8;
         let mesh_n_low = 4;
         let mesh_n_high = 12;

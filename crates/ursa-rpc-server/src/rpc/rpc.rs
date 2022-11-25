@@ -54,7 +54,7 @@ pub async fn rpc_handler(
 }
 
 impl RpcServer {
-    pub fn new<I>(_config: &ServerConfig, interface: Arc<I>) -> Self
+    pub fn new<I>(interface: Arc<I>) -> Self
     where
         I: NetworkInterface,
     {
