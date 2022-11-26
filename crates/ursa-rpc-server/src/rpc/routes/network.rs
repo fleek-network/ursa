@@ -1,6 +1,3 @@
-use async_std::channel::bounded;
-use async_std::io::Cursor;
-use async_std::sync::RwLock;
 use axum::{
     middleware,
     routing::{post, put},
@@ -14,12 +11,11 @@ use jsonrpc_v2::{Data, Error, Params};
 
 use crate::{
     api::{
-        NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
-        NetworkPutCarResult, NetworkPutFileParams, NetworkPutFileResult,
+        NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkInterface,
+        NetworkPutFileParams, NetworkPutFileResult,
     },
     rpc::rpc::rpc_handler,
 };
-use fvm_ipld_car::CarHeader;
 
 use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;
@@ -38,58 +34,35 @@ pub async fn get_cid_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = Cid::from_str(&params.cid).unwrap();
-    match data.0.get(cid).await {
-        Err(_err) => Err(Error::Full {
-            data: None,
-            code: -32000,
-            message: "There was an error while getting the block".to_string(),
-        }),
-        Ok(res) => Ok(res.unwrap()),
+    if let Ok(cid) = Cid::from_str(&params.cid) {
+        match data.0.get(cid).await {
+            Err(err) => Err(Error::internal(err)),
+            Ok(res) => Ok(res.unwrap()),
+        }
+    } else {
+        error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
+        return Err(Error::INVALID_PARAMS);
     }
 }
-
-pub async fn put_car_handler<I>(
+pub async fn get_file_handler<I>(
     data: Data<Arc<I>>,
-    Params(params): Params<NetworkPutCarParams>,
-) -> Result<NetworkPutCarResult>
+    Params(params): Params<NetworkGetFileParams>,
+) -> Result<()>
 where
     I: NetworkInterface,
 {
-    let cid = Cid::from_str(&params.cid).unwrap();
-    let buf = params.data;
-
-    let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
-    let header = CarHeader {
-        roots: vec![cid],
-        version: 1,
-    };
-
-    let (tx, mut rx) = bounded(10);
-
-    let buffer_cloned = buffer.clone();
-    let write_task = async_std::task::spawn(async move {
-        header
-            .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
-            .await
-            .unwrap()
-    });
-
-    tx.send((cid, buf)).await.unwrap();
-    drop(tx);
-    write_task.await;
-
-    let buffer: Vec<_> = buffer.read().await.clone();
-    match data.0.put_car(Cursor::new(&buffer)).await {
-        Err(err) => {
-            error!("{:?}", err);
-            return Err(Error::Full {
-                data: None,
-                code: -32001,
-                message: "There was an error in put_car".to_string(),
-            });
+    let path = params.path;
+    if let Ok(cid) = Cid::from_str(&params.cid) {
+        match data.0.get_file(path, cid).await {
+            Err(err) => {
+                error!("{:?}", err);
+                return Err(Error::internal(err));
+            }
+            _ => Ok(()),
         }
-        Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
+    } else {
+        error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
+        return Err(Error::INVALID_PARAMS);
     }
 }
 
@@ -105,11 +78,7 @@ where
     match data.0.put_file(path).await {
         Err(err) => {
             error!("{:?}", err);
-            return Err(Error::Full {
-                data: None,
-                code: -32001,
-                message: "There was an error in put_file".to_string(),
-            });
+            return Err(Error::internal(err));
         }
         Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }

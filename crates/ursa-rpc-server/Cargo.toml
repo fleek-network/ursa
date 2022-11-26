@@ -12,7 +12,7 @@ anyhow = "1.0.56"
 # tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
 async-std = { version = "1.11.0", features = ["attributes"] }
 async-trait = "0.1.53"
-axum = { version = "0.5.7", features = ["multipart"] }
+axum = { version = "0.5.7", features = ["multipart", "headers"] }
 bytes = "1.1.0"
 cid = "0.8.5"
 fnv = "1.0.7"
@@ -24,13 +24,14 @@ jsonrpc-v2 = "0.11.0"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
 tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
+tokio-util = { version = "0.7", features = ["io", "compat"] }
 tower = "0.4.13"
 tracing = "0.1.33"
+ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
-ursa-index-provider = { path = "../ursa-index-provider" }
 
 [dependencies.libipld]
 version = "0.12.0"
