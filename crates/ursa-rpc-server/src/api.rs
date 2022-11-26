@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Result};
+use async_fs::File;
 use async_trait::async_trait;
 use cid::Cid;
 use fnv::FnvHashSet;
+use futures::{AsyncRead, io::BufReader};
 use fvm_ipld_car::{load_car, Block};
 use ipld_blockstore::BlockStore;
 use libipld::{
@@ -11,8 +13,6 @@ use libipld::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::fs::File;
-use tokio::io::{AsyncRead, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tracing::info;

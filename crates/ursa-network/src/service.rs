@@ -472,13 +472,13 @@ mod tests {
     use super::*;
 
     use crate::codec::protocol::RequestType;
+    use async_fs::File;
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
+    use futures::io::BufReader;
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{str::FromStr, thread, time::Duration, vec};
-    use tokio::fs::File;
-    use tokio::io::BufReader;
     use tracing::log::LevelFilter;
     use ursa_store::Store;
 
@@ -531,7 +531,6 @@ mod tests {
         }
     }
 
-    // Network Starts
     #[tokio::test]
     async fn test_network_start() {
         setup_logger(LevelFilter::Debug);
@@ -574,7 +573,7 @@ mod tests {
             }
         });
 
-        let delay = Duration::from_millis(2000);
+        let delay = Duration::from_millis(5000);
         thread::sleep(delay);
 
         let msg = UrsaCommand::GossipsubMessage {
@@ -894,6 +893,7 @@ mod tests {
         let path = "../car_files/text_mb.car";
 
         // put the car file in store 1
+        // patch fix blocking io is not good
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
         let cids = load_car(store1.blockstore(), reader).await?;

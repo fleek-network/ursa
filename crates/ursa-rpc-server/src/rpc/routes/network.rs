@@ -4,6 +4,7 @@ use axum::{
     Router,
 };
 use cid::Cid;
+use futures::{channel::mpsc::unbounded, SinkExt};
 use std::io::Cursor;
 use std::{str::FromStr, sync::Arc};
 use ursa_metrics::middleware::track_metrics;
@@ -45,50 +46,6 @@ where
             message: "There was an error while getting the block".to_string(),
         }),
         Ok(res) => Ok(res.unwrap()),
-    }
-}
-
-pub async fn put_car_handler<I>(
-    data: Data<Arc<I>>,
-    Params(params): Params<NetworkPutCarParams>,
-) -> Result<NetworkPutCarResult>
-where
-    I: NetworkInterface,
-{
-    let cid = Cid::from_str(&params.cid).unwrap();
-    let buf = params.data;
-
-    let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
-    let header = CarHeader {
-        roots: vec![cid],
-        version: 1,
-    };
-
-    let (tx, mut rx) = channel(10);
-
-    let buffer_cloned = buffer.clone();
-    let write_task = tokio::spawn(async move {
-        header
-            .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
-            .await
-            .unwrap()
-    });
-
-    tx.send((cid, buf)).await.unwrap();
-    drop(tx);
-    let _ = write_task.await;
-
-    let buffer: Vec<_> = buffer.read().await.clone();
-    match data.0.put_car(Cursor::new(&buffer)).await {
-        Err(err) => {
-            error!("{:?}", err);
-            return Err(Error::Full {
-                data: None,
-                code: -32001,
-                message: "There was an error in put_car".to_string(),
-            });
-        }
-        Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }
 }
 

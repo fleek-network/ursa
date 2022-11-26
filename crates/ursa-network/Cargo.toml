@@ -28,6 +28,7 @@ ipld_blockstore = "0.1.1"
 ursa-store = { path = "../ursa-store" }
 ursa-metrics = { path = "../ursa-metrics" }
 tokio = { version = "1.20.1", features = ["full"] }
+async-fs = "1.6.0"
 
 [dependencies.libipld]
 version = "0.12.0"

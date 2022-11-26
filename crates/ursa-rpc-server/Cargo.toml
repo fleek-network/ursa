@@ -27,6 +27,7 @@ ursa-network = { path = "../ursa-network" }
 serde = { version = "1.0.137", features = ["derive"] }
 axum = { version = "0.5.7", features = ["multipart"] }
 tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
+async-fs = "1.6.0"
 
 [dependencies.libipld]
 version = "0.12.0"

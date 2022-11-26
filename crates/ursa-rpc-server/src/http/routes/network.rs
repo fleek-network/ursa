@@ -8,8 +8,8 @@ use axum::{
     routing::post,
     Extension, Json, Router,
 };
-use std::io::Cursor;
 
+use futures::io::Cursor;
 use hyper::StatusCode;
 use ipld_blockstore::BlockStore;
 use std::sync::Arc;

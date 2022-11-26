@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
-    "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWC8fC4hu8DKc2SLSs5BGTkmFzWN65d6do9zxA2WSZnDbP",
-    "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWCT69zoBuR9uNUwUteDCV9QvKWymruLcjd915AQgmsYem",
-    // "/ip4/0.0.0.0/tcp/4001udp/4001/quic/p2p/Qm",
+    "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p",
+    "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWGw8vCj9XayJDMXUiox6pCUFm7oVuWkDJeE2H9SDQVEcM",
 ];
 
 pub const DEFAULT_DB_PATH_STR: &str = "ursa_db";
