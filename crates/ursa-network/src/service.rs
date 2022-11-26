@@ -253,7 +253,13 @@ where
         &mut self,
         event: SwarmEvent<
         <Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
-        <<<Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::Error>,
+        <
+            <
+                <
+                    Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+                >::Handler as ConnectionHandler
+            >::Error
+        >,
     ) -> Result<()> {
         let mut blockstore = BitswapStorage(self.store.clone());
 
@@ -387,63 +393,63 @@ where
                     context_id,
                     is_rm,
                 } => {
-                    debug!(
-                        "creating advertisement for cids under root cid: {:?}",
-                        root_cid
-                    );
-                    let provider = self.index_provider;
-                    let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed!");
+                    // debug!(
+                    //     "creating advertisement for cids under root cid: {:?}",
+                    //     root_cid
+                    // );
+                    // let provider = self.index_provider;
+                    // let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed!");
 
-                    let addresses: Vec<String> = Pin::new(&mut self.swarm)
-                        .get_mut()
-                        .listeners()
-                        .cloned()
-                        .map(|m| m.to_string())
-                        .collect();
+                    // let addresses: Vec<String> = Pin::new(&mut self.swarm)
+                    //     .get_mut()
+                    //     .listeners()
+                    //     .cloned()
+                    //     .map(|m| m.to_string())
+                    //     .collect();
 
-                    let ad = Advertisement::new(
-                        context_id.clone(),
-                        *self.swarm.local_peer_id(),
-                        addresses,
-                        is_rm,
-                    );
-                    let id = provider.create(ad);
+                    // let ad = Advertisement::new(
+                    //     context_id.clone(),
+                    //     *self.swarm.local_peer_id(),
+                    //     addresses,
+                    //     is_rm,
+                    // );
+                    // let id = provider.create(ad);
 
-                    let dag = self
-                        .store
-                        .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
-                    let entries = dag
-                        .iter()
-                        .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
-                        .collect::<Vec<Ipld>>();
-                    let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+                    // let dag = self
+                    //     .store
+                    //     .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                    // let entries = dag
+                    //     .iter()
+                    //     .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
+                    //     .collect::<Vec<Ipld>>();
+                    // let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
 
-                    debug!("inserting the chunks");
-                    for chunk in chunks.iter() {
-                        let entries_bytes = forest_encoding::to_vec(&chunk)?;
-                        provider.add_chunk(entries_bytes, id);
-                        // .expect(" adding chunk to ad should not fail");
-                    }
-                    debug!("Publishing the advertisement now");
-                    provider.publish(id);
-                    // .expect("publishing the ad should not fail");
-                    let announce_msg = provider.announce_msg(*self.swarm.local_peer_id());
+                    // debug!("inserting the chunks");
+                    // for chunk in chunks.iter() {
+                    //     let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                    //     provider.add_chunk(entries_bytes, id);
+                    //     // .expect(" adding chunk to ad should not fail");
+                    // }
+                    // debug!("Publishing the advertisement now");
+                    // provider.publish(id);
+                    // // .expect("publishing the ad should not fail");
+                    // let announce_msg = provider.announce_msg(*self.swarm.local_peer_id());
 
-                    let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
-                    let i_topic = Topic::new("indexer/ingest/mainnet");
-                    let g_msg = GossipsubMessage {
-                        data: announce_msg,
-                        source: None,
-                        sequence_number: None,
-                        topic: i_topic_hash,
-                    };
-                    match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
-                        Ok(res) => {}
-                        Err(e) => {
-                            error!("there was an error while gossiping the announcement");
-                            error!("{:?}", e);
-                        }
-                    }
+                    // let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                    // let i_topic = Topic::new("indexer/ingest/mainnet");
+                    // let g_msg = GossipsubMessage {
+                    //     data: announce_msg,
+                    //     source: None,
+                    //     sequence_number: None,
+                    //     topic: i_topic_hash,
+                    // };
+                    // match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
+                    //     Ok(res) => {}
+                    //     Err(e) => {
+                    //         error!("there was an error while gossiping the announcement");
+                    //         error!("{:?}", e);
+                    //     }
+                    // }
                     Ok(())
                 }
                 BehaviourEvent::NatStatusChanged { old, new } => {
@@ -600,13 +606,12 @@ where
         loop {
             select! {
                 event = self.swarm.next() => {
+                    let event = event.ok_or_else(|| anyhow!("Swarm Event invalid!"))?;
                     self.handle_swarm_event(event);
-                    return Ok(())
                 },
                 command = self.command_receiver.recv() => {
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
                     self.handle_command(command);
-                    return Ok(())
                 },
             }
         }
@@ -636,6 +641,7 @@ mod tests {
     fn network_init(
         config: &mut UrsaConfig,
         store: Arc<Store<RocksDb>>,
+        index_store: Arc<RocksDb>,
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
@@ -644,9 +650,7 @@ mod tests {
             .map(|node| node.parse().unwrap())
             .collect();
 
-        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
-            .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+        let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
@@ -689,10 +693,18 @@ mod tests {
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+
         let db = Arc::new(db);
+        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (service, _) = network_init(&mut UrsaConfig::default(), Arc::clone(&store));
+        let (service, _) = network_init(
+            &mut UrsaConfig::default(),
+            Arc::clone(&store),
+            Arc::clone(&index_store),
+        );
 
         tokio::spawn(async move {
             if let Err(err) = service.start().await {
@@ -709,13 +721,17 @@ mod tests {
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+
         let db = Arc::new(db);
+        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         let node_1_sender = node_1.command_sender.clone();
 
@@ -760,13 +776,17 @@ mod tests {
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+
         let db = Arc::new(db);
+        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
@@ -793,13 +813,17 @@ mod tests {
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+
         let db = Arc::new(db);
+        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         tokio::spawn(async move {
             if let Err(err) = node_1.start().await {
@@ -826,13 +850,18 @@ mod tests {
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+
         let db = Arc::new(db);
+        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, peer_2) = network_init(&mut config, Arc::clone(&store));
+        let (node_2, peer_2) =
+            network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         let node_1_sender = node_1.command_sender.clone();
 
@@ -878,14 +907,18 @@ mod tests {
         let bitswap_store_1 = BitswapStorage(store1.clone());
         let mut bitswap_store_2 = BitswapStorage(store2.clone());
 
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_store = Arc::new(provider_db);
+
         let block = get_block(&b"hello world"[..]);
         info!("inserting block into bitswap store for node 1");
         insert_block(bitswap_store_1, &block);
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2), Arc::clone(&index_store));
 
         let node_2_sender = node_2.command_sender.clone();
 
@@ -932,13 +965,16 @@ mod tests {
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_store = Arc::new(provider_db);
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1), Arc::clone(&index_store));
 
         let block = get_block(&b"hello world"[..]);
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2), Arc::clone(&index_store));
 
         let node_2_sender = node_2.command_sender.clone();
 
@@ -1041,6 +1077,9 @@ mod tests {
         let store2 = get_store("test_db2");
 
         let mut bitswap_store2 = BitswapStorage(store2.clone());
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_store = Arc::new(provider_db);
 
         let path = "../car_files/text_mb.car";
 
@@ -1059,10 +1098,11 @@ mod tests {
             cids_vec.push(block.cid);
         }
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store1));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store1), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store2));
+        let (node_2, _) = network_init(&mut config, Arc::clone(&store2), Arc::clone(&index_store));
+
         let node_2_sender = node_2.command_sender.clone();
 
         tokio::spawn(async {

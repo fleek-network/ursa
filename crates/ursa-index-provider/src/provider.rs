@@ -51,7 +51,7 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
 ) -> Result<Response<Body>, ProviderError> {
     let cid = Cid::from_str(&cid)
         .map_err(|e| return ProviderError::InternalError(anyhow!(e.to_string())))?;
-    let store = state.blockstore.read().await;
+    let store = state.blockstore;
     match store.get_bytes(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
@@ -62,7 +62,7 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
     keypair: Keypair,
-    blockstore: Arc<RwLock<S>>,
+    blockstore: Arc<S>,
     temp_ads: Arc<RwLock<HashMap<usize, Advertisement>>>,
     address: Multiaddr,
 }
@@ -71,7 +71,7 @@ impl<S> Provider<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    pub fn new(keypair: Keypair, blockstore: Arc<RwLock<S>>) -> Self {
+    pub fn new(keypair: Keypair, blockstore: Arc<S>) -> Self {
         Provider {
             keypair,
             blockstore,
@@ -159,12 +159,11 @@ where
     async fn add_chunk(&self, bytes: Vec<u8>, id: usize) -> Result<()> {
         let entries = forest_encoding::from_slice(&bytes).unwrap();
 
-        let bs = self.blockstore.write().await;
         let mut temp_ads = self.temp_ads.write().await;
         if let Some(ad) = temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            match bs.put_obj(&chunk, Code::Blake2b256) {
+            match self.blockstore.put_obj(&chunk, Code::Blake2b256) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
                     return Ok(());
@@ -182,13 +181,12 @@ where
         let current_head = head.take();
         let mut temp_ads = self.temp_ads.write().await;
         if let Some(mut ad) = temp_ads.remove(&id) {
-            let bs = self.blockstore.write().await;
             ad.PreviousID =
                 current_head.map(|h| forest_ipld::Ipld::Link(convert_cid(h.to_bytes())));
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = forest_ipld::to_ipld(ad)?;
-            let cid = bs.put_obj(&ipld_ad, Code::Blake2b256)?;
+            let cid = self.blockstore.put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
             return Ok(());
         }
@@ -255,7 +253,7 @@ mod tests {
         let peer_id = PeerId::from(keypair.public());
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+        let provider = Provider::new(keypair.clone(), Arc::new(provider_db));
         let provider_config = ProviderConfig::default();
 
         let provider_interface = provider.clone();
