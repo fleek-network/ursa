@@ -2,11 +2,13 @@
 members = [
   "crates/ursa",
   "crates/ursa-gateway",
+  "crates/ursa-index-provider",
   "crates/ursa-metrics",
   "crates/ursa-network",
   "crates/ursa-rpc-client",
   "crates/ursa-rpc-server",
   "crates/ursa-store",
+  "crates/ursa-utils",
 ]
 
 exclude = [

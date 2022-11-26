@@ -15,32 +15,47 @@ use anyhow::{anyhow, Result};
 
 use cid::Cid;
 use fnv::FnvHashMap;
+use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
+use libp2p::autonat::NatStatus;
 use libp2p::core::either::EitherError;
 use libp2p::gossipsub::error::GossipsubHandlerError;
+use libp2p::gossipsub::TopicHash;
+use libp2p::multiaddr::Protocol;
 use libp2p::ping::Failure;
-use libp2p::swarm::ConnectionHandlerUpgrErr;
+use libp2p::swarm::{
+    ConnectionHandler, ConnectionHandlerUpgrErr, IntoConnectionHandler, NetworkBehaviour,
+};
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
+    relay::v2::client::Client as RelayClient,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use rand::seq::SliceRandom;
+use std::num::{NonZeroU8, NonZeroUsize};
+use std::pin::Pin;
 use std::{collections::HashSet, io, sync::Arc};
+use tokio::task;
 use tracing::{debug, error, info, warn};
-use ursa_metrics::events;
-use ursa_store::{BitswapStorage, Store};
+use ursa_index_provider::{
+    advertisement::{Advertisement, MAX_ENTRIES},
+    provider::{Provider, ProviderInterface},
+};
+use ursa_metrics::events::{self, track, MetricEvent};
+use ursa_store::{BitswapStorage, Dag, Store};
+use ursa_utils::convert_cid;
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::UrsaConfig,
     transport::UrsaTransport,
-    utils::convert_cid,
 };
 use metrics::Label;
 use tokio::sync::{mpsc, oneshot};
@@ -118,6 +133,8 @@ pub enum UrsaEvent {
 pub struct UrsaService<S> {
     /// Store
     store: Arc<Store<S>>,
+    /// index provider
+    index_provider: Provider<S>,
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
@@ -149,38 +166,54 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`UrsaConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &UrsaConfig, store: Arc<Store<S>>) -> Self {
+    pub fn new(
+        keypair: Keypair,
+        config: &UrsaConfig,
+        store: Arc<Store<S>>,
+        index_provider: Provider<S>,
+    ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
-        info!(target: "ursa-libp2p", "Node identity is: {}", local_peer_id.to_base58());
+        let (relay_transport, relay_client) = if config.relay_client {
+            if !config.autonat {
+                error!("Relay client requires autonat to know if we are behind a NAT");
+            }
 
-        let transport = UrsaTransport::new(&keypair, config);
+            let (relay_transport, relay_behavior) =
+                RelayClient::new_transport_and_behaviour(keypair.public().into());
+            (Some(relay_transport), Some(relay_behavior))
+        } else {
+            (None, None)
+        };
+
+        let transport = UrsaTransport::new(&keypair, config, relay_transport);
 
         let bitswap_store = BitswapStorage(store.clone());
 
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store);
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client);
 
         let limits = ConnectionLimits::default()
-            .with_max_pending_incoming(Some(10))
-            .with_max_pending_outgoing(Some(10))
-            .with_max_established_incoming(Some(10))
-            .with_max_established_outgoing(Some(10))
-            .with_max_established(Some(10))
-            .with_max_established_per_peer(Some(10));
+            .with_max_pending_incoming(Some(2 << 9))
+            .with_max_pending_outgoing(Some(2 << 9))
+            .with_max_established_incoming(Some(2 << 9))
+            .with_max_established_outgoing(Some(2 << 9))
+            .with_max_established_per_peer(Some(8));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
-            // .notify_handler_buffer_size(todo!())
-            // .connection_event_buffer_size(todo!())
+            .notify_handler_buffer_size(NonZeroUsize::new(2 << 7).unwrap())
+            .connection_event_buffer_size(2 << 7)
+            .dial_concurrency_factor(NonZeroU8::new(8).unwrap())
             .connection_limits(limits)
             .executor(Box::new(|future| {
-                tokio::spawn(future);
+                task::spawn(future);
             }))
             .build();
 
-        Swarm::listen_on(&mut swarm, config.swarm_addr.clone()).unwrap();
+        swarm.listen_on(config.swarm_addr.clone()).unwrap();
 
         for to_dial in &config.bootstrap_nodes {
-            Swarm::dial(&mut swarm, to_dial.clone())
+            swarm
+                .dial(to_dial.clone())
                 .map_err(|err| anyhow!("{}", err))
                 .unwrap();
         }
@@ -201,6 +234,7 @@ where
 
         UrsaService {
             swarm,
+            index_provider,
             store,
             command_sender,
             command_receiver,
@@ -218,40 +252,27 @@ where
     pub fn handle_swarm_event(
         &mut self,
         event: SwarmEvent<
-            BehaviourEvent,
-            EitherError<
-                EitherError<
-                    EitherError<
-                        EitherError<
-                            EitherError<Failure, io::Error>,
-                            ConnectionHandlerUpgrErr<io::Error>,
-                        >,
-                        GossipsubHandlerError,
-                    >,
-                    io::Error,
-                >,
-                ConnectionHandlerUpgrErr<io::Error>,
-            >,
-        >,
-    ) {
+        <Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
+        <<<Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::Error>,
+    ) -> Result<()> {
         let mut blockstore = BitswapStorage(self.store.clone());
 
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Bitswap(info) => {
-                    let BitswapInfo {
-                        cid,
-                        query_id,
-                        block_found,
-                    } = info;
-
+                BehaviourEvent::Bitswap(BitswapInfo {
+                    cid,
+                    query_id,
+                    block_found,
+                }) => {
                     self.swarm.behaviour_mut().cancel(query_id);
                     let labels = vec![
                         Label::new("cid", format!("{}", cid)),
                         Label::new("query_id", format!("{}", query_id)),
                         Label::new("block_found", format!("{}", block_found)),
                     ];
-                    events::track(events::BITSWAP, Some(labels), None);
+
+                    track(MetricEvent::Bitswap, Some(labels), None);
+
                     if let Some(chans) = self.response_channels.remove(&cid) {
                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                         // wait for block to be inserted
@@ -279,6 +300,7 @@ where
                     } else {
                         debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                     }
+                    Ok(())
                 }
                 BehaviourEvent::GossipMessage {
                     peer,
@@ -291,33 +313,31 @@ where
                         Label::new("topic", format!("{}", topic)),
                         Label::new("message", format!("{:?}", message)),
                     ];
-                    events::track(events::GOSSIP_MESSAGE, Some(labels), None);
+
+                    track(MetricEvent::GossipMessage, Some(labels), None);
 
                     if self.swarm.is_connected(&peer) {
-                        if self
-                            .event_sender
-                            .send(UrsaEvent::GossipsubMessage(message))
-                            .is_err()
-                        {
+                        let status = self.event_sender.send(UrsaEvent::GossipsubMessage(message));
+
+                        if status.is_err() {
                             warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
                         }
                     }
+                    Ok(())
                 }
                 BehaviourEvent::RequestMessage {
                     peer,
                     request,
                     channel,
                 } => {
-                    debug!(
-                        "[BehaviourEvent::RequestMessage] - Peer connected {:?}",
-                        peer
-                    );
+                    debug!("[BehaviourEvent::RequestMessage] {} ", peer);
                     let labels = vec![
                         Label::new("peer", format!("{}", peer)),
                         Label::new("request", format!("{:?}", request)),
                         Label::new("channel", format!("{:?}", channel)),
                     ];
-                    events::track(events::REQUEST_MESSAGE, Some(labels), None);
+
+                    track(MetricEvent::RequestMessage, Some(labels), None);
 
                     if self
                         .event_sender
@@ -326,13 +346,15 @@ where
                     {
                         warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
                     }
+                    Ok(())
                 }
                 BehaviourEvent::PeerConnected(peer) => {
                     debug!(
                         "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
                         peer
                     );
-                    events::track(events::PEER_CONNECTED, None, None);
+
+                    track(MetricEvent::PeerConnected, None, None);
 
                     if self
                         .event_sender
@@ -341,13 +363,15 @@ where
                     {
                         warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
                     }
+                    Ok(())
                 }
                 BehaviourEvent::PeerDisconnected(peer) => {
                     debug!(
                         "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
                         peer
                     );
-                    events::track(events::PEER_DISCONNECTED, None, None);
+
+                    track(MetricEvent::PeerDisconnected, None, None);
 
                     if self
                         .event_sender
@@ -356,9 +380,124 @@ where
                     {
                         warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
                     }
+                    Ok(())
+                }
+                BehaviourEvent::PublishAd {
+                    root_cid,
+                    context_id,
+                    is_rm,
+                } => {
+                    debug!(
+                        "creating advertisement for cids under root cid: {:?}",
+                        root_cid
+                    );
+                    let provider = self.index_provider;
+                    let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed!");
+
+                    let addresses: Vec<String> = Pin::new(&mut self.swarm)
+                        .get_mut()
+                        .listeners()
+                        .cloned()
+                        .map(|m| m.to_string())
+                        .collect();
+
+                    let ad = Advertisement::new(
+                        context_id.clone(),
+                        *self.swarm.local_peer_id(),
+                        addresses,
+                        is_rm,
+                    );
+                    let id = provider.create(ad);
+
+                    let dag = self
+                        .store
+                        .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                    let entries = dag
+                        .iter()
+                        .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
+                        .collect::<Vec<Ipld>>();
+                    let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+
+                    debug!("inserting the chunks");
+                    for chunk in chunks.iter() {
+                        let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                        provider.add_chunk(entries_bytes, id);
+                        // .expect(" adding chunk to ad should not fail");
+                    }
+                    debug!("Publishing the advertisement now");
+                    provider.publish(id);
+                    // .expect("publishing the ad should not fail");
+                    let announce_msg = provider.announce_msg(*self.swarm.local_peer_id());
+
+                    let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                    let i_topic = Topic::new("indexer/ingest/mainnet");
+                    let g_msg = GossipsubMessage {
+                        data: announce_msg,
+                        source: None,
+                        sequence_number: None,
+                        topic: i_topic_hash,
+                    };
+                    match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
+                        Ok(res) => {}
+                        Err(e) => {
+                            error!("there was an error while gossiping the announcement");
+                            error!("{:?}", e);
+                        }
+                    }
+                    Ok(())
+                }
+                BehaviourEvent::NatStatusChanged { old, new } => {
+                    match (old, new) {
+                        (NatStatus::Unknown, NatStatus::Private) => {
+                            let behaviour = self.swarm.behaviour_mut();
+                            if behaviour.is_relay_client_enabled() {
+                                // get random bootstrap node and listen on their relay
+                                if let Some((relay_peer, relay_addr)) = behaviour
+                                    .discovery()
+                                    .bootstrap_addrs()
+                                    .choose(&mut rand::thread_rng())
+                                {
+                                    let addr = relay_addr
+                                        .clone()
+                                        .with(Protocol::P2p((*relay_peer).into()))
+                                        .with(Protocol::P2pCircuit);
+                                    warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                                    self.swarm
+                                        .listen_on(addr)
+                                        .expect("failed to listen on relay");
+                                }
+                            }
+                        }
+                        (_, NatStatus::Public(addr)) => {
+                            info!("Public Nat verified! Public listening address: {}", addr);
+                        }
+                        (old, new) => {
+                            warn!("NAT status changed from {:?} to {:?}", old, new);
+                        }
+                    }
+                    Ok(())
+                }
+                BehaviourEvent::RelayReservationOpened { peer_id } => {
+                    debug!("Relay reservation opened for peer {}", peer_id);
+                    track(MetricEvent::RelayReservationOpened, None, None);
+                    Ok(())
+                }
+                BehaviourEvent::RelayReservationClosed { peer_id } => {
+                    debug!("Relay reservation closed for peer {}", peer_id);
+                    track(MetricEvent::RelayReservationClosed, None, None);
+                    Ok(())
+                }
+                BehaviourEvent::RelayCircuitOpened => {
+                    debug!("Relay circuit opened");
+                    track(MetricEvent::RelayCircuitOpened, None, None);
+                    Ok(())
+                }
+                BehaviourEvent::RelayCircuitClosed => {
+                    debug!("Relay circuit closed");
+                    track(MetricEvent::RelayCircuitClosed, None, None);
+                    Ok(())
                 }
             },
-
             // Do we need to handle any of the below events?
             SwarmEvent::Dialing { .. }
             | SwarmEvent::BannedPeer { .. }
@@ -370,12 +509,12 @@ where
             | SwarmEvent::IncomingConnection { .. }
             | SwarmEvent::ConnectionEstablished { .. }
             | SwarmEvent::IncomingConnectionError { .. }
-            | SwarmEvent::OutgoingConnectionError { .. } => {}
+            | SwarmEvent::OutgoingConnectionError { .. } => Ok({}),
         }
     }
 
     /// Handle commands
-    pub fn handle_command(&mut self, command: UrsaCommand) {
+    pub fn handle_command(&mut self, command: UrsaCommand) -> Result<()> {
         match command {
             UrsaCommand::GetBitswap { cid, query, sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
@@ -383,7 +522,7 @@ where
                     error!(
                         "There were no peers provided and the block does not exist in local store"
                     );
-                    let _ = sender.send(Err(anyhow!(
+                    sender.send(Err(anyhow!(
                         "There were no peers provided and the block does not exist in local store"
                     )));
                 } else {
@@ -403,27 +542,29 @@ where
                             .sync_block(cid, peers.into_iter().collect()),
                     }
                 }
+                Ok(())
             }
-            UrsaCommand::Put { cid, sender } => {}
+            UrsaCommand::Put { cid, sender } => Ok(()),
             UrsaCommand::GetPeers { sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
-                let _ = sender
+                sender
                     .send(peers)
-                    .map_err(|_| anyhow!("Failed to get Libp2p peers"));
+                    .map_err(|_| anyhow!("Failed to get Libp2p peers"))
             }
             UrsaCommand::StartProviding { cids, sender } => {
-                let _channel = sender.send(Ok(cids));
+                // TODO: start providing via gossip and/or publish ad to the indexer
+                let _ = self.swarm.behaviour_mut().publish_ad(cids.clone());
+                sender.send(Ok(cids));
+                Ok(())
             }
             UrsaCommand::SendRequest {
                 peer_id,
                 request,
                 channel,
-            } => {
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .send_request(peer_id, request, channel);
-            }
+            } => self
+                .swarm
+                .behaviour_mut()
+                .send_request(peer_id, request, channel),
             UrsaCommand::SendResponse {
                 request_id,
                 response,
@@ -436,10 +577,11 @@ where
                     .publish(topic.clone(), message.clone())
                 {
                     warn!(
-                        "[UrsaCommand::GossipsubMessage] - Failed to publish message top topic {:?} with error {:?}:",
+                        "[UrsaCommand::GossipsubMessage] - Failed to publish message to topic {:?} with error {:?}:",
                         URSA_GLOBAL, error
                     );
                 }
+                Ok(())
             }
         }
     }
@@ -457,10 +599,14 @@ where
 
         loop {
             select! {
-                event = self.swarm.select_next_some() => self.handle_swarm_event(event),
+                event = self.swarm.next() => {
+                    self.handle_swarm_event(event);
+                    return Ok(())
+                },
                 command = self.command_receiver.recv() => {
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
-                    self.handle_command(command)
+                    self.handle_command(command);
+                    return Ok(())
                 },
             }
         }
@@ -479,6 +625,7 @@ mod tests {
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{str::FromStr, thread, time::Duration, vec};
+    use tokio::sync::RwLock;
     use tracing::log::LevelFilter;
     use ursa_store::Store;
 
@@ -497,7 +644,12 @@ mod tests {
             .map(|node| node.parse().unwrap())
             .collect();
 
-        let service = UrsaService::new(keypair, config, store);
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+
+        let service =
+            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 
         (service, local_peer_id)
     }

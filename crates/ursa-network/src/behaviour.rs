@@ -17,7 +17,13 @@ use anyhow::{Error, Result};
 use cid::Cid;
 use fnv::FnvHashMap;
 use libipld::store::StoreParams;
+use libp2p::autonat::{Event, NatStatus};
+use libp2p::dcutr;
+use libp2p::ping::PingConfig;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
+    autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
+    dcutr::behaviour::Event as DcutrEvent,
     gossipsub::{
         error::{PublishError, SubscriptionError},
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
@@ -27,6 +33,10 @@ use libp2p::{
     identity::Keypair,
     kad,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    relay::v2::{
+        client::{Client as RelayClient, Event as RelayClientEvent},
+        relay::{Config as RelayConfig, Event as RelayServerEvent, Relay as RelayServer},
+    },
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
@@ -34,7 +44,7 @@ use libp2p::{
     swarm::{
         NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
     },
-    NetworkBehaviour, PeerId,
+    Multiaddr, NetworkBehaviour, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
@@ -44,14 +54,15 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
+use ursa_utils::convert_cid;
 
+use crate::discovery::URSA_KAD_PROTOCOL;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::UrsaConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
-    utils,
 };
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
@@ -65,14 +76,34 @@ pub struct BitswapInfo {
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
+fn ursa_agent() -> String {
+    format!("ursa/{}", env!("CARGO_PKG_VERSION"))
+}
+
 /// [Behaviour]'s events
 /// Requests and failure events emitted by the `NetworkBehaviour`.
 #[derive(Debug)]
 pub enum BehaviourEvent {
+    NatStatusChanged {
+        old: NatStatus,
+        new: NatStatus,
+    },
     /// An event trigger when remote peer connects.
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
+    /// An event trigger when relay reservation is opened
+    RelayReservationOpened {
+        peer_id: PeerId,
+    },
+    /// An event trigger when relay reservation is closed
+    RelayReservationClosed {
+        peer_id: PeerId,
+    },
+    /// An event trigger when a relay circuit is opened
+    RelayCircuitOpened,
+    /// An event trigger when a relay circuit is closed
+    RelayCircuitClosed,
     /// A Gossip message request was received from a peer.
     Bitswap(BitswapInfo),
     GossipMessage {
@@ -86,6 +117,11 @@ pub enum BehaviourEvent {
         peer: PeerId,
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
+    },
+    PublishAd {
+        root_cid: Cid,
+        context_id: Vec<u8>,
+        is_rm: bool,
     },
 }
 
@@ -101,8 +137,20 @@ pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
 
-    // Identifying peer info to other peers.
+    // Identify and exchange info with other peers.
     identify: Identify,
+
+    /// autonat
+    autonat: Toggle<Autonat>,
+
+    /// Relay client. Used to listen on a relay for incoming connections.
+    relay_client: Toggle<RelayClient>,
+
+    /// Relay server. Used to allow other peers to route through the node
+    relay_server: Toggle<RelayServer>,
+
+    /// DCUtR
+    dcutr: Toggle<dcutr::behaviour::Behaviour>,
 
     /// Bitswap for exchanging data between blocks between peers.
     bitswap: Bitswap<P>,
@@ -120,13 +168,14 @@ pub struct Behaviour<P: StoreParams> {
     #[behaviour(ignore)]
     events: VecDeque<BehaviourEvent>,
 
-    /// Pending responses
+    /// Pending requests
     #[behaviour(ignore)]
     pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
 
-    /// Pending requests
+    /// Pending responses
     #[behaviour(ignore)]
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+
     #[behaviour(ignore)]
     queries: FnvHashMap<QueryId, BitswapInfo>,
 }
@@ -136,11 +185,13 @@ impl<P: StoreParams> Behaviour<P> {
         keypair: &Keypair,
         config: &UrsaConfig,
         bitswap_store: S,
+        relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
         let local_public_key = keypair.public();
+        let local_peer_id = PeerId::from(local_public_key.clone());
 
         // Setup the ping behaviour
-        let ping = Ping::default();
+        let ping = Ping::new(PingConfig::new().with_keep_alive(true));
 
         // Setup the gossip behaviour
         let mut gossipsub = UrsaGossipsub::new(keypair, config);
@@ -156,7 +207,10 @@ impl<P: StoreParams> Behaviour<P> {
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         // Setup the identify behaviour
-        let identify = Identify::new(IdentifyConfig::new(IPFS_PROTOCOL.into(), local_public_key));
+        let identify = Identify::new(
+            IdentifyConfig::new(IPFS_PROTOCOL.into(), keypair.public())
+                .with_agent_version(ursa_agent()),
+        );
 
         let request_response = {
             let mut cfg = RequestResponseConfig::default();
@@ -169,8 +223,39 @@ impl<P: StoreParams> Behaviour<P> {
             RequestResponse::new(UrsaExchangeCodec, protocols, cfg)
         };
 
+        let autonat = config
+            .autonat
+            .then(|| {
+                let config = AutonatConfig {
+                    throttle_server_period: Duration::from_secs(30),
+                    ..AutonatConfig::default()
+                };
+
+                Autonat::new(local_peer_id, config)
+            })
+            .into();
+
+        let relay_server = config
+            .relay_server
+            .then(|| RelayServer::new(local_public_key.into(), RelayConfig::default()))
+            .into();
+
+        let dcutr = config
+            .relay_client
+            .then(|| {
+                if relay_client.is_none() {
+                    panic!("relay client not instantiated");
+                }
+                dcutr::behaviour::Behaviour::new()
+            })
+            .into();
+
         Behaviour {
             ping,
+            autonat,
+            relay_server,
+            relay_client: relay_client.into(),
+            dcutr,
             bitswap,
             identify,
             gossipsub,
@@ -191,8 +276,20 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.publish(topic, data.data)
     }
 
+    pub fn public_address(&self) -> Option<&Multiaddr> {
+        self.autonat.as_ref().and_then(|a| a.public_address())
+    }
+
     pub fn peers(&self) -> HashSet<PeerId> {
         self.discovery.peers().clone()
+    }
+
+    pub fn is_relay_client_enabled(&self) -> bool {
+        self.relay_client.is_enabled()
+    }
+
+    pub fn discovery(&mut self) -> &mut DiscoveryBehaviour {
+        &mut self.discovery
     }
 
     pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
@@ -218,11 +315,10 @@ impl<P: StoreParams> Behaviour<P> {
 
         Ok(())
     }
+
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
-        info!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self
-            .bitswap
-            .get(utils::convert_cid(cid.to_bytes()), providers);
+        debug!("get block via rpc called, the requested cid is: {:?}", cid);
+        let id = self.bitswap.get(convert_cid(cid.to_bytes()), providers);
 
         self.queries.insert(
             id,
@@ -235,11 +331,11 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) {
-        info!(
+        debug!(
             "sync block via http called, the requested root cid is: {:?}",
             cid
         );
-        let c_cid = utils::convert_cid(cid.to_bytes());
+        let c_cid = convert_cid(cid.to_bytes());
         let id = self
             .bitswap
             .sync(c_cid, providers, iter::once(c_cid.clone()));
@@ -256,6 +352,33 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
+    }
+
+    pub fn publish_ad(&mut self, root_cids: Vec<Cid>) {
+        for cid in root_cids {
+            self.events.push_back(BehaviourEvent::PublishAd {
+                root_cid: cid,
+                context_id: cid.to_bytes(),
+                is_rm: false,
+            })
+        }
+    }
+
+    fn poll(
+        &mut self,
+        _: &mut Context,
+        _: &mut impl PollParameters,
+    ) -> Poll<
+        NetworkBehaviourAction<
+            <Self as NetworkBehaviour>::OutEvent,
+            <Self as NetworkBehaviour>::ConnectionHandler,
+        >,
+    > {
+        if let Some(event) = self.events.pop_front() {
+            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+        }
+
+        Poll::Pending
     }
 
     fn handle_ping(&mut self, event: PingEvent) {
@@ -302,6 +425,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
+        debug!("[IdentifyEvent] {:?}", event);
         match event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -321,7 +445,7 @@ impl<P: StoreParams> Behaviour<P> {
                 if info
                     .protocols
                     .iter()
-                    .any(|name| name.as_bytes() == IPFS_PROTOCOL.as_bytes())
+                    .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
                 {
                     self.gossipsub.add_explicit_peer(&peer_id);
 
@@ -337,16 +461,66 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
+    fn handle_autonat(&mut self, event: AutonatEvent) {
+        debug!("[AutonatEvent] {:?}", event);
+        match event {
+            AutonatEvent::StatusChanged { old, new } => {
+                self.events
+                    .push_back(BehaviourEvent::NatStatusChanged { old, new });
+            }
+            Event::OutboundProbe(_) | Event::InboundProbe(_) => {}
+        }
+    }
+
+    fn handle_relay_server(&mut self, event: RelayServerEvent) {
+        debug!("[RelayServerEvent] {:?}", event);
+
+        match event {
+            RelayServerEvent::ReservationReqAccepted {
+                src_peer_id,
+                renewed,
+            } => {
+                if !renewed {
+                    self.events
+                        .push_back(BehaviourEvent::RelayReservationOpened {
+                            peer_id: src_peer_id,
+                        });
+                }
+            }
+            RelayServerEvent::ReservationTimedOut { src_peer_id } => {
+                self.events
+                    .push_back(BehaviourEvent::RelayReservationClosed {
+                        peer_id: src_peer_id,
+                    });
+            }
+            RelayServerEvent::CircuitReqAccepted { .. } => {
+                self.events.push_back(BehaviourEvent::RelayCircuitOpened);
+            }
+            RelayServerEvent::CircuitClosed { .. } => {
+                self.events.push_back(BehaviourEvent::RelayCircuitClosed);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_relay_client(&mut self, event: RelayClientEvent) {
+        debug!("[RelayClientEvent] {:?}", event);
+    }
+
+    fn handle_dcutr(&mut self, event: DcutrEvent) {
+        debug!("[DcutrEvent] {:?}", event);
+    }
+
     fn handle_bitswap(&mut self, event: BitswapEvent) {
         match event {
             BitswapEvent::Progress(id, missing) => {
-                info!(
+                debug!(
                     "progress in bitswap sync query, id: {}, missing: {}",
                     id, missing
                 );
             }
             BitswapEvent::Complete(id, result) => {
-                info!(
+                debug!(
                     "[BitswapEvent::Complete] - Bitswap Event complete for query id: {:?}",
                     id
                 );
@@ -524,6 +698,30 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P>
 impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: DiscoveryEvent) {
         self.handle_discovery(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<AutonatEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: AutonatEvent) {
+        self.handle_autonat(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<RelayServerEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: RelayServerEvent) {
+        self.handle_relay_server(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<RelayClientEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: RelayClientEvent) {
+        self.handle_relay_client(event)
+    }
+}
+
+impl<P: StoreParams> NetworkBehaviourEventProcess<DcutrEvent> for Behaviour<P> {
+    fn inject_event(&mut self, event: DcutrEvent) {
+        self.handle_dcutr(event)
     }
 }
 

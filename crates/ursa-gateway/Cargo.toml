@@ -1,5 +1,5 @@
 [package]
-name = "ursa-gateway"
+name = "ursa-ursa-gateway"
 version = "0.1.0"
 edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]

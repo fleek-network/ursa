@@ -11,8 +11,8 @@ use std::{
 
 use crate::config::UrsaConfig;
 use anyhow::{anyhow, Error, Result};
+use futures::executor::block_on;
 use libp2p::{
-    autonat::{Behaviour as Autonat, Config as AutonatConfig},
     core::{connection::ConnectionId, ConnectedPoint},
     identity::Keypair,
     kad::{
@@ -21,18 +21,15 @@ use libp2p::{
     },
     mdns::{Mdns, MdnsConfig, MdnsEvent},
     multiaddr::Protocol,
-    relay::v2::relay::{Config as RelayConfig, Relay},
     swarm::{
         behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
         NetworkBehaviourAction, PollParameters,
     },
     Multiaddr, PeerId,
 };
-use tokio::task::spawn_blocking;
-use tracing::warn;
+use tracing::{info, warn};
 
-const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
-// const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/ursa/kad/0.0.1";
+pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
 pub struct PeerInfo {
     peer_id: PeerId,
@@ -57,12 +54,8 @@ pub struct DiscoveryBehaviour {
     peer_info: HashMap<PeerId, PeerInfo>,
     /// events
     events: VecDeque<DiscoveryEvent>,
-    /// Relay v2 for routing through peers.
-    relay: Relay,
     /// Optional MDNS protocol.
     mdns: Toggle<Mdns>,
-    /// Optional Autonat.
-    autonat: Toggle<Autonat>,
 }
 
 impl DiscoveryBehaviour {
@@ -101,28 +94,12 @@ impl DiscoveryBehaviour {
         };
 
         let mdns = if config.mdns {
-            // Some(spawn_blocking(async {
-            //     Mdns::new(MdnsConfig::default()).await.expect("mdns start")
-            // }))
-            None
+            Some(block_on(async {
+                Mdns::new(MdnsConfig::default()).await.expect("mdns start")
+            }))
         } else {
             None
         };
-
-        // autonat is off by default
-        let autonat = if config.autonat {
-            let mut behaviour = Autonat::new(local_peer_id, AutonatConfig::default());
-
-            // for (peer_id, address) in bootstrap_nodes {
-            //     behaviour.add_server(peer_id, Some(address));
-            // }
-
-            Some(behaviour)
-        } else {
-            None
-        };
-
-        let relay = Relay::new(local_peer_id, RelayConfig::default());
 
         Self {
             local_peer_id,
@@ -131,9 +108,7 @@ impl DiscoveryBehaviour {
             peers: HashSet::new(),
             peer_info: HashMap::new(),
             events: VecDeque::new(),
-            relay,
             mdns: mdns.into(),
-            autonat: autonat.into(),
         }
     }
 
@@ -150,21 +125,33 @@ impl DiscoveryBehaviour {
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
-        for (peer_id, address) in &self.bootstrap_nodes {
-            self.kademlia.add_address(peer_id, address.clone());
+        for (peer_id, address) in self.bootstrap_addrs() {
+            self.add_address(&peer_id, address.clone());
         }
+
+        if self.bootstrap_nodes.is_empty() {
+            return Err(anyhow!("No bootstrap nodes configured"));
+        }
+
+        info!("Bootstrapping with {:?}", self.bootstrap_nodes);
+
+        // Ok(self.kademlia.get_closest_peers(self.local_peer_id))
 
         self.kademlia
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
     }
 
+    pub fn bootstrap_addrs(&self) -> Vec<(PeerId, Multiaddr)> {
+        self.bootstrap_nodes.clone()
+    }
+
     fn handle_kad_event(&self, event: KademliaEvent) {
+        info!("[KademliaEvent] {:?}", event);
+
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
             if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
-                let peers = closest_peers.peers;
-
-                todo!()
+                let _peers = closest_peers.peers;
             }
         }
     }
@@ -191,21 +178,10 @@ impl NetworkBehaviour for DiscoveryBehaviour {
     }
 
     fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-        let addresses = self
-            .peer_info
-            .get(peer_id)
-            .map(|peer_info| peer_info.addresses.clone());
-
-        // if let Some(addresses) = addresses {
-        //     addresses
-        //         .as_mut()
-        //         .extend(self.mdns.addresses_of_peer(peer_id));
-        //     addresses
-        //         .as_mut()
-        //         .extend(self.kademlia.addresses_of_peer(peer_id));
-        // }
-
-        addresses.unwrap_or_default()
+        let mut addrs = Vec::new();
+        addrs.extend(self.kademlia.addresses_of_peer(peer_id));
+        addrs.extend(self.mdns.addresses_of_peer(peer_id));
+        addrs
     }
 
     fn inject_connection_established(
@@ -249,6 +225,17 @@ impl NetworkBehaviour for DiscoveryBehaviour {
             self.events
                 .push_back(DiscoveryEvent::Disconnected(*peer_id));
         }
+    }
+
+    fn inject_address_change(
+        &mut self,
+        peer_id: &PeerId,
+        connection_id: &ConnectionId,
+        old: &ConnectedPoint,
+        new: &ConnectedPoint,
+    ) {
+        self.kademlia
+            .inject_address_change(peer_id, connection_id, old, new);
     }
 
     fn inject_event(
@@ -305,6 +292,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
             }
         }
 
+        // Poll mdns for events
         while let Poll::Ready(action) = self.mdns.poll(cx, params) {
             match action {
                 NetworkBehaviourAction::GenerateEvent(event) => self.handle_mdns_event(event),

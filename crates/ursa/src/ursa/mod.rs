@@ -13,6 +13,7 @@ use std::{process, thread};
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 use ursa_network::UrsaConfig;
+use ursa_network::UrsaConfig;
 
 pub mod identity;
 
@@ -77,7 +78,6 @@ impl CliOpts {
             let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
             cfg = toml_str.merge(cfg);
         }
-
         if let Some(identity) = &self.identity {
             cfg.identity = identity.to_string();
         }

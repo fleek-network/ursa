@@ -2,16 +2,17 @@
 //!
 //!
 //!
-
-use libp2p::core::transport::{upgrade, Boxed};
-use libp2p::tcp::GenTcpConfig;
-use libp2p::Transport;
 use libp2p::{
-    core::{either::EitherOutput, muxing::StreamMuxerBox, upgrade::SelectUpgrade},
+    core::{
+        muxing::StreamMuxerBox,
+        transport::{upgrade, Boxed},
+        upgrade::SelectUpgrade,
+    },
     identity::Keypair,
     mplex, noise,
-    relay::v2::client::Client as RelayClient,
-    tcp, yamux, PeerId,
+    relay::v2::client::transport::ClientTransport,
+    tcp::GenTcpConfig,
+    yamux, PeerId, Transport,
 };
 
 use crate::config::UrsaConfig;
@@ -23,15 +24,13 @@ impl UrsaTransport {
     ///
     /// Defaults to QUIC transport over TCP.
     /// If QUIC fails to establish a connection, we fail over to TCP.
-    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Boxed<(PeerId, StreamMuxerBox)> {
+    pub fn new(
+        keypair: &Keypair,
+        config: &UrsaConfig,
+        relay_transport: Option<ClientTransport>,
+    ) -> Boxed<(PeerId, StreamMuxerBox)> {
         let id_keys = keypair;
         let local_peer_id = PeerId::from(keypair.public());
-
-        // let relay = if config.relay {
-        //     Some(RelayClient::new_transport_and_behaviour(local_peer_id))
-        // } else {
-        //     None
-        // };
 
         let tcp = {
             let noise = {
@@ -43,33 +42,31 @@ impl UrsaTransport {
             };
 
             let mplex = {
-                SelectUpgrade::new(yamux::YamuxConfig::default(), mplex::MplexConfig::default())
+                let mut mplex_config = mplex::MplexConfig::new();
+                mplex_config.set_max_buffer_behaviour(mplex::MaxBufferBehaviour::Block);
+                mplex_config.set_max_buffer_size(usize::MAX);
+
+                let mut yamux_config = yamux::YamuxConfig::default();
+                yamux_config.set_window_update_mode(yamux::WindowUpdateMode::on_read());
+
+                SelectUpgrade::new(yamux_config, mplex_config)
             };
 
             let tcp = libp2p::tcp::TokioTcpTransport::new(GenTcpConfig::default().nodelay(true));
 
-            tcp.upgrade(upgrade::Version::V1)
-                .authenticate(noise)
-                .multiplex(mplex)
-                .boxed()
+            if let Some(relay) = relay_transport {
+                tcp.or_transport(relay)
+                    .upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            } else {
+                tcp.upgrade(upgrade::Version::V1)
+                    .authenticate(noise)
+                    .multiplex(mplex)
+                    .boxed()
+            }
         };
-
-        // let quic = {
-        //     // block_on(QuicTransport::new(
-        //     //     QuicConfig::new(keypair),
-        //     //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
-        //     // ))
-        //     // .unwrap()
-        //     todo!()
-        // };
-        // self.quic.or_transport(self.tcp)
-
-        // OrTransport::new(tcp, tcp)
-        //     .map(|either_output, _| match either_output {
-        //         EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-        //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-        //     })
-        //     .boxed()
         tcp
     }
 }

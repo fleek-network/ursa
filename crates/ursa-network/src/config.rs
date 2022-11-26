@@ -15,10 +15,13 @@ pub const DEFAULT_KEYSTORE_PATH_STR: &str = ".config/ursa/keystore";
 pub struct UrsaConfig {
     /// Optional mdns local discovery.
     pub mdns: bool,
-    /// Optional relay through other peers.
-    pub relay: bool,
-    /// Optional autonat.
+    /// Optional Provide a relay server for other peers to listen on.
+    pub relay_server: bool,
+    /// Optional autonat. This is used to determine if we are behind a NAT and need to use a relay.
     pub autonat: bool,
+    /// Optional Enable listening on a relay server if not publicly available. Requires autonat.
+    /// Connections will attempt to upgrade using dcutr.
+    pub relay_client: bool,
     /// Swarm listening Address.
     pub swarm_addr: Multiaddr,
     /// Bootstrap nodes.
@@ -40,8 +43,9 @@ impl Default for UrsaConfig {
 
         Self {
             mdns: false,
-            relay: false,
-            autonat: false,
+            autonat: true,
+            relay_client: true,
+            relay_server: true,
             bootstrap_nodes,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
@@ -55,8 +59,9 @@ impl UrsaConfig {
     pub fn merge(self, other: UrsaConfig) -> Self {
         Self {
             mdns: self.mdns | other.mdns,
-            relay: self.relay | other.relay,
             autonat: self.autonat | other.autonat,
+            relay_client: self.relay_client | other.relay_client,
+            relay_server: self.relay_server | other.relay_server,
             identity: self.identity,
             swarm_addr: self.swarm_addr,
             bootstrap_nodes: self.bootstrap_nodes,

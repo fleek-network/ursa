@@ -21,6 +21,7 @@ tokio = { version = "1.20.1", features = ["full"] }
 toml = "0.5"
 tracing = "0.1.33"
 tracing-subscriber = "0.3.11"
+ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-rpc-client = { path = "../ursa-rpc-client" }

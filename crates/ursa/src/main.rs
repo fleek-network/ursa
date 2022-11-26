@@ -2,14 +2,15 @@ extern crate core;
 
 mod ursa;
 
+use std::sync::Arc;
+
 use crate::ursa::identity::IdentityManager;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
-use libp2p::identity::Keypair;
-use std::sync::Arc;
 use structopt::StructOpt;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
+use ursa_index_provider::{config::ProviderConfig, provider::Provider};
 use ursa_metrics::{config::MetricsServiceConfig, metrics};
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
@@ -63,7 +64,15 @@ async fn main() {
                     .expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
                 let store = Arc::new(Store::new(Arc::clone(&db)));
-                let service = UrsaService::new(keypair, &config, Arc::clone(&store));
+
+                let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+                    .expect("Opening RocksDB must succeed");
+                let index_provider =
+                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+                let provider_config = ProviderConfig::default();
+
+                let service =
+                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
@@ -99,12 +108,22 @@ async fn main() {
                     }
                 });
 
+                // Start index provider service
+                let provider_task = task::spawn(async move {
+                    if let Err(err) = index_provider.start(&provider_config).await {
+                        error!("[provider_task] - {:?}", err);
+                    }
+                });
+
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
-                rpc_task.abort();
-                service_task.abort();
-                metrics_task.abort();
+                task::spawn(async {
+                    rpc_task.cancel().await;
+                    service_task.cancel().await;
+                    metrics_task.cancel().await;
+                    provider_task.cancel().await;
+                });
             }
         }
         Err(e) => {

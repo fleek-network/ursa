@@ -10,10 +10,10 @@ description = "Ursa metrics"
 
 [dependencies]
 anyhow = "1.0.56"
-async-std = { version = "1.11.0", features = ["attributes"] }
 axum = "0.5.7"
 libp2p-swarm = "0.37.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 prometheus-client = "0.18.0"
+tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.33"

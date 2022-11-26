@@ -1,3 +1,4 @@
+
 [package]
 name = "ursa-store"
 version = "0.1.0"
@@ -8,13 +9,16 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's store implementation"
 
 [dependencies]
+anyhow = "1.0.65"
 async-trait = "0.1.56"
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+fnv = "1.0.7"
 ipld_blockstore = "0.1.1"
 libipld = { version = "0.12.0" }
 simple_logger = "2.2.0"
 tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.35"
+ursa-utils = { path = "../ursa-utils" }
 
 [dependencies.libp2p-bitswap]
 version = "0.22.0"

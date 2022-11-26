@@ -8,7 +8,7 @@ run: version
 	cargo run --bin cli
 
 install: version
-	cargo install --locked --path cli --force
+	cargo install --locked --path crates/ursa --force
 
 build: version
 	cargo build --release --bin ursa
@@ -17,9 +17,6 @@ all: build install
 
 docker-build:
 	docker build -t ursa -f ./Dockerfile .
-
-docker-build-dev:
-	docker build -t ursa-dev -f ./Dockerfile.dev --progress tty .
 
 docker-run-dev:
 	docker run --name ursa-dev -it ursa-dev

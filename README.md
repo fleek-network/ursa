@@ -38,18 +38,15 @@ database_path = "data/ursadb"
 
 You can run the docker image as a simple container or with docker compose. 
 
-Build the image to create **ursa** or **ursa-dev** docker images: 
+Build the image to create **ursa** docker images: 
+
 ```sh
 make docker-build
-# or
-make docker-build-dev
 ```
 
 Run a node container:
 ```sh
 make docker-run
-# or
-make docker-run-dev
 ```
 
 Run or shut down all the infra. This means node + gateway:
