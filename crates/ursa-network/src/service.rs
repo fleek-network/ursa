@@ -58,6 +58,7 @@ use crate::{
     transport::UrsaTransport,
 };
 use metrics::Label;
+use ursa_tracker::types::NodeAnnouncement;
 use ursa_utils::convert_cid;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -141,6 +142,8 @@ pub struct UrsaService<S> {
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
     /// index provider
     index_provider: Provider<S>,
+    /// current ursa config
+    config: UrsaConfig,
 }
 
 impl<S> UrsaService<S>
@@ -235,6 +238,48 @@ where
             event_receiver,
             response_channels: Default::default(),
             index_provider,
+            config: config.clone(),
+        }
+    }
+
+    // Make an http node announcement to a ursa tracker. Used for mapping the network pre-consensus
+    pub async fn announce_node(&self) -> Result<String> {
+        if let Some(tracker) = self.config.tracker.clone() {
+            let announcement = NodeAnnouncement {
+                id: *self.swarm.local_peer_id(),
+                // TODO: calculate or get from config the supplied storage in bytes
+                storage: 0,
+                // TODO(arslan): if dns address is provided, use that instead
+                addr: self
+                    .swarm
+                    .behaviour()
+                    .public_address()
+                    .and_then(|addr| {
+                        // get ip4/6 address from multiaddr
+                        addr.iter().find_map(|proto| match proto {
+                            Protocol::Ip4(ip) => Some(ip.to_string()),
+                            Protocol::Ip6(ip) => Some(ip.to_string()),
+                            _ => None,
+                        })
+                    }),
+                p2p_port: Some(
+                    self.config
+                        .swarm_addr
+                        .iter()
+                        .find_map(|proto| match proto {
+                            Protocol::Tcp(port) => Some(port),
+                            Protocol::Udp(port) => Some(port),
+                            _ => None,
+                        })
+                        .unwrap_or_default(),
+                ),
+                telemetry: Some(self.config.metrics_port.is_some()),
+                metrics_port: self.config.metrics_port,
+            };
+
+            ursa_tracker::track_node(tracker, announcement).await
+        } else {
+            Err(anyhow!("No tracker provided, skipping node announcement"))
         }
     }
 
@@ -293,7 +338,7 @@ where
                                     } else {
                                         debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
                                     }
-                    },
+                                },
                                 BehaviourEvent::GossipMessage {
                                     peer,
                                     topic,

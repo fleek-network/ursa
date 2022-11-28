@@ -31,7 +31,6 @@ pub mod identity;
 pub struct Cli {
     #[structopt(flatten)]
     pub opts: CliOpts,
-
     #[structopt(subcommand)]
     pub cmd: Option<Subcommand>,
 }
@@ -65,6 +64,10 @@ pub struct CliOpts {
         help = "Identity name. If not provided, a default identity will be created and reused automatically"
     )]
     pub identity: Option<String>,
+    #[structopt(
+        long, help = "Ursa tracker URL. Defaults to http://tracker.ursa.earth/announce (devnet)"
+    )]
+    pub tracker: Option<String>,
 }
 
 impl CliOpts {
@@ -83,6 +86,9 @@ impl CliOpts {
         }
         if let Some(identity) = &self.identity {
             cfg.identity = identity.to_string();
+        }
+        if let Some(tracker) = &self.tracker {
+            cfg.tracker = Some(tracker.clone());
         }
 
         Ok(cfg)

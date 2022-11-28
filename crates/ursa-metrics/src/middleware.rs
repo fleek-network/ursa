@@ -1,12 +1,7 @@
 use crate::events::{track, MetricEvent};
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
 use metrics::Label;
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::time::Instant;
-
-pub fn setup_metrics_handler() -> PrometheusHandle {
-    PrometheusBuilder::new().install_recorder().unwrap()
-}
 
 pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
     let start = Instant::now();

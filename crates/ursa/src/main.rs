@@ -74,6 +74,13 @@ async fn main() {
 
                 let service =
                     UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+
+                // Perform http node announcement
+                match service.announce_node().await {
+                    Ok(b) => info!("successful tracker response: {}", b),
+                    Err(e) => error!("Error with tracker announcement: {}", e),
+                }
+
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
@@ -93,14 +100,18 @@ async fn main() {
                 });
                 let server = Server::new(&server_config, interface);
 
-                let metrics_config = MetricsServiceConfig::default();
-
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {
                     if let Err(err) = server.start(server_config).await {
                         error!("[server] - {:?}", err);
                     }
                 });
+
+                let metrics_config = MetricsServiceConfig {
+                    api_path: "/metrics".into(),
+                    port: config.metrics_port.unwrap_or(4070u16),
+                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION"))
+                };
 
                 // Start metrics service
                 let metrics_task = task::spawn(async move {
