@@ -2,13 +2,15 @@ use anyhow::{anyhow, Result};
 use async_fs::File;
 use async_trait::async_trait;
 use cid::Cid;
-use futures::{channel::oneshot, AsyncRead};
+use futures::channel::mpsc::unbounded;
+use futures::io::BufReader;
+use futures::{AsyncRead, SinkExt};
 use fvm_ipld_car::{load_car, CarHeader};
 use ipld_blockstore::BlockStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock};
 use tracing::info;
 use ursa_network::{BitswapType, UrsaCommand};
 use ursa_store::{Dag, Store};
@@ -84,7 +86,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request);
+            self.network_send.send(request).expect("");
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -105,7 +107,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request);
+            self.network_send.send(request).expect("");
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -123,7 +125,7 @@ where
             version: 1,
         };
 
-        let (tx, mut rx) = unbounded();
+        let (mut tx, mut rx) = unbounded();
         let buffer_cloned = buffer.clone();
         let write_task = tokio::task::spawn(async move {
             header
@@ -136,7 +138,7 @@ where
             tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
         }
         drop(tx);
-        write_task.await;
+        write_task.await.expect("");
         let data = buffer.read().await.clone();
 
         Ok(data)
@@ -150,7 +152,7 @@ where
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cids, sender };
 
-        self.network_send.send(request);
+        self.network_send.send(request).expect("");
         receiver.await?
     }
 
@@ -171,6 +173,7 @@ mod tests {
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::identity::Keypair;
     use simple_logger::SimpleLogger;
+    use tokio::task;
     use tracing::{error, log::LevelFilter};
     use ursa_index_provider::provider::Provider;
     use ursa_network::{UrsaConfig, UrsaService};
@@ -201,7 +204,7 @@ mod tests {
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+        let index_provider = Provider::new(keypair.clone(), Arc::new(provider_db));
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());

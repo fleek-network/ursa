@@ -63,7 +63,7 @@ To access the rpc you can do through the http JSON-RPC api. The endpoint to requ
 #### JSON-RPC
 
 ##### Server Specific Error Response Codes
-`-32000`: error while retreiving a block
+`-32000`: error while retrieving a block
 
 `-32001`: error while putting the block via rpc
 

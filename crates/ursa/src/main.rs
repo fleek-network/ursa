@@ -8,6 +8,7 @@ use crate::ursa::identity::IdentityManager;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use structopt::StructOpt;
+use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::{config::ProviderConfig, provider::Provider};
@@ -67,8 +68,7 @@ async fn main() {
 
                 let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
-                let index_provider =
-                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+                let index_provider = Provider::new(keypair.clone(), Arc::new(provider_db));
                 let provider_config = ProviderConfig::default();
 
                 let service =

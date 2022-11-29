@@ -122,12 +122,12 @@ pub enum ProviderError {
 }
 impl IntoResponse for ProviderError {
     fn into_response(self) -> Response {
-        match self {
+        return match self {
             ProviderError::NotFoundError(e) => {
-                return (StatusCode::NOT_FOUND, e.to_string()).into_response()
+                (StatusCode::NOT_FOUND, e.to_string()).into_response()
             }
             ProviderError::InternalError(e) => {
-                return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }
         };
     }
@@ -163,13 +163,13 @@ where
         if let Some(ad) = temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            match self.blockstore.put_obj(&chunk, Code::Blake2b256) {
+            return match self.blockstore.put_obj(&chunk, Code::Blake2b256) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
-                    return Ok(());
+                    Ok(())
                 }
-                Err(e) => return Err(anyhow!(format!("{}", e))),
-            }
+                Err(e) => Err(anyhow!(format!("{}", e))),
+            };
         }
 
         Err(anyhow!("ad not found"))
@@ -181,8 +181,7 @@ where
         let current_head = head.take();
         let mut temp_ads = self.temp_ads.write().await;
         if let Some(mut ad) = temp_ads.remove(&id) {
-            ad.PreviousID =
-                current_head.map(|h| forest_ipld::Ipld::Link(convert_cid(h.to_bytes())));
+            ad.PreviousID = current_head.map(|h| Ipld::Link(convert_cid(h.to_bytes())));
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = forest_ipld::to_ipld(ad)?;
@@ -282,7 +281,7 @@ mod tests {
 
         for i in 0..count {
             let b = Into::<i32>::into(i).to_ne_bytes();
-            let mh = multihash::Code::Blake2b256.digest(&b);
+            let mh = Code::Blake2b256.digest(&b);
             entries.push(Ipld::Bytes(mh.to_bytes()))
         }
         let bytes = forest_encoding::to_vec(&entries)?;

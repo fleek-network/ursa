@@ -14,6 +14,7 @@
 use anyhow::{anyhow, Result};
 
 use cid::Cid;
+use db::rocks::RocksDb;
 use fnv::FnvHashMap;
 use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
@@ -58,7 +59,7 @@ use crate::{
     transport::UrsaTransport,
 };
 use metrics::Label;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::{
     select,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
@@ -170,7 +171,7 @@ where
         keypair: Keypair,
         config: &UrsaConfig,
         store: Arc<Store<S>>,
-        index_provider: Provider<S>,
+        index_provider: Provider<RocksDb>,
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
@@ -528,9 +529,11 @@ where
                     error!(
                         "There were no peers provided and the block does not exist in local store"
                     );
-                    sender.send(Err(anyhow!(
+                    sender
+                        .send(Err(anyhow!(
                         "There were no peers provided and the block does not exist in local store"
-                    )));
+                    )))
+                        .expect("");
                 } else {
                     if let Some(chans) = self.response_channels.get_mut(&cid) {
                         chans.push(sender);
@@ -560,7 +563,7 @@ where
             UrsaCommand::StartProviding { cids, sender } => {
                 // TODO: start providing via gossip and/or publish ad to the indexer
                 let _ = self.swarm.behaviour_mut().publish_ad(cids.clone());
-                sender.send(Ok(cids));
+                sender.send(Ok(cids)).expect("");
                 Ok(())
             }
             UrsaCommand::SendRequest {
