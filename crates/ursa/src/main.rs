@@ -73,7 +73,7 @@ async fn main() {
                 let provider_config = ProviderConfig::default();
 
                 let service =
-                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider);
+                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
@@ -110,11 +110,11 @@ async fn main() {
                 });
 
                 // Start index provider service
-                // let provider_task = task::spawn(async move {
-                //     if let Err(err) = index_provider.start(&provider_config).await {
-                //         error!("[provider_task] - {:?}", err);
-                //     }
-                // });
+                let provider_task = task::spawn(async move {
+                    if let Err(err) = index_provider.start(&provider_config).await {
+                        error!("[provider_task] - {:?}", err);
+                    }
+                });
 
                 wait_until_ctrlc();
 
@@ -122,7 +122,7 @@ async fn main() {
                 rpc_task.abort();
                 service_task.abort();
                 metrics_task.abort();
-                // provider_task.abort();
+                provider_task.abort();
             }
         }
         Err(e) => {

@@ -61,7 +61,7 @@ use metrics::Label;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::{
     select,
-    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+    sync::mpsc::{channel, Receiver, Sender},
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -138,13 +138,13 @@ pub struct UrsaService<S> {
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers
-    command_sender: UnboundedSender<UrsaCommand>,
+    command_sender: Sender<UrsaCommand>,
     /// Handles inbound messages from peers
-    command_receiver: UnboundedReceiver<UrsaCommand>,
+    command_receiver: Receiver<UrsaCommand>,
     /// Handles events emitted by the ursa network
-    event_sender: UnboundedSender<UrsaEvent>,
+    event_sender: Sender<UrsaEvent>,
     /// Handles events received by the ursa network
-    event_receiver: UnboundedReceiver<UrsaEvent>,
+    event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
 }
@@ -229,8 +229,8 @@ where
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        let (command_sender, command_receiver) = mpsc::unbounded_channel();
+        let (event_sender, event_receiver) = channel(512);
+        let (command_sender, command_receiver) = channel(512);
 
         UrsaService {
             swarm,
@@ -244,7 +244,7 @@ where
         }
     }
 
-    pub fn command_sender(&self) -> &UnboundedSender<UrsaCommand> {
+    pub fn command_sender(&self) -> &Sender<UrsaCommand> {
         &self.command_sender
     }
 
@@ -323,11 +323,15 @@ where
                     track(MetricEvent::GossipMessage, Some(labels), None);
 
                     if self.swarm.is_connected(&peer) {
-                        let status = self.event_sender.send(UrsaEvent::GossipsubMessage(message));
+                        let event_sender = self.event_sender.clone();
 
-                        if status.is_err() {
-                            warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
-                        }
+                        tokio::task::spawn(async move {
+                            let status = event_sender.send(UrsaEvent::GossipsubMessage(message));
+
+                            if status.await.is_err() {
+                                warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
+                            }
+                        });
                     }
                     Ok(())
                 }
@@ -345,13 +349,17 @@ where
 
                     track(MetricEvent::RequestMessage, Some(labels), None);
 
-                    if self
-                        .event_sender
-                        .send(UrsaEvent::RequestMessage { request, channel })
-                        .is_err()
-                    {
-                        warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
-                    }
+                    let event_sender = self.event_sender.clone();
+                    tokio::task::spawn(async move {
+                        if event_sender
+                            .send(UrsaEvent::RequestMessage { request, channel })
+                            .await
+                            .is_err()
+                        {
+                            warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
+                        }
+                    });
+
                     Ok(())
                 }
                 BehaviourEvent::PeerConnected(peer) => {
@@ -362,13 +370,16 @@ where
 
                     track(MetricEvent::PeerConnected, None, None);
 
-                    if self
-                        .event_sender
-                        .send(UrsaEvent::PeerConnected(peer))
-                        .is_err()
-                    {
-                        warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
-                    }
+                    let event_sender = self.event_sender.clone();
+                    tokio::task::spawn(async move {
+                        if event_sender
+                            .send(UrsaEvent::PeerConnected(peer))
+                            .await
+                            .is_err()
+                        {
+                            warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
+                        }
+                    });
                     Ok(())
                 }
                 BehaviourEvent::PeerDisconnected(peer) => {
@@ -379,13 +390,16 @@ where
 
                     track(MetricEvent::PeerDisconnected, None, None);
 
-                    if self
-                        .event_sender
-                        .send(UrsaEvent::PeerDisconnected(peer))
-                        .is_err()
-                    {
-                        warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
-                    }
+                    let event_sender = self.event_sender.clone();
+                    tokio::task::spawn(async move {
+                        if event_sender
+                            .send(UrsaEvent::PeerDisconnected(peer))
+                            .await
+                            .is_err()
+                        {
+                            warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
+                        }
+                    });
                     Ok(())
                 }
                 BehaviourEvent::PublishAd {
@@ -706,11 +720,7 @@ mod tests {
             Arc::clone(&index_store),
         );
 
-        task::spawn(async move {
-            if let Err(err) = service.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { service.start().await.unwrap() });
     }
 
     #[tokio::test]
@@ -735,11 +745,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
         let delay = Duration::from_millis(5000);
         thread::sleep(delay);
@@ -788,11 +794,7 @@ mod tests {
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
         let mut swarm_2 = node_2.swarm.fuse();
 
@@ -825,11 +827,7 @@ mod tests {
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
         let mut swarm_2 = node_2.swarm.fuse();
 
@@ -865,11 +863,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
         let delay = Duration::from_millis(2000);
         thread::sleep(delay);
@@ -922,17 +916,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move {
-            if let Err(err) = node_2.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_2.start().await.unwrap() });
 
         let delay = Duration::from_millis(2000);
         thread::sleep(delay);
@@ -978,17 +964,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move {
-            if let Err(err) = node_2.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_2.start().await.unwrap() });
 
         let delay = Duration::from_millis(2000);
         thread::sleep(delay);
@@ -1105,17 +1083,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move {
-            if let Err(err) = node_1.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move {
-            if let Err(err) = node_2.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        task::spawn(async move { node_2.start().await.unwrap() });
 
         let delay = Duration::from_millis(2000);
         thread::sleep(delay);
