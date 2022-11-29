@@ -197,21 +197,22 @@ mod tests {
     #[tokio::test]
     async fn test_stream() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let config = UrsaConfig::default();
         let keypair = Keypair::generate_ed25519();
 
         let store = get_store("test_db1");
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(provider_db));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+        let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
         let rpc_sender = service.command_sender().clone();
 
         // Start libp2p service
-        let service_task = task::spawn(async {
+        task::spawn(async {
             if let Err(err) = service.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -225,7 +226,7 @@ mod tests {
         let cids = interface
             .put_file("../car_files/text_mb.car".to_string())
             .await?;
-        let data = interface.stream(cids[0]).await?;
+        interface.stream(cids[0]).await?;
 
         Ok(())
     }

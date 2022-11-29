@@ -13,7 +13,6 @@ use std::{process, thread};
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 use ursa_network::UrsaConfig;
-use ursa_network::UrsaConfig;
 
 pub mod identity;
 

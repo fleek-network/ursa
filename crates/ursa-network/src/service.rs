@@ -14,7 +14,6 @@
 use anyhow::{anyhow, Result};
 
 use cid::Cid;
-use db::rocks::RocksDb;
 use fnv::FnvHashMap;
 use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
@@ -171,7 +170,7 @@ where
         keypair: Keypair,
         config: &UrsaConfig,
         store: Arc<Store<S>>,
-        index_provider: Provider<RocksDb>,
+        index_provider: Provider<S>,
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
@@ -610,11 +609,11 @@ where
             select! {
                 event = self.swarm.next() => {
                     let event = event.ok_or_else(|| anyhow!("Swarm Event invalid!"))?;
-                    self.handle_swarm_event(event);
+                    self.handle_swarm_event(event).expect("");
                 },
                 command = self.command_receiver.recv() => {
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
-                    self.handle_command(command);
+                    self.handle_command(command).expect("");
                 },
             }
         }
@@ -633,7 +632,6 @@ mod tests {
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
     use std::{str::FromStr, thread, time::Duration, vec};
-    use tokio::sync::RwLock;
     use tracing::log::LevelFilter;
     use ursa_store::Store;
 
@@ -644,7 +642,7 @@ mod tests {
     fn network_init(
         config: &mut UrsaConfig,
         store: Arc<Store<RocksDb>>,
-        index_store: Arc<RocksDb>,
+        index_store: Arc<Store<RocksDb>>,
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
@@ -655,8 +653,7 @@ mod tests {
 
         let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
 
-        let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+        let service = UrsaService::new(keypair, &config, Arc::clone(&store), index_provider);
 
         (service, local_peer_id)
     }
@@ -700,8 +697,8 @@ mod tests {
             .expect("Opening RocksDB must succeed");
 
         let db = Arc::new(db);
-        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (service, _) = network_init(
             &mut UrsaConfig::default(),
@@ -709,7 +706,7 @@ mod tests {
             Arc::clone(&index_store),
         );
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = service.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -728,8 +725,8 @@ mod tests {
             .expect("Opening RocksDB must succeed");
 
         let db = Arc::new(db);
-        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
@@ -738,7 +735,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -783,15 +780,15 @@ mod tests {
             .expect("Opening RocksDB must succeed");
 
         let db = Arc::new(db);
-        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -820,15 +817,15 @@ mod tests {
             .expect("Opening RocksDB must succeed");
 
         let db = Arc::new(db);
-        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -857,8 +854,8 @@ mod tests {
             .expect("Opening RocksDB must succeed");
 
         let db = Arc::new(db);
-        let index_store = Arc::new(provider_db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
@@ -868,7 +865,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -912,7 +909,7 @@ mod tests {
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_store = Arc::new(provider_db);
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let block = get_block(&b"hello world"[..]);
         info!("inserting block into bitswap store for node 1");
@@ -925,13 +922,13 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -970,7 +967,7 @@ mod tests {
         let store2 = get_store("test_db2");
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_store = Arc::new(provider_db);
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (node_1, _) = network_init(&mut config, Arc::clone(&store1), Arc::clone(&index_store));
 
@@ -981,13 +978,13 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -1082,7 +1079,7 @@ mod tests {
         let mut bitswap_store2 = BitswapStorage(store2.clone());
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_store = Arc::new(provider_db);
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let path = "../car_files/text_mb.car";
 
@@ -1108,13 +1105,13 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        tokio::spawn(async {
+        task::spawn(async move {
             if let Err(err) = node_1.start().await {
                 error!("[service_task] - {:?}", err);
             }
         });
 
-        tokio::spawn(async {
+        task::spawn(async move {
             if let Err(err) = node_2.start().await {
                 error!("[service_task] - {:?}", err);
             }

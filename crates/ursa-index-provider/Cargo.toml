@@ -30,3 +30,4 @@ thiserror = "1.0.30"
 tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.36" 
 ursa-utils ={ path = "../ursa-utils" }
+ursa-store = { path = "../ursa-store" }

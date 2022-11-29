@@ -76,7 +76,8 @@ mod tests {
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(provider_db));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+        let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());

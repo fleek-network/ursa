@@ -63,20 +63,21 @@ async fn main() {
 
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
-                let db = Arc::new(db);
-                let store = Arc::new(Store::new(Arc::clone(&db)));
+                let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
 
                 let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
-                let index_provider = Provider::new(keypair.clone(), Arc::new(provider_db));
+                let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+
+                let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
                 let provider_config = ProviderConfig::default();
 
                 let service =
-                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider);
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
-                let service_task = tokio::spawn(async {
+                let service_task = task::spawn(async {
                     if let Err(err) = service.start().await {
                         error!("[service_task] - {:?}", err);
                     }
@@ -95,35 +96,33 @@ async fn main() {
                 let metrics_config = MetricsServiceConfig::default();
 
                 // Start multiplex server service(rpc and http)
-                let rpc_task = tokio::spawn(async move {
+                let rpc_task = task::spawn(async move {
                     if let Err(err) = server.start(server_config).await {
                         error!("[server] - {:?}", err);
                     }
                 });
 
                 // Start metrics service
-                let metrics_task = tokio::spawn(async move {
+                let metrics_task = task::spawn(async move {
                     if let Err(err) = metrics::start(&metrics_config).await {
                         error!("[metrics_task] - {:?}", err);
                     }
                 });
 
                 // Start index provider service
-                let provider_task = task::spawn(async move {
-                    if let Err(err) = index_provider.start(&provider_config).await {
-                        error!("[provider_task] - {:?}", err);
-                    }
-                });
+                // let provider_task = task::spawn(async move {
+                //     if let Err(err) = index_provider.start(&provider_config).await {
+                //         error!("[provider_task] - {:?}", err);
+                //     }
+                // });
 
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
-                task::spawn(async {
-                    rpc_task.cancel().await;
-                    service_task.cancel().await;
-                    metrics_task.cancel().await;
-                    provider_task.cancel().await;
-                });
+                rpc_task.abort();
+                service_task.abort();
+                metrics_task.abort();
+                // provider_task.abort();
             }
         }
         Err(e) => {

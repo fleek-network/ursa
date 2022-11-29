@@ -7,6 +7,7 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 use hyper::{client::HttpConnector, Body};
 use std::{convert::TryFrom, net::SocketAddr};
+use tokio::task;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 type Client = hyper::client::Client<HttpConnector, Body>;
@@ -20,7 +21,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tokio::spawn(server());
+    task::spawn(server());
 
     let client = Client::new();
     let config =

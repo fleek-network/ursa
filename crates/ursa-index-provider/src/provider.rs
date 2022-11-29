@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::Write, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 use tracing::info;
+use ursa_store::Store;
 use ursa_utils::convert_cid;
 
 // handlers
@@ -51,8 +52,7 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
 ) -> Result<Response<Body>, ProviderError> {
     let cid = Cid::from_str(&cid)
         .map_err(|e| return ProviderError::InternalError(anyhow!(e.to_string())))?;
-    let store = state.blockstore;
-    match store.get_bytes(&cid) {
+    match state.blockstore.blockstore().get_bytes(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
         Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{}", e)))),
@@ -62,7 +62,7 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
     keypair: Keypair,
-    blockstore: Arc<S>,
+    blockstore: Arc<Store<S>>,
     temp_ads: Arc<RwLock<HashMap<usize, Advertisement>>>,
     address: Multiaddr,
 }
@@ -71,7 +71,7 @@ impl<S> Provider<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    pub fn new(keypair: Keypair, blockstore: Arc<S>) -> Self {
+    pub fn new(keypair: Keypair, blockstore: Arc<Store<S>>) -> Self {
         Provider {
             keypair,
             blockstore,
@@ -163,7 +163,11 @@ where
         if let Some(ad) = temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            return match self.blockstore.put_obj(&chunk, Code::Blake2b256) {
+            return match self
+                .blockstore
+                .blockstore()
+                .put_obj(&chunk, Code::Blake2b256)
+            {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
                     Ok(())
@@ -185,7 +189,10 @@ where
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = forest_ipld::to_ipld(ad)?;
-            let cid = self.blockstore.put_obj(&ipld_ad, Code::Blake2b256)?;
+            let cid = self
+                .blockstore
+                .blockstore()
+                .put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
             return Ok(());
         }
@@ -245,19 +252,22 @@ mod tests {
     use libp2p::PeerId;
     use multihash::MultihashDigest;
     use std::{thread, time::Duration};
+    use tokio::task;
 
     #[tokio::test]
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
+
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let provider = Provider::new(keypair.clone(), Arc::new(provider_db));
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+        let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
         let provider_config = ProviderConfig::default();
 
-        let provider_interface = provider.clone();
-        tokio::task::spawn(async move {
-            let _ = provider.start(&provider_config).await;
+        let provider_interface = index_provider.clone();
+        task::spawn(async move {
+            let _ = index_provider.start(&provider_config).await;
         });
 
         let delay = Duration::from_millis(2000);
