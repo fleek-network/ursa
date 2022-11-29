@@ -61,7 +61,7 @@ impl RpcServer {
         let server = Server::new()
             .with_data(Data::new(interface))
             .with_method("ursa_get_cid", network::get_cid_handler::<I>)
-            .with_method("ursa_put_car", network::put_car_handler::<I>)
+            .with_method("ursa_get_file", network::get_file_handler::<I>)
             .with_method("ursa_put_file", network::put_file_handler::<I>);
 
         RpcServer(server.finish())
