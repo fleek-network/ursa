@@ -60,13 +60,6 @@ make compose-down
 
 To access the rpc you can do through the http JSON-RPC api. The endpoint to request is **`/rpc/v0`**. The server can be accessible in port `4060` for local development and in port `80/443` through the gateway (nginx by the moment).
 
-#### JSON-RPC
-
-##### Server Specific Error Response Codes
-`-32000`: error while retreiving a block
-
-`-32001`: error while putting the block via rpc
-
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 

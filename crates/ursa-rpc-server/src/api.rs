@@ -1,19 +1,23 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use async_std::{
     channel::{unbounded, Sender},
-    io::BufReader,
+    fs::create_dir_all,
+    io::{BufReader, WriteExt},
     sync::RwLock,
 };
 
 use anyhow::{anyhow, Result};
 use async_std::fs::File;
 use async_trait::async_trait;
+use axum::body::StreamBody;
 use cid::Cid;
 use futures::{channel::oneshot, AsyncRead};
 use fvm_ipld_car::{load_car, CarHeader};
 use ipld_blockstore::BlockStore;
+use libipld::Cid as lCid;
 use serde::{Deserialize, Serialize};
+use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
 use ursa_network::{BitswapType, UrsaCommand};
 use ursa_store::{Dag, Store};
@@ -33,15 +37,6 @@ pub type NetworkGetResult = Vec<u8>;
 pub const NETWORK_GET: &str = "ursa_get_cid";
 
 #[derive(Deserialize, Serialize)]
-pub struct NetworkPutCarParams {
-    pub cid: String,
-    pub data: Vec<u8>,
-}
-
-pub type NetworkPutCarResult = String;
-pub const NETWORK_PUT_CAR: &str = "ursa_put_car";
-
-#[derive(Deserialize, Serialize)]
 pub struct NetworkPutFileParams {
     pub path: String,
 }
@@ -49,14 +44,29 @@ pub struct NetworkPutFileParams {
 pub type NetworkPutFileResult = String;
 pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 
+#[derive(Deserialize, Serialize)]
+pub struct NetworkGetFileParams {
+    pub path: String,
+    pub cid: String,
+}
+pub const NETWORK_GET_FILE: &str = "ursa_get_file";
+
 /// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
     /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
 
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>>;
+
+    /// get the file locally via cli
+    async fn get_file(&self, path: String, cid: Cid) -> Result<()>;
+
     // stream the car file from server
-    async fn stream(&self, root_cid: Cid) -> Result<Vec<u8>>;
+    async fn stream(
+        &self,
+        root_cid: Cid,
+    ) -> Result<StreamBody<ReaderStream<tokio::io::DuplexStream>>>;
 
     /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>>;
@@ -91,16 +101,16 @@ where
             // use network sender to send command
             self.network_send.send(request).await?;
             if let Err(e) = receiver.await? {
-                return Err(anyhow!(format!(
+                return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
                     e
-                )));
+                ));
             }
         }
         self.store.blockstore().get(&cid)
     }
 
-    async fn stream(&self, root_cid: Cid) -> Result<Vec<u8>> {
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
         if !self.store.blockstore().has(&root_cid).unwrap() {
             let (sender, receiver) = oneshot::channel();
             let request = UrsaCommand::GetBitswap {
@@ -112,23 +122,62 @@ where
             // use network sender to send command
             self.network_send.send(request).await?;
             if let Err(e) = receiver.await? {
-                return Err(anyhow!(format!(
+                return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
                     e
-                )));
+                ));
             }
         }
         let dag = self
             .store
             .dag_traversal(&convert_cid(root_cid.to_bytes()))?;
+        info!("Dag traversal done, now streaming the file");
 
-        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+        Ok(dag)
+    }
+
+    async fn stream(
+        &self,
+        root_cid: Cid,
+    ) -> Result<StreamBody<ReaderStream<tokio::io::DuplexStream>>> {
         let header = CarHeader {
             roots: vec![root_cid],
             version: 1,
         };
 
         let (tx, mut rx) = unbounded();
+        let (writer, reader) = tokio::io::duplex(1024 * 100);
+
+        let body = axum::body::StreamBody::new(ReaderStream::new(reader));
+
+        async_std::task::spawn(async move {
+            header
+                .write_stream_async(&mut writer.compat_write(), &mut rx)
+                .await
+                .unwrap()
+        });
+        let dag = self.get_data(root_cid).await.unwrap();
+
+        for (cid, data) in dag {
+            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
+        }
+        drop(tx);
+
+        Ok(body)
+    }
+
+    /// Used through CLI
+    async fn get_file(&self, path: String, root_cid: Cid) -> Result<()> {
+        info!("getting and storing the file at: {path}");
+
+        let header = CarHeader {
+            roots: vec![root_cid],
+            version: 1,
+        };
+
+        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+        let (tx, mut rx) = unbounded();
+
         let buffer_cloned = buffer.clone();
         let write_task = async_std::task::spawn(async move {
             header
@@ -136,15 +185,20 @@ where
                 .await
                 .unwrap()
         });
+        let dag = self.get_data(root_cid).await.unwrap();
 
         for (cid, data) in dag {
             tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
         }
         drop(tx);
         write_task.await;
-        let data = buffer.read().await.clone();
 
-        Ok(data)
+        let buffer: Vec<_> = buffer.read().await.clone();
+        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
+        create_dir_all(file_path.parent().unwrap()).await?;
+        let mut file = File::create(file_path).await.unwrap();
+        file.write_all(&buffer).await?;
+        Ok(())
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
@@ -173,6 +227,7 @@ where
 mod tests {
 
     use super::*;
+    use async_std::sync::RwLock;
     use async_std::task;
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::identity::Keypair;
@@ -200,7 +255,7 @@ mod tests {
     #[async_std::test]
     async fn test_stream() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let config = UrsaConfig::default();
         let keypair = Keypair::generate_ed25519();
 
         let store = get_store("test_db1");
@@ -214,7 +269,7 @@ mod tests {
         let rpc_sender = service.command_sender().clone();
 
         // Start libp2p service
-        let service_task = task::spawn(async {
+        task::spawn(async {
             if let Err(err) = service.start().await {
                 error!("[service_task] - {:?}", err);
             }
@@ -226,9 +281,9 @@ mod tests {
         });
 
         let cids = interface
-            .put_file("../car_files/text_mb.car".to_string())
+            .put_file("../../car_files/text_b.car".to_string())
             .await?;
-        let data = interface.stream(cids[0]).await?;
+        interface.stream(cids[0]).await?;
 
         Ok(())
     }
