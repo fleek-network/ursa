@@ -1,0 +1,25 @@
+[package]
+name = "ursa-tracker"
+version = "0.1.0"
+edition = "2021"
+authors = ["ossian <oz@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's pre-consensus node tracker"
+
+[dependencies]
+axum = "0.5.7"
+axum-server = { version = "0.4.2", features = ["tls-rustls"] }
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tokio-test = "0.4.2"
+tokio-stream = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+geohash = "0.12.0"
+anyhow = "1.0.51"
+serde = "1.0.130"
+serde_derive = "1.0.147"
+serde_json = "1.0.70"
+libp2p = { version = "0.46.1", features = ["serde"], default-features = false }
+rocksdb = "0.15.0"
