@@ -26,3 +26,7 @@ infra/ursa/data/grafana/grafana.db
 infra/ursa/data/grafana/plugins
 infra/ursa/data/grafana/png
 
+contracts/out/
+contracts/broadcast/
+contracts/cache/
+
