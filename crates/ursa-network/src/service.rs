@@ -49,6 +49,7 @@ use ursa_index_provider::{
     provider::{Provider, ProviderInterface},
 };
 use ursa_metrics::events::{track, MetricEvent};
+use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, Dag, Store};
 
 use crate::{
@@ -250,18 +251,14 @@ where
                 // TODO: calculate or get from config the supplied storage in bytes
                 storage: 0,
                 // TODO(arslan): if dns address is provided, use that instead
-                addr: self
-                    .swarm
-                    .behaviour()
-                    .public_address()
-                    .and_then(|addr| {
-                        // get ip4/6 address from multiaddr
-                        addr.iter().find_map(|proto| match proto {
-                            Protocol::Ip4(ip) => Some(ip.to_string()),
-                            Protocol::Ip6(ip) => Some(ip.to_string()),
-                            _ => None,
-                        })
-                    }),
+                addr: self.swarm.behaviour().public_address().and_then(|addr| {
+                    // get ip4/6 address from multiaddr
+                    addr.iter().find_map(|proto| match proto {
+                        Protocol::Ip4(ip) => Some(ip.to_string()),
+                        Protocol::Ip6(ip) => Some(ip.to_string()),
+                        _ => None,
+                    })
+                }),
                 p2p_port: Some(
                     self.config
                         .swarm_addr
@@ -491,18 +488,10 @@ where
                                     track(MetricEvent::RelayCircuitClosed, None, None);
                                 }
                             },
-                            // Do we need to handle any of the below events?
-                            SwarmEvent::Dialing { .. }
-                            | SwarmEvent::BannedPeer { .. }
-                            | SwarmEvent::NewListenAddr { .. }
-                            | SwarmEvent::ListenerError { .. }
-                            | SwarmEvent::ListenerClosed { .. }
-                            | SwarmEvent::ConnectionClosed { .. }
-                            | SwarmEvent::ExpiredListenAddr { .. }
-                            | SwarmEvent::IncomingConnection { .. }
-                            | SwarmEvent::ConnectionEstablished { .. }
-                            | SwarmEvent::IncomingConnectionError { .. }
-                            | SwarmEvent::OutgoingConnectionError { .. } => {},
+                            event => {
+                                // record swarm metrics
+                                event.record();
+                            },
                         }
                     }
                 },

@@ -110,7 +110,7 @@ async fn main() {
                 let metrics_config = MetricsServiceConfig {
                     api_path: "/metrics".into(),
                     port: config.metrics_port.unwrap_or(4070u16),
-                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION"))
+                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
                 };
 
                 // Start metrics service

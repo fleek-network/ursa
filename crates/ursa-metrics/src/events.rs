@@ -1,6 +1,6 @@
 use metrics::{decrement_gauge, histogram, increment_counter, increment_gauge, Label};
 use metrics::{describe_counter, describe_gauge, describe_histogram};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 use tracing::{error, info};
 
@@ -144,6 +144,5 @@ pub fn track(event: MetricEvent, labels: Option<Vec<Label>>, value: Option<f64>)
         MetricEvent::RelayCircuitClosed => {
             decrement_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
         }
-        _ => info!("unknown event {:?}", event),
     }
 }

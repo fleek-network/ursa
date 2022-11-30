@@ -31,6 +31,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use tracing::{info, warn};
+use ursa_metrics::Recorder;
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
@@ -150,6 +151,7 @@ impl DiscoveryBehaviour {
     }
 
     fn handle_kad_event(&self, event: KademliaEvent) {
+        event.record();
         info!("[KademliaEvent] {:?}", event);
 
         if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {

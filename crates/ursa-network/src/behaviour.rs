@@ -55,6 +55,7 @@ use std::{
     time::Duration,
 };
 use tracing::{debug, error, trace, warn};
+use ursa_metrics::Recorder;
 use ursa_utils::convert_cid;
 
 use crate::discovery::URSA_KAD_PROTOCOL;
@@ -384,6 +385,8 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_ping(&mut self, event: PingEvent) {
+        event.record();
+
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -427,6 +430,7 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
+        event.record();
         debug!("[IdentifyEvent] {:?}", event);
         match event {
             IdentifyEvent::Received { peer_id, info } => {

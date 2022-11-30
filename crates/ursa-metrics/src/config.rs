@@ -1,4 +1,4 @@
-const DEFAULT_METRICS_PORT: &str = "4070";
+const DEFAULT_METRICS_PORT: u16 = 4070;
 const DEFAULT_API_PATH: &str = "/metrics";
 const DEFAULT_AGENT: &str = "ursa/*";
 

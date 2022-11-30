@@ -1,4 +1,4 @@
-use crate::{config::MetricsServiceConfig};
+use crate::config::MetricsServiceConfig;
 use anyhow::Result;
 use axum::{http::StatusCode, routing::get, Router};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
