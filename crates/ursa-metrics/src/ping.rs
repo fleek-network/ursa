@@ -6,7 +6,7 @@ impl Recorder for Event {
     fn record(&self) {
         match &self.result {
             Ok(libp2p_ping::Success::Pong) => {
-                increment_counter!("pong_received");
+                increment_counter!("ping_pong_received");
             }
             Ok(libp2p_ping::Success::Ping { rtt }) => {
                 histogram!("ping_rtt", rtt.as_secs_f64());

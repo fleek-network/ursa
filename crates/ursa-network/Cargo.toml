@@ -36,7 +36,6 @@ ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
 ursa-tracker = { path = "../ursa-tracker" }
-rand = "0.8.4"
 
 [dependencies.libipld]
 version = "0.12.0"

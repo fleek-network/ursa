@@ -11,7 +11,7 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
             SwarmEvent::Behaviour(_) => {}
             SwarmEvent::ConnectionEstablished { endpoint, .. } => {
                 increment_counter!(
-                    "swarm_connections_incoming",
+                    "swarm_connections_established",
                     vec![Role::from(endpoint.clone()).into()]
                 );
             }
@@ -29,12 +29,15 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
                 // If the last connection to a peer is closed, decrement the protocols identified by them
                 if *num_established == 0 {
                     let mut peers = PEERS.write().unwrap();
-                    if let Some(protocols) = peers.get(peer_id) {
+                    if let Some(protocols) = peers.remove(peer_id) {
                         for protocol in protocols {
-                            decrement_gauge!(protocol.clone(), 1.0);
+                            decrement_gauge!(
+                            "identify_supported_protocols",
+                            1.0,
+                            vec![Label::new("protocol", protocol.clone())]
+                        );
                         }
                     }
-                    peers.remove(peer_id);
                 }
             }
             SwarmEvent::IncomingConnection { .. } => {
