@@ -30,8 +30,8 @@ use multihash::Code;
 use rand;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::Write, str::FromStr};
-use tracing::{error, info};
+use std::{collections::{HashMap, VecDeque}, io::Write, str::FromStr};
+use tracing::{error, info, warn};
 use ursa_utils::convert_cid;
 
 // handlers
@@ -63,6 +63,7 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
 
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
+    root_cids: Arc<RwLock<VecDeque<Cid>>>,
     keypair: Keypair,
     blockstore: Arc<RwLock<S>>,
     temp_ads: Arc<RwLock<HashMap<usize, Advertisement>>>,
@@ -76,11 +77,16 @@ where
     pub fn new(keypair: Keypair, blockstore: Arc<RwLock<S>>, config: ProviderConfig) -> Self {
         Provider {
             keypair,
+            root_cids: Arc::new(RwLock::new(VecDeque::new())),
             blockstore,
             head: Arc::new(RwLock::new(None)),
             temp_ads: Arc::new(RwLock::new(HashMap::new())),
             config: Arc::new(config),
         }
+    }
+
+    pub fn get_mut_root_cids(&self) -> Arc<RwLock<VecDeque<Cid>>> {
+        Arc::clone(&self.root_cids)
     }
 
     pub async fn start(self, provider_config: &ProviderConfig) -> Result<()> {
@@ -111,6 +117,7 @@ where
     fn clone(&self) -> Self {
         Self {
             head: Arc::clone(&self.head),
+            root_cids: Arc::clone(&self.root_cids),
             keypair: self.keypair.clone(),
             blockstore: Arc::clone(&self.blockstore),
             temp_ads: Arc::clone(&self.temp_ads),
@@ -141,7 +148,8 @@ pub trait ProviderInterface: Sync + Send + 'static {
     async fn create(&self, ad: Advertisement) -> Result<usize>;
     async fn add_chunk(&self, bytes: Vec<u8>, id: usize) -> Result<()>;
     async fn publish(&self, id: usize) -> Result<()>;
-    async fn announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>>;
+    async fn create_announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>>;
+    async fn announce_http_message(&self, announce_msg: Vec<u8>);
 }
 
 #[async_trait]
@@ -190,7 +198,7 @@ where
                 current_head.map(|h| forest_ipld::Ipld::Link(convert_cid(h.to_bytes())));
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
-            let ipld_ad = forest_ipld::to_ipld(ad)?;
+            let ipld_ad = forest_ipld::to_ipld(&ad)?;
             let cid = bs.put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
             return Ok(());
@@ -198,8 +206,10 @@ where
         return Err(anyhow!("ad not found"));
     }
 
-    async fn announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>> {
-        let msg_addrs = [self.config.domain.clone().parse().unwrap()].to_vec();
+    async fn create_announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>> {
+        let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
+        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs.to_string(), peer_id))?;
+        let msg_addrs = [multiaddrs].to_vec();
         let head = self.head.read().await;
         let head_cid: Cid = (*head).expect("no head found for announcement");
         let message = Message {
@@ -210,6 +220,16 @@ where
         info!("Announcing th advertisement with the message {:?}", message);
 
         Ok(message.marshal_cbor().unwrap())
+    }
+
+    async fn announce_http_message(&self, announce_msg: Vec<u8>) {
+        let res = surf::put(format!("{}/ingest/announce", self.config.indexer_url))
+            .body(announce_msg)
+            .await;
+        match res {
+            Ok(r) => info!("http announce successful {:?}", r.status()),
+            Err(e) => error!("error: http announce failed {:?}", e),
+        };
     }
 }
 
@@ -253,6 +273,8 @@ mod tests {
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
+        
+        let provider_config = ProviderConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
         let provider_config = ProviderConfig::default();

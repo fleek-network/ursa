@@ -207,10 +207,19 @@ where
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = UrsaCommand::StartProviding { cids, sender };
+        let request = UrsaCommand::Index {
+            cids: cids.clone(),
+            sender,
+        };
 
         self.network_send.send(request).await?;
-        receiver.await?
+        match receiver.await {
+            Ok(_) => Ok(cids),
+            Err(e) => Err(anyhow!(format!(
+                "The PUT failed, please check server logs {:?}",
+                e
+            ))),
+        }
     }
 
     /// Used through CLI
@@ -218,8 +227,7 @@ where
         info!("Putting the file on network: {path}");
         let file = File::open(path.clone()).await?;
         let reader = BufReader::new(file);
-        let cids = load_car(self.store.blockstore(), reader).await?;
-        Ok(cids)
+        self.put_car(reader).await
     }
 }
 
@@ -260,6 +268,7 @@ mod tests {
 
         let store = get_store("test_db1");
 
+        let provider_config = ProviderConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
         let provider_config = ProviderConfig::default();
