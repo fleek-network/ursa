@@ -24,9 +24,9 @@ impl<S> Server<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    pub fn new(config: &ServerConfig, interface: Arc<NodeNetworkInterface<S>>) -> Self {
+    pub fn new(interface: Arc<NodeNetworkInterface<S>>) -> Self {
         Self {
-            rpc_server: RpcServer::new(&config, Arc::clone(&interface)),
+            rpc_server: RpcServer::new(Arc::clone(&interface)),
             interface: interface.clone(),
         }
     }
@@ -63,13 +63,13 @@ mod tests {
     use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
-    use ursa_index_provider::provider::Provider;
+    use ursa_index_provider::{provider::Provider, config::ProviderConfig};
     use ursa_store::Store;
 
-    use ursa_network::{config::UrsaConfig, service::UrsaService};
+    use ursa_network::{config::NetworkConfig, service::UrsaService};
 
     fn ursa_network_init(
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         store: Arc<Store<RocksDb>>,
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
@@ -77,8 +77,9 @@ mod tests {
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
-
+        let provider_config = ProviderConfig::default();
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+    
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 
@@ -104,8 +105,8 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let ursa_config = UrsaConfig::default();
-        let (ursa_node, _) = ursa_network_init(&ursa_config, Arc::clone(&store));
+        let network_config = NetworkConfig::default();
+        let (ursa_node, _) = ursa_network_init(&network_config, Arc::clone(&store));
         let ursa_node_sender = ursa_node.command_sender().clone();
 
         let interface = Arc::new(NodeNetworkInterface {
@@ -113,7 +114,7 @@ mod tests {
             network_send: ursa_node_sender,
         });
 
-        let rpc = Server::new(&config, interface);
+        let rpc = Server::new(interface);
 
         let _ = rpc.start(config).await;
     }

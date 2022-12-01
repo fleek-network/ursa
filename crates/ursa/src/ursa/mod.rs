@@ -1,5 +1,6 @@
 mod rpc_commands;
 
+use crate::config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR};
 use rpc_commands::RpcCommands;
 use std::{
     cell::RefCell,
@@ -16,7 +17,6 @@ use std::{
 };
 use structopt::StructOpt;
 use tracing::{error, info, warn};
-use ursa_network::UrsaConfig;
 
 pub mod identity;
 
@@ -50,48 +50,28 @@ pub struct CliOpts {
     pub rpc: bool,
     #[structopt(short, long, help = "Port used for JSON-RPC communication")]
     pub rpc_port: Option<u16>,
-    #[structopt(short, long, help = "Database path where store data")]
-    pub database_path: Option<String>,
-    #[structopt(
-        short,
-        long,
-        help = "Path to the keystore directory. Defaults to ~/.config/ursa/keystore"
-    )]
-    pub keystore_path: Option<String>,
-    #[structopt(
-        short,
-        long,
-        help = "Identity name. If not provided, a default identity will be created and reused automatically"
-    )]
-    pub identity: Option<String>,
     #[structopt(
         long, help = "Ursa tracker URL. Defaults to http://tracker.ursa.earth/announce (devnet)"
     )]
-    pub tracker: Option<String>,
 }
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let mut cfg = UrsaConfig::default();
+        let mut path = PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR);
         if let Some(config_file) = &self.config {
             info!(
                 "Reading configuration from user provided config file {}",
                 config_file
             );
-            // Read from config file
-            let toml = read_file_to_string(&PathBuf::from(&config_file)).unwrap();
-            // Parse and return the configuration file
-            let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
-            cfg = toml_str.merge(cfg);
-        }
-        if let Some(identity) = &self.identity {
-            cfg.identity = identity.to_string();
-        }
-        if let Some(tracker) = &self.tracker {
-            cfg.tracker = Some(tracker.clone());
+            path = PathBuf::from(&config_file);
         }
 
-        Ok(cfg)
+        // Read from config file
+        let toml = read_file_to_string(&path).unwrap();
+        // Parse and return the configuration file
+        let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
+
+        Ok(toml_str)
     }
 }
 

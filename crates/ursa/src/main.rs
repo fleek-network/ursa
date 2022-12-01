@@ -1,18 +1,19 @@
 extern crate core;
 
+mod config;
 mod ursa;
 
-use std::sync::Arc;
+use std::{sync::Arc, path::PathBuf};
 
-use crate::ursa::identity::IdentityManager;
+use crate::{config::{UrsaConfig, load_config, DEFAULT_CONFIG_PATH_STR}, ursa::identity::IdentityManager};
 use async_std::{sync::RwLock, task};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use structopt::StructOpt;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursa_index_provider::{config::ProviderConfig, provider::Provider};
-use ursa_metrics::{config::MetricsServiceConfig, metrics};
+use ursa_index_provider::provider::Provider;
+use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
 use ursa_store::Store;
@@ -20,8 +21,8 @@ use ursa_store::Store;
 #[async_std::main]
 async fn main() {
     dotenv().ok();
-
     tracing_subscriber::fmt::init();
+    load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR));
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
@@ -35,45 +36,40 @@ async fn main() {
                     }
                 }
             } else {
-                info!("UrsaConfig: {:?}", config);
+                let UrsaConfig {
+                    network_config,
+                    provider_config,
+                    metrics_config,
+                    mut server_config,
+                } = config;
+                info!("NetworkConfig: {:?}", network_config);
 
-                let keystore_path = config.keystore_path.clone();
-                let im = match config.identity.clone().as_str() {
+                let keystore_path = network_config.keystore_path.clone();
+                let im = match network_config.identity.clone().as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
                     // load or create a new identity
-                    _ => IdentityManager::load_or_new(config.identity.clone(), keystore_path),
+                    _ => {
+                        IdentityManager::load_or_new(network_config.identity.clone(), keystore_path)
+                    }
                 };
 
                 let keypair = im.current();
 
-                let db_path = if let Some(path) = opts.database_path {
-                    path
-                } else {
-                    config
-                        .database_path
-                        .as_ref()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string()
-                };
+                let db_path = network_config.database_path.clone();
 
-                info!("Using {} as database path", db_path);
+                info!("Using {:?} as database path", db_path);
 
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
                 let db = Arc::new(db);
                 let store = Arc::new(Store::new(Arc::clone(&db)));
 
-                let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+                let provider_db_name = provider_config.database_path.clone();
+                let provider_db = RocksDb::open(provider_db_name, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
                 let index_provider =
-                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
-                let provider_config = ProviderConfig::default();
-
-                let service =
-                    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
 
                 // Perform http node announcement
                 match service.announce_node().await {
@@ -81,6 +77,13 @@ async fn main() {
                     Err(e) => error!("Error with tracker announcement: {}", e),
                 }
 
+                let service = UrsaService::new(
+                    keypair,
+                    &network_config,
+                    Arc::clone(&store),
+                    index_provider.clone(),
+                );
+                
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service
@@ -90,15 +93,15 @@ async fn main() {
                     }
                 });
 
-                let ServerConfig { addr, port } = ServerConfig::default();
-                let port = opts.rpc_port.unwrap_or(port);
-                let server_config = ServerConfig::new(port, addr);
-
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
                     network_send: rpc_sender,
                 });
-                let server = Server::new(&server_config, interface);
+
+                let server = Server::new(interface);
+                if opts.rpc_port.is_some() {
+                    server_config.port = opts.rpc_port.unwrap();
+                }
 
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {

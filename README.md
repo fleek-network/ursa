@@ -20,18 +20,38 @@ You can run the node with `ursa` command. This will run the node with default pa
  	- Default value: *true*.
 - `--rpc-port` Port used for JSON-RPC communication.
 	- Default value: *4069*.
-- `--database-path` Database path where store data. This field can be also set on the config file but the cli option will override default and config values.
-	- Default value: *ursa_db*. Inside a container, the location will be `/app/ursa_db`.
+
 
 ##### Config file
 
 ```toml
-mdns = true
-relay = false
-autonat = false
+[network_config]
+mdns = false
+relay_server = true
+autonat = true
+relay_client = true
+bootstrapper = false
 bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
 swarm_addr = "/ip4/0.0.0.0/tcp/6009"
-database_path = "data/ursadb"
+database_path = "~/.ursa/data/ursa_db"
+identity = "default"
+keystore_path = "~/.ursa/keystore"
+
+
+[provider_config]
+local_address = "0.0.0.0"
+port = 8070
+domain = "provider.ursa.earth"
+indexer_url = "https://dev.cid.contact"
+database_path = "~/.ursa/data/index_provider_db"
+
+[metrics_config]
+port = "4070"
+api_path = "/metrics"
+
+[server_config]
+port = 4069
+addr = "0.0.0.0"
 ```
 
 ### Run with Docker
@@ -66,4 +86,5 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 Please make sure to update tests as appropriate.
 
 ## License
-[MIT](https://choosealicense.com/licenses/mit/)
+[MIT](https://github.com/fleek-network/ursa/blob/main/LICENSE-MIT)
+[APACHE 2.0](https://github.com/fleek-network/ursa/blob/main/LICENSE-APACHE)

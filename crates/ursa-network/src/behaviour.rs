@@ -61,7 +61,7 @@ use ursa_utils::convert_cid;
 use crate::discovery::URSA_KAD_PROTOCOL;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
-    config::UrsaConfig,
+    config::NetworkConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
 };
@@ -119,10 +119,8 @@ pub enum BehaviourEvent {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
-    PublishAd {
-        root_cid: Cid,
-        context_id: Vec<u8>,
-        is_rm: bool,
+    StartPublish{ 
+        public_address: Multiaddr
     },
 }
 
@@ -188,7 +186,7 @@ pub struct Behaviour<P: StoreParams> {
 impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         bitswap_store: S,
         relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
@@ -309,6 +307,11 @@ impl<P: StoreParams> Behaviour<P> {
         self.gossipsub.unsubscribe(topic)
     }
 
+    pub fn publish_ad(&mut self, public_address: Multiaddr) -> Result<()> {
+        self.events.push_back(BehaviourEvent::StartPublish{ public_address});
+        Ok(())
+    }
+    
     pub fn send_request(
         &mut self,
         peer: PeerId,
@@ -355,16 +358,6 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
-    }
-
-    pub fn publish_ad(&mut self, root_cids: Vec<Cid>) {
-        for cid in root_cids {
-            self.events.push_back(BehaviourEvent::PublishAd {
-                root_cid: cid,
-                context_id: cid.to_bytes(),
-                is_rm: false,
-            })
-        }
     }
 
     fn poll(
