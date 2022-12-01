@@ -4,7 +4,7 @@
 //!
 //! - Load or create a new [`Keypair`] by checking the local storage.
 //! - Instantiate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
-//! - A custom ['NetworkBehaviour'] is implemented based on [`UrsaConfig`] provided by node runner.
+//! - A custom ['NetworkBehaviour'] is implemented based on [`NetworkConfig`] provided by node runner.
 //! - Using the [`UrsaTransport`] and [`Behaviour`] a new [`Swarm`] is built.
 //! - Two channels are created to serve (send/receive) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
 //!
@@ -54,8 +54,8 @@ use ursa_store::{BitswapStorage, Dag, Store};
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
-    config::UrsaConfig,
     transport::UrsaTransport,
+    NetworkConfig,
 };
 use metrics::Label;
 use ursa_utils::convert_cid;
@@ -147,7 +147,7 @@ impl<S> UrsaService<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    /// Init a new [`UrsaService`] based on [`UrsaConfig`]
+    /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
     /// For ursa `keypair` we use ed25519 either
     /// checking for a local store or creating a new keypair.
@@ -158,11 +158,11 @@ where
     /// For ursa behaviour we use [`Behaviour`].
     ///
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
-    /// listening on [`UrsaConfig`] `swarm_addr`.
+    /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
     pub fn new(
         keypair: Keypair,
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         store: Arc<Store<S>>,
         index_provider: Provider<S>,
     ) -> Self {
@@ -523,6 +523,7 @@ mod tests {
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
+    use ursa_index_provider::config::ProviderConfig;
     use std::{str::FromStr, thread, time::Duration, vec};
     use tracing::log::LevelFilter;
     use ursa_store::Store;
@@ -532,7 +533,7 @@ mod tests {
     }
 
     fn network_init(
-        config: &mut UrsaConfig,
+        config: &mut NetworkConfig,
         store: Arc<Store<RocksDb>>,
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
@@ -542,10 +543,12 @@ mod tests {
             .map(|node| node.parse().unwrap())
             .collect();
 
+        let config = NetworkConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
-
+            let provider_config = ProviderConfig::default();
+            let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+    
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
 
@@ -591,7 +594,7 @@ mod tests {
         let db = Arc::new(db);
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
-        let (service, _) = network_init(&mut UrsaConfig::default(), Arc::clone(&store));
+        let (service, _) = network_init(&mut NetworkConfig::default(), Arc::clone(&store));
 
         task::spawn(async {
             if let Err(err) = service.start().await {
@@ -603,7 +606,7 @@ mod tests {
     #[async_std::test]
     async fn test_network_gossip() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
@@ -658,7 +661,7 @@ mod tests {
     #[async_std::test]
     async fn test_network_mdns() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig {
+        let mut config = NetworkConfig {
             mdns: true,
             ..Default::default()
         };
@@ -694,7 +697,7 @@ mod tests {
     #[async_std::test]
     async fn test_network_discovery() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -727,7 +730,7 @@ mod tests {
     #[async_std::test]
     async fn test_network_req_res() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -775,7 +778,7 @@ mod tests {
     #[async_std::test]
     async fn test_bitswap_get() {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");
@@ -832,7 +835,7 @@ mod tests {
     #[async_std::test]
     async fn test_bitswap_get_block_not_found() {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");
@@ -937,7 +940,7 @@ mod tests {
     #[async_std::test]
     async fn test_bitswap_sync() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");

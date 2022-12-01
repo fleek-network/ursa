@@ -7,12 +7,12 @@ pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
     "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWGw8vCj9XayJDMXUiox6pCUFm7oVuWkDJeE2H9SDQVEcM",
 ];
 
-pub const DEFAULT_DB_PATH_STR: &str = "ursa_db";
-pub const DEFAULT_KEYSTORE_PATH_STR: &str = ".config/ursa/keystore";
+const DEFAULT_DB_PATH_STR: &str = ".ursa/data/ursa_db";
+pub const DEFAULT_KEYSTORE_PATH_STR: &str = ".ursa/keystore";
 
 /// Ursa Configuration
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct UrsaConfig {
+pub struct NetworkConfig {
     /// Optional mdns local discovery.
     pub mdns: bool,
     /// Optional Provide a relay server for other peers to listen on.
@@ -22,19 +22,21 @@ pub struct UrsaConfig {
     /// Optional Enable listening on a relay server if not publicly available. Requires autonat.
     /// Connections will attempt to upgrade using dcutr.
     pub relay_client: bool,
+    /// set true if it is a bootstrap node. default = false
+    pub bootstrapper: bool,
     /// Swarm listening Address.
     pub swarm_addr: Multiaddr,
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// Database path.
-    pub database_path: Option<PathBuf>,
+    pub database_path: PathBuf,
     /// user identity name
     pub identity: String,
-    /// Keystore path. Defaults to ~/.config/ursa/keystore
+    /// Keystore path. Defaults to ~/.ursa/keystore
     pub keystore_path: PathBuf,
 }
 
-impl Default for UrsaConfig {
+impl Default for NetworkConfig {
     fn default() -> Self {
         let bootstrap_nodes = DEFAULT_BOOTSTRAP
             .iter()
@@ -47,26 +49,11 @@ impl Default for UrsaConfig {
             relay_client: true,
             relay_server: true,
             bootstrap_nodes,
+            bootstrapper: false,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
-            database_path: Some(PathBuf::from(DEFAULT_DB_PATH_STR)),
+            database_path: PathBuf::from(env!("HOME")).join(DEFAULT_DB_PATH_STR),
             identity: "default".to_string(),
             keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
-        }
-    }
-}
-
-impl UrsaConfig {
-    pub fn merge(self, other: UrsaConfig) -> Self {
-        Self {
-            mdns: self.mdns | other.mdns,
-            autonat: self.autonat | other.autonat,
-            relay_client: self.relay_client | other.relay_client,
-            relay_server: self.relay_server | other.relay_server,
-            identity: self.identity,
-            swarm_addr: self.swarm_addr,
-            bootstrap_nodes: self.bootstrap_nodes,
-            database_path: self.database_path.or(other.database_path),
-            keystore_path: self.keystore_path,
         }
     }
 }

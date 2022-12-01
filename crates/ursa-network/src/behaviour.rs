@@ -60,7 +60,7 @@ use ursa_utils::convert_cid;
 use crate::discovery::URSA_KAD_PROTOCOL;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
-    config::UrsaConfig,
+    config::NetworkConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
     gossipsub::UrsaGossipsub,
 };
@@ -187,7 +187,7 @@ pub struct Behaviour<P: StoreParams> {
 impl<P: StoreParams> Behaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         bitswap_store: S,
         relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {

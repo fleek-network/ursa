@@ -233,8 +233,8 @@ mod tests {
     use libp2p::identity::Keypair;
     use simple_logger::SimpleLogger;
     use tracing::{error, log::LevelFilter};
-    use ursa_index_provider::provider::Provider;
-    use ursa_network::{UrsaConfig, UrsaService};
+    use ursa_index_provider::{config::ProviderConfig, provider::Provider};
+    use ursa_network::{NetworkConfig, UrsaService};
     use ursa_store::Store;
 
     fn setup_logger(level: LevelFilter) {
@@ -255,14 +255,16 @@ mod tests {
     #[async_std::test]
     async fn test_stream() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let config = UrsaConfig::default();
+        let config = NetworkConfig::default();
         let keypair = Keypair::generate_ed25519();
 
         let store = get_store("test_db1");
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)));
+        let provider_config = ProviderConfig::default();
+        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+    
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
