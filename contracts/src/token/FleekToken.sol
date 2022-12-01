@@ -62,4 +62,14 @@ contract FleekToken is Controlled, ERC20 {
         emit MinterRemoved(_account);
     }
 
+    /**
+     * @dev Destroys `amount` tokens from the caller.
+     *
+     * See {ERC20-_burn}.
+     */
+    function burn(uint256 amount) external {
+        _burn(msg.sender, amount);
+    }
+
+
 }
