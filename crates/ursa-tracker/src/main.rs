@@ -11,7 +11,7 @@ use axum::{
 use axum::http::StatusCode;
 use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
-use std::{net::SocketAddr, sync::Arc};
+use std::{env, net::SocketAddr, sync::Arc};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -28,11 +28,13 @@ async fn main() {
         .init();
 
     let db = Arc::new(DB::open_default("tracker_db").unwrap());
+    let token = env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set");
 
     let app = Router::new()
         .route("/announce", post(announcement_handler))
         .route("/http_sd", get(http_sd_handler))
-        .layer(Extension(db));
+        .layer(Extension(db))
+        .layer(Extension(token));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
     println!("Ursa-tracker listening on {}", addr);
@@ -56,40 +58,33 @@ async fn main() {
 async fn announcement_handler(
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
     db: Extension<Arc<DB>>,
+    token: Extension<String>,
     Json(announcement): Json<NodeAnnouncement>,
 ) -> (StatusCode, Json<Value>) {
     let id = announcement.id;
     info!("Received announcement for: {}", id);
 
-    // todo: verify announcement.
-    //       - check if the p2p port is reachable and id is valid
-    //       - if telemetry is enabled, check if the metrics port is reachable and valid
+    // todo: announcement verification
 
-    let addr = announcement
-        .addr
-        .clone()
-        .unwrap_or_else(|| req_addr.ip().to_string());
+    let addr = announcement.addr.clone().unwrap_or_else(|| {
+        let ip = req_addr.ip().to_string();
+        (ip != "127.0.0.1").then_some(ip).unwrap_or_default()
+    });
 
-    // lookup ourselves if the ip is localhost
-    let addr = (addr.to_string() != "127.0.0.1").then_some(addr);
-
-    let ip_info = match get_ip_info(addr).await {
-        Ok(info) => info,
+    let info = match get_ip_info(token.0.clone(), addr.clone()).await {
+        Ok(ip_info) => ip_info,
         Err(e) => {
-            tracing::error!("ip-api error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!(e.to_string())),
-            );
+            info!("Failed to lookup ip {}: {}", addr, e);
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!(e.to_string())));
         }
     };
 
     let entry = Node::from_info(
         &announcement,
-        ip_info.query,
-        ip_info.geo,
-        ip_info.timezone,
-        ip_info.country_code,
+        info.ip,
+        info.geo,
+        info.timezone,
+        info.country,
     );
     let json = json!(entry);
 
@@ -128,7 +123,7 @@ async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libp2p::identity::Keypair;
+    use libp2p::PeerId;
     use rocksdb::Options;
 
     fn tracer() {
@@ -146,92 +141,87 @@ mod tests {
         Arc::new(DB::open(&opts, "tracker_db").unwrap())
     }
 
-    fn new_announcement() -> NodeAnnouncement {
-        NodeAnnouncement {
-            id: Keypair::generate_ed25519().public().into(),
+    async fn make_announcement(
+        db: Arc<DB>,
+        addr: Option<String>,
+        id: PeerId,
+    ) -> (StatusCode, Json<Value>) {
+        let data = NodeAnnouncement {
+            id,
+            addr,
             storage: 0,
-            addr: None,
             p2p_port: Some(6009),
             telemetry: Some(true),
             metrics_port: Some(6009),
-        }
+        };
+        announcement_handler(
+            ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 6969))),
+            Extension(db),
+            Extension(env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set")),
+            Json(data),
+        )
+        .await
     }
 
     #[tokio::test]
     async fn local_node_announcement() {
         tracer();
-        let (announcement, db) = (new_announcement(), db());
+        let db = db();
+        let id = PeerId::random();
 
-        let res = announcement_handler(
-            ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 4000))),
-            Extension(db.clone()),
-            Json(announcement.clone()),
-        )
-        .await;
+        let res = make_announcement(db.clone(), None, id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
 
-        db.delete(announcement.id.to_string().as_bytes()).unwrap()
+        db.delete(id.to_string().as_bytes()).unwrap()
     }
 
     #[tokio::test]
     async fn remote_node_announcement() {
         tracer();
-        let (announcement, db) = (new_announcement(), db());
+        let db = db();
+        let id = PeerId::random();
 
-        let res = announcement_handler(
-            ConnectInfo(SocketAddr::from(([8, 8, 8, 8], 4000))),
-            Extension(db.clone()),
-            Json(announcement.clone()),
-        )
-        .await;
+        let res = make_announcement(db.clone(), Some("8.8.8.8".to_string()), id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
 
-        db.delete(announcement.id.to_string().as_bytes()).unwrap()
+        db.delete(id.to_string().as_bytes()).unwrap()
     }
 
-    #[tokio::test]
-    async fn dns_node_announcement() {
-        tracer();
-        let (mut announcement, db) = (new_announcement(), db());
-        announcement.addr = Some("google.com".to_string());
-
-        let (status, res) = announcement_handler(
-            ConnectInfo(SocketAddr::from(([8, 8, 8, 8], 4000))),
-            Extension(db.clone()),
-            Json(announcement.clone()),
-        )
-        .await;
-        info!("{:?}", res.to_string());
-        assert_eq!(status, 200);
-
-        db.delete(announcement.id.to_string().as_bytes()).unwrap();
-    }
+    // doesn't work with ipinfo
+    // #[tokio::test]
+    // async fn dns_node_announcement() {
+    //     tracer();
+    //     let db = db();
+    //     let id = PeerId::random();
+    //
+    //     let res = make_announcement(db.clone(), None, id).await;
+    //     info!("{:?}", res.1.to_string());
+    //     assert_eq!(res.0, 200);
+    //
+    //     db.delete(id.to_string().as_bytes()).unwrap();
+    // }
 
     #[tokio::test]
     async fn prometheus_http_sd() {
         tracer();
-        let (announcement, db) = (new_announcement(), db());
+        let db = db();
+        let id = PeerId::random();
 
-        let (status, res) = announcement_handler(
-            ConnectInfo(SocketAddr::from(([8, 8, 8, 8], 4000))),
-            Extension(db.clone()),
-            Json(announcement.clone()),
-        )
-        .await;
-        info!("{:?}: {}", status, res.to_string());
-        assert_eq!(status, 200);
+        let res = make_announcement(db.clone(), None, id).await;
+        info!("{:?}: {}", res.0, res.1.to_string());
+        assert_eq!(res.0, 200);
 
-        let (status, res) = http_sd_handler(Extension(db.clone())).await;
-        info!("{:?}: {}", status, res.clone().to_string());
-        assert_eq!(status, 200);
-        if let Value::Array(services) = res.0 {
+        let res = http_sd_handler(Extension(db.clone())).await;
+        info!("{:?}: {}", res.0, res.1.to_string());
+        assert_eq!(res.0, 200);
+        if let Value::Array(services) = res.1 .0 {
             assert_eq!(services.len(), 1);
         } else {
             panic!("Expected array");
         }
 
-        db.delete(announcement.id.to_string().as_bytes()).unwrap();
+        db.delete(id.to_string().as_bytes()).unwrap();
     }
 }

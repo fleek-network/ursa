@@ -3,52 +3,32 @@ use anyhow::{anyhow, Result};
 use geohash::{encode, Coordinate};
 use serde_derive::Deserialize;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct IpInfo {
-    pub status: String,
-    pub query: String,
-    #[serde(default)]
-    pub message: String,
-    #[serde(default)]
-    pub lat: f64,
-    #[serde(default)]
-    pub lon: f64,
-    #[serde(default)]
-    pub country_code: String,
-    #[serde(default)]
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IpInfoResponse {
+    pub ip: String,
+    pub hostname: String,
+    pub city: String,
+    pub region: String,
+    pub country: String,
+    pub loc: String,
+    pub org: String,
+    pub postal: String,
     pub timezone: String,
-    #[serde(default)]
-    pub isp: String,
-    #[serde(default)]
-    pub r#as: String,
-    /// geohash is not provided by the API, but we can calculate and insert it
-    #[serde(default)]
-    pub geo: String,
+    pub geo: String
 }
 
-/// Get the public ip info from ip_api.com (45 req/hr limit)
-// todo: find a suitable API with no rate limits and commercial use
-pub async fn get_ip_info(addr: Option<String>) -> Result<IpInfo> {
-    let addr = addr.map(|ip| format!("/{}", ip)).unwrap_or_default();
-    let url = format!("http://ip-api.com/json{}", addr);
-
+/// Get public ip info from https://ipinfo.io
+pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> {
+    let url = format!("http://ipinfo.io/{}?{}", addr, token);
     let res = Client::new().get(url.parse()?).await?;
     let data = hyper::body::to_bytes(res.into_body()).await?;
-
-    let mut info: IpInfo = serde_json::from_slice(&data)?;
-
-    if info.status == "success" {
-        info.geo = geohash(info.lat, info.lon)?;
-        Ok(info)
-    } else {
-        Err(anyhow!(
-            "{}: {} - {}",
-            info.status,
-            info.query,
-            info.message
-        ))
-    }
+    let mut info: IpInfoResponse = serde_json::from_slice(&data)?;
+    let loc = info.loc.split(',').collect::<Vec<&str>>();
+    let lat = loc[0].parse::<f64>()?;
+    let lon = loc[1].parse::<f64>()?;
+    info.geo = geohash(lat, lon)?;
+    Ok(info)
 }
 
 pub fn geohash(lat: f64, lon: f64) -> Result<String> {
@@ -59,6 +39,10 @@ pub fn geohash(lat: f64, lon: f64) -> Result<String> {
 mod tests {
     use super::{geohash, get_ip_info};
 
+    fn token() -> String {
+        std::env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set")
+    }
+
     #[tokio::test]
     async fn test_geohash() {
         let hash = geohash(0.0, 0.0).unwrap();
@@ -67,19 +51,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_self_ip_info() {
-        let info = get_ip_info(None).await.unwrap();
-        assert_eq!(info.status, "success");
+        get_ip_info(token(),"".to_string()).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_remote_ip_info() {
-        let info = get_ip_info(Some("8.8.8.8".to_string())).await.unwrap();
-        assert_eq!(info.status, "success");
+        get_ip_info(token(), "8.8.8.8".to_string()).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_dns_info() {
-        let info = get_ip_info(Some("google.com".into())).await.unwrap();
-        assert_eq!(info.status, "success");
+        get_ip_info(token(), "google.com".into()).await.unwrap();
     }
 }

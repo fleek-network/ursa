@@ -31,7 +31,7 @@ impl Node {
     pub fn from_info(
         announcement: &NodeAnnouncement,
         ip: String,
-        geo: String,
+        geohash: String,
         timezone: String,
         country_code: String,
     ) -> Self {
@@ -41,22 +41,21 @@ impl Node {
             p2p_port: announcement.p2p_port.unwrap_or(6009),
             telemetry: announcement.telemetry.unwrap_or(true),
             metrics_port: announcement.metrics_port.unwrap_or(4070),
-            geohash: geo.clone(),
-            timezone: timezone.clone(),
-            country_code: country_code.clone(),
+            geohash,
+            timezone,
+            country_code,
         }
     }
 }
 
-impl Into<PrometheusDiscoveryChunk> for Node {
-    fn into(self) -> PrometheusDiscoveryChunk {
+impl From<Node> for PrometheusDiscoveryChunk {
+    fn from(node: Node) -> Self {
         let mut labels = HashMap::new();
-        labels.insert("id".to_string(), self.id.to_string());
-        labels.insert("geohash".to_string(), self.geohash.clone());
-        labels.insert("country_code".to_string(), self.country_code.clone());
-        labels.insert("timezone".to_string(), self.timezone.clone());
-
-        PrometheusDiscoveryChunk::new(vec![format!("{}:{}", self.addr, self.metrics_port)], labels)
+        labels.insert("id".to_string(), node.id.to_string());
+        labels.insert("geohash".to_string(), node.geohash.clone());
+        labels.insert("country_code".to_string(), node.country_code.clone());
+        labels.insert("timezone".to_string(), node.timezone.clone());
+        PrometheusDiscoveryChunk::new(vec![format!("{}:{}", node.addr, node.metrics_port)], labels)
     }
 }
 
