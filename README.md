@@ -6,7 +6,7 @@ Ursa, a decentralized content delivery network.
 
 ### Build Dependencies
 
-> If docker is used, no dependencies are not required other than `make`
+> If docker is used, no dependencies are required other than `make`
 - (optional) docker
 - make
 - rust (`^1.65.0`)
