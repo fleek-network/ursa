@@ -4,6 +4,15 @@
 
 ## Run a node
 
+### Dependencies
+
+- rust (^1.65.0)
+- make
+- build-essential
+- libclang
+- cmake
+- (optional) docker
+
 ### Run with cli
 
 Build and install the latest *HEAD* version:
