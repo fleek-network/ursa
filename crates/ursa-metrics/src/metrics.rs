@@ -23,7 +23,7 @@ pub async fn start(conf: &MetricsServiceConfig) -> Result<()> {
 
     let router = Router::new()
         .route(
-            conf.api_path.as_str(),
+            "/metrics",
             get(move || ready(prometheus_handler.render())),
         )
         .route("/ping", get(get_ping_handler));

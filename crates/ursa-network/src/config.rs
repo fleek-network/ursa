@@ -2,13 +2,12 @@ use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const DEFAULT_TRACKER_URL: &str = "http://tracker-dev.ursa.earth:4000";
+pub const DEFAULT_TRACKER_URL: &str = "http://tracker.ursa.earth:4000";
 pub const DEFAULT_BOOTSTRAP: [&'static str; 2] = [
     "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p",
     "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWGw8vCj9XayJDMXUiox6pCUFm7oVuWkDJeE2H9SDQVEcM",
 ];
-
-const DEFAULT_DB_PATH_STR: &str = ".ursa/data/ursa_db";
+pub const DEFAULT_DB_PATH_STR: &str = ".ursa/data/ursa_db";
 pub const DEFAULT_KEYSTORE_PATH_STR: &str = ".ursa/keystore";
 
 /// Ursa Configuration
@@ -37,7 +36,7 @@ pub struct NetworkConfig {
     pub keystore_path: PathBuf,
     /// Temporary HTTP tracker url. This is used for pre-consensus node announcements.
     /// Defaults to devnet tracker.
-    pub tracker: Option<String>,
+    pub tracker: String,
     /// Prometheus metrics port
     pub metrics_port: Option<u16>,
 }
@@ -60,7 +59,7 @@ impl Default for NetworkConfig {
             database_path: PathBuf::from(env!("HOME")).join(DEFAULT_DB_PATH_STR),
             identity: "default".to_string(),
             keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
-            tracker: Some(DEFAULT_TRACKER_URL.parse().unwrap()),
+            tracker: DEFAULT_TRACKER_URL.into(),
             metrics_port: Some(4070),
         }
     }

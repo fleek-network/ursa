@@ -50,9 +50,6 @@ pub struct CliOpts {
     pub rpc: bool,
     #[structopt(short, long, help = "Port used for JSON-RPC communication")]
     pub rpc_port: Option<u16>,
-    #[structopt(
-        long, help = "Ursa tracker URL. Defaults to http://tracker.ursa.earth/announce (devnet)"
-    )]
 }
 
 impl CliOpts {

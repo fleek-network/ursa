@@ -145,7 +145,7 @@ pub struct UrsaService<S> {
     /// index provider
     index_provider: Provider<S>,
     /// current ursa config
-    config: UrsaConfig,
+    config: NetworkConfig,
 }
 
 impl<S> UrsaService<S>
@@ -246,7 +246,8 @@ where
 
     // Make an http node announcement to a ursa tracker. Used for mapping the network pre-consensus
     pub async fn announce_node(&self) -> Result<String> {
-        if let Some(tracker) = self.config.tracker.clone() {
+        let tracker = self.config.tracker.clone();
+        if tracker != "" {
             let announcement = NodeAnnouncement {
                 id: *self.swarm.local_peer_id(),
                 // TODO: calculate or get from config the supplied storage in bytes
