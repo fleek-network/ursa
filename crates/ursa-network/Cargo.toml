@@ -19,6 +19,7 @@ forest_ipld = "0.1.1"
 futures = "0.3.21"
 futures-util = "0.3.21"
 fvm_ipld_car = "0.5.0"
+libp2p-bitswap = "0.25.0"
 ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
 libp2p-quic = "0.6.1"
@@ -63,11 +64,6 @@ features = [
     "yamux",
     "serde",
 ]
-
-[dependencies.libp2p-bitswap]
-version = "0.22.0"
-git = "https://github.com/b0xtch/libp2p-bitswap"
-rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [dev-dependencies]
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
