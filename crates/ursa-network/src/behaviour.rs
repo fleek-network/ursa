@@ -19,7 +19,7 @@ use fnv::FnvHashMap;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
 use libp2p::dcutr;
-use libp2p::ping::PingConfig;
+use libp2p::ping::Config as PingConfig;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
@@ -29,10 +29,10 @@ use libp2p::{
         Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
         PeerScoreParams, PeerScoreThresholds, TopicHash,
     },
-    identify::{Identify, IdentifyConfig, IdentifyEvent},
+    identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent},
     identity::Keypair,
     kad,
-    ping::{Ping, PingEvent, PingFailure, PingSuccess},
+    ping::{Behaviour as Ping, Event as PingEvent, Failure as PingFailure, Success as PingSuccess},
     relay::v2::{
         client::{Client as RelayClient, Event as RelayClientEvent},
         relay::{Config as RelayConfig, Event as RelayServerEvent, Relay as RelayServer},
