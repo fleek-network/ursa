@@ -42,9 +42,9 @@ use libp2p::{
         RequestResponseMessage, ResponseChannel,
     },
     swarm::{
-        NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
+        NetworkBehaviour, NetworkBehaviourAction, PollParameters,
     },
-    Multiaddr, NetworkBehaviour, PeerId,
+    Multiaddr, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
 use std::{
@@ -54,6 +54,11 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
+use libp2p::core::ConnectedPoint;
+use libp2p::core::connection::ConnectionId;
+use libp2p::core::transport::ListenerId;
+use libp2p::swarm::behaviour::FromSwarm;
+use libp2p::swarm::{ConnectionHandler, DialError, IntoConnectionHandler};
 use tracing::{debug, error, trace, warn};
 use ursa_utils::convert_cid;
 
@@ -130,12 +135,7 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(
-    out_event = "BehaviourEvent",
-    poll_method = "poll",
-    event_process = true
-)]
-pub struct Behaviour<P: StoreParams> {
+pub struct UrsaNetworkBehaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
 
@@ -165,24 +165,9 @@ pub struct Behaviour<P: StoreParams> {
 
     /// request/response protocol implementation for [`UrsaProtocol`]
     request_response: RequestResponse<UrsaExchangeCodec>,
-
-    /// Ursa's emitted events.
-    #[behaviour(ignore)]
-    events: VecDeque<BehaviourEvent>,
-
-    /// Pending requests
-    #[behaviour(ignore)]
-    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
-
-    /// Pending responses
-    #[behaviour(ignore)]
-    pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
-
-    #[behaviour(ignore)]
-    queries: FnvHashMap<QueryId, BitswapInfo>,
 }
 
-impl<P: StoreParams> Behaviour<P> {
+impl<P: StoreParams> UrsaNetworkBehaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
@@ -252,7 +237,7 @@ impl<P: StoreParams> Behaviour<P> {
             })
             .into();
 
-        Behaviour {
+        UrsaNetworkBehaviour {
             ping,
             autonat,
             relay_server,
@@ -263,10 +248,6 @@ impl<P: StoreParams> Behaviour<P> {
             gossipsub,
             discovery,
             request_response,
-            events: VecDeque::new(),
-            pending_requests: HashMap::default(),
-            pending_responses: HashMap::default(),
-            queries: Default::default(),
         }
     }
 
@@ -305,6 +286,74 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn unsubscribe(&mut self, topic: &Topic) -> Result<bool, PublishError> {
         self.gossipsub.unsubscribe(topic)
     }
+}
+
+pub struct Behaviour<P: StoreParams> {
+    inner: UrsaNetworkBehaviour<P>,
+
+    /// Ursa's emitted events.
+    events: VecDeque<BehaviourEvent>,
+
+    /// Pending requests
+    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
+
+    /// Pending responses
+    pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+
+    queries: FnvHashMap<QueryId, BitswapInfo>,
+}
+
+impl<P: StoreParams> Behaviour<P> {
+    pub fn new<S: BitswapStore<Params = P>>(
+        keypair: &Keypair,
+        config: &NetworkConfig,
+        bitswap_store: S,
+        relay_client: Option<libp2p::relay::v2::client::Client>,
+    ) -> Self {
+            Self {
+                inner: UrsaNetworkBehaviour::new(keypair, config, bitswap_store, relay_client),
+                events: VecDeque::new(),
+                pending_requests: HashMap::default(),
+                pending_responses: HashMap::default(),
+                queries: Default::default(),
+            }
+    }
+
+    pub fn publish(
+        &mut self,
+        topic: Topic,
+        data: GossipsubMessage,
+    ) -> Result<MessageId, PublishError> {
+        self.inner.publish(topic, data)
+    }
+
+    pub fn public_address(&self) -> Option<&Multiaddr> {
+        self.inner.public_address()
+    }
+
+    pub fn peers(&self) -> HashSet<PeerId> {
+        self.inner.peers()
+    }
+
+    pub fn is_relay_client_enabled(&self) -> bool {
+        self.inner.is_relay_client_enabled()
+    }
+
+    pub fn discovery(&mut self) -> &mut DiscoveryBehaviour {
+        self.inner.discovery()
+    }
+
+    pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
+        self.inner.bootstrap()
+    }
+
+    pub fn subscribe(&mut self, topic: &Topic) -> Result<bool, SubscriptionError> {
+        self.inner.subscribe(topic)
+    }
+
+    pub fn unsubscribe(&mut self, topic: &Topic) -> Result<bool, PublishError> {
+        self.inner.unsubscribe(topic)
+    }
 
     pub fn publish_ad(&mut self, public_address: Multiaddr) -> Result<()> {
         self.events
@@ -318,7 +367,7 @@ impl<P: StoreParams> Behaviour<P> {
         request: UrsaExchangeRequest,
         sender: oneshot::Sender<Result<UrsaExchangeResponse>>,
     ) -> Result<()> {
-        let request_id = self.request_response.send_request(&peer, request);
+        let request_id = self.inner.request_response.send_request(&peer, request);
         self.pending_responses.insert(request_id, sender);
 
         Ok(())
@@ -326,7 +375,7 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
         debug!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self.bitswap.get(convert_cid(cid.to_bytes()), providers);
+        let id = self.inner.bitswap.get(convert_cid(cid.to_bytes()), providers);
 
         self.queries.insert(
             id,
@@ -344,7 +393,7 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = convert_cid(cid.to_bytes());
-        let id = self.bitswap.sync(c_cid, providers, iter::once(c_cid));
+        let id = self.inner.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
         self.queries.insert(
             id,
             BitswapInfo {
@@ -357,7 +406,7 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
-        self.bitswap.cancel(id);
+        self.inner.bitswap.cancel(id);
     }
 
     fn poll(
@@ -443,11 +492,11 @@ impl<P: StoreParams> Behaviour<P> {
                     .iter()
                     .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
                 {
-                    self.gossipsub.add_explicit_peer(&peer_id);
+                    self.inner.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
-                        self.discovery.add_address(&peer_id, address.clone());
-                        self.request_response.add_address(&peer_id, address.clone());
+                        self.inner.discovery.add_address(&peer_id, address.clone());
+                        self.inner.request_response.add_address(&peer_id, address.clone());
                     }
                 }
             }
@@ -546,11 +595,11 @@ impl<P: StoreParams> Behaviour<P> {
                 message,
                 ..
             } => {
-                self.events.push_back(BehaviourEvent::GossipMessage {
+                BehaviourEvent::GossipMessage {
                     peer: propagation_source,
                     topic: message.topic.clone(),
                     message,
-                });
+                };
             }
             GossipsubEvent::Subscribed { .. } => {
                 // A remote subscribed to a topic.
@@ -667,68 +716,42 @@ impl<P: StoreParams> Behaviour<P> {
     }
 }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: PingEvent) {
-        self.handle_ping(event)
-    }
-}
+impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
+    type ConnectionHandler = <UrsaNetworkBehaviour<P> as NetworkBehaviour>::ConnectionHandler;
+    type OutEvent = BehaviourEvent;
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: IdentifyEvent) {
-        self.handle_identify(event)
+    fn new_handler(&mut self) -> Self::ConnectionHandler {
+        self.inner.new_handler()
     }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: GossipsubEvent) {
-        self.handle_gossipsub(event)
+    fn on_connection_handler_event(&mut self, peer_id: PeerId, connection_id: ConnectionId, event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent) {
+        self.inner.on_connection_handler_event(peer_id, connection_id, event)
     }
-}
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: BitswapEvent) {
-        self.handle_bitswap(event)
-    }
-}
+    fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
+        loop {
+            if let Some(e) = self.events.pop_front() {
+                return Poll::Ready(NetworkBehaviourAction::GenerateEvent(e));
+            }
 
-impl<P: StoreParams> NetworkBehaviourEventProcess<DiscoveryEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: DiscoveryEvent) {
-        self.handle_discovery(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<AutonatEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: AutonatEvent) {
-        self.handle_autonat(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<RelayServerEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: RelayServerEvent) {
-        self.handle_relay_server(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<RelayClientEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: RelayClientEvent) {
-        self.handle_relay_client(event)
-    }
-}
-
-impl<P: StoreParams> NetworkBehaviourEventProcess<DcutrEvent> for Behaviour<P> {
-    fn inject_event(&mut self, event: DcutrEvent) {
-        self.handle_dcutr(event)
-    }
-}
-
-impl<P: StoreParams>
-    NetworkBehaviourEventProcess<RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>>
-    for Behaviour<P>
-{
-    fn inject_event(
-        &mut self,
-        event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) {
-        self.handle_request_response(event)
+            match self.inner.poll(cx, params) {
+                Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
+                    match event {
+                        UrsaNetworkBehaviourEvent::Ping(e) => self.handle_ping(e),
+                        UrsaNetworkBehaviourEvent::Identify(e) => self.handle_identify(e),
+                        UrsaNetworkBehaviourEvent::Autonat(e) => self.handle_autonat(e),
+                        UrsaNetworkBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
+                        UrsaNetworkBehaviourEvent::RelayServer(e) => self.handle_relay_server(e),
+                        UrsaNetworkBehaviourEvent::Bitswap(e) => self.handle_bitswap(e),
+                        UrsaNetworkBehaviourEvent::Gossipsub(e) => self.handle_gossipsub(e),
+                        UrsaNetworkBehaviourEvent::Discovery(e) => self.handle_discovery(e),
+                        UrsaNetworkBehaviourEvent::Dcutr(e) => self.handle_dcutr(e),
+                        UrsaNetworkBehaviourEvent::RequestResponse(e) => self.handle_request_response(e),
+                    };
+                }
+                Poll::Ready(action) => return Poll::Ready(action.map_out(|_| unreachable!())),
+                Poll::Pending => return Poll::Pending
+            };
+        }
     }
 }
