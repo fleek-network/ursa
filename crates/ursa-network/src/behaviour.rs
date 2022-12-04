@@ -506,18 +506,17 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    fn handle_autonat(&mut self, event: AutonatEvent) {
+    fn handle_autonat(&mut self, event: AutonatEvent) -> Option<BehaviourEvent> {
         debug!("[AutonatEvent] {:?}", event);
         match event {
             AutonatEvent::StatusChanged { old, new } => {
-                self.events
-                    .push_back(BehaviourEvent::NatStatusChanged { old, new });
+                Some(BehaviourEvent::NatStatusChanged { old, new })
             }
-            Event::OutboundProbe(_) | Event::InboundProbe(_) => {}
+            Event::OutboundProbe(_) | Event::InboundProbe(_) => None
         }
     }
 
-    fn handle_relay_server(&mut self, event: RelayServerEvent) {
+    fn handle_relay_server(&mut self, event: RelayServerEvent) -> Option<BehaviourEvent> {
         debug!("[RelayServerEvent] {:?}", event);
 
         match event {
@@ -526,25 +525,25 @@ impl<P: StoreParams> Behaviour<P> {
                 renewed,
             } => {
                 if !renewed {
-                    self.events
-                        .push_back(BehaviourEvent::RelayReservationOpened {
+                    Some(BehaviourEvent::RelayReservationOpened {
                             peer_id: src_peer_id,
-                        });
+                        })
+                } else {
+                    None
                 }
             }
             RelayServerEvent::ReservationTimedOut { src_peer_id } => {
-                self.events
-                    .push_back(BehaviourEvent::RelayReservationClosed {
+                Some(BehaviourEvent::RelayReservationClosed {
                         peer_id: src_peer_id,
-                    });
+                    })
             }
             RelayServerEvent::CircuitReqAccepted { .. } => {
-                self.events.push_back(BehaviourEvent::RelayCircuitOpened);
+                Some(BehaviourEvent::RelayCircuitOpened)
             }
             RelayServerEvent::CircuitClosed { .. } => {
-                self.events.push_back(BehaviourEvent::RelayCircuitClosed);
+                Some(BehaviourEvent::RelayCircuitClosed)
             }
-            _ => {}
+            _ => None,
         }
     }
 
@@ -556,7 +555,7 @@ impl<P: StoreParams> Behaviour<P> {
         debug!("[DcutrEvent] {:?}", event);
     }
 
-    fn handle_bitswap(&mut self, event: BitswapEvent) {
+    fn handle_bitswap(&mut self, event: BitswapEvent) -> Option<BehaviourEvent>  {
         match event {
             BitswapEvent::Progress(id, missing) => {
                 debug!(
@@ -575,7 +574,7 @@ impl<P: StoreParams> Behaviour<P> {
                             Err(err) => error!("{:?}", err),
                             Ok(_res) => info.block_found = true,
                         }
-                        self.events.push_back(BehaviourEvent::Bitswap(info));
+                        return Some(BehaviourEvent::Bitswap(info));
                     }
                     _ => {
                         error!(
@@ -586,20 +585,21 @@ impl<P: StoreParams> Behaviour<P> {
                 }
             }
         }
+        None
     }
 
-    fn handle_gossipsub(&mut self, event: GossipsubEvent) {
+    fn handle_gossipsub(&mut self, event: GossipsubEvent) -> Option<BehaviourEvent> {
         match event {
             GossipsubEvent::Message {
                 propagation_source,
                 message,
                 ..
             } => {
-                BehaviourEvent::GossipMessage {
+                return Some(BehaviourEvent::GossipMessage {
                     peer: propagation_source,
                     topic: message.topic.clone(),
                     message,
-                };
+                });
             }
             GossipsubEvent::Subscribed { peer_id, topic } => {
                 // A remote subscribed to a topic.
@@ -615,17 +615,16 @@ impl<P: StoreParams> Behaviour<P> {
                 // disconnect.
             }
         }
+        None
     }
 
-    fn handle_discovery(&mut self, event: DiscoveryEvent) {
+    fn handle_discovery(&mut self, event: DiscoveryEvent) -> Option<BehaviourEvent> {
         match event {
             DiscoveryEvent::Connected(peer_id) => {
-                self.events
-                    .push_back(BehaviourEvent::PeerConnected(peer_id));
+                Some(BehaviourEvent::PeerConnected(peer_id))
             }
             DiscoveryEvent::Disconnected(peer_id) => {
-                self.events
-                    .push_back(BehaviourEvent::PeerDisconnected(peer_id));
+                Some(BehaviourEvent::PeerDisconnected(peer_id))
             }
         }
     }
@@ -633,7 +632,7 @@ impl<P: StoreParams> Behaviour<P> {
     fn handle_request_response(
         &mut self,
         event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) {
+    ) -> Option<BehaviourEvent> {
         match event {
             RequestResponseEvent::Message { peer, message } => {
                 match message {
@@ -648,7 +647,7 @@ impl<P: StoreParams> Behaviour<P> {
                         );
                         // self.pending_requests.insert(request_id, channel);
 
-                        self.events.push_back(BehaviourEvent::RequestMessage {
+                        return Some(BehaviourEvent::RequestMessage {
                             peer,
                             request,
                             channel,
@@ -713,6 +712,7 @@ impl<P: StoreParams> Behaviour<P> {
                 );
             }
         }
+        None
     }
 }
 
@@ -730,24 +730,25 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
 
     fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
         loop {
-            if let Some(e) = self.events.pop_front() {
-                return Poll::Ready(NetworkBehaviourAction::GenerateEvent(e));
-            }
-
             match self.inner.poll(cx, params) {
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
+                    let mut gen_event = None;
                     match event {
                         UrsaNetworkBehaviourEvent::Ping(e) => self.handle_ping(e),
                         UrsaNetworkBehaviourEvent::Identify(e) => self.handle_identify(e),
-                        UrsaNetworkBehaviourEvent::Autonat(e) => self.handle_autonat(e),
+                        UrsaNetworkBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
                         UrsaNetworkBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
-                        UrsaNetworkBehaviourEvent::RelayServer(e) => self.handle_relay_server(e),
-                        UrsaNetworkBehaviourEvent::Bitswap(e) => self.handle_bitswap(e),
-                        UrsaNetworkBehaviourEvent::Gossipsub(e) => self.handle_gossipsub(e),
-                        UrsaNetworkBehaviourEvent::Discovery(e) => self.handle_discovery(e),
+                        UrsaNetworkBehaviourEvent::RelayServer(e) => gen_event = self.handle_relay_server(e),
+                        UrsaNetworkBehaviourEvent::Bitswap(e) => gen_event = self.handle_bitswap(e),
+                        UrsaNetworkBehaviourEvent::Gossipsub(e) => gen_event = self.handle_gossipsub(e),
+                        UrsaNetworkBehaviourEvent::Discovery(e) => gen_event = self.handle_discovery(e),
                         UrsaNetworkBehaviourEvent::Dcutr(e) => self.handle_dcutr(e),
-                        UrsaNetworkBehaviourEvent::RequestResponse(e) => self.handle_request_response(e),
+                        UrsaNetworkBehaviourEvent::RequestResponse(e) => gen_event = self.handle_request_response(e),
                     };
+
+                    if let Some(event) = gen_event {
+                        return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event))
+                    }
                 }
                 Poll::Ready(action) => return Poll::Ready(action.map_out(|_| unreachable!())),
                 Poll::Pending => return Poll::Pending
