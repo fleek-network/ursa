@@ -135,7 +135,7 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-pub struct UrsaNetworkBehaviour<P: StoreParams> {
+pub struct InternalBehaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
 
@@ -167,7 +167,7 @@ pub struct UrsaNetworkBehaviour<P: StoreParams> {
     request_response: RequestResponse<UrsaExchangeCodec>,
 }
 
-impl<P: StoreParams> UrsaNetworkBehaviour<P> {
+impl<P: StoreParams> InternalBehaviour<P> {
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
@@ -237,7 +237,7 @@ impl<P: StoreParams> UrsaNetworkBehaviour<P> {
             })
             .into();
 
-        UrsaNetworkBehaviour {
+        InternalBehaviour {
             ping,
             autonat,
             relay_server,
@@ -289,7 +289,7 @@ impl<P: StoreParams> UrsaNetworkBehaviour<P> {
 }
 
 pub struct Behaviour<P: StoreParams> {
-    inner: UrsaNetworkBehaviour<P>,
+    inner: InternalBehaviour<P>,
 
     /// Ursa's emitted events.
     events: VecDeque<BehaviourEvent>,
@@ -311,7 +311,7 @@ impl<P: StoreParams> Behaviour<P> {
         relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
             Self {
-                inner: UrsaNetworkBehaviour::new(keypair, config, bitswap_store, relay_client),
+                inner: InternalBehaviour::new(keypair, config, bitswap_store, relay_client),
                 events: VecDeque::new(),
                 pending_requests: HashMap::default(),
                 pending_responses: HashMap::default(),
@@ -717,7 +717,7 @@ impl<P: StoreParams> Behaviour<P> {
 }
 
 impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
-    type ConnectionHandler = <UrsaNetworkBehaviour<P> as NetworkBehaviour>::ConnectionHandler;
+    type ConnectionHandler = <InternalBehaviour<P> as NetworkBehaviour>::ConnectionHandler;
     type OutEvent = BehaviourEvent;
 
     fn new_handler(&mut self) -> Self::ConnectionHandler {
@@ -734,16 +734,16 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
                     let mut gen_event = None;
                     match event {
-                        UrsaNetworkBehaviourEvent::Ping(e) => self.handle_ping(e),
-                        UrsaNetworkBehaviourEvent::Identify(e) => self.handle_identify(e),
-                        UrsaNetworkBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
-                        UrsaNetworkBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
-                        UrsaNetworkBehaviourEvent::RelayServer(e) => gen_event = self.handle_relay_server(e),
-                        UrsaNetworkBehaviourEvent::Bitswap(e) => gen_event = self.handle_bitswap(e),
-                        UrsaNetworkBehaviourEvent::Gossipsub(e) => gen_event = self.handle_gossipsub(e),
-                        UrsaNetworkBehaviourEvent::Discovery(e) => gen_event = self.handle_discovery(e),
-                        UrsaNetworkBehaviourEvent::Dcutr(e) => self.handle_dcutr(e),
-                        UrsaNetworkBehaviourEvent::RequestResponse(e) => gen_event = self.handle_request_response(e),
+                        InternalBehaviourEvent::Ping(e) => self.handle_ping(e),
+                        InternalBehaviourEvent::Identify(e) => self.handle_identify(e),
+                        InternalBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
+                        InternalBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
+                        InternalBehaviourEvent::RelayServer(e) => gen_event = self.handle_relay_server(e),
+                        InternalBehaviourEvent::Bitswap(e) => gen_event = self.handle_bitswap(e),
+                        InternalBehaviourEvent::Gossipsub(e) => gen_event = self.handle_gossipsub(e),
+                        InternalBehaviourEvent::Discovery(e) => gen_event = self.handle_discovery(e),
+                        InternalBehaviourEvent::Dcutr(e) => self.handle_dcutr(e),
+                        InternalBehaviourEvent::RequestResponse(e) => gen_event = self.handle_request_response(e),
                     };
 
                     if let Some(event) = gen_event {
