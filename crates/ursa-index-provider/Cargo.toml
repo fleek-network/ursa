@@ -18,7 +18,7 @@ forest_ipld = "0.1"
 ipld_blockstore = "0.1.1"
 libipld = "0.14.0"
 libipld-cbor = "0.14.0"
-libp2p = "0.46.1"
+libp2p = "0.50.0"
 multihash = { version = "0.16.3", features = ["identity"] }
 rand = "0.8.4"
 rustc-serialize = "0.3.24"
