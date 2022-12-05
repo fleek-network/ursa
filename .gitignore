@@ -2,6 +2,10 @@
 **/.vscode/
 **/.idea
 
+# terraform
+**/.terraform
+*.tfstate*
+
 car_files*
 
 #environment variable file
@@ -27,4 +31,3 @@ infra/ursa/data/nginx/cache
 infra/ursa/data/grafana/grafana.db
 infra/ursa/data/grafana/plugins
 infra/ursa/data/grafana/png
-

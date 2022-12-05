@@ -40,7 +40,7 @@ resource "digitalocean_droplet" "testnet-node" {
   size       = var.droplet_size
   backups    = false
   monitoring = true
-  user_data = file(format("%s/configs/bootstrap_node.conf", path.module))
+  user_data = file(format("%s/configs/bootstrap_node.yml", path.module))
   ssh_keys = [
     data.digitalocean_ssh_key.ursa-dev.id
   ]
@@ -70,7 +70,7 @@ resource "digitalocean_droplet" "bootstrap-node" {
   size       = var.droplet_size
   backups    = false
   monitoring = true
-  user_data  = file("${path.module}/configs/bootstrap_node.conf")
+  user_data  = file("${path.module}/configs/bootstrap_node.yml")
   ssh_keys = [
     data.digitalocean_ssh_key.ursa-dev.id
   ]
@@ -94,6 +94,11 @@ resource "digitalocean_firewall" "ursa-network" {
   inbound_rule {
     protocol         = "tcp"
     port_range       = "443"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  inbound_rule {
+    port_range = "4070"
+    protocol   = "tcp"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
