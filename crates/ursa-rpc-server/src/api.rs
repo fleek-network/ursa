@@ -9,7 +9,7 @@ use fvm_ipld_car::{load_car, CarHeader};
 use ipld_blockstore::BlockStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::{oneshot, RwLock};
 use tracing::info;
 use ursa_network::{BitswapType, UrsaCommand};
@@ -67,7 +67,7 @@ where
     S: BlockStore + Sync + Send + 'static,
 {
     pub store: Arc<Store<S>>,
-    pub network_send: UnboundedSender<UrsaCommand>,
+    pub network_send: Sender<UrsaCommand>,
 }
 
 #[async_trait]
@@ -86,7 +86,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).expect("");
+            self.network_send.send(request).await.expect("");
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -107,7 +107,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).expect("");
+            self.network_send.send(request).await.expect("");
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(format!(
                     "The bitswap failed, please check server logs {:?}",
@@ -152,7 +152,7 @@ where
         let (sender, receiver) = oneshot::channel();
         let request = UrsaCommand::StartProviding { cids, sender };
 
-        self.network_send.send(request).expect("");
+        self.network_send.send(request).await.expect("");
         receiver.await?
     }
 
