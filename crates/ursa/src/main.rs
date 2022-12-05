@@ -3,9 +3,12 @@ extern crate core;
 mod config;
 mod ursa;
 
-use std::{sync::Arc, path::PathBuf};
+use std::{path::PathBuf, sync::Arc};
 
-use crate::{config::{UrsaConfig, load_config, DEFAULT_CONFIG_PATH_STR}, ursa::identity::IdentityManager};
+use crate::{
+    config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR},
+    ursa::identity::IdentityManager,
+};
 use async_std::{sync::RwLock, task};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
@@ -15,7 +18,7 @@ use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::provider::Provider;
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
-use ursa_rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
+use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
 
 #[async_std::main]
@@ -42,7 +45,9 @@ async fn main() {
                     metrics_config,
                     mut server_config,
                 } = config;
-                info!("NetworkConfig: {:?}", network_config);
+                if opts.rpc_port.is_some() {
+                    server_config.port = opts.rpc_port.unwrap();
+                }
 
                 let keystore_path = network_config.keystore_path.clone();
                 let im = match network_config.identity.clone().as_str() {
@@ -68,8 +73,11 @@ async fn main() {
                 let provider_db_name = provider_config.database_path.clone();
                 let provider_db = RocksDb::open(provider_db_name, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
-                let index_provider =
-                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+                let index_provider = Provider::new(
+                    keypair.clone(),
+                    Arc::new(RwLock::new(provider_db)),
+                    provider_config.clone(),
+                );
 
                 let service = UrsaService::new(
                     keypair,
@@ -91,9 +99,6 @@ async fn main() {
                     network_send: rpc_sender,
                 });
                 let server = Server::new(interface);
-                if opts.rpc_port.is_some() {
-                    server_config.port = opts.rpc_port.unwrap();
-                }
 
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {

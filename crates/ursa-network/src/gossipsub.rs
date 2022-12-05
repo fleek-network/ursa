@@ -22,14 +22,15 @@ pub struct UrsaGossipsub;
 
 impl UrsaGossipsub {
     pub fn new(keypair: &Keypair, config: &NetworkConfig) -> Gossipsub {
-        let mesh_n = 8;
-        let mesh_n_low = 4;
-        let mesh_n_high = 12;
+        let is_bootstrapper = config.bootstrapper;
+        let mesh_n = if is_bootstrapper { 0 } else { 8 };
+        let mesh_n_low = if is_bootstrapper { 0 } else { 4 };
+        let mesh_n_high = if is_bootstrapper { 0 } else { 12 };
         let gossip_lazy = mesh_n;
         let heartbeat_interval = Duration::from_secs(1);
         let fanout_ttl = Duration::from_secs(60);
         // D_out
-        let mesh_outbound_min = (mesh_n / 2) - 1;
+        let mesh_outbound_min = if is_bootstrapper { 0 } else { (mesh_n / 2) - 1 };
         let max_transmit_size = 4 * 1024 * 1024;
         // todo(botch): should we limit the number here?
         let max_msgs_per_rpc = 1;
