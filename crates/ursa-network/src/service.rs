@@ -146,6 +146,8 @@ pub struct UrsaService<S> {
     index_provider: Provider<S>,
     /// current ursa config
     config: NetworkConfig,
+    /// current metrics port
+    metrics_port: Option<u16>,
 }
 
 impl<S> UrsaService<S>
@@ -170,6 +172,7 @@ where
         config: &NetworkConfig,
         store: Arc<Store<S>>,
         index_provider: Provider<S>,
+        metrics_port: Option<u16>,
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
@@ -241,13 +244,14 @@ where
             response_channels: Default::default(),
             index_provider,
             config: config.clone(),
+            metrics_port,
         }
     }
 
-    // Make an http node announcement to a ursa tracker. Used for mapping the network pre-consensus
-    pub async fn announce_node(&self) -> Result<String> {
+    // Register the node with the http tracker. Used for mapping the network pre-consensus
+    pub async fn register_with_tracker(&self) -> Result<String> {
         let tracker = self.config.tracker.clone();
-        if tracker != "" {
+        if !tracker.is_empty() {
             let announcement = NodeAnnouncement {
                 id: *self.swarm.local_peer_id(),
                 // TODO: calculate or get from config the supplied storage in bytes
@@ -272,11 +276,11 @@ where
                         })
                         .unwrap_or_default(),
                 ),
-                telemetry: Some(self.config.metrics_port.is_some()),
-                metrics_port: self.config.metrics_port,
+                telemetry: Some(self.metrics_port.is_some()),
+                metrics_port: self.metrics_port,
             };
 
-            ursa_tracker::track_node(tracker, announcement).await
+            ursa_tracker::register_with_tracker(tracker, announcement).await
         } else {
             Err(anyhow!("No tracker provided, skipping node announcement"))
         }
@@ -616,7 +620,7 @@ mod tests {
             let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
     
         let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone(), None);
 
         (service, local_peer_id)
     }

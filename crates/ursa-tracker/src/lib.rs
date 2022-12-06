@@ -1,11 +1,11 @@
-use crate::types::{Client, NodeAnnouncement};
+pub use crate::types::{Client, NodeAnnouncement};
 use anyhow::{anyhow, Result};
 use hyper::{Method, Request};
 use serde_json::json;
 
 pub mod types;
 
-pub async fn track_node(tracker: String, announcement: NodeAnnouncement) -> Result<String> {
+pub async fn register_with_tracker(tracker: String, announcement: NodeAnnouncement) -> Result<String> {
     let client = Client::new();
 
     let req = Request::builder()

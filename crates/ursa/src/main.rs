@@ -15,14 +15,14 @@ use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::provider::Provider;
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
-use ursa_rpc_server::{api::NodeNetworkInterface, config::ServerConfig, server::Server};
+use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
 
 #[async_std::main]
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR));
+    load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)).unwrap();
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
@@ -71,11 +71,19 @@ async fn main() {
                 let index_provider =
                     Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
 
+                // Start metrics service
+                let metrics_task = task::spawn(async move {
+                    if let Err(err) = metrics::start(&metrics_config).await {
+                        error!("[metrics_task] - {:?}", err);
+                    }
+                });
+
                 let service = UrsaService::new(
                     keypair,
                     &network_config,
                     Arc::clone(&store),
                     index_provider.clone(),
+                    Some(metrics_config.port)
                 );
 
                 // Perform http node announcement
@@ -107,13 +115,6 @@ async fn main() {
                 let rpc_task = task::spawn(async move {
                     if let Err(err) = server.start(server_config).await {
                         error!("[rpc_task] - {:?}", err);
-                    }
-                });
-
-                // Start metrics service
-                let metrics_task = task::spawn(async move {
-                    if let Err(err) = metrics::start(&metrics_config).await {
-                        error!("[metrics_task] - {:?}", err);
                     }
                 });
 

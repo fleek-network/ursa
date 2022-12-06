@@ -37,8 +37,6 @@ pub struct NetworkConfig {
     /// Temporary HTTP tracker url. This is used for pre-consensus node announcements.
     /// Defaults to devnet tracker.
     pub tracker: String,
-    /// Prometheus metrics port
-    pub metrics_port: Option<u16>,
 }
 
 impl Default for NetworkConfig {
@@ -60,7 +58,6 @@ impl Default for NetworkConfig {
             identity: "default".to_string(),
             keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
             tracker: DEFAULT_TRACKER_URL.into(),
-            metrics_port: Some(4070),
         }
     }
 }
