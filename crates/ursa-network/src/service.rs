@@ -536,11 +536,11 @@ where
                     error!(
                         "There were no peers provided and the block does not exist in local store"
                     );
-                    sender
+                    return sender
                         .send(Err(anyhow!(
                         "There were no peers provided and the block does not exist in local store"
                     )))
-                        .expect("");
+                        .map_err(|_| anyhow!("Failed to get a bitswap block!"));
                 } else {
                     if let Some(chans) = self.response_channels.get_mut(&cid) {
                         chans.push(sender);
@@ -582,7 +582,9 @@ where
                      Otherwise the autonat will get the public address soon and node will start indexing the content");
                 }
 
-                sender.send(Ok(cids)).map_err(|_| anyhow!("Failed to index cid!"))
+                sender
+                    .send(Ok(cids))
+                    .map_err(|_| anyhow!("Failed to index cid!"))
             }
             UrsaCommand::SendRequest {
                 peer_id,
@@ -598,8 +600,6 @@ where
                 channel,
             } => todo!(),
             UrsaCommand::GossipsubMessage { topic, message } => {
-                println!("HERE: {:?}", "meow");
-
                 if let Err(error) = self
                     .swarm
                     .behaviour_mut()
@@ -731,13 +731,13 @@ mod tests {
 
         loop {
             match service.swarm.select_next_some().await {
-                SwarmEvent::NewListenAddr { address, .. }=> {
+                SwarmEvent::NewListenAddr { address, .. } => {
                     info!("SwarmEvent::NewListenAddr: {:?}:", address);
                     break;
-                },
+                }
                 _ => {
                     panic!("test_network_start: Failed!")
-                },
+                }
             }
         }
     }
@@ -781,23 +781,20 @@ mod tests {
 
         loop {
             select! {
-                event = node_2.event_receiver.recv() => {
-                    println!("Event receieved: {:?}", event);
-
-                },
-                // event_1 = node_1.swarm.select_next_some() => {
-                //     match event_1 {
-                //         SwarmEvent::Behaviour(behaviour) => {
-                //             println!("Behaviour receieved: {:?}", behaviour);
-                //             break;
-                //         },
-                //         other => {
-                //             warn!("Another event receieved {:?}", other);
-                //         }
-                //     }
-                // }
+                event_2 = node_2.swarm.select_next_some() => {
+                    match event_2 {
+                        SwarmEvent::Behaviour(behaviour) => {
+                            println!("Behaviour receieved: {:?}", behaviour);
+                            break;
+                        },
+                        other => {
+                            warn!("Another event receieved {:?}", other);
+                        }
+                    }
+                }
             }
         }
+        Ok(())
     }
 
     #[tokio::test]
@@ -852,10 +849,11 @@ mod tests {
         let store = Arc::new(Store::new(Arc::clone(&db)));
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
-        let (mut node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (mut node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (mut node_2, _) =
+            network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         task::spawn(async move { node_1.start().await.unwrap() });
 
@@ -957,9 +955,6 @@ mod tests {
 
         task::spawn(async move { node_2.start().await.unwrap() });
 
-        let delay = Duration::from_millis(2000);
-        thread::sleep(delay);
-
         let (sender, receiver) = oneshot::channel();
         let msg = UrsaCommand::GetBitswap {
             cid: convert_cid(block.cid().to_bytes()),
@@ -1006,9 +1001,6 @@ mod tests {
         task::spawn(async move { node_1.start().await.unwrap() });
 
         task::spawn(async move { node_2.start().await.unwrap() });
-
-        let delay = Duration::from_millis(2000);
-        thread::sleep(delay);
 
         let (sender, receiver) = oneshot::channel();
 
@@ -1131,9 +1123,6 @@ mod tests {
         task::spawn(async move { node_1.start().await.unwrap() });
 
         task::spawn(async move { node_2.start().await.unwrap() });
-
-        let delay = Duration::from_millis(2000);
-        thread::sleep(delay);
 
         let (sender, receiver) = oneshot::channel();
 

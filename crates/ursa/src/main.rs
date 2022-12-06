@@ -9,7 +9,6 @@ use crate::{
     config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR},
     ursa::identity::IdentityManager,
 };
-use async_std::{sync::RwLock, task};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use structopt::StructOpt;
@@ -75,11 +74,8 @@ async fn main() {
                     .expect("Opening RocksDB must succeed");
 
                 let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
-                let index_provider = Provider::new(
-                    keypair.clone(),
-                    Arc::new(&index_store),
-                    provider_config.clone(),
-                );
+                let index_provider =
+                    Provider::new(keypair.clone(), index_store, provider_config.clone());
 
                 let service = UrsaService::new(
                     keypair,

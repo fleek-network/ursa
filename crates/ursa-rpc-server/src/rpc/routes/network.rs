@@ -4,8 +4,6 @@ use axum::{
     Router,
 };
 use cid::Cid;
-use futures::{channel::mpsc::unbounded, SinkExt};
-use std::io::Cursor;
 use std::{str::FromStr, sync::Arc};
 use ursa_metrics::middleware::track_metrics;
 
@@ -18,7 +16,6 @@ use crate::{
     },
     rpc::rpc::rpc_handler,
 };
-use tokio::sync::{mpsc::channel, RwLock};
 
 use tracing::error;
 pub type Result<T> = anyhow::Result<T, Error>;

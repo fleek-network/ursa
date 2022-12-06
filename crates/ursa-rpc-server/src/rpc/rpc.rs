@@ -8,7 +8,7 @@ use axum::{
 };
 use jsonrpc_v2::{Data, Error, MapRouter, RequestObject, ResponseObject, ResponseObjects, Server};
 
-use crate::{api::NetworkInterface, config::ServerConfig};
+use crate::api::NetworkInterface;
 
 use super::routes::network;
 

@@ -33,7 +33,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use ursa_store::Store;
 use ursa_utils::convert_cid;
 
