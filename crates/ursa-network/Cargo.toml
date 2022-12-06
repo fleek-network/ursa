@@ -24,7 +24,6 @@ fvm_ipld_car = "0.5.0"
 libp2p-bitswap = "0.25.0"
 ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
-libp2p-quic = "0.6.1"
 log = "0.4.17"
 metrics = "0.20.1"
 rand = "0.8.4"
@@ -38,7 +37,7 @@ ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
-libp2p-mdns = { features = ["async-io"]}
+libp2p-mdns = { version = "0.42.0", features = ["async-io"]}
 
 [dependencies.libipld]
 version = "0.14.0"
@@ -65,6 +64,7 @@ features = [
     "relay",
     "request-response",
     "tcp",
+    "tokio",
     "yamux",
     "serde",
 ]

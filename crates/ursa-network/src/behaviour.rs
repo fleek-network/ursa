@@ -18,9 +18,14 @@ use cid::Cid;
 use fnv::FnvHashMap;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
+use libp2p::core::connection::ConnectionId;
+use libp2p::core::transport::ListenerId;
+use libp2p::core::ConnectedPoint;
 use libp2p::dcutr;
 use libp2p::ping::Config as PingConfig;
 use libp2p::swarm::behaviour::toggle::Toggle;
+use libp2p::swarm::behaviour::FromSwarm;
+use libp2p::swarm::{ConnectionHandler, DialError, IntoConnectionHandler};
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
     dcutr::behaviour::Event as DcutrEvent,
@@ -41,9 +46,7 @@ use libp2p::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
     },
-    swarm::{
-        NetworkBehaviour, NetworkBehaviourAction, PollParameters,
-    },
+    swarm::{NetworkBehaviour, NetworkBehaviourAction, PollParameters},
     Multiaddr, PeerId,
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
@@ -54,11 +57,6 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use libp2p::core::ConnectedPoint;
-use libp2p::core::connection::ConnectionId;
-use libp2p::core::transport::ListenerId;
-use libp2p::swarm::behaviour::FromSwarm;
-use libp2p::swarm::{ConnectionHandler, DialError, IntoConnectionHandler};
 use tracing::{debug, error, trace, warn};
 use ursa_utils::convert_cid;
 
@@ -310,13 +308,13 @@ impl<P: StoreParams> Behaviour<P> {
         bitswap_store: S,
         relay_client: Option<libp2p::relay::v2::client::Client>,
     ) -> Self {
-            Self {
-                inner: InternalBehaviour::new(keypair, config, bitswap_store, relay_client),
-                events: VecDeque::new(),
-                pending_requests: HashMap::default(),
-                pending_responses: HashMap::default(),
-                queries: Default::default(),
-            }
+        Self {
+            inner: InternalBehaviour::new(keypair, config, bitswap_store, relay_client),
+            events: VecDeque::new(),
+            pending_requests: HashMap::default(),
+            pending_responses: HashMap::default(),
+            queries: Default::default(),
+        }
     }
 
     pub fn publish(
@@ -375,7 +373,10 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn get_block(&mut self, cid: Cid, providers: impl Iterator<Item = PeerId>) {
         debug!("get block via rpc called, the requested cid is: {:?}", cid);
-        let id = self.inner.bitswap.get(convert_cid(cid.to_bytes()), providers);
+        let id = self
+            .inner
+            .bitswap
+            .get(convert_cid(cid.to_bytes()), providers);
 
         self.queries.insert(
             id,
@@ -393,7 +394,10 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = convert_cid(cid.to_bytes());
-        let id = self.inner.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
+        let id = self
+            .inner
+            .bitswap
+            .sync(c_cid, providers, std::iter::once(c_cid));
         self.queries.insert(
             id,
             BitswapInfo {
@@ -496,7 +500,9 @@ impl<P: StoreParams> Behaviour<P> {
 
                     for address in info.listen_addrs {
                         self.inner.discovery.add_address(&peer_id, address.clone());
-                        self.inner.request_response.add_address(&peer_id, address.clone());
+                        self.inner
+                            .request_response
+                            .add_address(&peer_id, address.clone());
                     }
                 }
             }
@@ -512,7 +518,7 @@ impl<P: StoreParams> Behaviour<P> {
             AutonatEvent::StatusChanged { old, new } => {
                 Some(BehaviourEvent::NatStatusChanged { old, new })
             }
-            Event::OutboundProbe(_) | Event::InboundProbe(_) => None
+            Event::OutboundProbe(_) | Event::InboundProbe(_) => None,
         }
     }
 
@@ -526,23 +532,19 @@ impl<P: StoreParams> Behaviour<P> {
             } => {
                 if !renewed {
                     Some(BehaviourEvent::RelayReservationOpened {
-                            peer_id: src_peer_id,
-                        })
+                        peer_id: src_peer_id,
+                    })
                 } else {
                     None
                 }
             }
             RelayServerEvent::ReservationTimedOut { src_peer_id } => {
                 Some(BehaviourEvent::RelayReservationClosed {
-                        peer_id: src_peer_id,
-                    })
+                    peer_id: src_peer_id,
+                })
             }
-            RelayServerEvent::CircuitReqAccepted { .. } => {
-                Some(BehaviourEvent::RelayCircuitOpened)
-            }
-            RelayServerEvent::CircuitClosed { .. } => {
-                Some(BehaviourEvent::RelayCircuitClosed)
-            }
+            RelayServerEvent::CircuitReqAccepted { .. } => Some(BehaviourEvent::RelayCircuitOpened),
+            RelayServerEvent::CircuitClosed { .. } => Some(BehaviourEvent::RelayCircuitClosed),
             _ => None,
         }
     }
@@ -555,7 +557,7 @@ impl<P: StoreParams> Behaviour<P> {
         debug!("[DcutrEvent] {:?}", event);
     }
 
-    fn handle_bitswap(&mut self, event: BitswapEvent) -> Option<BehaviourEvent>  {
+    fn handle_bitswap(&mut self, event: BitswapEvent) -> Option<BehaviourEvent> {
         match event {
             BitswapEvent::Progress(id, missing) => {
                 debug!(
@@ -620,9 +622,7 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_discovery(&mut self, event: DiscoveryEvent) -> Option<BehaviourEvent> {
         match event {
-            DiscoveryEvent::Connected(peer_id) => {
-                Some(BehaviourEvent::PeerConnected(peer_id))
-            }
+            DiscoveryEvent::Connected(peer_id) => Some(BehaviourEvent::PeerConnected(peer_id)),
             DiscoveryEvent::Disconnected(peer_id) => {
                 Some(BehaviourEvent::PeerDisconnected(peer_id))
             }
@@ -724,11 +724,21 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
         self.inner.new_handler()
     }
 
-    fn on_connection_handler_event(&mut self, peer_id: PeerId, connection_id: ConnectionId, event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent) {
-        self.inner.on_connection_handler_event(peer_id, connection_id, event)
+    fn on_connection_handler_event(
+        &mut self,
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent,
+    ) {
+        self.inner
+            .on_connection_handler_event(peer_id, connection_id, event)
     }
 
-    fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
+    fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+        params: &mut impl PollParameters,
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
         loop {
             match self.inner.poll(cx, params) {
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
@@ -738,20 +748,28 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
                         InternalBehaviourEvent::Identify(e) => self.handle_identify(e),
                         InternalBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
                         InternalBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
-                        InternalBehaviourEvent::RelayServer(e) => gen_event = self.handle_relay_server(e),
+                        InternalBehaviourEvent::RelayServer(e) => {
+                            gen_event = self.handle_relay_server(e)
+                        }
                         InternalBehaviourEvent::Bitswap(e) => gen_event = self.handle_bitswap(e),
-                        InternalBehaviourEvent::Gossipsub(e) => gen_event = self.handle_gossipsub(e),
-                        InternalBehaviourEvent::Discovery(e) => gen_event = self.handle_discovery(e),
+                        InternalBehaviourEvent::Gossipsub(e) => {
+                            gen_event = self.handle_gossipsub(e)
+                        }
+                        InternalBehaviourEvent::Discovery(e) => {
+                            gen_event = self.handle_discovery(e)
+                        }
                         InternalBehaviourEvent::Dcutr(e) => self.handle_dcutr(e),
-                        InternalBehaviourEvent::RequestResponse(e) => gen_event = self.handle_request_response(e),
+                        InternalBehaviourEvent::RequestResponse(e) => {
+                            gen_event = self.handle_request_response(e)
+                        }
                     };
 
                     if let Some(event) = gen_event {
-                        return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event))
+                        return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
                     }
                 }
                 Poll::Ready(action) => return Poll::Ready(action.map_out(|_| unreachable!())),
-                Poll::Pending => return Poll::Pending
+                Poll::Pending => return Poll::Pending,
             };
         }
     }
