@@ -54,13 +54,14 @@ pub async fn rpc_handler(
 }
 
 impl RpcServer {
-    pub fn new<I>(_config: &ServerConfig, interface: Arc<I>) -> Self
+    pub fn new<I>(interface: Arc<I>) -> Self
     where
         I: NetworkInterface,
     {
         let server = Server::new()
             .with_data(Data::new(interface))
             .with_method("ursa_get_cid", network::get_cid_handler::<I>)
+            .with_method("ursa_get_file", network::get_file_handler::<I>)
             .with_method("ursa_put_file", network::put_file_handler::<I>);
 
         RpcServer(server.finish())

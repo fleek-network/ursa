@@ -39,8 +39,15 @@
 - If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.
 
 ### Test your endpoint
+
+You can test locally by replacing `<HOSTNAME>` by `localhost` and `<PORT>` as `4069`. Replace The `<VALID-CID-HERE>` with a valid [CID](https://docs.ipfs.tech/concepts/content-addressing/) (content identifier). The flag `-o` refers to `output` to a custom filename.
+
 ```
-curl -X POST https://domain.com/rpc/v0 \
- -H "Content-Type: application/json" \
- -d '{"jsonrpc": "2.0", "method": "ursa_get_cid", "params": {"cid": "some-valid-cid"}, "id": 1}'
+curl -X GET http://<HOSTNAME>:<PORT>/<VALID-CID-HERE> -o <FILENAME>
+```
+
+Here is an example
+
+```
+curl -X GET http://localhost:4069/bafybeifyjj2bjhtxmp235vlfeeiy7sz6rzyx3lervfk3ap2nyn4rggqgei  -o my_file.car
 ```

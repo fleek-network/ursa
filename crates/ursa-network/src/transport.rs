@@ -15,7 +15,7 @@ use libp2p::{
     yamux, PeerId, Transport,
 };
 
-use crate::config::UrsaConfig;
+use crate::config::NetworkConfig;
 
 pub struct UrsaTransport;
 
@@ -26,7 +26,7 @@ impl UrsaTransport {
     /// If QUIC fails to establish a connection, we fail over to TCP.
     pub fn new(
         keypair: &Keypair,
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         relay_transport: Option<ClientTransport>,
     ) -> Boxed<(PeerId, StreamMuxerBox)> {
         let id_keys = keypair;

@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 const DEFAULT_METRICS_PORT: &str = "4070";
 const DEFAULT_API_PATH: &str = "/metrics";
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MetricsServiceConfig {
     /// Optional. Port to run metrics server. Default port 4070.
     pub port: String,

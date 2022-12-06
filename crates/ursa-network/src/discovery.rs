@@ -9,7 +9,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::config::UrsaConfig;
+use crate::config::NetworkConfig;
 use anyhow::{anyhow, Error, Result};
 use futures::executor::block_on;
 use libp2p::{
@@ -59,7 +59,7 @@ pub struct DiscoveryBehaviour {
 }
 
 impl DiscoveryBehaviour {
-    pub fn new(keypair: &Keypair, config: &UrsaConfig) -> Self {
+    pub fn new(keypair: &Keypair, config: &NetworkConfig) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
         let bootstrap_nodes: Vec<(PeerId, Multiaddr)> = config

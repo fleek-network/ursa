@@ -4,7 +4,7 @@
 //!
 //! - Load or create a new [`Keypair`] by checking the local storage.
 //! - Instantiate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
-//! - A custom ['NetworkBehaviour'] is implemented based on [`UrsaConfig`] provided by node runner.
+//! - A custom ['NetworkBehaviour'] is implemented based on [`NetworkConfig`] provided by node runner.
 //! - Using the [`UrsaTransport`] and [`Behaviour`] a new [`Swarm`] is built.
 //! - Two channels are created to serve (send/receive) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
 //!
@@ -28,6 +28,7 @@ use libp2p::ping::Failure;
 use libp2p::swarm::{
     ConnectionHandler, ConnectionHandlerUpgrErr, IntoConnectionHandler, NetworkBehaviour,
 };
+use libp2p::Multiaddr;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
     identity::Keypair,
@@ -54,7 +55,7 @@ use ursa_utils::convert_cid;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
-    config::UrsaConfig,
+    config::NetworkConfig,
     transport::UrsaTransport,
 };
 use metrics::Label;
@@ -84,7 +85,7 @@ pub enum UrsaCommand {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
-    StartProviding {
+    Index {
         cids: Vec<Cid>,
         sender: oneshot::Sender<Result<Vec<Cid>>>,
     },
@@ -153,7 +154,7 @@ impl<S> UrsaService<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    /// Init a new [`UrsaService`] based on [`UrsaConfig`]
+    /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
     /// For ursa `keypair` we use ed25519 either
     /// checking for a local store or creating a new keypair.
@@ -164,11 +165,11 @@ where
     /// For ursa behaviour we use [`Behaviour`].
     ///
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
-    /// listening on [`UrsaConfig`] `swarm_addr`.
+    /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
     pub fn new(
         keypair: Keypair,
-        config: &UrsaConfig,
+        config: &NetworkConfig,
         store: Arc<Store<S>>,
         index_provider: Provider<S>,
     ) -> Self {
@@ -402,70 +403,6 @@ where
                     });
                     Ok(())
                 }
-                BehaviourEvent::PublishAd {
-                    root_cid,
-                    context_id,
-                    is_rm,
-                } => {
-                    // debug!(
-                    //     "creating advertisement for cids under root cid: {:?}",
-                    //     root_cid
-                    // );
-                    // let provider = self.index_provider;
-                    // let root_cid = Cid::try_from(root_cid).expect("Cid from bytes failed!");
-
-                    // let addresses: Vec<String> = Pin::new(&mut self.swarm)
-                    //     .get_mut()
-                    //     .listeners()
-                    //     .cloned()
-                    //     .map(|m| m.to_string())
-                    //     .collect();
-
-                    // let ad = Advertisement::new(
-                    //     context_id.clone(),
-                    //     *self.swarm.local_peer_id(),
-                    //     addresses,
-                    //     is_rm,
-                    // );
-                    // let id = provider.create(ad);
-
-                    // let dag = self
-                    //     .store
-                    //     .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
-                    // let entries = dag
-                    //     .iter()
-                    //     .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
-                    //     .collect::<Vec<Ipld>>();
-                    // let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
-
-                    // debug!("inserting the chunks");
-                    // for chunk in chunks.iter() {
-                    //     let entries_bytes = forest_encoding::to_vec(&chunk)?;
-                    //     provider.add_chunk(entries_bytes, id);
-                    //     // .expect(" adding chunk to ad should not fail");
-                    // }
-                    // debug!("Publishing the advertisement now");
-                    // provider.publish(id);
-                    // // .expect("publishing the ad should not fail");
-                    // let announce_msg = provider.announce_msg(*self.swarm.local_peer_id());
-
-                    // let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
-                    // let i_topic = Topic::new("indexer/ingest/mainnet");
-                    // let g_msg = GossipsubMessage {
-                    //     data: announce_msg,
-                    //     source: None,
-                    //     sequence_number: None,
-                    //     topic: i_topic_hash,
-                    // };
-                    // match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
-                    //     Ok(res) => {}
-                    //     Err(e) => {
-                    //         error!("there was an error while gossiping the announcement");
-                    //         error!("{:?}", e);
-                    //     }
-                    // }
-                    Ok(())
-                }
                 BehaviourEvent::NatStatusChanged { old, new } => {
                     match (old, new) {
                         (NatStatus::Unknown, NatStatus::Private) => {
@@ -515,6 +452,59 @@ where
                 BehaviourEvent::RelayCircuitClosed => {
                     debug!("Relay circuit closed");
                     track(MetricEvent::RelayCircuitClosed, None, None);
+                    Ok(())
+                }
+                BehaviourEvent::StartPublish { public_address } => {
+                    // let mut address = Multiaddr::empty();
+                    // let peer_id = *self.swarm.local_peer_id();
+                    // for protocol in public_address.into_iter() {
+                    //     match protocol {
+                    //         Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
+                    //         Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
+                    //         Protocol::Tcp(port) =>  address.push(Protocol::Tcp(port)),
+                    //         _ => {},
+                    //     }
+                    // }
+
+                    // let root_cids = self.index_provider.get_mut_root_cids();
+                    // let mut cid_queue = root_cids.write().await;
+                    // while !cid_queue.is_empty() {
+                    //     let root_cid = cid_queue.pop_front().unwrap();
+                    //     let context_id = root_cid.to_bytes();
+                    //     info!("creating advertisement for cids under root cid: {:?}", root_cid);
+
+                    //     info!("inserting the chunks");
+                    //     let addresses: Vec<String> = [address.clone()].iter().map(|m| m.to_string()).collect();
+                    //     let ad = Advertisement::new(context_id.clone(), peer_id, addresses, false);
+                    //     let id = self.index_provider.create(ad).await.unwrap();
+
+                    //     let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                    //     let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
+                    //     let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+
+                    //     for chunk in chunks.iter() {
+                    //         let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                    //         self.index_provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
+                    //     }
+                    //     info!("Publishing the advertisement now");
+                    //     self.index_provider.publish(id).await.expect("publishing the ad should not fail");
+                    //     if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id).await {
+                    //         let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                    //         let i_topic = Topic::new("indexer/ingest/mainnet");
+                    //         let g_msg = GossipsubMessage {data:announce_msg.clone(), source: None, sequence_number: None, topic: i_topic_hash };
+                    //         match swarm.get_mut().behaviour_mut().publish(i_topic, g_msg.clone()) {
+                    //             Ok(res) => {
+                    //                 info!("gossiping the new advertisement done : {:}", res);
+                    //             },
+                    //             Err(e) => {
+                    //                 warn!("there was an error while gossiping the announcement, will try to announce via http");
+                    //                 warn!("{:?}", e);
+                    //                 // make an http announcement if gossiping fails
+                    //                 let _ = self.index_provider.announce_http_message(announce_msg).await;
+                    //             }
+                    //         }
+                    //     }
+                    // }
                     Ok(())
                 }
             },
@@ -573,10 +563,21 @@ where
                     .send(peers)
                     .map_err(|_| anyhow!("Failed to get Libp2p peers"))
             }
-            UrsaCommand::StartProviding { cids, sender } => {
+            UrsaCommand::Index { cids, sender } => {
                 // TODO: start providing via gossip and/or publish ad to the indexer
-                let _ = self.swarm.behaviour_mut().publish_ad(cids.clone());
-                sender.send(Ok(cids)).expect("");
+                let root_cid = cids[0];
+                let root_cids = self.index_provider.get_mut_root_cids();
+                let mut rlock = root_cids.write().unwrap();
+                rlock.push_back(root_cid);
+                let addrs = self.swarm.behaviour_mut().public_address();
+                if addrs.is_some() {
+                    let public_address = addrs.unwrap().clone();
+                    self.swarm.behaviour_mut().publish_ad(public_address)?;
+                } else {
+                    warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
+                     Otherwise the autonat will get the public address soon and node will start indexing the content");
+                }
+                sender.send(Ok(cids));
                 Ok(())
             }
             UrsaCommand::SendRequest {
@@ -647,6 +648,7 @@ mod tests {
     use simple_logger::SimpleLogger;
     use std::{str::FromStr, thread, time::Duration, vec};
     use tracing::log::LevelFilter;
+    use ursa_index_provider::config::ProviderConfig;
     use ursa_store::Store;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
@@ -654,7 +656,7 @@ mod tests {
     }
 
     fn network_init(
-        config: &mut UrsaConfig,
+        config: &mut NetworkConfig,
         store: Arc<Store<RocksDb>>,
         index_store: Arc<Store<RocksDb>>,
     ) -> (UrsaService<RocksDb>, PeerId) {
@@ -665,7 +667,8 @@ mod tests {
             .map(|node| node.parse().unwrap())
             .collect();
 
-        let index_provider = Provider::new(keypair.clone(), Arc::clone(&index_store));
+        let provider_config = ProviderConfig::default();
+        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
         let service = UrsaService::new(keypair, &config, Arc::clone(&store), index_provider);
 
@@ -715,7 +718,7 @@ mod tests {
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         let (service, _) = network_init(
-            &mut UrsaConfig::default(),
+            &mut NetworkConfig::default(),
             Arc::clone(&store),
             Arc::clone(&index_store),
         );
@@ -726,7 +729,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_gossip() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
@@ -741,6 +744,8 @@ mod tests {
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+
+        // println!("config {:?}:", config);
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         let node_1_sender = node_1.command_sender.clone();
@@ -760,7 +765,7 @@ mod tests {
             },
         };
 
-        let _ = node_1_sender.send(msg).unwrap();
+        let _ = node_1_sender.send(msg).await.unwrap();
 
         let mut node_2_receiver = node_2.event_receiver;
 
@@ -775,7 +780,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_mdns() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig {
+        let mut config = NetworkConfig {
             mdns: true,
             ..Default::default()
         };
@@ -811,7 +816,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_discovery() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -844,7 +849,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_req_res() {
         setup_logger(LevelFilter::Debug);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let db = RocksDb::open("test_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -893,7 +898,7 @@ mod tests {
     #[tokio::test]
     async fn test_bitswap_get() {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");
@@ -947,7 +952,7 @@ mod tests {
     #[tokio::test]
     async fn test_bitswap_get_block_not_found() {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");
@@ -1049,7 +1054,7 @@ mod tests {
     #[ignore]
     async fn test_bitswap_sync() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = UrsaConfig::default();
+        let mut config = NetworkConfig::default();
 
         let store1 = get_store("test_db1");
         let store2 = get_store("test_db2");

@@ -13,12 +13,11 @@ use jsonrpc_v2::{Data, Error, Params};
 
 use crate::{
     api::{
-        NetworkGetParams, NetworkGetResult, NetworkInterface, NetworkPutCarParams,
-        NetworkPutCarResult, NetworkPutFileParams, NetworkPutFileResult,
+        NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkInterface,
+        NetworkPutFileParams, NetworkPutFileResult,
     },
     rpc::rpc::rpc_handler,
 };
-use fvm_ipld_car::CarHeader;
 use tokio::sync::{mpsc::channel, RwLock};
 
 use tracing::error;
@@ -38,14 +37,35 @@ pub async fn get_cid_handler<I>(
 where
     I: NetworkInterface,
 {
-    let cid = Cid::from_str(&params.cid).unwrap();
-    match data.0.get(cid).await {
-        Err(_err) => Err(Error::Full {
-            data: None,
-            code: -32000,
-            message: "There was an error while getting the block".to_string(),
-        }),
-        Ok(res) => Ok(res.unwrap()),
+    if let Ok(cid) = Cid::from_str(&params.cid) {
+        match data.0.get(cid).await {
+            Err(err) => Err(Error::internal(err)),
+            Ok(res) => Ok(res.unwrap()),
+        }
+    } else {
+        error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
+        return Err(Error::INVALID_PARAMS);
+    }
+}
+pub async fn get_file_handler<I>(
+    data: Data<Arc<I>>,
+    Params(params): Params<NetworkGetFileParams>,
+) -> Result<()>
+where
+    I: NetworkInterface,
+{
+    let path = params.path;
+    if let Ok(cid) = Cid::from_str(&params.cid) {
+        match data.0.get_file(path, cid).await {
+            Err(err) => {
+                error!("{:?}", err);
+                return Err(Error::internal(err));
+            }
+            _ => Ok(()),
+        }
+    } else {
+        error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
+        return Err(Error::INVALID_PARAMS);
     }
 }
 
@@ -61,11 +81,7 @@ where
     match data.0.put_file(path).await {
         Err(err) => {
             error!("{:?}", err);
-            return Err(Error::Full {
-                data: None,
-                code: -32001,
-                message: "There was an error in put_file".to_string(),
-            });
+            return Err(Error::internal(err));
         }
         Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }
