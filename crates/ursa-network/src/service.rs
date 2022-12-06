@@ -245,8 +245,8 @@ where
         }
     }
 
-    pub fn command_sender(&self) -> &Sender<UrsaCommand> {
-        &self.command_sender
+    pub fn command_sender(&self) -> Sender<UrsaCommand> {
+        self.command_sender.clone()
     }
 
     /// Handle swarm events
@@ -323,6 +323,8 @@ where
 
                     track(MetricEvent::GossipMessage, Some(labels), None);
 
+                    println!("HERE, {:?}:", "balance");
+
                     if self.swarm.is_connected(&peer) {
                         let event_sender = self.event_sender.clone();
 
@@ -330,7 +332,7 @@ where
                             let status = event_sender.send(UrsaEvent::GossipsubMessage(message));
 
                             if status.await.is_err() {
-                                warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
+                                error!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
                             }
                         });
                     }
@@ -357,16 +359,18 @@ where
                             .await
                             .is_err()
                         {
-                            warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
+                            error!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
                         }
                     });
 
                     Ok(())
                 }
-                BehaviourEvent::PeerConnected(peer) => {
+                BehaviourEvent::PeerConnected(peer_id) => {
+                    println!("Here discovery: {:?}", peer_id);
+
                     debug!(
                         "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
-                        peer
+                        peer_id
                     );
 
                     track(MetricEvent::PeerConnected, None, None);
@@ -374,19 +378,19 @@ where
                     let event_sender = self.event_sender.clone();
                     tokio::task::spawn(async move {
                         if event_sender
-                            .send(UrsaEvent::PeerConnected(peer))
+                            .send(UrsaEvent::PeerConnected(peer_id))
                             .await
                             .is_err()
                         {
-                            warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer);
+                            error!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer_id);
                         }
                     });
                     Ok(())
                 }
-                BehaviourEvent::PeerDisconnected(peer) => {
+                BehaviourEvent::PeerDisconnected(peer_id) => {
                     debug!(
                         "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
-                        peer
+                        peer_id
                     );
 
                     track(MetricEvent::PeerDisconnected, None, None);
@@ -394,11 +398,11 @@ where
                     let event_sender = self.event_sender.clone();
                     tokio::task::spawn(async move {
                         if event_sender
-                            .send(UrsaEvent::PeerDisconnected(peer))
+                            .send(UrsaEvent::PeerDisconnected(peer_id))
                             .await
                             .is_err()
                         {
-                            warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer);
+                            error!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer_id);
                         }
                     });
                     Ok(())
@@ -577,8 +581,8 @@ where
                     warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
                      Otherwise the autonat will get the public address soon and node will start indexing the content");
                 }
-                sender.send(Ok(cids));
-                Ok(())
+
+                sender.send(Ok(cids)).map_err(|_| anyhow!("Failed to index cid!"))
             }
             UrsaCommand::SendRequest {
                 peer_id,
@@ -594,6 +598,8 @@ where
                 channel,
             } => todo!(),
             UrsaCommand::GossipsubMessage { topic, message } => {
+                println!("HERE: {:?}", "meow");
+
                 if let Err(error) = self
                     .swarm
                     .behaviour_mut()
@@ -717,17 +723,27 @@ mod tests {
         let store = Arc::new(Store::new(Arc::clone(&db)));
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
-        let (service, _) = network_init(
+        let (mut service, _) = network_init(
             &mut NetworkConfig::default(),
             Arc::clone(&store),
             Arc::clone(&index_store),
         );
 
-        task::spawn(async move { service.start().await.unwrap() });
+        loop {
+            match service.swarm.select_next_some().await {
+                SwarmEvent::NewListenAddr { address, .. }=> {
+                    info!("SwarmEvent::NewListenAddr: {:?}:", address);
+                    break;
+                },
+                _ => {
+                    panic!("test_network_start: Failed!")
+                },
+            }
+        }
     }
 
     #[tokio::test]
-    async fn test_network_gossip() {
+    async fn test_network_gossip() -> Result<()> {
         setup_logger(LevelFilter::Debug);
         let mut config = NetworkConfig::default();
         let topic = Topic::new(URSA_GLOBAL);
@@ -744,16 +760,12 @@ mod tests {
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-
-        // println!("config {:?}:", config);
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (mut node_2, _) =
+            network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         let node_1_sender = node_1.command_sender.clone();
 
         task::spawn(async move { node_1.start().await.unwrap() });
-
-        let delay = Duration::from_millis(5000);
-        thread::sleep(delay);
 
         let msg = UrsaCommand::GossipsubMessage {
             topic: topic.clone(),
@@ -765,20 +777,31 @@ mod tests {
             },
         };
 
-        let _ = node_1_sender.send(msg).await.unwrap();
-
-        let mut node_2_receiver = node_2.event_receiver;
+        node_1_sender.send(msg).await?;
 
         loop {
-            if let Some(UrsaEvent::GossipsubMessage(gossip)) = node_2_receiver.recv().await {
-                assert_eq!(vec![1], gossip.data);
-                break;
+            select! {
+                event = node_2.event_receiver.recv() => {
+                    println!("Event receieved: {:?}", event);
+
+                },
+                // event_1 = node_1.swarm.select_next_some() => {
+                //     match event_1 {
+                //         SwarmEvent::Behaviour(behaviour) => {
+                //             println!("Behaviour receieved: {:?}", behaviour);
+                //             break;
+                //         },
+                //         other => {
+                //             warn!("Another event receieved {:?}", other);
+                //         }
+                //     }
+                // }
             }
         }
     }
 
     #[tokio::test]
-    async fn test_network_mdns() {
+    async fn test_network_mdns() -> Result<()> {
         setup_logger(LevelFilter::Debug);
         let mut config = NetworkConfig {
             mdns: true,
@@ -811,10 +834,12 @@ mod tests {
                 break;
             }
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_network_discovery() {
+    async fn test_network_discovery() -> Result<()> {
         setup_logger(LevelFilter::Debug);
         let mut config = NetworkConfig::default();
 
@@ -827,27 +852,35 @@ mod tests {
         let store = Arc::new(Store::new(Arc::clone(&db)));
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (mut node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
-        let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (mut node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         task::spawn(async move { node_1.start().await.unwrap() });
 
-        let mut swarm_2 = node_2.swarm.fuse();
-
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
-                swarm_2.next().await
-            {
-                info!("Node 2 PeerConnected: {:?}", peer_id);
-                break;
+            select! {
+                event = node_2.swarm.select_next_some() => {
+                    match event {
+                        SwarmEvent::Behaviour(behaviour) => {
+                            println!("Behaviour receieved: {:?}", behaviour);
+                            break;
+                        },
+                        other => {
+                            info!("Event: {:?}", other);
+                            // panic!("test_network_discovery: Failed!")
+                        }
+                    }
+                }
             }
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_network_req_res() {
+    async fn test_network_req_res() -> Result<()> {
         setup_logger(LevelFilter::Debug);
         let mut config = NetworkConfig::default();
 
@@ -870,9 +903,6 @@ mod tests {
 
         task::spawn(async move { node_1.start().await.unwrap() });
 
-        let delay = Duration::from_millis(2000);
-        thread::sleep(delay);
-
         let (sender, _) = oneshot::channel();
         let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
         let msg = UrsaCommand::SendRequest {
@@ -881,7 +911,7 @@ mod tests {
             channel: sender,
         };
 
-        let _ = node_1_sender.send(msg);
+        node_1_sender.send(msg).await?;
 
         let mut swarm_2 = node_2.swarm.fuse();
 
@@ -893,10 +923,12 @@ mod tests {
                 break;
             }
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_bitswap_get() {
+    async fn test_bitswap_get() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
@@ -935,7 +967,7 @@ mod tests {
             sender,
         };
 
-        let _ = node_2_sender.send(msg);
+        node_2_sender.send(msg).await?;
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
@@ -947,10 +979,12 @@ mod tests {
                 assert_eq!(store_2_block, Some(block.data().to_vec()));
             }
         });
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_bitswap_get_block_not_found() {
+    async fn test_bitswap_get_block_not_found() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
@@ -984,7 +1018,7 @@ mod tests {
             sender,
         };
 
-        let _ = node_2_sender.send(msg);
+        node_2_sender.send(msg).await?;
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
@@ -1001,10 +1035,12 @@ mod tests {
                 _ => {}
             }
         });
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn add_block() {
+    async fn add_block() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let db = Arc::new(
             RocksDb::open("../test_db", &RocksDbConfig::default())
@@ -1028,11 +1064,13 @@ mod tests {
         } else {
             info!("block inserted successfully");
         }
-        info!("{:?}", bitswap_store.contains(&convert_cid(cid.to_bytes())))
+        info!("{:?}", bitswap_store.contains(&convert_cid(cid.to_bytes())));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn get_block_local() {
+    async fn get_block_local() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let db1 = Arc::new(
             RocksDb::open("test_db2", &RocksDbConfig::default())
@@ -1048,6 +1086,8 @@ mod tests {
         if let Ok(res) = bitswap_store_1.contains(&convert_cid(cid.to_bytes())) {
             println!("block exists in current db: {:?}", res);
         }
+
+        Ok(())
     }
 
     #[tokio::test]
