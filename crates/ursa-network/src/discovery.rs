@@ -43,7 +43,6 @@ pub enum DiscoveryEvent {
 }
 
 pub struct DiscoveryBehaviour {
-    local_peer_id: PeerId,
     /// Kademlia instance.
     kademlia: Kademlia<MemoryStore>,
     /// Boostrap nodes.
@@ -102,7 +101,6 @@ impl DiscoveryBehaviour {
         };
 
         Self {
-            local_peer_id,
             kademlia,
             bootstrap_nodes,
             peers: HashSet::new(),

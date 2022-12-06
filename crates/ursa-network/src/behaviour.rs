@@ -550,15 +550,15 @@ impl<P: StoreParams> Behaviour<P> {
                     message,
                 });
             }
-            GossipsubEvent::Subscribed { peer_id, topic } => {
+            GossipsubEvent::Subscribed { .. } => {
                 // A remote subscribed to a topic.
                 // subscribe to new topic.
             }
-            GossipsubEvent::Unsubscribed { peer_id, topic } => {
+            GossipsubEvent::Unsubscribed { .. } => {
                 // A remote unsubscribed from a topic.
                 // remove subscription.
             }
-            GossipsubEvent::GossipsubNotSupported { peer_id } => {
+            GossipsubEvent::GossipsubNotSupported { .. } => {
                 // A peer that does not support gossipsub has connected.
                 // the scoring/rating should happen here.
                 // disconnect.

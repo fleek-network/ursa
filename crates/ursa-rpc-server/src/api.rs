@@ -98,7 +98,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await.expect("");
+            self.network_send.send(request).await?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -119,7 +119,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await.expect("");
+            self.network_send.send(request).await?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -133,6 +133,41 @@ where
         info!("Dag traversal done, now streaming the file");
 
         Ok(dag)
+    }
+
+    /// Used through CLI
+    async fn get_file(&self, path: String, root_cid: Cid) -> Result<()> {
+        info!("getting and storing the file at: {path}");
+
+        let header = CarHeader {
+            roots: vec![root_cid],
+            version: 1,
+        };
+
+        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+        let (mut tx, mut rx) = unbounded();
+
+        let buffer_cloned = buffer.clone();
+        let write_task = tokio::task::spawn(async move {
+            header
+                .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
+                .await
+                .unwrap()
+        });
+        let dag = self.get_data(root_cid).await.unwrap();
+
+        for (cid, data) in dag {
+            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
+        }
+        drop(tx);
+        write_task.await?;
+
+        let buffer: Vec<_> = buffer.read().await.clone();
+        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
+        create_dir_all(file_path.parent().unwrap()).await?;
+        let mut file = File::create(file_path).await.unwrap();
+        file.write_all(&buffer).await?;
+        Ok(())
     }
 
     async fn stream(
@@ -165,41 +200,6 @@ where
         Ok(body)
     }
 
-    /// Used through CLI
-    async fn get_file(&self, path: String, root_cid: Cid) -> Result<()> {
-        info!("getting and storing the file at: {path}");
-
-        let header = CarHeader {
-            roots: vec![root_cid],
-            version: 1,
-        };
-
-        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
-        let (mut tx, mut rx) = unbounded();
-
-        let buffer_cloned = buffer.clone();
-        let write_task = tokio::task::spawn(async move {
-            header
-                .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
-                .await
-                .unwrap()
-        });
-        let dag = self.get_data(root_cid).await.unwrap();
-
-        for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
-        }
-        drop(tx);
-        write_task.await.expect("");
-
-        let buffer: Vec<_> = buffer.read().await.clone();
-        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
-        create_dir_all(file_path.parent().unwrap()).await?;
-        let mut file = File::create(file_path).await.unwrap();
-        file.write_all(&buffer).await?;
-        Ok(())
-    }
-
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
         let cids = load_car(self.store.blockstore(), reader).await?;
 
@@ -211,7 +211,7 @@ where
             sender,
         };
 
-        self.network_send.send(request).await.expect("");
+        self.network_send.send(request).await?;
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(

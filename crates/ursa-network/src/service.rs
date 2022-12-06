@@ -43,7 +43,7 @@ use std::num::{NonZeroU8, NonZeroUsize};
 use std::pin::Pin;
 use std::{collections::HashSet, io, sync::Arc};
 use tokio::task;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, trace};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -323,8 +323,6 @@ where
 
                     track(MetricEvent::GossipMessage, Some(labels), None);
 
-                    println!("HERE, {:?}:", "balance");
-
                     if self.swarm.is_connected(&peer) {
                         let event_sender = self.event_sender.clone();
 
@@ -332,7 +330,7 @@ where
                             let status = event_sender.send(UrsaEvent::GossipsubMessage(message));
 
                             if status.await.is_err() {
-                                error!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
+                                warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
                             }
                         });
                     }
@@ -359,15 +357,13 @@ where
                             .await
                             .is_err()
                         {
-                            error!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
+                            warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
                         }
                     });
 
                     Ok(())
                 }
                 BehaviourEvent::PeerConnected(peer_id) => {
-                    println!("Here discovery: {:?}", peer_id);
-
                     debug!(
                         "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
                         peer_id
@@ -382,7 +378,7 @@ where
                             .await
                             .is_err()
                         {
-                            error!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer_id);
+                            warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer_id);
                         }
                     });
                     Ok(())
@@ -402,7 +398,7 @@ where
                             .await
                             .is_err()
                         {
-                            error!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer_id);
+                            warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer_id);
                         }
                     });
                     Ok(())
@@ -568,7 +564,6 @@ where
                     .map_err(|_| anyhow!("Failed to get Libp2p peers"))
             }
             UrsaCommand::Index { cids, sender } => {
-                // TODO: start providing via gossip and/or publish ad to the indexer
                 let root_cid = cids[0];
                 let root_cids = self.index_provider.get_mut_root_cids();
                 let mut rlock = root_cids.write().unwrap();
@@ -630,11 +625,11 @@ where
             select! {
                 event = self.swarm.next() => {
                     let event = event.ok_or_else(|| anyhow!("Swarm Event invalid!"))?;
-                    self.handle_swarm_event(event).expect("");
+                    self.handle_swarm_event(event).expect("Handle swarm event.");
                 },
                 command = self.command_receiver.recv() => {
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
-                    self.handle_command(command).expect("");
+                    self.handle_command(command).expect("Handle rpc command.");
                 },
             }
         }
@@ -757,9 +752,10 @@ mod tests {
         let store = Arc::new(Store::new(Arc::clone(&db)));
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6011".parse().unwrap();
         let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
+        config.swarm_addr = "/ip4/0.0.0.0/tcp/6012".parse().unwrap();
         let (mut node_2, _) =
             network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
@@ -784,7 +780,6 @@ mod tests {
                 event_2 = node_2.swarm.select_next_some() => {
                     match event_2 {
                         SwarmEvent::Behaviour(behaviour) => {
-                            println!("Behaviour receieved: {:?}", behaviour);
                             break;
                         },
                         other => {
@@ -862,12 +857,11 @@ mod tests {
                 event = node_2.swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(behaviour) => {
-                            println!("Behaviour receieved: {:?}", behaviour);
                             break;
                         },
                         other => {
                             info!("Event: {:?}", other);
-                            // panic!("test_network_discovery: Failed!")
+                            panic!("test_network_discovery: Failed!")
                         }
                     }
                 }
