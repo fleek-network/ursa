@@ -25,7 +25,10 @@ use ursa_store::Store;
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR));
+
+    if let Err(err) = load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)) {
+        error!("[loading_config] - {:?}", err);
+    }
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
