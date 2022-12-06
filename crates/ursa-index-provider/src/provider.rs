@@ -288,8 +288,10 @@ mod tests {
         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
         let provider_interface = index_provider.clone();
-        task::spawn(async move {
-            let _ = index_provider.start(&provider_config).await;
+        let provider_task = task::spawn(async move {
+            if let Err(err) = index_provider.start(&provider_config).await {
+                error!("[provider_task] - {:?}", err);
+            }
         });
 
         let delay = Duration::from_millis(2000);
@@ -324,6 +326,7 @@ mod tests {
         let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head").recv_json().await?;
         assert_eq!(signed_head.open()?.1, t_head.unwrap());
 
+        provider_task.abort();
         Ok(())
     }
 }
