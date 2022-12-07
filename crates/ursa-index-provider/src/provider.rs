@@ -92,7 +92,7 @@ where
     }
 
     pub async fn start(self, provider_config: &ProviderConfig) -> Result<()> {
-        info!("index provider starting up");
+        info!("Index provider starting up!");
 
         let app_router = Router::new()
             .route("/head", get(head::<S>))
@@ -181,7 +181,6 @@ where
             {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
-                    info!("Chunk added!");
                     Ok(())
                 }
                 Err(e) => Err(anyhow!(format!("{}", e))),
@@ -205,7 +204,6 @@ where
                 .blockstore()
                 .put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
-            info!("Publish meh!");
             return Ok(());
         }
         Err(anyhow!("ad not found"))

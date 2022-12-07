@@ -2,15 +2,19 @@ mod rpc_commands;
 
 use crate::config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR};
 use rpc_commands::RpcCommands;
-use std::cell::RefCell;
-use std::fs::File;
-use std::io::{prelude::*, Result};
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-use std::{process, thread};
+use std::{
+    cell::RefCell,
+    fs::File,
+    io::{prelude::*, Result},
+    path::{Path, PathBuf},
+    process,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
+};
 use structopt::StructOpt;
 use tracing::{error, info, warn};
 
