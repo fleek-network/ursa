@@ -85,15 +85,19 @@ fn from_cid_to_map(cid: &Cid) -> Map<String, serde_json::Value> {
 fn from_map_to_cid(value: Map<String, serde_json::Value>) -> Result<Cid, cid::Error> {
     let cid_str = value
         .get("/")
-        .ok_or(cid::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Cid entry is missing",
-        )))?
+        .ok_or_else(|| {
+            cid::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Cid entry is missing",
+            ))
+        })?
         .as_str()
-        .ok_or(cid::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Cid str is missing",
-        )))?;
+        .ok_or_else(|| {
+            cid::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Cid str is missing",
+            ))
+        })?;
 
     let cid = Cid::try_from(cid_str)?;
 

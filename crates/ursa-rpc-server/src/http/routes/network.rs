@@ -30,12 +30,12 @@ impl IntoResponse for NetworkError {
     fn into_response(self) -> Response {
         match self {
             NetworkError::NotFoundError(e) => {
-                return (StatusCode::NOT_FOUND, e.to_string()).into_response()
+                (StatusCode::NOT_FOUND, e.to_string()).into_response()
             }
             NetworkError::InternalError(e) => {
-                return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }
-        };
+        }
     }
 }
 
@@ -49,12 +49,12 @@ where
     info!("uploading file via http");
     if let Some(field) = buf.next_field().await.unwrap() {
         let content_type = field.content_type().unwrap().to_string();
-        if content_type == "application/vnd.curl.car".to_string() {
+        if content_type == *"application/vnd.curl.car".to_string() {
             let data = field.bytes().await.unwrap();
             let vec_data = data.to_vec();
             let reader = Cursor::new(&vec_data);
 
-            return match interface.put_car(reader).await {
+            match interface.put_car(reader).await {
                 Err(err) => {
                     error!("{:?}", err);
                     (
@@ -63,7 +63,7 @@ where
                     )
                 }
                 Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
-            };
+            }
         } else {
             (
                 StatusCode::BAD_REQUEST,
@@ -107,9 +107,9 @@ where
             }
         };
     } else {
-        return Err(NetworkError::InternalError(anyhow!(
+        Err(NetworkError::InternalError(anyhow!(
             "Invalid Cid String, Cannot Parse {} to CID",
             &cid_str
-        )));
+        )))
     }
 }

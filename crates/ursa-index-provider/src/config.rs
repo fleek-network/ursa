@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const DEFAULT_DB_PATH_STR: &str = ".ursa/data/index_provider_db";
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProviderConfig {
     /// local address
     pub local_address: String,

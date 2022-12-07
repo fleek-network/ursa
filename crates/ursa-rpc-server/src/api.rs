@@ -271,7 +271,6 @@ mod tests {
             .expect("Opening RocksDB must succeed");
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
-        let provider_config = ProviderConfig::default();
         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
         let service =

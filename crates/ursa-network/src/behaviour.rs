@@ -340,9 +340,7 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = convert_cid(cid.to_bytes());
-        let id = self
-            .bitswap
-            .sync(c_cid, providers, iter::once(c_cid.clone()));
+        let id = self.bitswap.sync(c_cid, providers, iter::once(c_cid));
         self.queries.insert(
             id,
             BitswapInfo {

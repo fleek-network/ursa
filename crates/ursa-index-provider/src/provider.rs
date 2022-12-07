@@ -43,7 +43,7 @@ async fn head<S: BlockStore + Sync + Send + 'static>(
 ) -> Result<Json<SignedHead>, ProviderError> {
     if let Some(head) = *state.head.read().unwrap() {
         let signed_head = SignedHead::new(&state.keypair, head)
-            .map_err(|e| return ProviderError::InternalError(anyhow!(e.to_string())))?;
+            .map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
         Ok(Json(signed_head))
     } else {
         Err(ProviderError::NotFoundError(anyhow!("No head found")))
@@ -54,8 +54,8 @@ async fn get_block<S: BlockStore + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
     Path(cid): Path<String>,
 ) -> Result<Response<Body>, ProviderError> {
-    let cid = Cid::from_str(&cid)
-        .map_err(|e| return ProviderError::InternalError(anyhow!(e.to_string())))?;
+    let cid =
+        Cid::from_str(&cid).map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
     match state.blockstore.blockstore().get_bytes(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
@@ -134,14 +134,14 @@ pub enum ProviderError {
 
 impl IntoResponse for ProviderError {
     fn into_response(self) -> Response {
-        return match self {
+        match self {
             ProviderError::NotFoundError(e) => {
                 (StatusCode::NOT_FOUND, e.to_string()).into_response()
             }
             ProviderError::InternalError(e) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }
-        };
+        }
     }
 }
 
@@ -213,8 +213,7 @@ where
 
     fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>> {
         let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
-        multiaddrs =
-            Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs.to_string(), peer_id))?;
+        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs, peer_id))?;
         let msg_addrs = [multiaddrs].to_vec();
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {

@@ -1,6 +1,6 @@
 extern crate core;
 
-mod config;
+pub mod config;
 mod ursa;
 
 use std::{path::PathBuf, sync::Arc};
@@ -53,7 +53,7 @@ async fn main() {
                 }
 
                 let keystore_path = network_config.keystore_path.clone();
-                let im = match network_config.identity.clone().as_str() {
+                let im = match network_config.identity.as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
                     // load or create a new identity
@@ -86,7 +86,7 @@ async fn main() {
                     Arc::clone(&store),
                     index_provider.clone(),
                 );
-                let rpc_sender = service.command_sender().clone();
+                let rpc_sender = service.command_sender();
 
                 // Start libp2p service
                 let service_task = task::spawn(async {

@@ -20,14 +20,9 @@ use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
 use libp2p::autonat::NatStatus;
-use libp2p::core::either::EitherError;
-use libp2p::gossipsub::error::GossipsubHandlerError;
 use libp2p::gossipsub::TopicHash;
 use libp2p::multiaddr::Protocol;
-use libp2p::ping::Failure;
-use libp2p::swarm::{
-    ConnectionHandler, ConnectionHandlerUpgrErr, IntoConnectionHandler, NetworkBehaviour,
-};
+use libp2p::swarm::{ConnectionHandler, IntoConnectionHandler, NetworkBehaviour};
 use libp2p::Multiaddr;
 use libp2p::{
     gossipsub::{GossipsubMessage, IdentTopic as Topic},
@@ -40,15 +35,14 @@ use libp2p::{
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
 use std::num::{NonZeroU8, NonZeroUsize};
-use std::pin::Pin;
-use std::{collections::HashSet, io, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 use tokio::task;
 use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
 };
-use ursa_metrics::events::{self, track, MetricEvent};
+use ursa_metrics::events::{track, MetricEvent};
 use ursa_store::{BitswapStorage, Dag, Store};
 use ursa_utils::convert_cid;
 
@@ -59,7 +53,7 @@ use crate::{
     transport::UrsaTransport,
 };
 use metrics::Label;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::oneshot;
 use tokio::{
     select,
     sync::mpsc::{channel, Receiver, Sender},
@@ -67,6 +61,15 @@ use tokio::{
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
+type SwarmEventType = SwarmEvent<
+<Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
+<
+    <
+        <
+            Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+        >::Handler as ConnectionHandler
+    >::Error
+>;
 
 #[derive(Debug)]
 pub enum UrsaCommand {
@@ -250,18 +253,7 @@ where
     }
 
     /// Handle swarm events
-    pub fn handle_swarm_event(
-        &mut self,
-        event: SwarmEvent<
-        <Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
-        <
-            <
-                <
-                    Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
-                >::Handler as ConnectionHandler
-            >::Error
-        >,
-    ) -> Result<()> {
+    pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
         let mut blockstore = BitswapStorage(self.store.clone());
 
         match event {
@@ -480,8 +472,7 @@ where
                             [address.clone()].iter().map(|m| m.to_string()).collect();
                         let advertisement =
                             Advertisement::new(context_id.clone(), peer_id, addresses, false);
-                        let provider_id =
-                            self.index_provider.create(advertisement).unwrap().clone();
+                        let provider_id = self.index_provider.create(advertisement).unwrap();
 
                         let dag = self
                             .store
@@ -544,7 +535,7 @@ where
             | SwarmEvent::IncomingConnection { .. }
             | SwarmEvent::ConnectionEstablished { .. }
             | SwarmEvent::IncomingConnectionError { .. }
-            | SwarmEvent::OutgoingConnectionError { .. } => Ok({}),
+            | SwarmEvent::OutgoingConnectionError { .. } => Ok(()),
         }
     }
 
@@ -593,10 +584,11 @@ where
                 let root_cids = self.index_provider.get_mut_root_cids();
                 let mut rlock = root_cids.write().unwrap();
                 rlock.push_back(root_cid);
-                let addrs = self.swarm.behaviour_mut().public_address();
-                if addrs.is_some() {
-                    let public_address = addrs.unwrap().clone();
-                    self.swarm.behaviour_mut().publish_ad(public_address)?;
+
+                let swarm = self.swarm.behaviour_mut();
+                let addrs = swarm.public_address();
+                if let Some(public_address) = addrs {
+                    swarm.publish_ad(public_address.clone())?;
                 } else {
                     warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
                      Otherwise the autonat will get the public address soon and node will start indexing the content");
@@ -620,11 +612,7 @@ where
                 channel,
             } => todo!(),
             UrsaCommand::GossipsubMessage { topic, message } => {
-                if let Err(error) = self
-                    .swarm
-                    .behaviour_mut()
-                    .publish(topic.clone(), message.clone())
-                {
+                if let Err(error) = self.swarm.behaviour_mut().publish(topic, message) {
                     warn!(
                         "[UrsaCommand::GossipsubMessage] - Failed to publish message to topic {:?} with error {:?}:",
                         URSA_GLOBAL, error
