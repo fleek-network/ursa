@@ -41,7 +41,7 @@ db = { package = "forest_db", version = "0.1", git = "https://github.com/theBear
 simple_logger = "2.1.0"
 
 [dependencies.libp2p]
-version = "0.46.1"
+version = "0.50.0"
 default-features = false
 features = [
     "identify",
