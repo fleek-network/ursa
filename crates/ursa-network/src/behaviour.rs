@@ -725,6 +725,14 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
         self.inner.new_handler()
     }
 
+    fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
+        self.inner.addresses_of_peer(peer)
+    }
+
+    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+        self.inner.on_swarm_event(event);
+    }
+
     fn on_connection_handler_event(
         &mut self,
         peer_id: PeerId,
