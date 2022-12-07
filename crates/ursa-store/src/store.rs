@@ -93,7 +93,7 @@ where
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data).unwrap();
-                    let _action = next_block.references(&mut current)?;
+                    next_block.references(&mut current)?;
                     refs.insert(cid);
                 }
                 None => {
