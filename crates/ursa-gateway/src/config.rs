@@ -1,7 +1,6 @@
 #[derive(Clone)]
 pub struct GatewayConfig {
     pub server: ServerConfig,
-    pub reverse_proxy: ServerConfig,
     pub cert_config: CertConfig,
 }
 
@@ -23,10 +22,6 @@ impl Default for GatewayConfig {
             server: ServerConfig {
                 addr: "0.0.0.0".to_string(),
                 port: 3000,
-            },
-            reverse_proxy: ServerConfig {
-                addr: "0.0.0.0".to_string(),
-                port: 4000,
             },
             cert_config: CertConfig {
                 // TODO: move out to better location.
