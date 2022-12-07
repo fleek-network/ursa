@@ -2,19 +2,16 @@
 //!
 //!
 //!
-
-use async_std::task::block_on;
 use libp2p::{
     core::{
         muxing::StreamMuxerBox,
-        transport::{upgrade, Boxed, OrTransport},
+        transport::{upgrade, Boxed},
         upgrade::SelectUpgrade,
     },
-    dns::DnsConfig,
     identity::Keypair,
     mplex, noise,
     relay::v2::client::transport::ClientTransport,
-    tcp::{GenTcpConfig, TcpTransport},
+    tcp::GenTcpConfig,
     yamux, PeerId, Transport,
 };
 
@@ -55,8 +52,7 @@ impl UrsaTransport {
                 SelectUpgrade::new(yamux_config, mplex_config)
             };
 
-            let tcp = TcpTransport::new(GenTcpConfig::new());
-            let tcp = block_on(DnsConfig::system(tcp)).unwrap();
+            let tcp = libp2p::tcp::TokioTcpTransport::new(GenTcpConfig::default().nodelay(true));
 
             if let Some(relay) = relay_transport {
                 tcp.or_transport(relay)
@@ -71,23 +67,6 @@ impl UrsaTransport {
                     .boxed()
             }
         };
-
-        // let quic = {
-        //     // block_on(QuicTransport::new(
-        //     //     QuicConfig::new(keypair),
-        //     //     quic_addr.unwrap_or("/ip4/0.0.0.0/udp/0/quic".parse().unwrap()),
-        //     // ))
-        //     // .unwrap()
-        //     todo!()
-        // }
-        // self.quic.or_transport(self.tcp)
-
-        // OrTransport::new(tcp, tcp)
-        //     .map(|either_output, _| match either_output {
-        //         EitherOutput::First((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-        //         EitherOutput::Second((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-        //     })
-        //     .boxed()
         tcp
     }
 }

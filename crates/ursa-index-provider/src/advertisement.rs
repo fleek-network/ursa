@@ -11,8 +11,8 @@ use thiserror::Error;
 /// A chunk can hold maximum 400 MB in entries. An entry being 64 bytes
 /// max number of entries 6,250,000
 pub const MAX_ENTRIES: usize = 6250000;
-const AD_SIGNATURE_CODEC: &'static str = "/indexer/ingest/adSignature";
-const AD_SIGNATURE_DOMAIN: &'static str = "indexer";
+const AD_SIGNATURE_CODEC: &str = "/indexer/ingest/adSignature";
+const AD_SIGNATURE_DOMAIN: &str = "indexer";
 
 #[allow(non_snake_case)]
 #[derive(Serialize)]
@@ -25,7 +25,7 @@ struct Metadata {
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Advertisement {
     /// PreviousID is an optional link to the previous advertisement.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,13 +67,13 @@ impl Advertisement {
         }
     }
     pub fn sign(&self, signing_key: &Keypair) -> Result<SignedEnvelope, AdSigError> {
-        Ok(SignedEnvelope::new(
+        SignedEnvelope::new(
             signing_key,
             AD_SIGNATURE_DOMAIN.into(),
             AD_SIGNATURE_CODEC.into(),
             self.sig_payload()?,
         )
-        .map_err(AdSigError::SigningError)?)
+        .map_err(AdSigError::SigningError)
     }
 
     /// computes a signature over all of these fields
@@ -109,10 +109,10 @@ impl Advertisement {
 
         payload.append(&mut previous_id_bytes);
         payload.append(&mut entrychunk_link_bytes);
-        payload.extend_from_slice(&self.Provider.as_bytes());
+        payload.extend_from_slice(self.Provider.as_bytes());
         self.Addresses
             .iter()
-            .for_each(|s| payload.extend_from_slice(&s.as_bytes()));
+            .for_each(|s| payload.extend_from_slice(s.as_bytes()));
         payload.extend_from_slice(metadata);
         payload.extend_from_slice(&is_rm_payload);
 

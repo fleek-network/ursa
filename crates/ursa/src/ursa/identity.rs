@@ -175,11 +175,7 @@ impl IdentityManager<Keypair> {
     /// Load or create a new identity
     pub fn load_or_new<S: Into<String> + Clone>(name: S, dir: PathBuf) -> Self {
         let name = name.into();
-        Self::load(name.clone(), dir.clone()).unwrap_or_else(|| {
-            // if not found
-            let im = Self::new(name, dir);
-            im
-        })
+        Self::load(name.clone(), dir.clone()).unwrap_or_else(|| Self::new(name, dir))
     }
 
     pub fn current(&self) -> Keypair {

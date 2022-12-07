@@ -127,5 +127,5 @@ pub async fn _block_until_sigint() {
 /// Used for handling high level errors such as invalid params
 pub(super) fn cli_error_and_die(msg: &str, code: i32) {
     error!("Error: {}", msg);
-    std::process::exit(code);
+    process::exit(code);
 }

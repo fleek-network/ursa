@@ -11,10 +11,7 @@ use std::{
 
 use crate::config::NetworkConfig;
 use anyhow::{anyhow, Error, Result};
-use async_std::task::block_on;
-use libp2p::core::transport::ListenerId;
-use libp2p::kad::KademliaBucketInserts;
-use libp2p::swarm::DialError;
+use futures::executor::block_on;
 use libp2p::{
     core::{connection::ConnectionId, ConnectedPoint},
     identity::Keypair,
@@ -46,7 +43,6 @@ pub enum DiscoveryEvent {
 }
 
 pub struct DiscoveryBehaviour {
-    local_peer_id: PeerId,
     /// Kademlia instance.
     kademlia: Kademlia<MemoryStore>,
     /// Boostrap nodes.
@@ -105,7 +101,6 @@ impl DiscoveryBehaviour {
         };
 
         Self {
-            local_peer_id,
             kademlia,
             bootstrap_nodes,
             peers: HashSet::new(),
