@@ -3,12 +3,12 @@
 //!
 //!
 
+use std::borrow::Cow;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::NonZeroUsize,
     task::{Context, Poll},
 };
-use std::borrow::Cow;
 
 use crate::config::NetworkConfig;
 use anyhow::{anyhow, Error, Result};
