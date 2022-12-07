@@ -414,23 +414,6 @@ impl<P: StoreParams> Behaviour<P> {
         self.inner.bitswap.cancel(id);
     }
 
-    fn poll(
-        &mut self,
-        _: &mut Context,
-        _: &mut impl PollParameters,
-    ) -> Poll<
-        NetworkBehaviourAction<
-            <Self as NetworkBehaviour>::OutEvent,
-            <Self as NetworkBehaviour>::ConnectionHandler,
-        >,
-    > {
-        if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-        }
-
-        Poll::Pending
-    }
-
     fn handle_ping(&mut self, event: PingEvent) {
         let peer = event.peer.to_base58();
 
@@ -749,6 +732,9 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
         params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
         loop {
+            if let Some(event) = self.events.pop_front() {
+                return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+            }
             match self.inner.poll(cx, params) {
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
                     let mut gen_event = None;
