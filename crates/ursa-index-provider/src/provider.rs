@@ -33,7 +33,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info};
+use tracing::{error, info, trace};
 use ursa_store::Store;
 use ursa_utils::convert_cid;
 
@@ -68,8 +68,8 @@ pub struct Provider<S> {
     root_cids: Arc<RwLock<VecDeque<Cid>>>,
     keypair: Keypair,
     blockstore: Arc<Store<S>>,
-    temp_ads: Arc<RwLock<HashMap<usize, Advertisement>>>,
-    config: Arc<ProviderConfig>,
+    temp_ads: HashMap<usize, Advertisement>,
+    config: ProviderConfig,
 }
 
 impl<S> Provider<S>
@@ -82,8 +82,8 @@ where
             root_cids: Arc::new(RwLock::new(VecDeque::new())),
             blockstore,
             head: Arc::new(RwLock::new(None)),
-            temp_ads: Arc::new(RwLock::new(HashMap::new())),
-            config: Arc::new(config),
+            temp_ads: HashMap::new(),
+            config,
         }
     }
 
@@ -121,8 +121,8 @@ where
             root_cids: Arc::clone(&self.root_cids),
             keypair: self.keypair.clone(),
             blockstore: Arc::clone(&self.blockstore),
-            temp_ads: Arc::clone(&self.temp_ads),
-            config: Arc::clone(&self.config),
+            temp_ads: self.temp_ads.clone(),
+            config: self.config.clone(),
         }
     }
 }
@@ -131,6 +131,7 @@ pub enum ProviderError {
     NotFoundError(Error),
     InternalError(Error),
 }
+
 impl IntoResponse for ProviderError {
     fn into_response(self) -> Response {
         return match self {
@@ -146,10 +147,10 @@ impl IntoResponse for ProviderError {
 
 #[async_trait]
 pub trait ProviderInterface: Sync + Send + 'static {
-    async fn create(&self, ad: Advertisement) -> Result<usize>;
-    async fn add_chunk(&self, bytes: Vec<u8>, id: usize) -> Result<()>;
-    async fn publish(&self, id: usize) -> Result<()>;
-    async fn create_announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>>;
+    fn create(&mut self, ad: Advertisement) -> Result<usize>;
+    fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
+    fn publish(&mut self, id: usize) -> Result<()>;
+    fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>>;
     async fn announce_http_message(&self, announce_msg: Vec<u8>);
 }
 
@@ -158,21 +159,19 @@ impl<S> ProviderInterface for Provider<S>
 where
     S: BlockStore + Sync + Send + 'static,
 {
-    async fn create(&self, mut ad: Advertisement) -> Result<usize> {
+    fn create(&mut self, mut ad: Advertisement) -> Result<usize> {
         let id: usize = rand::thread_rng().gen();
         ad.Entries = None;
-        let mut temp_ads = self.temp_ads.write().unwrap();
-        temp_ads.insert(id, ad);
-        info!("ad created with id : {}", id);
+        self.temp_ads.insert(id, ad);
 
+        trace!("ad created with id : {}", id);
         Ok(id)
     }
 
-    async fn add_chunk(&self, bytes: Vec<u8>, id: usize) -> Result<()> {
+    fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()> {
         let entries = forest_encoding::from_slice(&bytes).unwrap();
 
-        let mut temp_ads = self.temp_ads.write().unwrap();
-        if let Some(ad) = temp_ads.get_mut(&id) {
+        if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
             return match self
@@ -182,6 +181,7 @@ where
             {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
+                    info!("Chunk added!");
                     Ok(())
                 }
                 Err(e) => Err(anyhow!(format!("{}", e))),
@@ -191,12 +191,11 @@ where
         Err(anyhow!("ad not found"))
     }
 
-    async fn publish(&self, id: usize) -> Result<()> {
+    fn publish(&mut self, id: usize) -> Result<()> {
         let mut head = self.head.write().unwrap();
         let keypair = self.keypair.clone();
         let current_head = head.take();
-        let mut temp_ads = self.temp_ads.write().unwrap();
-        if let Some(mut ad) = temp_ads.remove(&id) {
+        if let Some(mut ad) = self.temp_ads.remove(&id) {
             ad.PreviousID = current_head.map(|h| Ipld::Link(convert_cid(h.to_bytes())));
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
@@ -206,26 +205,32 @@ where
                 .blockstore()
                 .put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
+            info!("Publish meh!");
             return Ok(());
         }
-        return Err(anyhow!("ad not found"));
+        Err(anyhow!("ad not found"))
     }
 
-    async fn create_announce_msg(&self, peer_id: PeerId) -> Result<Vec<u8>> {
+    fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>> {
         let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
         multiaddrs =
             Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs.to_string(), peer_id))?;
         let msg_addrs = [multiaddrs].to_vec();
-        let head = self.head.read().unwrap();
-        let head_cid: Cid = (*head).expect("no head found for announcement");
-        let message = Message {
-            Cid: head_cid,
-            Addrs: msg_addrs,
-            ExtraData: *b"",
-        };
-        info!("Announcing th advertisement with the message {:?}", message);
+        if let Some(head_cid) = *self.head.read().unwrap() {
+            let message = Message {
+                Cid: head_cid,
+                Addrs: msg_addrs,
+                ExtraData: *b"",
+            };
 
-        Ok(message.marshal_cbor().unwrap())
+            info!(
+                "Announcing the advertisement with the message {:?}",
+                message
+            );
+            Ok(message.marshal_cbor().unwrap())
+        } else {
+            Err(anyhow!("No head found for announcement!"))
+        }
     }
 
     async fn announce_http_message(&self, announce_msg: Vec<u8>) {
@@ -248,13 +253,11 @@ pub struct Message {
 }
 impl Cbor for Message {
     fn marshal_cbor(&self) -> Result<Vec<u8>, forest_encoding::Error> {
-        println!("{:?}", self.Cid);
         const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];
         let mut bytes = Vec::new();
         let _ = bytes.write_all(&MESSAGE_BUFFER_LENGTH);
         let _encoded_cid = self.Cid.encode(DagCborCodec, &mut bytes);
 
-        println!("{:?}", self.Addrs);
         let encoded_addrs =
             forest_encoding::to_vec(&self.Addrs).expect("addresses serialization cannot fail");
         bytes
@@ -273,11 +276,33 @@ mod tests {
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::PeerId;
     use multihash::MultihashDigest;
-    use std::{thread, time::Duration};
+    use simple_logger::SimpleLogger;
     use tokio::task;
+    use tracing::log::LevelFilter;
+
+    async fn init(keypair: Keypair) -> Provider<RocksDb> {
+        let provider_config = ProviderConfig::default();
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
+
+        let provider_interface = index_provider.clone();
+        if let Err(err) = index_provider.start(&provider_config).await {
+            error!("[provider_task] - {:?}", err);
+        }
+
+        provider_interface
+    }
 
     #[tokio::test]
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
+        SimpleLogger::new()
+            .with_level(LevelFilter::Debug)
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
 
@@ -287,46 +312,51 @@ mod tests {
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
-        let provider_interface = index_provider.clone();
-        let provider_task = task::spawn(async move {
+        let mut provider_interface = index_provider.clone();
+        let provider_interface_copy = index_provider.clone();
+
+        task::spawn(async move {
             if let Err(err) = index_provider.start(&provider_config).await {
                 error!("[provider_task] - {:?}", err);
             }
         });
 
-        let delay = Duration::from_millis(2000);
-        thread::sleep(delay);
+        let _ = task::spawn(async move {
+            let ad = Advertisement {
+                PreviousID: None,
+                Provider: peer_id.to_base58(),
+                Addresses: vec!["/ip4/127.0.0.1/tcp/6009".into()],
+                Signature: Ipld::Bytes(vec![]),
+                Entries: None,
+                Metadata: Ipld::Bytes(vec![]),
+                ContextID: Ipld::Bytes("ursa".into()),
+                IsRm: false,
+            };
 
-        let ad = Advertisement {
-            PreviousID: None,
-            Provider: peer_id.to_base58(),
-            Addresses: vec!["/ip4/127.0.0.1/tcp/6009".into()],
-            Signature: Ipld::Bytes(vec![]),
-            Entries: None,
-            Metadata: Ipld::Bytes(vec![]),
-            ContextID: Ipld::Bytes("ursa".into()),
-            IsRm: false,
-        };
+            let id = provider_interface.create(ad).unwrap();
 
-        let id = provider_interface.create(ad).await.unwrap();
+            let mut entries: Vec<Ipld> = vec![];
+            let count = 10;
 
-        let mut entries: Vec<Ipld> = vec![];
-        let count = 10;
+            for i in 0..count {
+                let b = Into::<i32>::into(i).to_ne_bytes();
+                let mh = Code::Blake2b256.digest(&b);
+                entries.push(Ipld::Bytes(mh.to_bytes()))
+            }
+            let bytes = forest_encoding::to_vec(&entries)?;
+            provider_interface.add_chunk(bytes, id)?;
+            provider_interface.publish(id)?;
 
-        for i in 0..count {
-            let b = Into::<i32>::into(i).to_ne_bytes();
-            let mh = Code::Blake2b256.digest(&b);
-            entries.push(Ipld::Bytes(mh.to_bytes()))
-        }
-        let bytes = forest_encoding::to_vec(&entries)?;
-        let _ = provider_interface.add_chunk(bytes, id).await;
-        let _ = provider_interface.publish(id).await;
-        let t_head = provider_interface.head.read().unwrap();
+            Ok::<_, Error>(())
+        })
+        .await?;
 
         let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head").recv_json().await?;
-        assert_eq!(signed_head.open()?.1, t_head.unwrap());
+        assert_eq!(
+            signed_head.open()?.1,
+            provider_interface_copy.head.read().unwrap().unwrap()
+        );
 
-        provider_task.abort();
         Ok(())
     }
 }

@@ -43,7 +43,7 @@ use std::num::{NonZeroU8, NonZeroUsize};
 use std::pin::Pin;
 use std::{collections::HashSet, io, sync::Arc};
 use tokio::task;
-use tracing::{debug, error, info, warn, trace};
+use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -455,56 +455,81 @@ where
                     Ok(())
                 }
                 BehaviourEvent::StartPublish { public_address } => {
-                    // let mut address = Multiaddr::empty();
-                    // let peer_id = *self.swarm.local_peer_id();
-                    // for protocol in public_address.into_iter() {
-                    //     match protocol {
-                    //         Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
-                    //         Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
-                    //         Protocol::Tcp(port) =>  address.push(Protocol::Tcp(port)),
-                    //         _ => {},
-                    //     }
-                    // }
+                    let mut address = Multiaddr::empty();
+                    let peer_id = *self.swarm.local_peer_id();
+                    for protocol in public_address.into_iter() {
+                        match protocol {
+                            Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
+                            Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
+                            Protocol::Tcp(port) => address.push(Protocol::Tcp(port)),
+                            _ => {}
+                        }
+                    }
+                    let root_cids = self.index_provider.get_mut_root_cids();
+                    let mut cid_queue = root_cids.write().unwrap();
 
-                    // let root_cids = self.index_provider.get_mut_root_cids();
-                    // let mut cid_queue = root_cids.write().await;
-                    // while !cid_queue.is_empty() {
-                    //     let root_cid = cid_queue.pop_front().unwrap();
-                    //     let context_id = root_cid.to_bytes();
-                    //     info!("creating advertisement for cids under root cid: {:?}", root_cid);
+                    while !cid_queue.is_empty() {
+                        let root_cid = cid_queue.pop_front().unwrap();
+                        let context_id = root_cid.to_bytes();
+                        info!(
+                            "Creating advertisement for cids under root cid: {:?}.",
+                            root_cid
+                        );
 
-                    //     info!("inserting the chunks");
-                    //     let addresses: Vec<String> = [address.clone()].iter().map(|m| m.to_string()).collect();
-                    //     let ad = Advertisement::new(context_id.clone(), peer_id, addresses, false);
-                    //     let id = self.index_provider.create(ad).await.unwrap();
+                        let addresses: Vec<String> =
+                            [address.clone()].iter().map(|m| m.to_string()).collect();
+                        let advertisement =
+                            Advertisement::new(context_id.clone(), peer_id, addresses, false);
+                        let provider_id =
+                            self.index_provider.create(advertisement).unwrap().clone();
 
-                    //     let dag = self.store.dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
-                    //     let entries = dag.iter().map(|d| return Ipld::Bytes(d.0.hash().to_bytes())).collect::<Vec<Ipld>>();
-                    //     let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+                        let dag = self
+                            .store
+                            .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                        let entries = dag
+                            .iter()
+                            .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
+                            .collect::<Vec<Ipld>>();
+                        let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
 
-                    //     for chunk in chunks.iter() {
-                    //         let entries_bytes = forest_encoding::to_vec(&chunk)?;
-                    //         self.index_provider.add_chunk(entries_bytes, id).await.expect(" adding chunk to ad should not fail");
-                    //     }
-                    //     info!("Publishing the advertisement now");
-                    //     self.index_provider.publish(id).await.expect("publishing the ad should not fail");
-                    //     if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id).await {
-                    //         let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
-                    //         let i_topic = Topic::new("indexer/ingest/mainnet");
-                    //         let g_msg = GossipsubMessage {data:announce_msg.clone(), source: None, sequence_number: None, topic: i_topic_hash };
-                    //         match swarm.get_mut().behaviour_mut().publish(i_topic, g_msg.clone()) {
-                    //             Ok(res) => {
-                    //                 info!("gossiping the new advertisement done : {:}", res);
-                    //             },
-                    //             Err(e) => {
-                    //                 warn!("there was an error while gossiping the announcement, will try to announce via http");
-                    //                 warn!("{:?}", e);
-                    //                 // make an http announcement if gossiping fails
-                    //                 let _ = self.index_provider.announce_http_message(announce_msg).await;
-                    //             }
-                    //         }
-                    //     }
-                    // }
+                        info!("Inserting Index chunks.");
+                        for chunk in chunks.iter() {
+                            let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                            self.index_provider
+                                .add_chunk(entries_bytes, provider_id)
+                                .expect(" adding chunk to advertisement should not fail!");
+                        }
+                        info!("Publishing the advertisement now");
+                        self.index_provider
+                            .publish(provider_id)
+                            .expect("publishing the ad should not fail");
+                        if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id) {
+                            let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                            let i_topic = Topic::new("indexer/ingest/mainnet");
+                            let g_msg = GossipsubMessage {
+                                data: announce_msg.clone(),
+                                source: None,
+                                sequence_number: None,
+                                topic: i_topic_hash,
+                            };
+                            match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
+                                Ok(res) => {
+                                    info!("gossiping the new advertisement done : {:}", res);
+                                }
+                                Err(e) => {
+                                    warn!("there was an error while gossiping the announcement, will try to announce via http");
+                                    warn!("{:?}", e);
+                                    // make an http announcement if gossiping fails
+                                    let provider_copy = self.index_provider.clone();
+
+                                    tokio::task::spawn(async move {
+                                        provider_copy.announce_http_message(announce_msg).await;
+                                    });
+                                }
+                            }
+                        }
+                    }
+
                     Ok(())
                 }
             },
