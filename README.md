@@ -13,6 +13,7 @@ Ursa, a decentralized content delivery network.
 - build-essential
 - libclang
 - cmake
+- protoc
 
 ### Run with cli
 
