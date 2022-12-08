@@ -11,15 +11,16 @@ use std::{
 
 use crate::config::NetworkConfig;
 use anyhow::{anyhow, Error, Result};
-use futures::executor::block_on;
+use libp2p::mdns::tokio::Behaviour as Mdns;
+use libp2p::swarm::derive_prelude::FromSwarm;
 use libp2p::{
-    core::{connection::ConnectionId, ConnectedPoint},
+    core::connection::ConnectionId,
     identity::Keypair,
     kad::{
         handler::KademliaHandlerProto, store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent,
         QueryId, QueryResult,
     },
-    mdns::{Mdns, MdnsConfig, MdnsEvent},
+    mdns::Event as MdnsEvent,
     multiaddr::Protocol,
     swarm::{
         behaviour::toggle::Toggle, ConnectionHandler, IntoConnectionHandler, NetworkBehaviour,
@@ -30,11 +31,6 @@ use libp2p::{
 use tracing::{info, warn};
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
-
-pub struct PeerInfo {
-    peer_id: PeerId,
-    addresses: Vec<Multiaddr>,
-}
 
 #[derive(Debug)]
 pub enum DiscoveryEvent {
@@ -50,7 +46,7 @@ pub struct DiscoveryBehaviour {
     /// Connected peers.
     peers: HashSet<PeerId>,
     /// Information about connected peers.
-    peer_info: HashMap<PeerId, PeerInfo>,
+    peer_info: HashMap<PeerId, Vec<Multiaddr>>,
     /// events
     events: VecDeque<DiscoveryEvent>,
     /// Optional MDNS protocol.
@@ -81,9 +77,7 @@ impl DiscoveryBehaviour {
         let kademlia = {
             let store = MemoryStore::new(local_peer_id);
             // todo(botch): move replication factor to config
-            // why 8?
             let replication_factor = NonZeroUsize::new(8).unwrap();
-
             let mut kad_config = KademliaConfig::default();
             kad_config
                 .set_protocol_name(URSA_KAD_PROTOCOL)
@@ -93,9 +87,7 @@ impl DiscoveryBehaviour {
         };
 
         let mdns = if config.mdns {
-            Some(block_on(async {
-                Mdns::new(MdnsConfig::default()).await.expect("mdns start")
-            }))
+            Some(Mdns::new(Default::default()).expect("mDNS start"))
         } else {
             None
         };
@@ -118,7 +110,7 @@ impl DiscoveryBehaviour {
         &self.peers
     }
 
-    pub fn peer_info(&self) -> &HashMap<PeerId, PeerInfo> {
+    pub fn peer_info(&self) -> &HashMap<PeerId, Vec<Multiaddr>> {
         &self.peer_info
     }
 
@@ -132,9 +124,6 @@ impl DiscoveryBehaviour {
         }
 
         info!("Bootstrapping with {:?}", self.bootstrap_nodes);
-
-        // Ok(self.kademlia.get_closest_peers(self.local_peer_id))
-
         self.kademlia
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
@@ -168,7 +157,6 @@ impl DiscoveryBehaviour {
 
 impl NetworkBehaviour for DiscoveryBehaviour {
     type ConnectionHandler = KademliaHandlerProto<QueryId>;
-
     type OutEvent = DiscoveryEvent;
 
     fn new_handler(&mut self) -> Self::ConnectionHandler {
@@ -182,67 +170,35 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         addrs
     }
 
-    fn inject_connection_established(
-        &mut self,
-        peer_id: &PeerId,
-        connection_id: &ConnectionId,
-        endpoint: &ConnectedPoint,
-        failed_addresses: Option<&Vec<Multiaddr>>,
-        other_established: usize,
-    ) {
-        if self.peers.insert(*peer_id) {
-            self.kademlia.inject_connection_established(
-                peer_id,
-                connection_id,
-                endpoint,
-                failed_addresses,
-                other_established,
-            );
+    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+        match event {
+            FromSwarm::ConnectionEstablished(event) => {
+                self.peers.insert(event.peer_id);
 
-            self.events.push_back(DiscoveryEvent::Connected(*peer_id));
+                let addresses_of_peer = self.addresses_of_peer(&event.peer_id);
+                self.peer_info.insert(event.peer_id, addresses_of_peer);
+
+                self.events
+                    .push_back(DiscoveryEvent::Connected(event.peer_id));
+            }
+            FromSwarm::ConnectionClosed(event) => {
+                self.peers.remove(&event.peer_id);
+                self.events
+                    .push_back(DiscoveryEvent::Disconnected(event.peer_id));
+            }
+            _ => {}
         }
     }
 
-    fn inject_connection_closed(
-        &mut self,
-        peer_id: &PeerId,
-        connection_id: &ConnectionId,
-        endpoint: &ConnectedPoint,
-        handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
-        remaining_established: usize,
-    ) {
-        if self.peers.remove(peer_id) {
-            self.kademlia.inject_connection_closed(
-                peer_id,
-                connection_id,
-                endpoint,
-                handler,
-                remaining_established,
-            );
-
-            self.events
-                .push_back(DiscoveryEvent::Disconnected(*peer_id));
-        }
-    }
-
-    fn inject_address_change(
-        &mut self,
-        peer_id: &PeerId,
-        connection_id: &ConnectionId,
-        old: &ConnectedPoint,
-        new: &ConnectedPoint,
-    ) {
-        self.kademlia
-            .inject_address_change(peer_id, connection_id, old, new);
-    }
-
-    fn inject_event(
+    fn on_connection_handler_event(
         &mut self,
         peer_id: PeerId,
-        connection: ConnectionId,
-        event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent,
+        connection_id: ConnectionId,
+        event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as
+        ConnectionHandler>::OutEvent,
     ) {
-        self.kademlia.inject_event(peer_id, connection, event);
+        self.kademlia
+            .on_connection_handler_event(peer_id, connection_id, event)
     }
 
     fn poll(

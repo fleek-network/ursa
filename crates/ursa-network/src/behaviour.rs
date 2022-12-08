@@ -58,11 +58,11 @@ use tracing::{debug, error, trace, warn};
 use ursa_utils::convert_cid;
 
 use crate::discovery::URSA_KAD_PROTOCOL;
+use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
     config::NetworkConfig,
     discovery::{DiscoveryBehaviour, DiscoveryEvent},
-    gossipsub::UrsaGossipsub,
 };
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
@@ -189,10 +189,10 @@ impl<P: StoreParams> Behaviour<P> {
         let local_peer_id = PeerId::from(local_public_key.clone());
 
         // Setup the ping behaviour
-        let ping = Ping::new(PingConfig::new().with_keep_alive(true));
+        let ping = Ping::default();
 
         // Setup the gossip behaviour
-        let mut gossipsub = UrsaGossipsub::new(keypair, config);
+        let mut gossipsub = build_gossipsub(keypair, config);
         // todo(botch): handle gracefully
         gossipsub
             .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
@@ -354,23 +354,6 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn cancel(&mut self, id: QueryId) {
         self.queries.remove(&id);
         self.bitswap.cancel(id);
-    }
-
-    fn poll(
-        &mut self,
-        _: &mut Context,
-        _: &mut impl PollParameters,
-    ) -> Poll<
-        NetworkBehaviourAction<
-            <Self as NetworkBehaviour>::OutEvent,
-            <Self as NetworkBehaviour>::ConnectionHandler,
-        >,
-    > {
-        if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-        }
-
-        Poll::Pending
     }
 
     fn handle_ping(&mut self, event: PingEvent) {

@@ -36,7 +36,6 @@ use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::{collections::HashSet, sync::Arc};
-use tokio::task;
 use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
@@ -46,11 +45,11 @@ use ursa_metrics::events::{track, MetricEvent};
 use ursa_store::{BitswapStorage, Dag, Store};
 use ursa_utils::convert_cid;
 
+use crate::transport::build_transport;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
-    transport::UrsaTransport,
 };
 use metrics::Label;
 use tokio::sync::oneshot;
@@ -190,7 +189,7 @@ where
             (None, None)
         };
 
-        let transport = UrsaTransport::new(&keypair, config, relay_transport);
+        let transport = build_transport(&keypair, config, relay_transport);
 
         let bitswap_store = BitswapStorage(store.clone());
 
@@ -203,17 +202,12 @@ where
             .with_max_established_outgoing(Some(2 << 9))
             .with_max_established_per_peer(Some(8));
 
-        let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
+        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
             .notify_handler_buffer_size(NonZeroUsize::new(2 << 7).unwrap())
             .connection_event_buffer_size(2 << 7)
             .dial_concurrency_factor(NonZeroU8::new(8).unwrap())
             .connection_limits(limits)
-            .executor(Box::new(|future| {
-                task::spawn(future);
-            }))
             .build();
-
-        swarm.listen_on(config.swarm_addr.clone()).unwrap();
 
         for to_dial in &config.bootstrap_nodes {
             swarm
@@ -660,7 +654,7 @@ mod tests {
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
     use simple_logger::SimpleLogger;
-    use std::{str::FromStr, thread, time::Duration, vec};
+    use std::{str::FromStr, vec};
     use tracing::log::LevelFilter;
     use ursa_index_provider::config::ProviderConfig;
     use ursa_store::Store;
@@ -774,7 +768,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let msg = UrsaCommand::GossipsubMessage {
             topic: topic.clone(),
@@ -827,7 +821,7 @@ mod tests {
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6010".parse().unwrap();
         let (node_2, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let mut swarm_2 = node_2.swarm.fuse();
 
@@ -863,7 +857,7 @@ mod tests {
         let (mut node_2, _) =
             network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         loop {
             select! {
@@ -906,7 +900,7 @@ mod tests {
 
         let node_1_sender = node_1.command_sender.clone();
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let (sender, _) = oneshot::channel();
         let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
@@ -958,9 +952,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move { node_2.start().await.unwrap() });
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         let (sender, receiver) = oneshot::channel();
         let msg = UrsaCommand::GetBitswap {
@@ -1005,9 +999,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move { node_2.start().await.unwrap() });
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         let (sender, receiver) = oneshot::channel();
 
@@ -1127,9 +1121,9 @@ mod tests {
 
         let node_2_sender = node_2.command_sender.clone();
 
-        task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
-        task::spawn(async move { node_2.start().await.unwrap() });
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         let (sender, receiver) = oneshot::channel();
 
