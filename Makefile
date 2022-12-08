@@ -22,7 +22,7 @@ docker-run-dev:
 	docker run --name ursa-dev -it ursa-dev
 
 docker-run:
-	docker run --name ursa-cli -it ursa
+	docker run -p 4069:4069 --name ursa-cli -it ursa
 
 compose-up:
 	docker-compose -f infra/ursa/docker-compose.yml up
