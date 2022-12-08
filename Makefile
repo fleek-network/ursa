@@ -18,9 +18,6 @@ all: build install
 docker-build:
 	docker build -t ursa -f ./Dockerfile .
 
-docker-run-dev:
-	docker run --name ursa-dev -it ursa-dev
-
 docker-run:
 	docker run --name ursa-cli -it ursa
 
