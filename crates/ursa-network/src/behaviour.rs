@@ -130,7 +130,11 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "BehaviourEvent", event_process = true)]
+#[behaviour(
+    out_event = "BehaviourEvent",
+    poll_method = "poll",
+    event_process = true
+)]
 pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
