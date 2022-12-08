@@ -8,7 +8,12 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
     fn record(&self) {
         match self {
             SwarmEvent::Behaviour(_) => {}
-            SwarmEvent::ConnectionEstablished { endpoint, num_established, peer_id, .. } => {
+            SwarmEvent::ConnectionEstablished {
+                endpoint,
+                num_established,
+                peer_id,
+                ..
+            } => {
                 if u32::from(*num_established) == 1 {
                     increment_gauge!("swarm_connected_peers", 1.0);
                 }
@@ -37,10 +42,10 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
                     if let Some(protocols) = peers.remove(peer_id) {
                         for protocol in protocols {
                             decrement_gauge!(
-                            "identify_supported_protocols",
-                            1.0,
-                            vec![Label::new("protocol", protocol.clone())]
-                        );
+                                "identify_supported_protocols",
+                                1.0,
+                                vec![Label::new("protocol", protocol.clone())]
+                            );
                         }
                     }
                 }

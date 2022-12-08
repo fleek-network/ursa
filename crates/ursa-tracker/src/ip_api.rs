@@ -15,7 +15,7 @@ pub struct IpInfoResponse {
     pub org: String,
     pub postal: String,
     pub timezone: String,
-    pub geo: String
+    pub geo: String,
 }
 
 /// Get public ip info from https://ipinfo.io
@@ -51,7 +51,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_self_ip_info() {
-        get_ip_info(token(),"".to_string()).await.unwrap();
+        get_ip_info(token(), "".to_string()).await.unwrap();
     }
 
     #[tokio::test]

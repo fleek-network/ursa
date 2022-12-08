@@ -261,7 +261,7 @@ impl NetworkBehaviour for DiscoveryBehaviour {
                 NetworkBehaviourAction::GenerateEvent(event) => {
                     event.record();
                     self.handle_kad_event(event)
-                },
+                }
                 NetworkBehaviourAction::Dial { opts, handler } => {
                     return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
                 }

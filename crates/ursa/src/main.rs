@@ -85,7 +85,7 @@ async fn main() {
                     &network_config,
                     Arc::clone(&store),
                     index_provider.clone(),
-                    Some(metrics_config.port)
+                    Some(metrics_config.port),
                 );
 
                 // Start metrics service
@@ -100,7 +100,7 @@ async fn main() {
                     Ok(b) => info!("successful tracker response: {}", b),
                     Err(e) => error!("Error with tracker announcement: {}", e),
                 }
-                
+
                 let rpc_sender = service.command_sender().clone();
 
                 // Start libp2p service

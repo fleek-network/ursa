@@ -192,7 +192,9 @@ impl<P: StoreParams> Behaviour<P> {
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
-        bitswap.register_metrics(&Default::default()).expect("bitswap metrics");
+        bitswap
+            .register_metrics(&Default::default())
+            .expect("bitswap metrics");
 
         // Setup the identify behaviour
         let identify = Identify::new(

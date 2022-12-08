@@ -13,6 +13,12 @@
 
 use anyhow::{anyhow, Result};
 
+use crate::{
+    behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
+    codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
+    config::NetworkConfig,
+    transport::UrsaTransport,
+};
 use cid::Cid;
 use fnv::FnvHashMap;
 use forest_ipld::Ipld;
@@ -33,9 +39,18 @@ use libp2p::{
     PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use metrics::Label;
 use rand::seq::SliceRandom;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::{collections::HashSet, sync::Arc};
+use tokio::{
+    select,
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        oneshot,
+    },
+    task,
+};
 use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
@@ -43,20 +58,8 @@ use ursa_index_provider::{
 };
 use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, Dag, Store};
-use ursa_utils::convert_cid;
-use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
-    codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
-    config::NetworkConfig,
-    transport::UrsaTransport,
-};
-use metrics::Label;
 use ursa_tracker::types::NodeAnnouncement;
-use tokio::{
-    select,
-    task,
-    sync::{oneshot, mpsc::{channel, Receiver, Sender}},
-};
+use ursa_utils::convert_cid;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -532,7 +535,7 @@ where
                     Ok(())
                 }
             },
-            event => Ok(event.record())
+            event => Ok(event.record()),
         }
     }
 
