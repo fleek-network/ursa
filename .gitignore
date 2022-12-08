@@ -3,7 +3,7 @@
 **/.idea
 
 # terraform
-**/.terraform
+**/.terraform*
 *.tfstate*
 
 car_files*
@@ -24,7 +24,7 @@ test_db*
 ursa_db*
 data*
 tracker_db*
-
+keystore*
 
 
 infra/ursa/data/nginx/cache
