@@ -93,18 +93,6 @@ pub enum BehaviourEvent {
     PeerConnected(PeerId),
     /// An event trigger when remote peer disconnects.
     PeerDisconnected(PeerId),
-    /// An event trigger when relay reservation is opened
-    RelayReservationOpened {
-        peer_id: PeerId,
-    },
-    /// An event trigger when relay reservation is closed
-    RelayReservationClosed {
-        peer_id: PeerId,
-    },
-    /// An event trigger when a relay circuit is opened
-    RelayCircuitOpened,
-    /// An event trigger when a relay circuit is closed
-    RelayCircuitClosed,
     /// A Gossip message request was received from a peer.
     Bitswap(BitswapInfo),
     GossipMessage {
@@ -204,6 +192,7 @@ impl<P: StoreParams> Behaviour<P> {
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
+        bitswap.register_metrics(&Default::default()).expect("bitswap metrics");
 
         // Setup the identify behaviour
         let identify = Identify::new(
@@ -375,8 +364,6 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_ping(&mut self, event: PingEvent) {
-        event.record();
-
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -420,7 +407,6 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
-        event.record();
         debug!("[IdentifyEvent] {:?}", event);
         match event {
             IdentifyEvent::Received { peer_id, info } => {
@@ -470,33 +456,6 @@ impl<P: StoreParams> Behaviour<P> {
 
     fn handle_relay_server(&mut self, event: RelayServerEvent) {
         debug!("[RelayServerEvent] {:?}", event);
-
-        match event {
-            RelayServerEvent::ReservationReqAccepted {
-                src_peer_id,
-                renewed,
-            } => {
-                if !renewed {
-                    self.events
-                        .push_back(BehaviourEvent::RelayReservationOpened {
-                            peer_id: src_peer_id,
-                        });
-                }
-            }
-            RelayServerEvent::ReservationTimedOut { src_peer_id } => {
-                self.events
-                    .push_back(BehaviourEvent::RelayReservationClosed {
-                        peer_id: src_peer_id,
-                    });
-            }
-            RelayServerEvent::CircuitReqAccepted { .. } => {
-                self.events.push_back(BehaviourEvent::RelayCircuitOpened);
-            }
-            RelayServerEvent::CircuitClosed { .. } => {
-                self.events.push_back(BehaviourEvent::RelayCircuitClosed);
-            }
-            _ => {}
-        }
     }
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {
@@ -669,24 +628,28 @@ impl<P: StoreParams> Behaviour<P> {
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<PingEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: PingEvent) {
+        event.record();
         self.handle_ping(event)
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: IdentifyEvent) {
+        event.record();
         self.handle_identify(event)
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: GossipsubEvent) {
+        event.record();
         self.handle_gossipsub(event)
     }
 }
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<BitswapEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: BitswapEvent) {
+        println!("BitswapEvent: {:?}", event);
         self.handle_bitswap(event)
     }
 }
@@ -705,6 +668,7 @@ impl<P: StoreParams> NetworkBehaviourEventProcess<AutonatEvent> for Behaviour<P>
 
 impl<P: StoreParams> NetworkBehaviourEventProcess<RelayServerEvent> for Behaviour<P> {
     fn inject_event(&mut self, event: RelayServerEvent) {
+        event.record();
         self.handle_relay_server(event)
     }
 }

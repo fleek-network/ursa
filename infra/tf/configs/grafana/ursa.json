@@ -114,12 +114,12 @@
           "type": "default"
         },
         "controls": {
-          "mouseWheelZoom": false,
+          "mouseWheelZoom": true,
           "showAttribution": true,
           "showDebug": false,
           "showMeasure": false,
-          "showScale": false,
-          "showZoom": false
+          "showScale": true,
+          "showZoom": true
         },
         "layers": [
           {
@@ -212,7 +212,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "active_connected_peers{}",
+          "expr": "swarm_connected_peers{}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -221,6 +221,153 @@
         }
       ],
       "type": "geomap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "gradientMode": "hue",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 0
+          },
+          "displayName": "Ping",
+          "mappings": [],
+          "min": 5,
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 18,
+      "options": {
+        "bucketOffset": 0,
+        "bucketSize": 0.01,
+        "combine": true,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "LcJ8t4O4z"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "ping_rtt{}",
+          "format": "table",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Ping RTT (In Seconds)",
+      "type": "histogram"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 34,
+      "options": {
+        "bucketOffset": 0,
+        "bucketSize": 0.0001,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "rpc_response_sent{}",
+          "format": "table",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "RPC Response Time",
+      "type": "histogram"
     },
     {
       "datasource": {
@@ -255,10 +402,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 20,
+        "h": 8,
+        "w": 12,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "id": 8,
       "options": {
@@ -281,7 +428,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "active_connected_peers",
+          "expr": "swarm_connected_peers",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -350,12 +497,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 20,
-        "y": 16
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
       },
-      "id": 2,
+      "id": 22,
       "options": {
         "legend": {
           "calcs": [],
@@ -375,78 +522,8 @@
             "uid": "LcJ8t4O4z"
           },
           "editorMode": "code",
-          "expr": "active_connected_peers",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Connected Peers",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "fillOpacity": 100,
-            "gradientMode": "hue",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 0
-          },
-          "displayName": "Ping",
-          "mappings": [],
-          "min": 5,
-          "thresholds": {
-            "mode": "percentage",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 23
-      },
-      "id": 18,
-      "options": {
-        "bucketOffset": 0,
-        "bucketSize": 0.01,
-        "combine": true,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "LcJ8t4O4z"
-          },
-          "editorMode": "code",
           "exemplar": false,
-          "expr": "ping_rtt{}",
+          "expr": "rate(swarm_connections_established[$__rate_interval])",
           "format": "table",
           "instant": false,
           "legendFormat": "__auto",
@@ -454,8 +531,8 @@
           "refId": "A"
         }
       ],
-      "title": "Ping RTT (In Seconds)",
-      "type": "histogram"
+      "title": "Connection Established Rate",
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -515,12 +592,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
-        "x": 12,
-        "y": 23
+        "x": 0,
+        "y": 32
       },
-      "id": 20,
+      "id": 2,
       "options": {
         "legend": {
           "calcs": [],
@@ -540,14 +617,200 @@
             "uid": "LcJ8t4O4z"
           },
           "editorMode": "code",
-          "expr": "rate(swarm_connections_incoming{}[$__rate_interval])",
-          "format": "heatmap",
+          "expr": "swarm_connected_peers",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Incoming Connection Rate",
+      "title": "Connected Peers",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "rate(swarm_dial_attempt{}[$__rate_interval])",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Outbound Dial Attempt Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "rate(swarm_outgoing_connection_error{}[$__rate_interval])",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Outgoing Connection Error Rate",
       "type": "timeseries"
     },
     {
@@ -570,7 +833,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -582,10 +846,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 15,
         "w": 12,
         "x": 0,
-        "y": 31
+        "y": 41
       },
       "id": 16,
       "options": {
@@ -598,7 +862,7 @@
         },
         "showHeader": true
       },
-      "pluginVersion": "9.3.0",
+      "pluginVersion": "9.3.1",
       "targets": [
         {
           "datasource": {
@@ -663,7 +927,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -675,12 +940,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 44
       },
-      "id": 22,
+      "id": 20,
       "options": {
         "legend": {
           "calcs": [],
@@ -700,16 +965,106 @@
             "uid": "LcJ8t4O4z"
           },
           "editorMode": "code",
-          "exemplar": false,
-          "expr": "rate(swarm_connections_established[$__rate_interval])",
-          "format": "time_series",
-          "instant": false,
+          "expr": "rate(swarm_connections_incoming{}[$__rate_interval])",
+          "format": "heatmap",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Connection Established Rate",
+      "title": "Incoming Connection Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 50
+      },
+      "id": 30,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "rate(swarm_connections_incoming_error[$__rate_interval])",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Incoming Connection Error Rate",
       "type": "timeseries"
     },
     {
@@ -718,7 +1073,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 56
       },
       "id": 12,
       "panels": [],
@@ -770,7 +1125,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -779,38 +1135,13 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "{__name__=\"active_relay_circuits\", instance=\"157.230.89.119:4070\", job=\"bootstrap\"}"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 57
       },
       "id": 4,
       "options": {
@@ -825,14 +1156,18 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "9.3.1",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "LcJ8t4O4z"
           },
-          "editorMode": "code",
-          "expr": "active_relay_circuits",
+          "editorMode": "builder",
+          "exemplar": false,
+          "expr": "rate(relay_circuit_req_accepted)",
+          "format": "table",
+          "instant": false,
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -886,7 +1221,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -901,7 +1237,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 57
       },
       "id": 6,
       "options": {
@@ -923,13 +1259,13 @@
             "uid": "LcJ8t4O4z"
           },
           "editorMode": "code",
-          "expr": "active_relay_reservations",
+          "expr": "rate(relay_reservation_req_accepted{}[$__rate_interval])",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Relay Reservations",
+      "title": "Relay Reservation Rate",
       "type": "timeseries"
     }
   ],
@@ -948,6 +1284,6 @@
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 2,
+  "version": 17,
   "weekStart": ""
 }

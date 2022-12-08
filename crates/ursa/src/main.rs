@@ -16,7 +16,7 @@ use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::provider::Provider;
-use ursa_metrics::metrics;
+use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
@@ -80,13 +80,6 @@ async fn main() {
                 let index_provider =
                     Provider::new(keypair.clone(), index_store, provider_config.clone());
 
-                // Start metrics service
-                let metrics_task = task::spawn(async move {
-                    if let Err(err) = metrics::start(&metrics_config).await {
-                        error!("[metrics_task] - {:?}", err);
-                    }
-                });
-
                 let service = UrsaService::new(
                     keypair,
                     &network_config,
@@ -95,8 +88,15 @@ async fn main() {
                     Some(metrics_config.port)
                 );
 
+                // Start metrics service
+                let metrics_task = task::spawn(async move {
+                    if let Err(err) = server::start(&metrics_config).await {
+                        error!("[metrics_task] - {:?}", err);
+                    }
+                });
+
                 // Perform http node announcement
-                match service.announce_node().await {
+                match service.register_with_tracker().await {
                     Ok(b) => info!("successful tracker response: {}", b),
                     Err(e) => error!("Error with tracker announcement: {}", e),
                 }

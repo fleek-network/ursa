@@ -36,17 +36,14 @@ use libp2p_bitswap::{BitswapEvent, BitswapStore};
 use rand::seq::SliceRandom;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::{collections::HashSet, sync::Arc};
-use tokio::task;
 use tracing::{debug, error, info, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
 };
-use ursa_metrics::events::{track, MetricEvent};
 use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, Dag, Store};
 use ursa_utils::convert_cid;
-
 use crate::{
     behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
@@ -55,11 +52,10 @@ use crate::{
 };
 use metrics::Label;
 use ursa_tracker::types::NodeAnnouncement;
-use ursa_utils::convert_cid;
-use tokio::sync::oneshot;
 use tokio::{
     select,
-    sync::mpsc::{channel, Receiver, Sender},
+    task,
+    sync::{oneshot, mpsc::{channel, Receiver, Sender}},
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -253,7 +249,6 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
-            index_provider,
             config: config.clone(),
             metrics_port,
         }
@@ -318,8 +313,6 @@ where
                         Label::new("block_found", format!("{}", block_found)),
                     ];
 
-                    track(MetricEvent::Bitswap, Some(labels), None);
-
                     if let Some(chans) = self.response_channels.remove(&cid) {
                         // TODO: in some cases, the insert takes few milliseconds after query complete is received
                         // wait for block to be inserted
@@ -361,8 +354,6 @@ where
                         Label::new("message", format!("{:?}", message)),
                     ];
 
-                    track(MetricEvent::GossipMessage, Some(labels), None);
-
                     if self.swarm.is_connected(&peer) {
                         let event_sender = self.event_sender.clone();
 
@@ -382,13 +373,6 @@ where
                     channel,
                 } => {
                     debug!("[BehaviourEvent::RequestMessage] {} ", peer);
-                    let labels = vec![
-                        Label::new("peer", format!("{}", peer)),
-                        Label::new("request", format!("{:?}", request)),
-                        Label::new("channel", format!("{:?}", channel)),
-                    ];
-
-                    track(MetricEvent::RequestMessage, Some(labels), None);
 
                     let event_sender = self.event_sender.clone();
                     tokio::task::spawn(async move {
@@ -409,8 +393,6 @@ where
                         peer_id
                     );
 
-                    track(MetricEvent::PeerConnected, None, None);
-
                     let event_sender = self.event_sender.clone();
                     tokio::task::spawn(async move {
                         if event_sender
@@ -428,8 +410,6 @@ where
                         "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
                         peer_id
                     );
-
-                    track(MetricEvent::PeerDisconnected, None, None);
 
                     let event_sender = self.event_sender.clone();
                     tokio::task::spawn(async move {
@@ -472,26 +452,6 @@ where
                             warn!("NAT status changed from {:?} to {:?}", old, new);
                         }
                     }
-                    Ok(())
-                }
-                BehaviourEvent::RelayReservationOpened { peer_id } => {
-                    debug!("Relay reservation opened for peer {}", peer_id);
-                    track(MetricEvent::RelayReservationOpened, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayReservationClosed { peer_id } => {
-                    debug!("Relay reservation closed for peer {}", peer_id);
-                    track(MetricEvent::RelayReservationClosed, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayCircuitOpened => {
-                    debug!("Relay circuit opened");
-                    track(MetricEvent::RelayCircuitOpened, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayCircuitClosed => {
-                    debug!("Relay circuit closed");
-                    track(MetricEvent::RelayCircuitClosed, None, None);
                     Ok(())
                 }
                 BehaviourEvent::StartPublish { public_address } => {
@@ -572,7 +532,7 @@ where
                     Ok(())
                 }
             },
-            event => event.record()
+            event => Ok(event.record())
         }
     }
 

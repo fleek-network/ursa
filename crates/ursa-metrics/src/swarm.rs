@@ -2,14 +2,17 @@ use crate::identify::PEERS;
 use crate::Recorder;
 use libp2p_core::{ConnectedPoint, PeerId};
 use libp2p_swarm::SwarmEvent;
-use metrics::Label;
-use metrics::{decrement_gauge, increment_counter};
+use metrics::{decrement_gauge, increment_counter, increment_gauge, Label};
 
 impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
     fn record(&self) {
         match self {
             SwarmEvent::Behaviour(_) => {}
-            SwarmEvent::ConnectionEstablished { endpoint, .. } => {
+            SwarmEvent::ConnectionEstablished { endpoint, num_established, peer_id, .. } => {
+                if u32::from(*num_established) == 1 {
+                    increment_gauge!("swarm_connected_peers", 1.0);
+                }
+
                 increment_counter!(
                     "swarm_connections_established",
                     vec![Role::from(endpoint.clone()).into()]
@@ -28,6 +31,8 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
 
                 // If the last connection to a peer is closed, decrement the protocols identified by them
                 if *num_established == 0 {
+                    decrement_gauge!("swarm_connected_peers", 1.0);
+
                     let mut peers = PEERS.write().unwrap();
                     if let Some(protocols) = peers.remove(peer_id) {
                         for protocol in protocols {

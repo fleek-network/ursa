@@ -1,6 +1,5 @@
-use crate::events::{track, MetricEvent};
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
-use metrics::Label;
+use metrics::{histogram, increment_counter, Label};
 use std::time::Instant;
 
 pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
@@ -16,15 +15,12 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
     let latency = start.elapsed().as_secs_f64();
     let status = response.status().as_u16().to_string();
 
-    let labels = vec![
+    increment_counter!("rpc_request_received");
+    histogram!("rpc_response_sent", latency, vec![
         Label::new("method", method.to_string()),
         Label::new("path", path),
         Label::new("status", status),
-        Label::new("latency", format!("{}", latency)),
-    ];
-
-    track(MetricEvent::RpcRequestReceived, None, None);
-    track(MetricEvent::RpcResponseSent, Some(labels), Some(latency));
+    ]);
 
     response
 }
