@@ -76,24 +76,28 @@ fn from_map_to_bytes(
 }
 
 serde_with::serde_conv!(CidAsMap, Cid, from_cid_to_map, from_map_to_cid);
-fn from_cid_to_map(cid: &Cid) -> serde_json::Map<String, serde_json::Value> {
+fn from_cid_to_map(cid: &Cid) -> Map<String, serde_json::Value> {
     let mut map = Map::new();
     map.insert("/".to_string(), cid.to_string().into());
     map
 }
 
-fn from_map_to_cid(value: serde_json::Map<String, serde_json::Value>) -> Result<Cid, cid::Error> {
+fn from_map_to_cid(value: Map<String, serde_json::Value>) -> Result<Cid, cid::Error> {
     let cid_str = value
         .get("/")
-        .ok_or(cid::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Cid entry is missing",
-        )))?
+        .ok_or_else(|| {
+            cid::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Cid entry is missing",
+            ))
+        })?
         .as_str()
-        .ok_or(cid::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Cid str is missing",
-        )))?;
+        .ok_or_else(|| {
+            cid::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Cid str is missing",
+            ))
+        })?;
 
     let cid = Cid::try_from(cid_str)?;
 

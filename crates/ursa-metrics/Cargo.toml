@@ -10,7 +10,6 @@ description = "Ursa metrics"
 
 [dependencies]
 anyhow = "1.0.56"
-async-std = { version = "1.11.0", features = ["attributes"] }
 axum = "0.5.7"
 lazy_static = "1"
 libp2p-core = "0.34.0"

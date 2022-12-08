@@ -1,15 +1,18 @@
 extern crate core;
 
-mod config;
+pub mod config;
 mod ursa;
 
-use std::{sync::Arc, path::PathBuf};
+use std::{path::PathBuf, sync::Arc};
 
-use crate::{config::{UrsaConfig, load_config, DEFAULT_CONFIG_PATH_STR}, ursa::identity::IdentityManager};
-use async_std::{sync::RwLock, task};
+use crate::{
+    config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR},
+    ursa::identity::IdentityManager,
+};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use structopt::StructOpt;
+use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::provider::Provider;
@@ -18,11 +21,14 @@ use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)).unwrap();
+
+    if let Err(err) = load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)) {
+        error!("[loading_config] - {:?}", err);
+    }
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
@@ -42,10 +48,12 @@ async fn main() {
                     metrics_config,
                     mut server_config,
                 } = config;
-                info!("NetworkConfig: {:?}", network_config);
+                if opts.rpc_port.is_some() {
+                    server_config.port = opts.rpc_port.unwrap();
+                }
 
                 let keystore_path = network_config.keystore_path.clone();
-                let im = match network_config.identity.clone().as_str() {
+                let im = match network_config.identity.as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
                     // load or create a new identity
@@ -62,14 +70,15 @@ async fn main() {
 
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
-                let db = Arc::new(db);
-                let store = Arc::new(Store::new(Arc::clone(&db)));
+                let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
 
                 let provider_db_name = provider_config.database_path.clone();
                 let provider_db = RocksDb::open(provider_db_name, &RocksDbConfig::default())
                     .expect("Opening RocksDB must succeed");
+
+                let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider =
-                    Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
+                    Provider::new(keypair.clone(), index_store, provider_config.clone());
 
                 // Start metrics service
                 let metrics_task = task::spawn(async move {
@@ -107,9 +116,6 @@ async fn main() {
                 });
 
                 let server = Server::new(interface);
-                if opts.rpc_port.is_some() {
-                    server_config.port = opts.rpc_port.unwrap();
-                }
 
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {
@@ -128,12 +134,10 @@ async fn main() {
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
-                task::spawn(async {
-                    rpc_task.cancel().await;
-                    service_task.cancel().await;
-                    metrics_task.cancel().await;
-                    provider_task.cancel().await;
-                });
+                rpc_task.abort();
+                service_task.abort();
+                metrics_task.abort();
+                provider_task.abort();
             }
         }
         Err(e) => {

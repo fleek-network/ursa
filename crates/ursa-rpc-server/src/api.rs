@@ -1,22 +1,21 @@
-use std::{path::PathBuf, sync::Arc};
-
-use async_std::{
-    channel::{unbounded, Sender},
-    fs::create_dir_all,
-    io::{BufReader, WriteExt},
-    sync::RwLock,
-};
-
 use anyhow::{anyhow, Result};
-use async_std::fs::File;
+use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
-use futures::{channel::oneshot, AsyncRead};
+use futures::channel::mpsc::unbounded;
+use futures::io::BufReader;
+use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_car::{load_car, CarHeader};
 use ipld_blockstore::BlockStore;
 use libipld::Cid as lCid;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::fs::create_dir_all;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::{oneshot, RwLock};
+use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
 use ursa_network::{BitswapType, UrsaCommand};
@@ -136,6 +135,41 @@ where
         Ok(dag)
     }
 
+    /// Used through CLI
+    async fn get_file(&self, path: String, root_cid: Cid) -> Result<()> {
+        info!("getting and storing the file at: {path}");
+
+        let header = CarHeader {
+            roots: vec![root_cid],
+            version: 1,
+        };
+
+        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
+        let (mut tx, mut rx) = unbounded();
+
+        let buffer_cloned = buffer.clone();
+        let write_task = tokio::task::spawn(async move {
+            header
+                .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
+                .await
+                .unwrap()
+        });
+        let dag = self.get_data(root_cid).await.unwrap();
+
+        for (cid, data) in dag {
+            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
+        }
+        drop(tx);
+        write_task.await?;
+
+        let buffer: Vec<_> = buffer.read().await.clone();
+        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
+        create_dir_all(file_path.parent().unwrap()).await?;
+        let mut file = File::create(file_path).await.unwrap();
+        file.write_all(&buffer).await?;
+        Ok(())
+    }
+
     async fn stream(
         &self,
         root_cid: Cid,
@@ -145,12 +179,12 @@ where
             version: 1,
         };
 
-        let (tx, mut rx) = unbounded();
+        let (mut tx, mut rx) = unbounded();
         let (writer, reader) = tokio::io::duplex(1024 * 100);
 
         let body = axum::body::StreamBody::new(ReaderStream::new(reader));
 
-        async_std::task::spawn(async move {
+        task::spawn(async move {
             header
                 .write_stream_async(&mut writer.compat_write(), &mut rx)
                 .await
@@ -164,41 +198,6 @@ where
         drop(tx);
 
         Ok(body)
-    }
-
-    /// Used through CLI
-    async fn get_file(&self, path: String, root_cid: Cid) -> Result<()> {
-        info!("getting and storing the file at: {path}");
-
-        let header = CarHeader {
-            roots: vec![root_cid],
-            version: 1,
-        };
-
-        let buffer: Arc<RwLock<Vec<u8>>> = Default::default();
-        let (tx, mut rx) = unbounded();
-
-        let buffer_cloned = buffer.clone();
-        let write_task = async_std::task::spawn(async move {
-            header
-                .write_stream_async(&mut *buffer_cloned.write().await, &mut rx)
-                .await
-                .unwrap()
-        });
-        let dag = self.get_data(root_cid).await.unwrap();
-
-        for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
-        }
-        drop(tx);
-        write_task.await;
-
-        let buffer: Vec<_> = buffer.read().await.clone();
-        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
-        create_dir_all(file_path.parent().unwrap()).await?;
-        let mut file = File::create(file_path).await.unwrap();
-        file.write_all(&buffer).await?;
-        Ok(())
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
@@ -235,11 +234,10 @@ where
 mod tests {
 
     use super::*;
-    use async_std::sync::RwLock;
-    use async_std::task;
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use libp2p::identity::Keypair;
     use simple_logger::SimpleLogger;
+    use tokio::task;
     use tracing::{error, log::LevelFilter};
     use ursa_index_provider::{config::ProviderConfig, provider::Provider};
     use ursa_network::{NetworkConfig, UrsaService};
@@ -260,7 +258,7 @@ mod tests {
         Arc::new(Store::new(Arc::clone(&db)))
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_stream() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let config = NetworkConfig::default();
@@ -271,9 +269,9 @@ mod tests {
         let provider_config = ProviderConfig::default();
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
-        let provider_config = ProviderConfig::default();
-        let index_provider = Provider::new(keypair.clone(), Arc::new(RwLock::new(provider_db)), provider_config.clone());
-    
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+
+        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
         let service =
             UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());

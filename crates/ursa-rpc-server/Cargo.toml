@@ -9,8 +9,7 @@ description = "Ursa's multiplex server implementation"
 
 [dependencies]
 anyhow = "1.0.56"
-# tiny-cid = { version = "0.3.0", features = ["serde-codec"] }
-async-std = { version = "1.11.0", features = ["attributes"] }
+async-fs = "1.6.0"
 async-trait = "0.1.53"
 axum = { version = "0.5.7", features = ["multipart", "headers"] }
 bytes = "1.1.0"
@@ -23,7 +22,7 @@ ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
-tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
+tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 tokio-util = { version = "0.7", features = ["io", "compat"] }
 tower = "0.4.13"
 tracing = "0.1.33"

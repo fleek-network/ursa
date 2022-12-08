@@ -23,7 +23,7 @@ pub fn load_config(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 pub struct UrsaConfig {
     pub network_config: NetworkConfig,
     pub provider_config: ProviderConfig,

@@ -29,8 +29,8 @@ impl RpcCommands {
                     path: path.to_string(),
                 };
                 match put_file(params).await {
-                    Ok(v) => {
-                        info!("Put car file done: {v:?}");
+                    Ok(file) => {
+                        info!("Put car file done: {:?}", file);
                     }
                     Err(_e) => {
                         error!("There was an error while calling the rpc server. Please Check Server Logs")

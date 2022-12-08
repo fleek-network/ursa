@@ -41,7 +41,7 @@ where
         }
     } else {
         error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
-        return Err(Error::INVALID_PARAMS);
+        Err(Error::INVALID_PARAMS)
     }
 }
 pub async fn get_file_handler<I>(
@@ -56,13 +56,13 @@ where
         match data.0.get_file(path, cid).await {
             Err(err) => {
                 error!("{:?}", err);
-                return Err(Error::internal(err));
+                Err(Error::internal(err))
             }
             _ => Ok(()),
         }
     } else {
         error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
-        return Err(Error::INVALID_PARAMS);
+        Err(Error::INVALID_PARAMS)
     }
 }
 
@@ -78,7 +78,7 @@ where
     match data.0.put_file(path).await {
         Err(err) => {
             error!("{:?}", err);
-            return Err(Error::internal(err));
+            Err(Error::internal(err))
         }
         Ok(res) => Ok(res.iter().map(|c| Cid::from(c).to_string()).collect()),
     }

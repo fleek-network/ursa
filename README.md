@@ -1,8 +1,18 @@
 # Ursa
 
-> Ursa, a decentralized content delivery network.
+Ursa, a decentralized content delivery network.
 
 ## Run a node
+
+### Build Dependencies
+
+> If docker is used, no dependencies are required other than `make`
+- (optional) docker
+- make
+- rust (`^1.65.0`)
+- build-essential
+- libclang
+- cmake
 
 ### Run with cli
 

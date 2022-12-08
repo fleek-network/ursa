@@ -16,7 +16,6 @@
 use anyhow::{Error, Result};
 use cid::Cid;
 use fnv::FnvHashMap;
-use futures::channel::oneshot;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
 use libp2p::dcutr;
@@ -54,6 +53,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use tokio::sync::oneshot;
 use tracing::{debug, error, trace, warn};
 use ursa_metrics::Recorder;
 use ursa_utils::convert_cid;
@@ -119,8 +119,8 @@ pub enum BehaviourEvent {
         request: UrsaExchangeRequest,
         channel: ResponseChannel<UrsaExchangeResponse>,
     },
-    StartPublish{ 
-        public_address: Multiaddr
+    StartPublish {
+        public_address: Multiaddr,
     },
 }
 
@@ -131,11 +131,7 @@ pub enum BehaviourEvent {
 ///
 /// The events generated [`BehaviourEvent`].
 #[derive(NetworkBehaviour)]
-#[behaviour(
-    out_event = "BehaviourEvent",
-    poll_method = "poll",
-    event_process = true
-)]
+#[behaviour(out_event = "BehaviourEvent", event_process = true)]
 pub struct Behaviour<P: StoreParams> {
     /// Alive checks.
     ping: Ping,
@@ -308,10 +304,11 @@ impl<P: StoreParams> Behaviour<P> {
     }
 
     pub fn publish_ad(&mut self, public_address: Multiaddr) -> Result<()> {
-        self.events.push_back(BehaviourEvent::StartPublish{ public_address});
+        self.events
+            .push_back(BehaviourEvent::StartPublish { public_address });
         Ok(())
     }
-    
+
     pub fn send_request(
         &mut self,
         peer: PeerId,
@@ -344,7 +341,7 @@ impl<P: StoreParams> Behaviour<P> {
             cid
         );
         let c_cid = convert_cid(cid.to_bytes());
-        let id = self.bitswap.sync(c_cid, providers, std::iter::once(c_cid));
+        let id = self.bitswap.sync(c_cid, providers, iter::once(c_cid));
         self.queries.insert(
             id,
             BitswapInfo {
@@ -555,15 +552,15 @@ impl<P: StoreParams> Behaviour<P> {
                     message,
                 });
             }
-            GossipsubEvent::Subscribed { peer_id, topic } => {
+            GossipsubEvent::Subscribed { .. } => {
                 // A remote subscribed to a topic.
                 // subscribe to new topic.
             }
-            GossipsubEvent::Unsubscribed { peer_id, topic } => {
+            GossipsubEvent::Unsubscribed { .. } => {
                 // A remote unsubscribed from a topic.
                 // remove subscription.
             }
-            GossipsubEvent::GossipsubNotSupported { peer_id } => {
+            GossipsubEvent::GossipsubNotSupported { .. } => {
                 // A peer that does not support gossipsub has connected.
                 // the scoring/rating should happen here.
                 // disconnect.

@@ -9,6 +9,7 @@ members = [
   "crates/ursa-rpc-server",
   "crates/ursa-store",
   "crates/ursa-tracker"
+  "crates/ursa-utils",
 ]
 
 exclude = [

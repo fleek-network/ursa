@@ -23,6 +23,7 @@ where
         &self.db
     }
 }
+
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where
     P: BlockStore + Sync + Send + 'static;
@@ -92,7 +93,7 @@ where
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data).unwrap();
-                    let _action = next_block.references(&mut current)?;
+                    next_block.references(&mut current)?;
                     refs.insert(cid);
                 }
                 None => {
@@ -114,18 +115,12 @@ mod tests {
     use std::str::FromStr;
 
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
-    // use tracing::log::LevelFilter;
     use simple_logger::SimpleLogger;
 
-    use super::*;
-
-    #[async_std::test]
+    #[tokio::test]
     async fn get_missing_blocks() {
-        // SimpleLogger::new()
-        //     .with_level(LevelFilter::Info)
-        //     .with_utc_timestamps()
-        //     .init()
-        //     .unwrap();
+        SimpleLogger::new().with_utc_timestamps().init().unwrap();
+
         let db1 = Arc::new(
             RocksDb::open("ursa_db", &RocksDbConfig::default())
                 .expect("Opening RocksDB must succeed"),
