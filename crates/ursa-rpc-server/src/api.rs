@@ -18,7 +18,7 @@ use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
-use ursa_network::{BitswapType, UrsaCommand};
+use ursa_network::{BitswapType, NetworkCommand};
 use ursa_store::{Dag, Store};
 use ursa_utils::convert_cid;
 
@@ -79,7 +79,7 @@ where
     S: BlockStore + Sync + Send + 'static,
 {
     pub store: Arc<Store<S>>,
-    pub network_send: Sender<UrsaCommand>,
+    pub network_send: Sender<NetworkCommand>,
 }
 
 #[async_trait]
@@ -91,7 +91,7 @@ where
         if !self.store.blockstore().has(&cid).unwrap() {
             info!("Requesting block with the cid {cid:?}");
             let (sender, receiver) = oneshot::channel();
-            let request = UrsaCommand::GetBitswap {
+            let request = NetworkCommand::GetBitswap {
                 cid,
                 query: BitswapType::Get,
                 sender,
@@ -112,7 +112,7 @@ where
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
         if !self.store.blockstore().has(&root_cid).unwrap() {
             let (sender, receiver) = oneshot::channel();
-            let request = UrsaCommand::GetBitswap {
+            let request = NetworkCommand::GetBitswap {
                 cid: root_cid,
                 query: BitswapType::Sync,
                 sender,
@@ -206,7 +206,7 @@ where
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = UrsaCommand::Index {
+        let request = NetworkCommand::Index {
             cids: cids.clone(),
             sender,
         };

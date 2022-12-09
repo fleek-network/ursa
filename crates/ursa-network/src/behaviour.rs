@@ -15,27 +15,25 @@
 
 use anyhow::{Error, Result};
 use cid::Cid;
-use fnv::FnvHashMap;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
 use libp2p::dcutr;
 use libp2p::ping::PingConfig;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
-    autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent},
-    dcutr::behaviour::Event as DcutrEvent,
+    autonat::{Behaviour as Autonat, Config as AutonatConfig},
     gossipsub::{
         error::{PublishError, SubscriptionError},
-        Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageId,
-        PeerScoreParams, PeerScoreThresholds, TopicHash,
+        Gossipsub, GossipsubMessage, IdentTopic as Topic, MessageId, PeerScoreParams,
+        PeerScoreThresholds,
     },
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
     kad,
     ping::{Ping, PingEvent, PingFailure, PingSuccess},
     relay::v2::{
-        client::{Client as RelayClient, Event as RelayClientEvent},
-        relay::{Config as RelayConfig, Event as RelayServerEvent, Relay as RelayServer},
+        client::Client as RelayClient,
+        relay::{Config as RelayConfig, Relay as RelayServer},
     },
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -46,33 +44,21 @@ use libp2p::{
     },
     Multiaddr, NetworkBehaviour, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapEvent, BitswapStore, QueryId};
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    iter,
-    task::{Context, Poll},
-    time::Duration,
-};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore, QueryId};
+use std::time::Duration;
+use std::{collections::HashSet, iter};
 use tokio::sync::oneshot;
-use tracing::{debug, error, trace, warn};
+use tracing::debug;
 use ursa_utils::convert_cid;
 
-use crate::discovery::URSA_KAD_PROTOCOL;
 use crate::gossipsub::build_gossipsub;
 use crate::{
-    codec::protocol::{UrsaExchangeCodec, UrsaExchangeRequest, UrsaExchangeResponse, UrsaProtocol},
+    codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
-    discovery::{DiscoveryBehaviour, DiscoveryEvent},
+    discovery::DiscoveryBehaviour,
 };
 
 pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
-
-#[derive(Debug)]
-pub struct BitswapInfo {
-    pub cid: Cid,
-    pub query_id: QueryId,
-    pub block_found: bool,
-}
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
@@ -154,10 +140,10 @@ pub struct Behaviour<P: StoreParams> {
     bitswap: Bitswap<P>,
 
     /// Ursa's gossiping protocol for message propagation.
-    gossipsub: Gossipsub,
+    pub(crate) gossipsub: Gossipsub,
 
     /// Kademlia discovery and bootstrap.
-    discovery: DiscoveryBehaviour,
+    pub(crate) discovery: DiscoveryBehaviour,
 
     /// request/response protocol implementation for [`UrsaProtocol`]
     request_response: RequestResponse<UrsaExchangeCodec>,
@@ -193,7 +179,6 @@ impl<P: StoreParams> Behaviour<P> {
 
         // Setup the gossip behaviour
         let mut gossipsub = build_gossipsub(keypair, config);
-        // todo(botch): handle gracefully
         gossipsub
             .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
             .expect("PeerScoreParams and PeerScoreThresholds");

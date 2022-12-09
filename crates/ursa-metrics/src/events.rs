@@ -7,10 +7,6 @@ use tracing::{error, info};
 pub enum MetricEvent {
     PeerConnected,
     PeerDisconnected,
-    RelayReservationOpened,
-    RelayReservationClosed,
-    RelayCircuitOpened,
-    RelayCircuitClosed,
     Bitswap,
     GossipMessage,
     RequestMessage,
@@ -96,18 +92,6 @@ pub fn track(event_name: MetricEvent, labels: Option<Vec<Label>>, value: Option<
             }
             MetricEvent::RpcRequestReceived => {
                 increment_counter!(Metric::ActiveConnectedPeers.to_string());
-            }
-            MetricEvent::RelayReservationOpened => {
-                increment_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
-            }
-            MetricEvent::RelayReservationClosed => {
-                decrement_gauge!(Metric::ActiveRelayReservations.to_string(), 1.0);
-            }
-            MetricEvent::RelayCircuitOpened => {
-                increment_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
-            }
-            MetricEvent::RelayCircuitClosed => {
-                decrement_gauge!(Metric::ActiveRelayCircuits.to_string(), 1.0);
             }
             _ => info!("missing label for {:?}", event_name),
         }

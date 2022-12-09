@@ -6,9 +6,9 @@
 //! - Instantiate the [`UrsaTransport`] module with quic.or(tcp) and relay support.
 //! - A custom ['NetworkBehaviour'] is implemented based on [`NetworkConfig`] provided by node runner.
 //! - Using the [`UrsaTransport`] and [`Behaviour`] a new [`Swarm`] is built.
-//! - Two channels are created to serve (send/receive) both the network [`UrsaCommand`]'s and [`UrsaEvent`]'s.
+//! - Two channels are created to serve (send/receive) both the network [`NetworkCommand`]'s and [`UrsaEvent`]'s.
 //!
-//! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`UrsaCommand`]'s and
+//! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`NetworkCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
 use anyhow::{anyhow, Result};
@@ -19,24 +19,30 @@ use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
 use ipld_blockstore::BlockStore;
 use libipld::DefaultParams;
-use libp2p::autonat::NatStatus;
-use libp2p::gossipsub::TopicHash;
+use libp2p::autonat::{Event as AutonatEvent, NatStatus};
+use libp2p::dcutr::behaviour::Event as DcutrEvent;
+use libp2p::gossipsub::error::{PublishError, SubscriptionError};
+use libp2p::gossipsub::{MessageId, TopicHash};
+use libp2p::identify::Event as IdentifyEvent;
 use libp2p::multiaddr::Protocol;
+use libp2p::ping::Event as PingEvent;
+use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
 use libp2p::swarm::{ConnectionHandler, IntoConnectionHandler, NetworkBehaviour};
 use libp2p::Multiaddr;
 use libp2p::{
-    gossipsub::{GossipsubMessage, IdentTopic as Topic},
+    gossipsub::IdentTopic as Topic,
     identity::Keypair,
     relay::v2::client::Client as RelayClient,
     request_response::{RequestId, ResponseChannel},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     PeerId, Swarm,
 };
-use libp2p_bitswap::{BitswapEvent, BitswapStore};
+use libp2p_bitswap::{BitswapEvent, BitswapStore, QueryId};
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::{collections::HashSet, sync::Arc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use ursa_index_provider::{
     advertisement::{Advertisement, MAX_ENTRIES},
     provider::{Provider, ProviderInterface},
@@ -45,9 +51,10 @@ use ursa_metrics::events::{track, MetricEvent};
 use ursa_store::{BitswapStorage, Dag, Store};
 use ursa_utils::convert_cid;
 
+use crate::discovery::{DiscoveryEvent, URSA_KAD_PROTOCOL};
 use crate::transport::build_transport;
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent, BitswapInfo, BlockSenderChannel},
+    behaviour::{Behaviour, BehaviourEvent, BlockSenderChannel},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
 };
@@ -55,7 +62,7 @@ use metrics::Label;
 use tokio::sync::oneshot;
 use tokio::{
     select,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -71,10 +78,75 @@ type SwarmEventType = SwarmEvent<
 >;
 
 #[derive(Debug)]
-pub enum UrsaCommand {
+pub enum GossipsubMessage {
+    /// A subscribe message.
+    Subscribe {
+        peer_id: PeerId,
+        topic: TopicHash,
+        sender: oneshot::Sender<Result<bool, SubscriptionError>>,
+    },
+    /// A subscribe message.
+    Unsubscribe {
+        peer_id: PeerId,
+        topic: TopicHash,
+        sender: oneshot::Sender<Result<bool, PublishError>>,
+    },
+    /// An Indexer message.
+    IndexPublish {
+        cids: Vec<Cid>,
+        public_address: Multiaddr,
+        sender: oneshot::Sender<Result<Vec<Cid>>>,
+    },
+}
+
+#[derive(Debug)]
+pub enum GossipsubEvent {
+    /// A message has been received.
+    Message {
+        /// The peer that forwarded us this message.
+        peer_id: PeerId,
+        /// The [`MessageId`] of the message. This should be referenced by the application when
+        /// validating a message (if required).
+        message_id: MessageId,
+        /// The decompressed message itself.
+        message: GossipsubMessage,
+    },
+    /// A remote subscribed to a topic.
+    Subscribed {
+        /// Remote that has subscribed.
+        peer_id: PeerId,
+        /// The topic it has subscribed to.
+        topic: TopicHash,
+    },
+    /// A remote unsubscribed from a topic.
+    Unsubscribed {
+        /// Remote that has unsubscribed.
+        peer_id: PeerId,
+        /// The topic it has subscribed from.
+        topic: TopicHash,
+    },
+}
+
+/// [network]'s events
+/// Requests and failure events emitted by the `NetworkBehaviour`.
+#[derive(Debug)]
+pub enum NetworkEvent {
+    /// An event trigger when remote peer connects.
+    PeerConnected(PeerId),
+    /// An event trigger when remote peer disconnects.
+    PeerDisconnected(PeerId),
+    /// A Gossip message request was received from a peer.
+    Gossipsub(GossipsubEvent),
+    /// A message request was received from a peer.
+    RequestMessage { request_id: RequestId },
+    /// A bitswap event generated by the service.
+    GetBitswap { cid: Cid, query_id: QueryId },
+}
+
+#[derive(Debug)]
+pub enum NetworkCommand {
     GetBitswap {
         cid: Cid,
-        query: BitswapType,
         sender: BlockSenderChannel<()>,
     },
 
@@ -87,25 +159,14 @@ pub enum UrsaCommand {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
-    Index {
-        cids: Vec<Cid>,
-        sender: oneshot::Sender<Result<Vec<Cid>>>,
-    },
-
     SendRequest {
         peer_id: PeerId,
         request: UrsaExchangeRequest,
         channel: oneshot::Sender<Result<UrsaExchangeResponse>>,
     },
 
-    SendResponse {
-        request_id: RequestId,
-        response: UrsaExchangeResponse,
-        channel: oneshot::Sender<Result<()>>,
-    },
-
     GossipsubMessage {
-        topic: Topic,
+        peer_id: PeerId,
         message: GossipsubMessage,
     },
 }
@@ -116,40 +177,29 @@ pub enum BitswapType {
     Sync,
 }
 
-#[derive(Debug)]
-pub enum UrsaEvent {
-    /// An event trigger when remote peer connects.
-    PeerConnected(PeerId),
-    /// An event trigger when remote peer disconnects.
-    PeerDisconnected(PeerId),
-    BitswapEvent(BitswapEvent),
-    /// A Gossip message request was received from a peer.
-    GossipsubMessage(GossipsubMessage),
-    /// A message request was received from a peer.
-    /// Attached is a channel for returning a response.
-    RequestMessage {
-        request: UrsaExchangeRequest,
-        channel: ResponseChannel<UrsaExchangeResponse>,
-    },
-}
-
 pub struct UrsaService<S> {
-    /// Store
+    /// Store.
     store: Arc<Store<S>>,
-    /// index provider
+    /// index provider.
     index_provider: Provider<S>,
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
-    /// Handles outbound messages to peers
-    command_sender: Sender<UrsaCommand>,
-    /// Handles inbound messages from peers
-    command_receiver: Receiver<UrsaCommand>,
-    /// Handles events emitted by the ursa network
-    event_sender: Sender<UrsaEvent>,
-    /// Handles events received by the ursa network
-    event_receiver: Receiver<UrsaEvent>,
-    /// hashmap for keeping track of rpc response channels
+    /// Handles outbound messages to peers.
+    command_sender: Sender<NetworkCommand>,
+    /// Handles inbound messages from peers.
+    command_receiver: Receiver<NetworkCommand>,
+    /// Handles events emitted by the ursa network.
+    event_sender: Sender<NetworkEvent>,
+    /// Handles events received by the ursa network.
+    event_receiver: Receiver<NetworkEvent>,
+    /// Bitswap pending queries.
+    bitswap_queries: FnvHashMap<QueryId, Cid>,
+    /// hashmap for keeping track of rpc response channels.
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
+    /// Pending requests.
+    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
+    /// Pending responses.
+    pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
 }
 
 impl<S> UrsaService<S>
@@ -227,8 +277,8 @@ where
             warn!("Failed to bootstrap with Kademlia: {}", error);
         }
 
-        let (event_sender, event_receiver) = channel(512);
-        let (command_sender, command_receiver) = channel(512);
+        let (event_sender, event_receiver) = unbounded_channel();
+        let (command_sender, command_receiver) = unbounded_channel();
 
         UrsaService {
             swarm,
@@ -239,382 +289,568 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
+            bitswap_queries: Default::default(),
+            pending_requests: HashMap::default(),
+            pending_responses: HashMap::default(),
         }
     }
 
-    pub fn command_sender(&self) -> Sender<UrsaCommand> {
+    pub fn command_sender(&self) -> Sender<NetworkCommand> {
         self.command_sender.clone()
+    }
+
+    fn handle_ping(&mut self, ping_event: PingEvent) -> Result<()> {
+        match ping_event.result {
+            Ok(libp2p::ping::Success::Ping { rtt }) => {
+                trace!(
+                    "[PingSuccess::Ping] - with rtt {} from {} in ms",
+                    rtt.as_millis(),
+                    ping_event.peer.to_base58(),
+                );
+            }
+            Ok(libp2p::ping::Success::Pong) => {
+                trace!(
+                    "PingSuccess::Pong] - received a ping and sent back a pong to {}",
+                    ping_event.peer.to_base58()
+                );
+            }
+            Err(libp2p::ping::Failure::Other { error }) => {
+                debug!(
+                    "[PingFailure::Other] - the ping failed with {} for reasons {}",
+                    ping_event.peer.to_base58(),
+                    error
+                );
+            }
+            Err(libp2p::ping::Failure::Timeout) => {
+                warn!(
+                    "[PingFailure::Timeout] - no response was received from {}",
+                    ping_event.peer.to_base58()
+                );
+            }
+            Err(libp2p::ping::Failure::Unsupported) => {
+                debug!(
+                    "[PingFailure::Unsupported] - the peer {} does not support the ping protocol",
+                    ping_event.peer.to_base58()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_identify(&mut self, identify_event: IdentifyEvent) -> Result<(), anyhow::Error> {
+        match identify_event {
+            IdentifyEvent::Received { peer_id, info } => {
+                trace!(
+                    "[IdentifyEvent::Received] - with version {} has been received from a peer {}.",
+                    info.protocol_version,
+                    peer_id
+                );
+
+                if self.swarm.behaviour().peers().contains(&peer_id) {
+                    trace!(
+                        "[IdentifyEvent::Received] - peer {} already known!",
+                        peer_id
+                    );
+                }
+
+                // check if received identify is from a peer on the same network
+                if info
+                    .protocols
+                    .iter()
+                    .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
+                {
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer_id);
+
+                    for address in info.listen_addrs {
+                        self.swarm
+                            .behaviour_mut()
+                            .discovery
+                            .add_address(&peer_id, address.clone());
+                        self.swarm
+                            .behaviour_mut()
+                            .request_response
+                            .add_address(&peer_id, address.clone());
+                    }
+                }
+            }
+            IdentifyEvent::Sent { .. }
+            | IdentifyEvent::Pushed { .. }
+            | IdentifyEvent::Error { .. } => {}
+        }
+        Ok(())
+    }
+
+    fn handle_autonat(&mut self, autonat_event: AutonatEvent) -> Result<(), anyhow::Error> {
+        match autonat_event {
+            AutonatEvent::StatusChanged { old, new } => {
+                match (old, new) {
+                    (NatStatus::Unknown, NatStatus::Private) => {
+                        let behaviour = self.swarm.behaviour_mut();
+                        if behaviour.is_relay_client_enabled() {
+                            // get random bootstrap node and listen on their relay
+                            if let Some((relay_peer, relay_addr)) = behaviour
+                                .discovery()
+                                .bootstrap_addrs()
+                                .choose(&mut rand::thread_rng())
+                            {
+                                let addr = relay_addr
+                                    .clone()
+                                    .with(Protocol::P2p((*relay_peer).into()))
+                                    .with(Protocol::P2pCircuit);
+                                warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                                self.swarm
+                                    .listen_on(addr)
+                                    .expect("failed to listen on relay");
+                            }
+                        }
+                    }
+                    (_, NatStatus::Public(addr)) => {
+                        info!("Public Nat verified! Public listening address: {}", addr);
+                    }
+                    (old, new) => {
+                        warn!("NAT status changed from {:?} to {:?}", old, new);
+                    }
+                }
+            }
+            AutonatEvent::InboundProbe(_) | AutonatEvent::OutboundProbe(_) => (),
+        }
+        Ok(())
+    }
+
+    fn handle_dcutr(&self, dcutr_event: DcutrEvent) -> Result<(), anyhow::Error> {
+        //     debug!("Relay circuit closed");
+        //     track(MetricEvent::RelayCircuitClosed, None, None);
+        Ok(())
+    }
+
+    fn handle_bitswap(
+        &mut self,
+        bitswap_event: libp2p_bitswap::BitswapEvent,
+    ) -> Result<(), anyhow::Error> {
+        match bitswap_event {
+            libp2p_bitswap::BitswapEvent::Progress(query_id, _) => {
+                debug!("progress in bitswap, id: {}", query_id);
+            }
+            libp2p_bitswap::BitswapEvent::Complete(query_id, _) => {
+                match self.bitswap_queries.remove(&query_id) {
+                    Some(cid) => {
+                        let labels = vec![
+                            Label::new("cid", format!("{}", cid)),
+                            Label::new("query_id", format!("{}", query_id)),
+                        ];
+
+                        track(MetricEvent::Bitswap, Some(labels), None);
+
+                        let event_sender = self.event_sender.clone();
+                        tokio::task::spawn(async move {
+                            if event_sender
+                                .send(NetworkEvent::GetBitswap { cid, query_id })
+                                .is_err()
+                            {
+                                warn!(
+                                    "[NetworkCommand::GetBitswap] - failed to get bitswap block for query: {:?}.",
+                                    query_id
+                                );
+                            };
+                        });
+                    }
+                    _ => {
+                        error!(
+                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
+                            query_id
+                        )
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_gossip(
+        &self,
+        gossip_event: libp2p::gossipsub::GossipsubEvent,
+    ) -> Result<(), anyhow::Error> {
+        match gossip_event {
+            libp2p::gossipsub::GossipsubEvent::Message {
+                propagation_source,
+                message_id: _,
+                message,
+            } => {
+                trace!(
+                    "[BehaviourEvent::Gossip] - received from {:?}",
+                    propagation_source
+                );
+                let labels = vec![
+                    Label::new("peer", format!("{}", propagation_source)),
+                    Label::new("message", format!("{:?}", message)),
+                ];
+
+                track(MetricEvent::GossipMessage, Some(labels), None);
+
+                let blockstore = BitswapStorage(self.store.clone());
+
+                // if let GossipsubMessage::IndexPublish { public_address, .. } = message {
+                //     let mut address = Multiaddr::empty();
+                //     let peer_id = *self.swarm.local_peer_id();
+                //     for protocol in public_address.into_iter() {
+                //         match protocol {
+                //             Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
+                //             Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
+                //             Protocol::Tcp(port) => address.push(Protocol::Tcp(port)),
+                //             _ => {}
+                //         }
+                //     }
+                //     let root_cids = self.index_provider.get_mut_root_cids();
+                //     let mut cid_queue = root_cids.write().unwrap();
+
+                //     while !cid_queue.is_empty() {
+                //         let root_cid = cid_queue.pop_front().unwrap();
+                //         let context_id = root_cid.to_bytes();
+                //         info!(
+                //             "Creating advertisement for cids under root cid: {:?}.",
+                //             root_cid
+                //         );
+
+                //         let addresses: Vec<String> =
+                //             [address.clone()].iter().map(|m| m.to_string()).collect();
+                //         let advertisement =
+                //             Advertisement::new(context_id.clone(), peer_id, addresses, false);
+                //         let provider_id = self.index_provider.create(advertisement).unwrap();
+
+                //         let dag = self
+                //             .store
+                //             .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+                //         let entries = dag
+                //             .iter()
+                //             .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
+                //             .collect::<Vec<Ipld>>();
+                //         let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
+
+                //         info!("Inserting Index chunks.");
+                //         for chunk in chunks.iter() {
+                //             let entries_bytes = forest_encoding::to_vec(&chunk)?;
+                //             self.index_provider
+                //                 .add_chunk(entries_bytes, provider_id)
+                //                 .expect(" adding chunk to advertisement should not fail!");
+                //         }
+                //         info!("Publishing the advertisement now");
+                //         self.index_provider
+                //             .publish(provider_id)
+                //             .expect("publishing the ad should not fail");
+                //         if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id) {
+                //             let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
+                //             let i_topic = Topic::new("indexer/ingest/mainnet");
+                //             let g_msg = GossipsubMessage {
+                //                 data: announce_msg.clone(),
+                //                 source: None,
+                //                 sequence_number: None,
+                //                 topic: i_topic_hash,
+                //             };
+                //             match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
+                //                 Ok(res) => {
+                //                     info!("gossiping the new advertisement done : {:}", res);
+                //                 }
+                //                 Err(e) => {
+                //                     warn!("there was an error while gossiping the announcement, will try to announce via http");
+                //                     warn!("{:?}", e);
+                //                     // make an http announcement if gossiping fails
+                //                     let provider_copy = self.index_provider.clone();
+
+                //                     tokio::task::spawn(async move {
+                //                         provider_copy.announce_http_message(announce_msg).await;
+                //                     });
+                //                 }
+                //             }
+                //         }
+                //     }
+                // }
+            }
+            libp2p::gossipsub::GossipsubEvent::Subscribed { peer_id, topic } => {
+                let event_sender = self.event_sender.clone();
+                tokio::task::spawn(async move {
+                    if event_sender
+                        .send(NetworkEvent::Gossipsub(GossipsubEvent::Subscribed {
+                            peer_id,
+                            topic,
+                        }))
+                        .is_err()
+                    {
+                        warn!(
+                            "[BehaviourEvent::Gossip] - failed to push gossip from peer {:?}.",
+                            peer_id
+                        );
+                    }
+                });
+            }
+            libp2p::gossipsub::GossipsubEvent::Unsubscribed { peer_id, topic } => {
+                let event_sender = self.event_sender.clone();
+                tokio::task::spawn(async move {
+                    if event_sender
+                        .send(NetworkEvent::Gossipsub(GossipsubEvent::Unsubscribed {
+                            peer_id,
+                            topic,
+                        }))
+                        .is_err()
+                    {
+                        warn!(
+                            "[BehaviourEvent::Gossip] - failed to push gossip from peer {:?}.",
+                            peer_id
+                        );
+                    }
+                });
+            }
+            libp2p::gossipsub::GossipsubEvent::GossipsubNotSupported { peer_id } => todo!(),
+        }
+        Ok(())
+    }
+
+    fn handle_discovery(&self, discovery_event: DiscoveryEvent) -> Result<(), anyhow::Error> {
+        match discovery_event {
+            DiscoveryEvent::Connected(peer_id) => {
+                debug!(
+                    "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
+                    peer_id
+                );
+
+                track(MetricEvent::PeerConnected, None, None);
+
+                let event_sender = self.event_sender.clone();
+                tokio::task::spawn(async move {
+                    if event_sender
+                        .send(NetworkEvent::PeerConnected(peer_id))
+                        .is_err()
+                    {
+                        warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer_id);
+                    }
+                });
+            }
+            DiscoveryEvent::Disconnected(peer_id) => {
+                debug!(
+                    "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
+                    peer_id
+                );
+
+                track(MetricEvent::PeerDisconnected, None, None);
+
+                let event_sender = self.event_sender.clone();
+                tokio::task::spawn(async move {
+                    if event_sender
+                        .send(NetworkEvent::PeerDisconnected(peer_id))
+                        .is_err()
+                    {
+                        warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer_id);
+                    }
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_req_res(
+        &mut self,
+        req_res_event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
+    ) -> Result<(), anyhow::Error> {
+        match req_res_event {
+            RequestResponseEvent::Message { peer, message } => {
+                match message {
+                    RequestResponseMessage::Request {
+                        request_id,
+                        request,
+                        channel,
+                    } => {
+                        trace!("[BehaviourEvent::RequestMessage] {} ", peer);
+                        let labels = vec![
+                            Label::new("peer", format!("{}", peer)),
+                            Label::new("request", format!("{:?}", request)),
+                            Label::new("channel", format!("{:?}", channel)),
+                        ];
+
+                        track(MetricEvent::RequestMessage, Some(labels), None);
+
+                        let event_sender = self.event_sender.clone();
+                        tokio::task::spawn(async move {
+                            if event_sender
+                                .send(NetworkEvent::RequestMessage { request_id })
+                                .is_err()
+                            {
+                                warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
+                            }
+                        });
+                    }
+                    RequestResponseMessage::Response {
+                        request_id,
+                        response,
+                    } => {
+                        trace!(
+                            "[RequestResponseMessage::Response] - {} {}: {:?}",
+                            request_id,
+                            peer,
+                            response
+                        );
+
+                        if let Some(request) = self.pending_responses.remove(&request_id) {
+                            if request.send(Ok(response)).is_err() {
+                                warn!("[RequestResponseMessage::Response] - failed to send request: {:?}", request_id);
+                            }
+                        }
+
+                        debug!("[RequestResponseMessage::Response] - failed to remove channel for: {:?}", request_id);
+                    }
+                }
+            }
+            RequestResponseEvent::OutboundFailure { .. }
+            | RequestResponseEvent::InboundFailure { .. }
+            | RequestResponseEvent::ResponseSent { .. } => (),
+        }
+        Ok(())
     }
 
     /// Handle swarm events
     pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
-        let mut blockstore = BitswapStorage(self.store.clone());
-
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Bitswap(BitswapInfo {
-                    cid,
-                    query_id,
-                    block_found,
-                }) => {
-                    self.swarm.behaviour_mut().cancel(query_id);
-                    let labels = vec![
-                        Label::new("cid", format!("{}", cid)),
-                        Label::new("query_id", format!("{}", query_id)),
-                        Label::new("block_found", format!("{}", block_found)),
-                    ];
-
-                    track(MetricEvent::Bitswap, Some(labels), None);
-
-                    if let Some(chans) = self.response_channels.remove(&cid) {
-                        // TODO: in some cases, the insert takes few milliseconds after query complete is received
-                        // wait for block to be inserted
-                        let bitswap_cid = convert_cid(cid.to_bytes());
-                        if let true = block_found {
-                            loop {
-                                if blockstore.contains(&bitswap_cid).unwrap() {
-                                    break;
-                                }
-                            }
-                        }
-
-                        for chan in chans.into_iter() {
-                            if blockstore.contains(&bitswap_cid).unwrap() {
-                                if chan.send(Ok(())).is_err() {
-                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
-                                }
-                            } else {
-                                error!("[BehaviourEvent::Bitswap] - block not found.");
-                                if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
-                                    error!("[BehaviourEvent::Bitswap] - Bitswap response channel send failed");
-                                }
-                            }
-                        }
-                    } else {
-                        debug!("[BehaviourEvent::Bitswap] - Received Bitswap response, but response channel cannot be found");
-                    }
-                    Ok(())
+                BehaviourEvent::Ping(ping_event) => self.handle_ping(ping_event),
+                BehaviourEvent::Identify(identify_event) => self.handle_identify(identify_event),
+                BehaviourEvent::Autonat(autonat_event) => self.handle_autonat(autonat_event),
+                BehaviourEvent::RelayClient(_) => Ok(()),
+                BehaviourEvent::RelayServer(_) => Ok(()),
+                BehaviourEvent::Dcutr(dcutr_event) => self.handle_dcutr(dcutr_event),
+                BehaviourEvent::Bitswap(bitswap_event) => self.handle_bitswap(bitswap_event),
+                BehaviourEvent::Gossipsub(gossip_event) => self.handle_gossip(gossip_event),
+                BehaviourEvent::Discovery(discovery_event) => {
+                    self.handle_discovery(discovery_event)
                 }
-                BehaviourEvent::GossipMessage {
-                    peer,
-                    topic,
-                    message,
-                } => {
-                    debug!("[BehaviourEvent::Gossip] - received from {:?}", peer);
-                    let labels = vec![
-                        Label::new("peer", format!("{}", peer)),
-                        Label::new("topic", format!("{}", topic)),
-                        Label::new("message", format!("{:?}", message)),
-                    ];
-
-                    track(MetricEvent::GossipMessage, Some(labels), None);
-
-                    if self.swarm.is_connected(&peer) {
-                        let event_sender = self.event_sender.clone();
-
-                        tokio::task::spawn(async move {
-                            let status = event_sender.send(UrsaEvent::GossipsubMessage(message));
-
-                            if status.await.is_err() {
-                                warn!("[BehaviourEvent::Gossip] - failed to publish message to topic: {:?}", topic);
-                            }
-                        });
-                    }
-                    Ok(())
-                }
-                BehaviourEvent::RequestMessage {
-                    peer,
-                    request,
-                    channel,
-                } => {
-                    debug!("[BehaviourEvent::RequestMessage] {} ", peer);
-                    let labels = vec![
-                        Label::new("peer", format!("{}", peer)),
-                        Label::new("request", format!("{:?}", request)),
-                        Label::new("channel", format!("{:?}", channel)),
-                    ];
-
-                    track(MetricEvent::RequestMessage, Some(labels), None);
-
-                    let event_sender = self.event_sender.clone();
-                    tokio::task::spawn(async move {
-                        if event_sender
-                            .send(UrsaEvent::RequestMessage { request, channel })
-                            .await
-                            .is_err()
-                        {
-                            warn!("[BehaviourEvent::RequestMessage] - failed to send request to peer: {:?}", peer);
-                        }
-                    });
-
-                    Ok(())
-                }
-                BehaviourEvent::PeerConnected(peer_id) => {
-                    debug!(
-                        "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
-                        peer_id
-                    );
-
-                    track(MetricEvent::PeerConnected, None, None);
-
-                    let event_sender = self.event_sender.clone();
-                    tokio::task::spawn(async move {
-                        if event_sender
-                            .send(UrsaEvent::PeerConnected(peer_id))
-                            .await
-                            .is_err()
-                        {
-                            warn!("[BehaviourEvent::PeerConnected] - failed to send peer connection message: {:?}", peer_id);
-                        }
-                    });
-                    Ok(())
-                }
-                BehaviourEvent::PeerDisconnected(peer_id) => {
-                    debug!(
-                        "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
-                        peer_id
-                    );
-
-                    track(MetricEvent::PeerDisconnected, None, None);
-
-                    let event_sender = self.event_sender.clone();
-                    tokio::task::spawn(async move {
-                        if event_sender
-                            .send(UrsaEvent::PeerDisconnected(peer_id))
-                            .await
-                            .is_err()
-                        {
-                            warn!("[BehaviourEvent::PeerDisconnected] - failed to send peer disconnect message: {:?}", peer_id);
-                        }
-                    });
-                    Ok(())
-                }
-                BehaviourEvent::NatStatusChanged { old, new } => {
-                    match (old, new) {
-                        (NatStatus::Unknown, NatStatus::Private) => {
-                            let behaviour = self.swarm.behaviour_mut();
-                            if behaviour.is_relay_client_enabled() {
-                                // get random bootstrap node and listen on their relay
-                                if let Some((relay_peer, relay_addr)) = behaviour
-                                    .discovery()
-                                    .bootstrap_addrs()
-                                    .choose(&mut rand::thread_rng())
-                                {
-                                    let addr = relay_addr
-                                        .clone()
-                                        .with(Protocol::P2p((*relay_peer).into()))
-                                        .with(Protocol::P2pCircuit);
-                                    warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
-                                    self.swarm
-                                        .listen_on(addr)
-                                        .expect("failed to listen on relay");
-                                }
-                            }
-                        }
-                        (_, NatStatus::Public(addr)) => {
-                            info!("Public Nat verified! Public listening address: {}", addr);
-                        }
-                        (old, new) => {
-                            warn!("NAT status changed from {:?} to {:?}", old, new);
-                        }
-                    }
-                    Ok(())
-                }
-                BehaviourEvent::RelayReservationOpened { peer_id } => {
-                    debug!("Relay reservation opened for peer {}", peer_id);
-                    track(MetricEvent::RelayReservationOpened, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayReservationClosed { peer_id } => {
-                    debug!("Relay reservation closed for peer {}", peer_id);
-                    track(MetricEvent::RelayReservationClosed, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayCircuitOpened => {
-                    debug!("Relay circuit opened");
-                    track(MetricEvent::RelayCircuitOpened, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::RelayCircuitClosed => {
-                    debug!("Relay circuit closed");
-                    track(MetricEvent::RelayCircuitClosed, None, None);
-                    Ok(())
-                }
-                BehaviourEvent::StartPublish { public_address } => {
-                    let mut address = Multiaddr::empty();
-                    let peer_id = *self.swarm.local_peer_id();
-                    for protocol in public_address.into_iter() {
-                        match protocol {
-                            Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
-                            Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
-                            Protocol::Tcp(port) => address.push(Protocol::Tcp(port)),
-                            _ => {}
-                        }
-                    }
-                    let root_cids = self.index_provider.get_mut_root_cids();
-                    let mut cid_queue = root_cids.write().unwrap();
-
-                    while !cid_queue.is_empty() {
-                        let root_cid = cid_queue.pop_front().unwrap();
-                        let context_id = root_cid.to_bytes();
-                        info!(
-                            "Creating advertisement for cids under root cid: {:?}.",
-                            root_cid
-                        );
-
-                        let addresses: Vec<String> =
-                            [address.clone()].iter().map(|m| m.to_string()).collect();
-                        let advertisement =
-                            Advertisement::new(context_id.clone(), peer_id, addresses, false);
-                        let provider_id = self.index_provider.create(advertisement).unwrap();
-
-                        let dag = self
-                            .store
-                            .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
-                        let entries = dag
-                            .iter()
-                            .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
-                            .collect::<Vec<Ipld>>();
-                        let chunks: Vec<&[Ipld]> = entries.chunks(MAX_ENTRIES).collect();
-
-                        info!("Inserting Index chunks.");
-                        for chunk in chunks.iter() {
-                            let entries_bytes = forest_encoding::to_vec(&chunk)?;
-                            self.index_provider
-                                .add_chunk(entries_bytes, provider_id)
-                                .expect(" adding chunk to advertisement should not fail!");
-                        }
-                        info!("Publishing the advertisement now");
-                        self.index_provider
-                            .publish(provider_id)
-                            .expect("publishing the ad should not fail");
-                        if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id) {
-                            let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
-                            let i_topic = Topic::new("indexer/ingest/mainnet");
-                            let g_msg = GossipsubMessage {
-                                data: announce_msg.clone(),
-                                source: None,
-                                sequence_number: None,
-                                topic: i_topic_hash,
-                            };
-                            match self.swarm.behaviour_mut().publish(i_topic, g_msg.clone()) {
-                                Ok(res) => {
-                                    info!("gossiping the new advertisement done : {:}", res);
-                                }
-                                Err(e) => {
-                                    warn!("there was an error while gossiping the announcement, will try to announce via http");
-                                    warn!("{:?}", e);
-                                    // make an http announcement if gossiping fails
-                                    let provider_copy = self.index_provider.clone();
-
-                                    tokio::task::spawn(async move {
-                                        provider_copy.announce_http_message(announce_msg).await;
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    Ok(())
+                BehaviourEvent::RequestResponse(req_res_event) => {
+                    self.handle_req_res(req_res_event)
                 }
             },
-            // Do we need to handle any of the below events?
-            SwarmEvent::Dialing { .. }
-            | SwarmEvent::BannedPeer { .. }
-            | SwarmEvent::NewListenAddr { .. }
-            | SwarmEvent::ListenerError { .. }
-            | SwarmEvent::ListenerClosed { .. }
-            | SwarmEvent::ConnectionClosed { .. }
-            | SwarmEvent::ExpiredListenAddr { .. }
-            | SwarmEvent::IncomingConnection { .. }
-            | SwarmEvent::ConnectionEstablished { .. }
-            | SwarmEvent::IncomingConnectionError { .. }
-            | SwarmEvent::OutgoingConnectionError { .. } => Ok(()),
+            _ => Ok(()),
         }
     }
 
     /// Handle commands
-    pub fn handle_command(&mut self, command: UrsaCommand) -> Result<()> {
+    pub fn handle_command(&mut self, command: NetworkCommand) -> Result<()> {
         match command {
-            UrsaCommand::GetBitswap { cid, query, sender } => {
+            NetworkCommand::GetBitswap { cid, sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
-                if peers.is_empty() {
-                    error!(
-                        "There were no peers provided and the block does not exist in local store"
-                    );
-                    return sender
-                        .send(Err(anyhow!(
-                        "There were no peers provided and the block does not exist in local store"
-                    )))
-                        .map_err(|_| anyhow!("Failed to get a bitswap block!"));
-                } else {
-                    if let Some(chans) = self.response_channels.get_mut(&cid) {
-                        chans.push(sender);
-                    } else {
-                        self.response_channels.insert(cid, vec![sender]);
+                let query = self
+                    .swarm
+                    .behaviour_mut()
+                    .get_block(cid, peers.iter().copied());
+
+                match query {
+                    Ok(query_id) => {
+                        self.bitswap_queries.insert(query_id, cid);
+
+                        let event_sender = self.event_sender.clone();
+                        tokio::task::spawn(async move {
+                            if event_sender
+                                .send(NetworkEvent::GetBitswap { cid, query_id })
+                                .is_err()
+                            {
+                                warn!(
+                                    "[NetworkCommand::GetBitswap] - failed to get bitswap block for query: {:?}.",
+                                    query_id
+                                );
+                            };
+                        });
                     }
-                    match query {
-                        BitswapType::Get => self
-                            .swarm
-                            .behaviour_mut()
-                            .get_block(cid, peers.iter().copied()),
-                        BitswapType::Sync => self
-                            .swarm
-                            .behaviour_mut()
-                            .sync_block(cid, peers.into_iter().collect()),
+                    _ => {
+                        error!(
+                            "[NetworkCommand::GetBitswap] - no block found for cid {:?}.",
+                            cid
+                        )
                     }
                 }
-                Ok(())
             }
-            UrsaCommand::Put { cid, sender } => Ok(()),
-            UrsaCommand::GetPeers { sender } => {
+            NetworkCommand::Put { cid, sender } => (),
+            NetworkCommand::GetPeers { sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
                 sender
                     .send(peers)
-                    .map_err(|_| anyhow!("Failed to get Libp2p peers"))
+                    .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
             }
-            UrsaCommand::Index { cids, sender } => {
-                let root_cid = cids[0];
-                let root_cids = self.index_provider.get_mut_root_cids();
-                let mut rlock = root_cids.write().unwrap();
-                rlock.push_back(root_cid);
-
-                let swarm = self.swarm.behaviour_mut();
-                let addrs = swarm.public_address();
-                if let Some(public_address) = addrs {
-                    swarm.publish_ad(public_address.clone())?;
-                } else {
-                    warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
-                     Otherwise the autonat will get the public address soon and node will start indexing the content");
-                }
-
-                sender
-                    .send(Ok(cids))
-                    .map_err(|_| anyhow!("Failed to index cid!"))
-            }
-            UrsaCommand::SendRequest {
+            NetworkCommand::SendRequest {
                 peer_id,
                 request,
                 channel,
-            } => self
-                .swarm
-                .behaviour_mut()
-                .send_request(peer_id, request, channel),
-            UrsaCommand::SendResponse {
-                request_id,
-                response,
-                channel,
-            } => todo!(),
-            UrsaCommand::GossipsubMessage { topic, message } => {
-                if let Err(error) = self.swarm.behaviour_mut().publish(topic, message) {
-                    warn!(
-                        "[UrsaCommand::GossipsubMessage] - Failed to publish message to topic {:?} with error {:?}:",
-                        URSA_GLOBAL, error
-                    );
+            } => {
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .request_response
+                    .send_request(&peer_id, request);
+                self.pending_responses.insert(request_id, channel);
+
+                let event_sender = self.event_sender.clone();
+                if let Err(e) = event_sender.send(NetworkEvent::RequestMessage { request_id }) {
+                    warn!("Failed to send request!: {:?}", e);
                 }
-                Ok(())
             }
+            NetworkCommand::GossipsubMessage {
+                peer_id: _,
+                message,
+            } => match message {
+                GossipsubMessage::Subscribe {
+                    peer_id: _,
+                    topic,
+                    sender,
+                } => {
+                    let subscribe = self
+                        .swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .subscribe(&Topic::new(topic.into_string()));
+
+                    sender
+                        .send(subscribe)
+                        .map_err(|_| anyhow!("Failed to subscribe!"))?;
+                }
+                GossipsubMessage::Unsubscribe {
+                    peer_id: _,
+                    topic,
+                    sender,
+                } => {
+                    let unsubscribe = self
+                        .swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .unsubscribe(&Topic::new(topic.into_string()));
+
+                    sender
+                        .send(unsubscribe)
+                        .map_err(|_| anyhow!("Failed to unsubscribe!"))?;
+                }
+                GossipsubMessage::IndexPublish {
+                    public_address,
+                    cids,
+                    sender,
+                } => {
+                    // let root_cid = cids[0];
+                    // let root_cids = self.index_provider.get_mut_root_cids();
+                    // let mut rlock = root_cids.write().unwrap();
+                    // rlock.push_back(root_cid);
+
+                    // let swarm = self.swarm.behaviour_mut();
+                    // let addrs = swarm.public_address();
+                    // if let Some(public_address) = addrs {
+                    //     self.event.push_back(BehaviourEvent::StartPublish { public_address });
+                    // } else {
+                    //     warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
+                    //          Otherwise the autonat will get the public address soon and node will start indexing the content");
+                    // }
+
+                    // sender
+                    //     .send(Ok(cids))
+                    //     .map_err(|_| anyhow!("Failed to index cid!"))
+                    todo!()
+                }
+            },
         }
+        Ok(())
     }
 
     /// Start the ursa network service loop.
@@ -670,11 +906,6 @@ mod tests {
     ) -> (UrsaService<RocksDb>, PeerId) {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
-        config.bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
-            .iter()
-            .map(|node| node.parse().unwrap())
-            .collect();
-
         let provider_config = ProviderConfig::default();
         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
@@ -738,7 +969,7 @@ mod tests {
                     break;
                 }
                 _ => {
-                    panic!("test_network_start: Failed!")
+                    warn!("test_network_start: Failed!")
                 }
             }
         }
@@ -760,27 +991,30 @@ mod tests {
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6011".parse().unwrap();
-        let (node_1, _) = network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
+        let (node_1, node_peer_id_1) =
+            network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         config.swarm_addr = "/ip4/0.0.0.0/tcp/6012".parse().unwrap();
-        let (mut node_2, _) =
+        let (mut node_2, node_peer_id_2) =
             network_init(&mut config, Arc::clone(&store), Arc::clone(&index_store));
 
         let node_1_sender = node_1.command_sender.clone();
 
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
-        let msg = UrsaCommand::GossipsubMessage {
-            topic: topic.clone(),
-            message: GossipsubMessage {
-                source: None,
-                data: vec![1],
-                sequence_number: Some(1),
-                topic: topic.hash(),
+        let block = get_block(&b"hello world"[..]);
+        let cid = convert_cid(block.cid().to_bytes());
+        let (sender, _) = oneshot::channel();
+        let msg = NetworkCommand::GossipsubMessage {
+            peer_id: node_peer_id_1,
+            message: GossipsubMessage::IndexPublish {
+                cids: vec![cid],
+                public_address: Multiaddr::empty(),
+                sender,
             },
         };
 
-        node_1_sender.send(msg).await?;
+        node_1_sender.send(msg);
 
         loop {
             select! {
@@ -826,8 +1060,9 @@ mod tests {
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::PeerConnected(peer_id))) =
-                swarm_2.next().await
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::Discovery(
+                DiscoveryEvent::Connected(peer_id),
+            ))) = swarm_2.next().await
             {
                 info!("Node 2 PeerConnected: {:?}", peer_id);
                 break;
@@ -904,21 +1139,22 @@ mod tests {
 
         let (sender, _) = oneshot::channel();
         let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
-        let msg = UrsaCommand::SendRequest {
+        let msg = NetworkCommand::SendRequest {
             peer_id: peer_2,
             request,
             channel: sender,
         };
 
-        node_1_sender.send(msg).await?;
+        node_1_sender.send(msg);
 
         let mut swarm_2 = node_2.swarm.fuse();
 
         loop {
-            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestMessage { request, .. })) =
-                swarm_2.next().await
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
+                RequestResponseEvent::Message { peer, message },
+            ))) = swarm_2.next().await
             {
-                info!("Node 2 RequestMessage: {:?}", request);
+                info!("Node 2 RequestMessage: {:?}", message);
                 break;
             }
         }
@@ -935,7 +1171,7 @@ mod tests {
         let store2 = get_store("test_db2");
 
         let bitswap_store_1 = BitswapStorage(store1.clone());
-        let mut bitswap_store_2 = BitswapStorage(store2.clone());
+        let bitswap_store_2 = BitswapStorage(store2.clone());
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -957,9 +1193,8 @@ mod tests {
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         let (sender, receiver) = oneshot::channel();
-        let msg = UrsaCommand::GetBitswap {
+        let msg = NetworkCommand::GetBitswap {
             cid: convert_cid(block.cid().to_bytes()),
-            query: BitswapType::Get,
             sender,
         };
 
@@ -975,7 +1210,6 @@ mod tests {
                 assert_eq!(store_2_block, Some(block.data().to_vec()));
             }
         });
-
         Ok(())
     }
 
@@ -1005,13 +1239,12 @@ mod tests {
 
         let (sender, receiver) = oneshot::channel();
 
-        let msg = UrsaCommand::GetBitswap {
+        let msg = NetworkCommand::GetBitswap {
             cid: convert_cid(block.cid().to_bytes()),
-            query: BitswapType::Get,
             sender,
         };
 
-        node_2_sender.send(msg).await?;
+        node_2_sender.send(msg);
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
