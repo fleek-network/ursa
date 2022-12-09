@@ -1,14 +1,9 @@
 mod config;
 mod routes;
 
-use crate::config::GatewayConfig;
+use crate::config::{init_config, load_config, GatewayConfig};
 use crate::routes::api::v1::get::get_block_handler;
-use crate::routes::api::v1::put::put_file_handler;
-use axum::{
-    extract::Extension,
-    routing::{get, post},
-    Router,
-};
+use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
 use hyper::{client::HttpConnector, Body};
 use std::net::SocketAddr;
@@ -20,20 +15,25 @@ type Client = hyper::client::Client<HttpConnector, Body>;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let config = GatewayConfig::default();
+    init_config();
+
+    let config = load_config();
 
     let rustls_config =
         RustlsConfig::from_pem_file(config.cert_config.cert_path, config.cert_config.key_path)
             .await
-            .unwrap();
+            .expect("problem starting server");
 
     let app = Router::new()
-        .route("/get-cid", get(get_block_handler))
-        .route("/put-file", post(put_file_handler))
+        .route("/:cid", get(get_block_handler))
         .layer(Extension((Client::new(), GatewayConfig::default())));
 
     let addr = SocketAddr::from((
-        config.server.addr.parse::<std::net::Ipv4Addr>().unwrap(),
+        config
+            .server
+            .addr
+            .parse::<std::net::Ipv4Addr>()
+            .expect("problem parse ipv4"),
         config.server.port,
     ));
 
@@ -42,5 +42,5 @@ async fn main() {
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())
         .await
-        .unwrap();
+        .expect("problem start server");
 }
