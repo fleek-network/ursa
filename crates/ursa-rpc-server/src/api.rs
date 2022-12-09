@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{UnboundedSender as Sender};
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
@@ -97,7 +97,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request);
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -117,7 +117,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request);
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
