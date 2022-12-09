@@ -19,8 +19,6 @@ use fnv::FnvHashMap;
 use libipld::store::StoreParams;
 use libp2p::autonat::{Event, NatStatus};
 use libp2p::core::connection::ConnectionId;
-use libp2p::core::transport::ListenerId;
-use libp2p::core::ConnectedPoint;
 use libp2p::dcutr;
 use libp2p::ping::Config as PingConfig;
 use libp2p::swarm::behaviour::toggle::Toggle;
@@ -498,31 +496,8 @@ impl<P: StoreParams> Behaviour<P> {
         }
     }
 
-    fn handle_relay_server(&mut self, event: RelayServerEvent) -> Option<BehaviourEvent> {
+    fn handle_relay_server(&mut self, event: RelayServerEvent) {
         debug!("[RelayServerEvent] {:?}", event);
-      
-        match event {
-            RelayServerEvent::ReservationReqAccepted {
-                src_peer_id,
-                renewed,
-            } => {
-                if !renewed {
-                    Some(BehaviourEvent::RelayReservationOpened {
-                        peer_id: src_peer_id,
-                    })
-                } else {
-                    None
-                }
-            }
-            RelayServerEvent::ReservationTimedOut { src_peer_id } => {
-                Some(BehaviourEvent::RelayReservationClosed {
-                    peer_id: src_peer_id,
-                })
-            }
-            RelayServerEvent::CircuitReqAccepted { .. } => Some(BehaviourEvent::RelayCircuitOpened),
-            RelayServerEvent::CircuitClosed { .. } => Some(BehaviourEvent::RelayCircuitClosed),
-            _ => None,
-        }
     }
 
     fn handle_relay_client(&mut self, event: RelayClientEvent) {
@@ -743,7 +718,7 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
                         InternalBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
                         InternalBehaviourEvent::RelayServer(e) => {
                             e.record();
-                            gen_event = self.handle_relay_server(e)
+                            self.handle_relay_server(e)
                         }
                         InternalBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),
                         InternalBehaviourEvent::Bitswap(e) => gen_event = self.handle_bitswap(e),

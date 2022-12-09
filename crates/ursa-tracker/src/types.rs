@@ -9,17 +9,20 @@ pub type Client = hyper::client::Client<HttpConnector, Body>;
 pub struct NodeAnnouncement {
     pub id: PeerId,
     pub storage: u64, // in bytes
+    pub agent: String,
     pub addr: Option<String>,
     pub p2p_port: Option<u16>,
-    pub telemetry: Option<bool>,
+    pub rpc_port: Option<u16>,
     pub metrics_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: PeerId,
+    pub agent: String,
     pub addr: String,
     pub p2p_port: u16,
+    pub rpc_port: u16,
     pub telemetry: bool,
     pub metrics_port: u16,
     pub geohash: String,
@@ -37,9 +40,11 @@ impl Node {
     ) -> Self {
         Self {
             id: announcement.id,
+            agent: announcement.agent.clone(),
             addr: announcement.addr.clone().unwrap_or(ip),
             p2p_port: announcement.p2p_port.unwrap_or(6009),
-            telemetry: announcement.telemetry.unwrap_or(true),
+            rpc_port: announcement.rpc_port.unwrap_or(4069),
+            telemetry: announcement.metrics_port.is_some(),
             metrics_port: announcement.metrics_port.unwrap_or(4070),
             geohash,
             timezone,

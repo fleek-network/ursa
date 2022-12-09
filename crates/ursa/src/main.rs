@@ -11,6 +11,7 @@ use crate::{
 };
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
+use libp2p::multiaddr::Protocol;
 use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
@@ -20,6 +21,7 @@ use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
+use ursa_tracker::NodeAnnouncement;
 
 #[tokio::main]
 async fn main() {
@@ -64,6 +66,24 @@ async fn main() {
 
                 let keypair = im.current();
 
+                let announcement = NodeAnnouncement {
+                    id: keypair.clone().public().to_peer_id(),
+                    // TODO: calculate or get from config the supplied storage in bytes
+                    storage: 0,
+                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
+                    addr: None, // if we have a dns address, we can set it here
+                    p2p_port: network_config
+                        .swarm_addr
+                        .iter()
+                        .find_map(|proto| match proto {
+                            Protocol::Tcp(port) => Some(port),
+                            Protocol::Udp(port) => Some(port),
+                            _ => None,
+                        }),
+                    rpc_port: Some(server_config.port),
+                    metrics_port: Some(metrics_config.port),
+                };
+
                 let db_path = network_config.database_path.clone();
 
                 info!("Using {:?} as database path", db_path);
@@ -85,7 +105,6 @@ async fn main() {
                     &network_config,
                     Arc::clone(&store),
                     index_provider.clone(),
-                    Some(metrics_config.port),
                 );
 
                 // Start metrics service
@@ -94,12 +113,6 @@ async fn main() {
                         error!("[metrics_task] - {:?}", err);
                     }
                 });
-
-                // Perform http node announcement
-                match service.register_with_tracker().await {
-                    Ok(b) => info!("successful tracker response: {}", b),
-                    Err(e) => error!("Error with tracker announcement: {}", e),
-                }
 
                 let rpc_sender = service.command_sender().clone();
 
@@ -119,7 +132,7 @@ async fn main() {
 
                 // Start multiplex server service(rpc and http)
                 let rpc_task = task::spawn(async move {
-                    if let Err(err) = server.start(server_config).await {
+                    if let Err(err) = server.start(&server_config).await {
                         error!("[rpc_task] - {:?}", err);
                     }
                 });
@@ -130,6 +143,14 @@ async fn main() {
                         error!("[provider_task] - {:?}", err);
                     }
                 });
+
+                // register with ursa node tracker
+                if !network_config.tracker.is_empty() {
+                    match ursa_tracker::register_with_tracker(network_config.tracker, announcement).await {
+                        Ok(res) => info!("Registered with tracker: {res:?}"),
+                        Err(err) => error!("Failed to register with tracker: {err:?}"),
+                    }
+                }
 
                 wait_until_ctrlc();
 

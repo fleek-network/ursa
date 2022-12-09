@@ -58,7 +58,6 @@ use ursa_index_provider::{
 };
 use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, Dag, Store};
-use ursa_tracker::types::NodeAnnouncement;
 use ursa_utils::convert_cid;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -153,10 +152,6 @@ pub struct UrsaService<S> {
     event_receiver: Receiver<UrsaEvent>,
     /// hashmap for keeping track of rpc response channels
     response_channels: FnvHashMap<Cid, Vec<BlockSenderChannel<()>>>,
-    /// current ursa config
-    config: NetworkConfig,
-    /// current metrics port
-    metrics_port: Option<u16>,
 }
 
 impl<S> UrsaService<S>
@@ -181,7 +176,6 @@ where
         config: &NetworkConfig,
         store: Arc<Store<S>>,
         index_provider: Provider<S>,
-        metrics_port: Option<u16>,
     ) -> Self {
         let local_peer_id = PeerId::from(keypair.public());
 
@@ -252,46 +246,6 @@ where
             event_sender,
             event_receiver,
             response_channels: Default::default(),
-            config: config.clone(),
-            metrics_port,
-        }
-    }
-
-    // Register the node with the http tracker. Used for mapping the network pre-consensus
-    pub async fn register_with_tracker(&self) -> Result<String> {
-        let tracker = self.config.tracker.clone();
-        if !tracker.is_empty() {
-            let announcement = NodeAnnouncement {
-                id: *self.swarm.local_peer_id(),
-                // TODO: calculate or get from config the supplied storage in bytes
-                storage: 0,
-                // TODO(arslan): if dns address is provided, use that instead
-                addr: self.swarm.behaviour().public_address().and_then(|addr| {
-                    // get ip4/6 address from multiaddr
-                    addr.iter().find_map(|proto| match proto {
-                        Protocol::Ip4(ip) => Some(ip.to_string()),
-                        Protocol::Ip6(ip) => Some(ip.to_string()),
-                        _ => None,
-                    })
-                }),
-                p2p_port: Some(
-                    self.config
-                        .swarm_addr
-                        .iter()
-                        .find_map(|proto| match proto {
-                            Protocol::Tcp(port) => Some(port),
-                            Protocol::Udp(port) => Some(port),
-                            _ => None,
-                        })
-                        .unwrap_or_default(),
-                ),
-                telemetry: Some(self.metrics_port.is_some()),
-                metrics_port: self.metrics_port,
-            };
-
-            ursa_tracker::register_with_tracker(tracker, announcement).await
-        } else {
-            Err(anyhow!("No tracker provided, skipping node announcement"))
         }
     }
 

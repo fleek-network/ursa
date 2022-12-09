@@ -244,7 +244,6 @@
           },
           "displayName": "Ping",
           "mappings": [],
-          "min": 5,
           "thresholds": {
             "mode": "percentage",
             "steps": [
@@ -267,7 +266,6 @@
       "id": 18,
       "options": {
         "bucketOffset": 0,
-        "bucketSize": 0.01,
         "combine": true,
         "legend": {
           "calcs": [],
@@ -306,14 +304,14 @@
             "mode": "thresholds"
           },
           "custom": {
-            "fillOpacity": 80,
-            "gradientMode": "none",
+            "fillOpacity": 100,
+            "gradientMode": "hue",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineWidth": 1
+            "lineWidth": 0
           },
           "mappings": [],
           "thresholds": {
@@ -342,7 +340,8 @@
       "id": 34,
       "options": {
         "bucketOffset": 0,
-        "bucketSize": 0.0001,
+        "bucketSize": 0,
+        "combine": true,
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -358,7 +357,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "rpc_response_sent{}",
+          "expr": "rpc_response_duration{} != 0",
           "format": "table",
           "instant": false,
           "legendFormat": "__auto",
@@ -368,6 +367,144 @@
       ],
       "title": "RPC Response Time",
       "type": "histogram"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 38,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sum(kad_routing_updated{action=\"added\"})",
+          "format": "table",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kademlia Peers",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 36,
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showUnfilled": false,
+        "text": {
+          "titleSize": 1
+        }
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(kad_routing_updated{action=\"added\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{bucket}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kademlia KBucket Sizes",
+      "type": "bargauge"
     },
     {
       "datasource": {
@@ -405,7 +542,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 32
       },
       "id": 8,
       "options": {
@@ -500,7 +637,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 32
       },
       "id": 22,
       "options": {
@@ -526,7 +663,7 @@
           "expr": "rate(swarm_connections_established[$__rate_interval])",
           "format": "table",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "{{id}}",
           "range": true,
           "refId": "A"
         }
@@ -595,7 +732,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 40
       },
       "id": 2,
       "options": {
@@ -687,7 +824,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 40
       },
       "id": 32,
       "options": {
@@ -710,12 +847,12 @@
           },
           "editorMode": "code",
           "expr": "rate(swarm_dial_attempt{}[$__rate_interval])",
-          "legendFormat": "__auto",
+          "legendFormat": "{{id}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Outbound Dial Attempt Rate",
+      "title": "Dial Attempt Rate",
       "type": "timeseries"
     },
     {
@@ -779,7 +916,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 38
+        "y": 46
       },
       "id": 28,
       "options": {
@@ -805,12 +942,12 @@
           "expr": "rate(swarm_outgoing_connection_error{}[$__rate_interval])",
           "format": "time_series",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "{{id}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Outgoing Connection Error Rate",
+      "title": "Dial Error Rate",
       "type": "timeseries"
     },
     {
@@ -849,7 +986,7 @@
         "h": 15,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 49
       },
       "id": 16,
       "options": {
@@ -943,7 +1080,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 44
+        "y": 52
       },
       "id": 20,
       "options": {
@@ -967,7 +1104,7 @@
           "editorMode": "code",
           "expr": "rate(swarm_connections_incoming{}[$__rate_interval])",
           "format": "heatmap",
-          "legendFormat": "__auto",
+          "legendFormat": "{{id}}",
           "range": true,
           "refId": "A"
         }
@@ -1036,7 +1173,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 58
       },
       "id": 30,
       "options": {
@@ -1059,7 +1196,7 @@
           },
           "editorMode": "code",
           "expr": "rate(swarm_connections_incoming_error[$__rate_interval])",
-          "legendFormat": "__auto",
+          "legendFormat": "{{error}}",
           "range": true,
           "refId": "A"
         }
@@ -1068,12 +1205,198 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 40,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "bitswap_sent_block_bytes{}",
+          "legendFormat": "{{id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Bitswap Bytes Sent",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 42,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "bitswap_received_block_bytes{}",
+          "legendFormat": "{{id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Bitswap Bytes Received ",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 72
       },
       "id": 12,
       "panels": [],
@@ -1141,7 +1464,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 57
+        "y": 73
       },
       "id": 4,
       "options": {
@@ -1237,7 +1560,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 57
+        "y": 73
       },
       "id": 6,
       "options": {
@@ -1269,7 +1592,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "5s",
+  "refresh": false,
   "schemaVersion": 37,
   "style": "dark",
   "tags": [],
@@ -1277,13 +1600,13 @@
     "list": []
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 17,
+  "version": 25,
   "weekStart": ""
 }

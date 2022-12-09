@@ -16,15 +16,17 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
     let status = response.status().as_u16().to_string();
 
     increment_counter!("rpc_request_received");
-    histogram!(
-        "rpc_response_sent",
-        latency,
-        vec![
-            Label::new("method", method.to_string()),
-            Label::new("path", path),
-            Label::new("status", status),
-        ]
-    );
+    if latency != 0.0 {
+        histogram!(
+            "rpc_response_duration",
+            latency,
+            vec![
+                Label::new("method", method.to_string()),
+                Label::new("path", path),
+                Label::new("status", status),
+            ]
+        );
+    }
 
     response
 }

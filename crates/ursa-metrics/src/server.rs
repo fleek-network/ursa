@@ -11,9 +11,8 @@ async fn get_ping_handler() -> (StatusCode, String) {
     (StatusCode::OK, "pong".to_string())
 }
 
-fn setup_metrics_handler(agent: String) -> PrometheusHandle {
+fn setup_metrics_handler() -> PrometheusHandle {
     PrometheusBuilder::new()
-        .add_global_label("agent", agent)
         .install_recorder()
         .unwrap()
 }
@@ -35,7 +34,7 @@ async fn metrics_handler(handle: Extension<Arc<PrometheusHandle>>) -> (StatusCod
 }
 
 pub async fn start(conf: &MetricsServiceConfig) -> Result<()> {
-    let prometheus_handler = setup_metrics_handler(conf.agent.clone());
+    let prometheus_handler = setup_metrics_handler();
 
     let router = Router::new()
         .route("/metrics", get(metrics_handler))

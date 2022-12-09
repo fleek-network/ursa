@@ -31,7 +31,7 @@ where
         }
     }
 
-    pub async fn start(&self, config: ServerConfig) -> Result<()> {
+    pub async fn start(&self, config: &ServerConfig) -> Result<()> {
         info!("Server (Rpc and http) starting up");
         let rpc_router = Router::new()
             .merge(rpc::routes::network::init())
@@ -116,6 +116,6 @@ mod tests {
 
         let rpc = Server::new(interface);
 
-        let _ = rpc.start(config).await;
+        let _ = rpc.start(&config).await;
     }
 }

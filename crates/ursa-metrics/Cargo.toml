@@ -2,7 +2,7 @@
 name = "ursa-metrics"
 version = "0.1.0"
 edition = "2021"
-authors = ["mtavano <marcello@fleek.co>"]
+authors = ["ossian <oz@fleek.xyz>", "mtavano <marcello@fleek.co>"]
 license = "MIT"
 repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa metrics"
@@ -10,7 +10,7 @@ description = "Ursa metrics"
 
 [dependencies]
 anyhow = "1.0.56"
-axum = "0.5.7"
+axum = "0.5.17"
 lazy_static = "1"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
@@ -19,13 +19,13 @@ prometheus = "0.13.2"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.33"
 
-# todo: upgrade with libp2p 0.50
-libp2p-core = "0.34.0"
-libp2p-swarm = "0.37.0"
-libp2p-ping = "0.37.0"
-libp2p-identify = "0.37.0"
-libp2p-kad = "0.38.0"
-libp2p-request-response = "0.19.0"
-libp2p-relay = "0.10.0"
-libp2p-gossipsub = "0.39.0"
-libp2p-bitswap = { version = "0.22.0", git = "https://github.com/b0xtch/libp2p-bitswap" }
+# using the crates directly to avoid getting all of libp2p
+libp2p-core = "0.38.0"
+libp2p-swarm = "0.41.1"
+libp2p-ping = "0.41.0"
+libp2p-identify = "0.41.0"
+libp2p-kad = "0.42.0"
+libp2p-request-response = "0.23.0"
+libp2p-relay = "0.14.0"
+libp2p-gossipsub = "0.43.0"
+libp2p-bitswap = "0.25.0"

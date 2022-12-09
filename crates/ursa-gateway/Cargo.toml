@@ -8,7 +8,7 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's proxy gateway"
 
 [dependencies]
-axum = "0.5.7"
+axum = "0.5.17"
 axum-server = { version = "0.4.2", features = ["tls-rustls"] }
 hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }

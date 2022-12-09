@@ -1,12 +1,12 @@
 use crate::Recorder;
-use libp2p_kad::{KademliaEvent, QueryResult};
+use libp2p_kad::{GetProvidersOk, GetRecordOk, KademliaEvent, QueryResult};
 use metrics::Label;
 use metrics::{histogram, increment_counter};
 
 impl Recorder for KademliaEvent {
     fn record(&self) {
         match self {
-            KademliaEvent::OutboundQueryCompleted { result, stats, .. } => {
+            KademliaEvent::OutboundQueryProgressed { result, stats, .. } => {
                 histogram!("kad_query_result_num_requests", stats.num_requests() as f64);
                 histogram!("kad_query_result_num_success", stats.num_successes() as f64);
                 histogram!("kad_query_result_num_failure", stats.num_failures() as f64);
@@ -17,7 +17,12 @@ impl Recorder for KademliaEvent {
                 match result {
                     QueryResult::GetRecord(result) => match result {
                         Ok(v) => {
-                            histogram!("kad_query_result_get_record_ok", v.records.len() as f64)
+                            match v {
+                                GetRecordOk::FoundRecord(v) => {
+                                    increment_counter!("kad_query_result_get_record_ok")
+                                }
+                                GetRecordOk::FinishedWithNoAdditionalRecord { .. } => {}
+                            }
                         }
                         Err(_) => increment_counter!("kad_query_result_get_record_err"),
                     },
@@ -29,10 +34,15 @@ impl Recorder for KademliaEvent {
                         Err(_) => increment_counter!("kad_query_result_get_closest_peers_err"),
                     },
                     QueryResult::GetProviders(result) => match result {
-                        Ok(v) => histogram!(
-                            "kad_query_result_get_providers_ok",
-                            v.providers.len() as f64
-                        ),
+                        Ok(v) => match v {
+                            GetProvidersOk::FoundProviders { providers, .. } => {
+                                histogram!(
+                                    "kad_query_result_get_providers_ok",
+                                    providers.len() as f64
+                                )
+                            }
+                            GetProvidersOk::FinishedWithNoAdditionalRecord { .. } => {}
+                        },
                         Err(_) => increment_counter!("kad_query_result_get_providers_err"),
                     },
                     QueryResult::Bootstrap(_)
