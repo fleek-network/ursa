@@ -8,6 +8,7 @@ mod relay;
 mod request_response;
 pub mod server;
 mod swarm;
+pub use server::BITSWAP_REGISTRY;
 
 /// Recorder that can record Swarm and protocol events.
 pub trait Recorder {

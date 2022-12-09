@@ -56,7 +56,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use tracing::{debug, error, trace, warn};
-use ursa_metrics::Recorder;
+use ursa_metrics::{Recorder, BITSWAP_REGISTRY};
 use ursa_utils::convert_cid;
 
 use crate::discovery::URSA_KAD_PROTOCOL;
@@ -173,7 +173,7 @@ impl<P: StoreParams> InternalBehaviour<P> {
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
         bitswap
-            .register_metrics(&Default::default())
+            .register_metrics(&BITSWAP_REGISTRY)
             .expect("bitswap metrics");
 
         // Setup the identify behaviour
