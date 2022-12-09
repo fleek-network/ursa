@@ -93,7 +93,6 @@ where
             let (sender, receiver) = oneshot::channel();
             let request = NetworkCommand::GetBitswap {
                 cid,
-                query: BitswapType::Get,
                 sender,
             };
 
@@ -114,7 +113,6 @@ where
             let (sender, receiver) = oneshot::channel();
             let request = NetworkCommand::GetBitswap {
                 cid: root_cid,
-                query: BitswapType::Sync,
                 sender,
             };
 

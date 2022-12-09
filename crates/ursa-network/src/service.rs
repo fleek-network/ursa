@@ -1171,7 +1171,7 @@ mod tests {
         let store2 = get_store("test_db2");
 
         let bitswap_store_1 = BitswapStorage(store1.clone());
-        let bitswap_store_2 = BitswapStorage(store2.clone());
+        let mut bitswap_store_2 = BitswapStorage(store2.clone());
 
         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
             .expect("Opening RocksDB must succeed");
@@ -1198,7 +1198,7 @@ mod tests {
             sender,
         };
 
-        node_2_sender.send(msg).await?;
+        node_2_sender.send(msg);
 
         futures::executor::block_on(async {
             info!("waiting for msg on block receive channel...");
@@ -1360,9 +1360,8 @@ mod tests {
 
         let (sender, receiver) = oneshot::channel();
 
-        let msg = UrsaCommand::GetBitswap {
+        let msg = NetworkCommand::GetBitswap {
             cid: cids[0],
-            query: BitswapType::Sync,
             sender,
         };
 
