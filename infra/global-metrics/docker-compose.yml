@@ -1,0 +1,82 @@
+version: '3'
+
+services: 
+  # Proxy to ipfs
+  nginx:
+    image: nginx:latest
+    restart: unless-stopped
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    volumes:
+      - ./data/nginx:/etc/nginx/conf.d
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+      - ./data/nginx/cache:/cache:rw
+    ports:
+      - "80:80"
+      - "443:443"
+    expose:
+      - 80
+    depends_on:
+      - certbot
+
+  nginxexporter:
+    image: fish/nginx-exporter
+    command:
+    - '-nginx.scrape_uri=http://nginx:80/stub_status'
+    expose:
+      - 9113
+    depends_on:
+      - nginx
+
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    expose: 
+      - "9090"
+    volumes:
+      - ./data/prom:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    depends_on:
+      - ursa-tracker
+
+  grafana:
+    image: grafana/grafana
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./data/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    expose:
+      - 3000
+    depends_on:
+      - prometheus
+    user: "$UID:$GID"
+
+  ursa-tracker:
+    environment:
+      - IPINFO_TOKEN=${IPINFO_TOKEN}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - "4000:4000"
+    expose:
+      - "4000"
+    volumes:
+      - ${HOME}/tracker/:/root/tracker/:rw
