@@ -212,7 +212,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "swarm_connected_peers{}",
+          "expr": "up{}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -650,7 +650,7 @@
           "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
         "tooltip": {
           "mode": "single",
@@ -760,7 +760,7 @@
           },
           "editorMode": "code",
           "expr": "swarm_connected_peers",
-          "legendFormat": "__auto",
+          "legendFormat": "{{id}}",
           "range": true,
           "refId": "A"
         }
@@ -1597,7 +1597,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": false,
+  "refresh": "10s",
   "schemaVersion": 37,
   "style": "dark",
   "tags": [],
@@ -1612,6 +1612,6 @@
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 2,
+  "version": 5,
   "weekStart": ""
 }
