@@ -19,7 +19,6 @@ runcmd:
   - apt-get install -y build-essential clang ocl-icd-opencl-dev
   - git clone https://github.com/fleek-network/ursa
   - cd ursa/
-  - git checkout feat/global-metrics
   - cd infra/global-metrics/
   - COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f docker-compose.yml up -d
   - chmod +x ./init-letsencrypt.sh
