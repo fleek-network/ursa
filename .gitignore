@@ -11,6 +11,7 @@
 
 # rust
 **/target/
+Cargo.lock
 
 # ursa configs and databases
 config.toml
