@@ -16,8 +16,10 @@ services:
       - "443:443"
     expose:
       - 80
+      - 443
     depends_on:
       - certbot
+    network_mode: host
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -27,7 +29,6 @@ services:
       - 9113
     depends_on:
       - nginx
-
 
   certbot:
     image: certbot/certbot
@@ -72,7 +73,7 @@ services:
       - IPINFO_TOKEN=${IPINFO_TOKEN}
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: infra/global-metrics/Dockerfile
     restart: on-failure
     ports:
       - "4000:4000"

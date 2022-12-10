@@ -18,6 +18,8 @@ users:
 
 runcmd:
   - cd ~
+  - ufw allow 80
+  - ufw allow 443
   - echo "IPINFO_TOKEN=${ipinfo_token}" >> ~/.profile
   - source ~/.profile
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
@@ -32,6 +34,7 @@ runcmd:
   - git clone https://github.com/fleek-network/ursa
   - cd ursa/
   - git checkout feat/global-metrics
-  - docker-compose -f infra/global-metrics/docker-compose.yml up -d
-  - chmod +x ./infra/global-metrics/init-letsencrypt.sh
-  - ./infra/global-metrics/init-letsencrypt.sh
+  - cd infra/global-metrics/
+  - COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f docker-compose.yml up -d
+  - chmod +x ./init-letsencrypt.sh
+  - ./init-letsencrypt.sh
