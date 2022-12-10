@@ -2,7 +2,7 @@ use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const DEFAULT_TRACKER_URL: &str = "http://tracker.ursa.earth:4000/announce";
+pub const DEFAULT_TRACKER_URL: &str = "http://tracker.ursa.earth/announce";
 pub const DEFAULT_BOOTSTRAP: [&str; 2] = [
     "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p",
     "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWGw8vCj9XayJDMXUiox6pCUFm7oVuWkDJeE2H9SDQVEcM",

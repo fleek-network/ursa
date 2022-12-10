@@ -18,10 +18,11 @@ pub async fn register_with_tracker(
         .body(json!(announcement).to_string().into())?;
 
     let res = client.request(req).await.map_err(|e| anyhow!(e))?;
-    if res.status().is_success() {
-        let body = hyper::body::to_bytes(res).await?;
-        Ok(String::from_utf8(body.to_vec())?)
+    let status = res.status();
+    let body = String::from_utf8(hyper::body::to_bytes(res).await?.to_vec())?;
+    if status.is_success() {
+        Ok(body)
     } else {
-        Err(anyhow!("Tracker returned error: {}", res.status()))
+        Err(anyhow!("Tracker returned error: {} - {}", status, body))
     }
 }

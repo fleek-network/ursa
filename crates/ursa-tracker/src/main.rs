@@ -2,17 +2,18 @@ use crate::{
     ip_api::get_ip_info,
     types::{Node, NodeAnnouncement, PrometheusDiscoveryChunk},
 };
+use axum::http::StatusCode;
 use axum::{
     extract::{ConnectInfo, Extension},
     routing::{get, post},
     Json, Router,
 };
-use axum::http::StatusCode;
+use hyper::HeaderMap;
 use serde_json::{json, Value};
+use sled::Db;
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use sled::Db;
 
 mod ip_api;
 mod types;
@@ -46,6 +47,7 @@ async fn main() {
 
 /// Track a new peer announcement in the database
 async fn announcement_handler(
+    headers: HeaderMap,
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
     db: Extension<Arc<Db>>,
     token: Extension<String>,
@@ -57,7 +59,14 @@ async fn announcement_handler(
     // todo: announcement verification
 
     let addr = announcement.addr.clone().unwrap_or_else(|| {
-        let ip = req_addr.ip().to_string();
+        // if no dns address is provided, use the address of the request.
+        // If the request is coming from a proxy, use X-Forwarded-For
+        // header to get the real client address. Otherwise, use the
+        // address of the request.
+        let ip = headers
+            .get("X-Forwarded-For")
+            .map(|x| x.to_str().unwrap().to_string())
+            .unwrap_or_else(|| req_addr.ip().to_string());
         (ip != "127.0.0.1").then_some(ip).unwrap_or_default()
     });
 
@@ -80,7 +89,10 @@ async fn announcement_handler(
 
     info!("Storing node {} with config {:?}", id, entry);
 
-    match db.0.insert(id.to_base58().as_bytes(), json.to_string().as_bytes()) {
+    match db
+        .0
+        .insert(id.to_base58().as_bytes(), json.to_string().as_bytes())
+    {
         Ok(_) => (StatusCode::OK, Json(json)),
         Err(e) => {
             tracing::error!("Error writing to db: {}", e);
@@ -94,20 +106,20 @@ async fn announcement_handler(
 
 /// Prometheus HTTP Service Discovery
 async fn http_sd_handler(db: Extension<Arc<Db>>) -> (StatusCode, Json<Value>) {
-    let services: Vec<PrometheusDiscoveryChunk> = db
-        .0.iter()
-        .filter_map(|i| {
-            if let Ok((_, v)) = i {
-                let node: Node = serde_json::from_slice(&v.as_ref()).unwrap();
-                if !node.telemetry {
-                    return None;
+    let services: Vec<PrometheusDiscoveryChunk> =
+        db.0.iter()
+            .filter_map(|i| {
+                if let Ok((_, v)) = i {
+                    let node: Node = serde_json::from_slice(&v.as_ref()).unwrap();
+                    if !node.telemetry {
+                        return None;
+                    }
+                    Some(node.into())
+                } else {
+                    None
                 }
-                Some(node.into())
-            } else {
-                None
-            }
-        })
-        .collect();
+            })
+            .collect();
 
     (StatusCode::OK, Json(json!(services)))
 }
@@ -116,7 +128,6 @@ async fn http_sd_handler(db: Extension<Arc<Db>>) -> (StatusCode, Json<Value>) {
 mod tests {
     use super::*;
     use libp2p::PeerId;
-    use rocksdb::Options;
 
     fn tracer() {
         tracing_subscriber::registry()
@@ -126,15 +137,12 @@ mod tests {
             .init();
     }
 
-    fn db() -> Arc<DB> {
-        let mut opts = Options::default();
-        opts.increase_parallelism(10);
-        opts.create_if_missing(true);
-        Arc::new(DB::open(&opts, "tracker_db").unwrap())
+    fn db() -> Arc<Db> {
+        Arc::new(sled::open("tracker_db").unwrap())
     }
 
     async fn make_announcement(
-        db: Arc<DB>,
+        db: Arc<Db>,
         addr: Option<String>,
         id: PeerId,
     ) -> (StatusCode, Json<Value>) {
@@ -143,10 +151,12 @@ mod tests {
             addr,
             storage: 0,
             p2p_port: Some(6009),
-            telemetry: Some(true),
+            rpc_port: Some(6009),
             metrics_port: Some(6009),
+            agent: "".to_string(),
         };
         announcement_handler(
+            HeaderMap::new(),
             ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 6969))),
             Extension(db),
             Extension(env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set")),
@@ -165,7 +175,7 @@ mod tests {
         info!("{:?}", res);
         assert_eq!(res.0, 200);
 
-        db.delete(id.to_string().as_bytes()).unwrap()
+        db.remove(id.to_string().as_bytes()).unwrap();
     }
 
     #[tokio::test]
@@ -177,8 +187,7 @@ mod tests {
         let res = make_announcement(db.clone(), Some("8.8.8.8".to_string()), id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
-
-        db.delete(id.to_string().as_bytes()).unwrap()
+        db.remove(id.to_string().as_bytes()).unwrap();
     }
 
     // doesn't work with ipinfo
@@ -214,6 +223,6 @@ mod tests {
             panic!("Expected array");
         }
 
-        db.delete(id.to_string().as_bytes()).unwrap();
+        db.remove(id.to_string().as_bytes()).unwrap();
     }
 }
