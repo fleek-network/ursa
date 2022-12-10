@@ -1,6 +1,7 @@
-use crate::types::Client;
 use anyhow::{anyhow, Result};
 use geohash::{encode, Coordinate};
+use hyper::Client;
+use hyper_tls::HttpsConnector;
 use serde_derive::Deserialize;
 
 #[derive(Deserialize, Default, Debug, Clone)]
@@ -20,8 +21,9 @@ pub struct IpInfoResponse {
 
 /// Get public ip info from https://ipinfo.io
 pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> {
-    let url = format!("http://ipinfo.io/{}?{}", addr, token);
-    let res = Client::new().get(url.parse()?).await?;
+    let url = format!("https://ipinfo.io/{}?{}", addr, token);
+    let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
+    let res = client.get(url.parse()?).await?;
     let data = hyper::body::to_bytes(res.into_body()).await?;
     let mut info: IpInfoResponse = serde_json::from_slice(&data)?;
     let loc = info.loc.split(',').collect::<Vec<&str>>();

@@ -9,8 +9,9 @@ description = "Ursa's pre-consensus node tracker"
 
 [dependencies]
 axum = "0.5.17"
-axum-server = { version = "0.4.2", features = ["tls-rustls"] }
+axum-server = { version = "0.4.2" }
 hyper = { version = "0.14", features = ["full"] }
+hyper-tls = "0.5.0"
 tokio = { version = "1", features = ["full"] }
 tokio-test = "0.4.2"
 tokio-stream = "0.1"
@@ -21,5 +22,5 @@ anyhow = "1.0.51"
 serde = "1.0.130"
 serde_derive = "1.0.147"
 serde_json = "1.0.70"
-libp2p = { version = "0.50.0", features = ["serde"], default-features = false }
+libp2p-core = "0.38.0"
 sled = "0.34.7"

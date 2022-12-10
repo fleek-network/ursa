@@ -1,9 +1,6 @@
-use hyper::{client::HttpConnector, Body};
-use libp2p::PeerId;
+use libp2p_core::PeerId;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-pub type Client = hyper::client::Client<HttpConnector, Body>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeAnnouncement {

@@ -1,6 +1,7 @@
-pub use crate::types::{Client, NodeAnnouncement};
+pub use crate::types::NodeAnnouncement;
 use anyhow::{anyhow, Result};
-use hyper::{Method, Request};
+use hyper::{Client, Method, Request};
+use hyper_tls::HttpsConnector;
 use serde_json::json;
 
 pub mod types;
@@ -9,7 +10,7 @@ pub async fn register_with_tracker(
     tracker: String,
     announcement: NodeAnnouncement,
 ) -> Result<String> {
-    let client = Client::new();
+    let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
 
     let req = Request::builder()
         .method(Method::POST)
