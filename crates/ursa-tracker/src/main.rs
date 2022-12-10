@@ -7,13 +7,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-// use axum_server::tls_rustls::RustlsConfig;
 use axum::http::StatusCode;
-use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use sled::Db;
 
 mod ip_api;
 mod types;
@@ -27,7 +26,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db = Arc::new(DB::open_default("tracker_db").unwrap());
+    let db = Arc::new(sled::open("db").unwrap());
     let token = env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set");
 
     let app = Router::new()
@@ -43,21 +42,12 @@ async fn main() {
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
-
-    // let config =
-    //     RustlsConfig::from_pem_file("self_signed_certs/cert.pem", "self_signed_certs/key.pem")
-    //         .await
-    //         .unwrap();
-    //     axum_server::bind_rustls(addr, config)
-    //         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-    //         .await
-    //         .unwrap();
 }
 
 /// Track a new peer announcement in the database
 async fn announcement_handler(
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
-    db: Extension<Arc<DB>>,
+    db: Extension<Arc<Db>>,
     token: Extension<String>,
     Json(announcement): Json<NodeAnnouncement>,
 ) -> (StatusCode, Json<Value>) {
@@ -90,9 +80,7 @@ async fn announcement_handler(
 
     info!("Storing node {} with config {:?}", id, entry);
 
-    let mut batch = WriteBatch::default();
-    batch.put(id.to_base58().as_bytes(), json.to_string().as_bytes());
-    match db.write(batch) {
+    match db.0.insert(id.to_base58().as_bytes(), json.to_string().as_bytes()) {
         Ok(_) => (StatusCode::OK, Json(json)),
         Err(e) => {
             tracing::error!("Error writing to db: {}", e);
@@ -105,15 +93,19 @@ async fn announcement_handler(
 }
 
 /// Prometheus HTTP Service Discovery
-async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
+async fn http_sd_handler(db: Extension<Arc<Db>>) -> (StatusCode, Json<Value>) {
     let services: Vec<PrometheusDiscoveryChunk> = db
-        .iterator(IteratorMode::Start)
-        .filter_map(|(_, v)| {
-            let node: Node = serde_json::from_slice(&v).unwrap();
-            if !node.telemetry {
-                return None;
+        .0.iter()
+        .filter_map(|i| {
+            if let Ok((_, v)) = i {
+                let node: Node = serde_json::from_slice(&v.as_ref()).unwrap();
+                if !node.telemetry {
+                    return None;
+                }
+                Some(node.into())
+            } else {
+                None
             }
-            Some(node.into())
         })
         .collect();
 
