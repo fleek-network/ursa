@@ -373,7 +373,7 @@
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
       },
-      "description": "",
+      "description": "todo: only read from bootstrap nodes",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -426,7 +426,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kad_routing_updated{action=\"added\"}) - (kad_routing_updated{action=\"evicted\"} or vector(0)) - sum(up)",
+          "expr": "sum(kad_routing_updated{action=\"added\"}) - (kad_routing_updated{action=\"evicted\"} or vector(0))",
           "format": "table",
           "instant": false,
           "legendFormat": "__auto",
@@ -530,7 +530,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -625,7 +626,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -719,7 +721,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -810,7 +813,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -901,7 +905,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -970,7 +975,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1063,7 +1069,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1155,7 +1162,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1246,7 +1254,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1339,7 +1348,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1443,7 +1453,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1538,7 +1549,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1600,6 +1612,6 @@
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 34,
+  "version": 2,
   "weekStart": ""
 }

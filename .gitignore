@@ -1,33 +1,31 @@
+.env
+
+# editors
 .DS_Store
-**/.vscode/
+**/.vscode
 **/.idea
 
 # terraform
 **/.terraform*
 *.tfstate*
 
-car_files*
-
-#environment variable file
-.env
-
-# will have compiled files and executables
+# rust
 **/target/
 
-# config file for initial config load up
+# ursa configs and databases
 config.toml
-
-Cargo.lock
-
 index_provider_db*
 test_db*
 ursa_db*
-data*
 tracker_db*
 keystore*
+car_files*
 
-
-infra/ursa/data/nginx/cache
-infra/ursa/data/grafana/grafana.db
-infra/ursa/data/grafana/plugins
-infra/ursa/data/grafana/png
+# docker-compose metric services
+**/data/certbot
+**/nginx/cache
+**/grafana/grafana.db
+**/grafana/plugins
+**/grafana/png
+**/grafana/csv
+**/grafana/file-collections

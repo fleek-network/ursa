@@ -80,4 +80,4 @@ services:
     expose:
       - "4000"
     volumes:
-      - ${HOME}/tracker/:/root/tracker/:rw
+      - ${HOME}/data/tracker_db/:/root/tracker_db/:rw

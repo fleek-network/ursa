@@ -15,9 +15,11 @@ users:
     lock_passwd: false
     ssh_authorized_keys:
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCnuMLreK14AhniBXXsBdtnqY2ZX+A5Nki5OSTWlmkBq3Kx/V5sGnxKzpeLjwiYO3LT/iWoxC+MYxGW5CkvnfO+YkytocZ10y3uGSsxwFJgkWKVib0nrbH2kwcB1IkUmDTMPYrOg6HzXPSdA6hF2i0Vu59KHWNKZ/5eTXoml8Xu1izEiQ0Sb4jHLwaM8++Ho4piMx5Vh2Ls7Lo6c9QyqK6dOq/o0fYAgnndd0kQ+s/TPDdsp0AKRG+lE5v5xguaojS+meGO955eGnaxBhkARHSJnMIhnCmYr0adHFK2Nz4/aqU7coyRpPTHfATjU0kHdAaWtb5zzo8EFUMavBImyQxFO84GYgbBcbclFzirCOLt1lgW3+oSuHQis3qEOcaq85YrdiKE1qlZ+HjY1a0eCMGL/kjrfhx7oLVWz3/5kxQmjCA5u2yl+TBJvalrAKUe2+oiVYjarR1qHBB0UOioHsnMBvk0CecyKWqUdCqwYq+2/dFn67GX29cqYFyf3zLqeb8= mahmoud@fleek.co
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDH8akikibgl3Y0A0YIL3Nf8jE3KcRs51LFduURDAIjybhbt067+mN4f+XpA3IwwRNhZ8f0iosQWuxk1R/htOqNCf+CieQPGaI/fHESuKbRbv3WzNvJT5wCovBCLnafkeZKhqWZ7Wn67wbIrdwzCPblWdVfH30aWV8fX7mp6pvJm2kgrVm5Hb8Gled/1EOkHHQc/gqCCXXdv+mYoFNL9lnm+906+3/Wb56U+udd2srHziS9fJTg5kecS2MXw0p/w3JmX9JcW5LoeDcz/WMOxt93HGjb9VAeXNJ5JNued1ZO0N5g4a761oxhXxQd90CAz0gR8ZtM0tE9XF4avAF4KQTOSAiW9dVpzkx/1dLztQCpGAZmz/Y4c52J9PVL3YFuc/HxbvUp7zo+OnJBBYyjgtzQkGc181i5JAKkvevHbmENxQ2RREOvPfewA1fcjkzpySQsX7YzJmHz2au7vcbgAw93r1eHFq4O0fJm5NEJjPdnEogiKlawwk2zloMn3D7bmJU= oz@sexps
 
 runcmd:
   - cd ~
+  - ufw allow 22
   - ufw allow 80
   - ufw allow 443
   - echo "IPINFO_TOKEN=${ipinfo_token}" >> ~/.profile

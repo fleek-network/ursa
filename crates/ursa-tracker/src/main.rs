@@ -27,7 +27,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db = Arc::new(sled::open("db").unwrap());
+    let db = Arc::new(sled::open("tracker_db").unwrap());
     let token = env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set");
 
     let app = Router::new()
