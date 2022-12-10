@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "nodes"
+    http_sd_configs:
+      - url: http://ursa-tracker:4000/http_sd
+        refresh_interval: 5s
+
+  - job_name: 'bootstrap'
+    static_configs:
+      - targets: [
+        'bootstrap-node-1.ursa.earth:4070',
+        'bootstrap-node-2.ursa.earth:4070',
+      ]
+
+  - job_name: 'nginxexporter'
+    static_configs:
+    - targets: ['nginxexporter:9113']
