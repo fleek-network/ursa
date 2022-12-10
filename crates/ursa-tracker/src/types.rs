@@ -1,9 +1,9 @@
-use libp2p_core::PeerId;
+use libp2p::PeerId;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeAnnouncement {
+pub struct TrackerRegistration {
     pub id: PeerId,
     pub storage: u64, // in bytes
     pub agent: String,
@@ -29,7 +29,7 @@ pub struct Node {
 
 impl Node {
     pub fn from_info(
-        announcement: &NodeAnnouncement,
+        announcement: &TrackerRegistration,
         ip: String,
         geohash: String,
         timezone: String,

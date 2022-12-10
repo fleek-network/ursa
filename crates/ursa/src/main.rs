@@ -21,7 +21,7 @@ use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
-use ursa_tracker::NodeAnnouncement;
+use ursa_tracker::TrackerRegistration;
 
 #[tokio::main]
 async fn main() {
@@ -66,7 +66,7 @@ async fn main() {
 
                 let keypair = im.current();
 
-                let announcement = NodeAnnouncement {
+                let announcement = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
                     // TODO: calculate or get from config the supplied storage in bytes
                     storage: 0,

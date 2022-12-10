@@ -1,4 +1,4 @@
-pub use crate::types::NodeAnnouncement;
+pub use crate::types::TrackerRegistration;
 use anyhow::{anyhow, Result};
 use hyper::{Client, Method, Request};
 use hyper_tls::HttpsConnector;
@@ -8,7 +8,7 @@ pub mod types;
 
 pub async fn register_with_tracker(
     tracker: String,
-    announcement: NodeAnnouncement,
+    announcement: TrackerRegistration,
 ) -> Result<String> {
     let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
 

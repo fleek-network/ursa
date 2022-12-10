@@ -1,6 +1,6 @@
 use crate::{
     ip_api::get_ip_info,
-    types::{Node, NodeAnnouncement, PrometheusDiscoveryChunk},
+    types::{Node, TrackerRegistration, PrometheusDiscoveryChunk},
 };
 use axum::http::StatusCode;
 use axum::{
@@ -51,7 +51,7 @@ async fn announcement_handler(
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
     db: Extension<Arc<Db>>,
     token: Extension<String>,
-    Json(announcement): Json<NodeAnnouncement>,
+    Json(announcement): Json<TrackerRegistration>,
 ) -> (StatusCode, Json<Value>) {
     let id = announcement.id;
     info!("Received announcement for: {}", id);
@@ -146,7 +146,7 @@ mod tests {
         addr: Option<String>,
         id: PeerId,
     ) -> (StatusCode, Json<Value>) {
-        let data = NodeAnnouncement {
+        let data = TrackerRegistration {
             id,
             addr,
             storage: 0,
