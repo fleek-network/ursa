@@ -66,7 +66,7 @@ async fn main() {
 
                 let keypair = im.current();
 
-                let announcement = TrackerRegistration {
+                let registration = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
                     // TODO: calculate or get from config the supplied storage in bytes
                     storage: 0,
@@ -146,7 +146,7 @@ async fn main() {
 
                 // register with ursa node tracker
                 if !network_config.tracker.is_empty() {
-                    match ursa_tracker::register_with_tracker(network_config.tracker, announcement).await {
+                    match ursa_tracker::register_with_tracker(network_config.tracker, registration).await {
                         Ok(res) => info!("Registered with tracker: {res:?}"),
                         Err(err) => error!("Failed to register with tracker: {err:?}"),
                     }

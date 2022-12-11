@@ -29,20 +29,20 @@ pub struct Node {
 
 impl Node {
     pub fn from_info(
-        announcement: &TrackerRegistration,
-        ip: String,
+        registration: &TrackerRegistration,
+        addr: String,
         geohash: String,
         timezone: String,
         country_code: String,
     ) -> Self {
         Self {
-            id: announcement.id,
-            agent: announcement.agent.clone(),
-            addr: announcement.addr.clone().unwrap_or(ip),
-            p2p_port: announcement.p2p_port.unwrap_or(6009),
-            rpc_port: announcement.rpc_port.unwrap_or(4069),
-            telemetry: announcement.metrics_port.is_some(),
-            metrics_port: announcement.metrics_port.unwrap_or(4070),
+            id: registration.id,
+            agent: registration.agent.clone(),
+            addr: registration.addr.clone().unwrap_or(addr),
+            p2p_port: registration.p2p_port.unwrap_or(6009),
+            rpc_port: registration.rpc_port.unwrap_or(4069),
+            telemetry: registration.metrics_port.is_some(),
+            metrics_port: registration.metrics_port.unwrap_or(4070),
             geohash,
             timezone,
             country_code,

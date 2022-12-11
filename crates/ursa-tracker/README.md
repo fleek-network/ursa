@@ -1,7 +1,7 @@
 # Ursa Node Tracker
 
 A simple pre-consensus http tracker for Ursa nodes. Provides prometheus http service discovery for metrics.
-Nodes announce their configuration, and the tracker performs a quick verification, and stores the node info.
+Nodes register their configuration, and the tracker performs a quick verification, and stores the node info.
 
 The tracker will also perform a simple IP/DNS lookup to assign proper geo labels to the nodes.
 
@@ -11,17 +11,17 @@ The tracker will also perform a simple IP/DNS lookup to assign proper geo labels
 cargo run -r
 ```
 
-## Making an announcement
+## Registering a node
 
-Nodes can announce their configuration by sending a POST request to the tracker's `/announce` endpoint.
+Nodes can register their configuration by sending a POST request to the tracker's `/register` endpoint.
 
 ```bash
 curl -X POST \
-    http://localhost:4000/announce \
+    http://localhost:4000/register \
     -H "Content-Type: application/json" \
     -d '{
           "id": "12D3KooWLp3tyhzzRjBDbXXyqCUDhvK8xKCFhUEPjgsRZDYzZ62F",
-          "addr":"optional.dns",
+          "addr":"optional.dns.or.ip",
           "storage": 1000000
           "p2p_port":6009,
           "telemetry":true,

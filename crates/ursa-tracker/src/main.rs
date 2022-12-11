@@ -12,7 +12,7 @@ use hyper::HeaderMap;
 use serde_json::{json, Value};
 use sled::Db;
 use std::{env, net::SocketAddr, sync::Arc};
-use tracing::info;
+use tracing::{info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod ip_api;
@@ -31,7 +31,7 @@ async fn main() {
     let token = env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set");
 
     let app = Router::new()
-        .route("/announce", post(announcement_handler))
+        .route("/register", post(registration_handler))
         .route("/http_sd", get(http_sd_handler))
         .layer(Extension(db))
         .layer(Extension(token));
@@ -45,20 +45,20 @@ async fn main() {
         .unwrap();
 }
 
-/// Track a new peer announcement in the database
-async fn announcement_handler(
+/// Track a new peer registration in the database
+async fn registration_handler(
     headers: HeaderMap,
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
     db: Extension<Arc<Db>>,
     token: Extension<String>,
-    Json(announcement): Json<TrackerRegistration>,
+    Json(registration): Json<TrackerRegistration>,
 ) -> (StatusCode, Json<Value>) {
-    let id = announcement.id;
-    info!("Received announcement for: {}", id);
+    let id = registration.id;
+    info!("Received registration for: {}", id);
 
-    // todo: announcement verification
+    // todo: registration verification
 
-    let addr = announcement.addr.clone().unwrap_or_else(|| {
+    let addr = registration.addr.clone().unwrap_or_else(|| {
         // if no dns or ip address is provided, use the address of the request.
         // Prefer X-Forwarded-For header if present from reverse proxy. otherwise, use the
         // address of the request
@@ -78,7 +78,7 @@ async fn announcement_handler(
     };
 
     let entry = Node::from_info(
-        &announcement,
+        &registration,
         info.addr,
         info.geo,
         info.timezone,
@@ -94,7 +94,7 @@ async fn announcement_handler(
     {
         Ok(_) => (StatusCode::OK, Json(json)),
         Err(e) => {
-            tracing::error!("Error writing to db: {}", e);
+            error!("Error writing to db: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!(e.to_string())),
@@ -140,7 +140,7 @@ mod tests {
         Arc::new(sled::open("tracker_db").unwrap())
     }
 
-    async fn make_announcement(
+    async fn make_registration(
         db: Arc<Db>,
         addr: Option<String>,
         id: PeerId,
@@ -154,7 +154,7 @@ mod tests {
             metrics_port: Some(6009),
             agent: "".to_string(),
         };
-        announcement_handler(
+        registration_handler(
             HeaderMap::new(),
             ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 6969))),
             Extension(db),
@@ -165,12 +165,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_node_announcement() {
+    async fn local_node_registration() {
         tracer();
         let db = db();
         let id = PeerId::random();
 
-        let res = make_announcement(db.clone(), None, id).await;
+        let res = make_registration(db.clone(), None, id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
 
@@ -178,24 +178,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remote_node_announcement() {
+    async fn remote_node_registration() {
         tracer();
         let db = db();
         let id = PeerId::random();
 
-        let res = make_announcement(db.clone(), Some("8.8.8.8".to_string()), id).await;
+        let res = make_registration(db.clone(), Some("8.8.8.8".to_string()), id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
         db.remove(id.to_string().as_bytes()).unwrap();
     }
 
     #[tokio::test]
-    async fn dns_node_announcement() {
+    async fn dns_node_registration() {
         tracer();
         let db = db();
         let id = PeerId::random();
 
-        let res = make_announcement(db.clone(), Some("google.com".into()), id).await;
+        let res = make_registration(db.clone(), Some("google.com".into()), id).await;
         info!("{:?}", res.1.to_string());
         assert_eq!(res.0, 200);
 
@@ -208,7 +208,7 @@ mod tests {
         let db = db();
         let id = PeerId::random();
 
-        let res = make_announcement(db.clone(), None, id).await;
+        let res = make_registration(db.clone(), None, id).await;
         info!("{:?}: {}", res.0, res.1.to_string());
         assert_eq!(res.0, 200);
 

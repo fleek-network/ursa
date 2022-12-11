@@ -8,7 +8,7 @@ pub mod types;
 
 pub async fn register_with_tracker(
     tracker: String,
-    announcement: TrackerRegistration,
+    registration: TrackerRegistration,
 ) -> Result<String> {
     let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
 
@@ -16,7 +16,7 @@ pub async fn register_with_tracker(
         .method(Method::POST)
         .uri(tracker)
         .header("Content-Type", "application/json")
-        .body(json!(announcement).to_string().into())?;
+        .body(json!(registration).to_string().into())?;
 
     let res = client.request(req).await.map_err(|e| anyhow!(e))?;
     let status = res.status();
