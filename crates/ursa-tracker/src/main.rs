@@ -59,10 +59,9 @@ async fn announcement_handler(
     // todo: announcement verification
 
     let addr = announcement.addr.clone().unwrap_or_else(|| {
-        // if no dns address is provided, use the address of the request.
-        // If the request is coming from a proxy, use X-Forwarded-For
-        // header to get the real client address. Otherwise, use the
-        // address of the request.
+        // if no dns or ip address is provided, use the address of the request.
+        // Prefer X-Forwarded-For header if present from reverse proxy. otherwise, use the
+        // address of the request
         let ip = headers
             .get("X-Forwarded-For")
             .map(|x| x.to_str().unwrap().to_string())
@@ -80,7 +79,7 @@ async fn announcement_handler(
 
     let entry = Node::from_info(
         &announcement,
-        info.ip,
+        info.addr,
         info.geo,
         info.timezone,
         info.country,
@@ -190,19 +189,18 @@ mod tests {
         db.remove(id.to_string().as_bytes()).unwrap();
     }
 
-    // doesn't work with ipinfo
-    // #[tokio::test]
-    // async fn dns_node_announcement() {
-    //     tracer();
-    //     let db = db();
-    //     let id = PeerId::random();
-    //
-    //     let res = make_announcement(db.clone(), None, id).await;
-    //     info!("{:?}", res.1.to_string());
-    //     assert_eq!(res.0, 200);
-    //
-    //     db.delete(id.to_string().as_bytes()).unwrap();
-    // }
+    #[tokio::test]
+    async fn dns_node_announcement() {
+        tracer();
+        let db = db();
+        let id = PeerId::random();
+
+        let res = make_announcement(db.clone(), Some("google.com".into()), id).await;
+        info!("{:?}", res.1.to_string());
+        assert_eq!(res.0, 200);
+
+        db.remove(id.to_string().as_bytes()).unwrap();
+    }
 
     #[tokio::test]
     async fn prometheus_http_sd() {

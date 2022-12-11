@@ -1,13 +1,18 @@
 use anyhow::{anyhow, Result};
-use geohash::{encode, Coordinate};
-use hyper::Client;
+use geohash::encode;
+use hyper::{
+    client::connect::dns::GaiResolver,
+    service::Service,
+    Client
+};
 use hyper_tls::HttpsConnector;
 use serde_derive::Deserialize;
 
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct IpInfoResponse {
-    pub ip: String,
+    #[serde(rename = "ip")]
+    pub addr: String,
     pub hostname: String,
     pub city: String,
     pub region: String,
@@ -21,20 +26,46 @@ pub struct IpInfoResponse {
 
 /// Get public ip info from https://ipinfo.io
 pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> {
-    let url = format!("https://ipinfo.io/{}?{}", addr, token);
+    let mut dns = false;
+    // attempt to resolve with dns if not an ip
+    let ip = if !addr.is_empty() && addr.parse::<std::net::IpAddr>().is_err() {
+        dns = true;
+        GaiResolver::new()
+            .call(addr.parse()?)
+            .await?
+            .next()
+            .ok_or(anyhow!("No ip found"))?
+            .ip()
+            .to_string()
+    } else {
+        addr.clone()
+    };
+
+    let url = format!("https://ipinfo.io/{}?{}", ip, token);
     let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
+
     let res = client.get(url.parse()?).await?;
+    let status = res.status();
     let data = hyper::body::to_bytes(res.into_body()).await?;
+
+    if !status.is_success() {
+        return Err(anyhow!("Failed to get ip info: {}", status));
+    }
+
     let mut info: IpInfoResponse = serde_json::from_slice(&data)?;
     let loc = info.loc.split(',').collect::<Vec<&str>>();
     let lat = loc[0].parse::<f64>()?;
     let lon = loc[1].parse::<f64>()?;
     info.geo = geohash(lat, lon)?;
+    if dns {
+        info.addr = addr;
+    }
+
     Ok(info)
 }
 
 pub fn geohash(lat: f64, lon: f64) -> Result<String> {
-    let coord = Coordinate { x: lon, y: lat };
+    let coord = geohash::Coordinate { x: lon, y: lat };
     encode(coord, 7).map_err(|e| anyhow!(e))
 }
 
