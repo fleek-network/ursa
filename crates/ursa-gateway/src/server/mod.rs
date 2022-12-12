@@ -15,18 +15,18 @@ type Client = hyper::client::Client<HttpConnector, Body>;
 pub async fn start_server(gateway_config: GatewayConfig) -> Result<()> {
     let GatewayConfig {
         cert: CertConfig {
-            cert_path,
-            key_path,
+            tls_cert_path,
+            tls_key_path,
         },
         server: ServerConfig { addr, port },
     } = gateway_config;
 
-    let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
+    let rustls_config = RustlsConfig::from_pem_file(&tls_cert_path, &tls_key_path)
         .await
         .with_context(|| {
             format!(
                 "failed to init tls from:\ncert: {:?}:\npath:{:?}",
-                cert_path, key_path
+                tls_cert_path, tls_key_path
             )
         })?;
 

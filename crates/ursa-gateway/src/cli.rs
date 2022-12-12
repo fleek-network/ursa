@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 #[command(propagate_version = true)]
 pub struct Cli {
+    /// config path
     #[arg(long, default_value_t = format!("{}/{}", env!("HOME"), DEFAULT_URSA_GATEWAY_CONFIG_PATH))]
     pub config: String,
 
@@ -22,16 +23,16 @@ pub enum Commands {
 /// Override config
 #[derive(Args)]
 pub struct DaemonCmdOpts {
-    /// Server port
+    /// server port
     #[arg(long)]
     pub port: Option<u16>,
-    /// Server address
+    /// server address
     #[arg(long)]
     pub addr: Option<String>,
-    /// Cert path
+    /// tls cert path
     #[arg(long)]
-    pub cert_path: Option<PathBuf>,
-    /// Key path
+    pub tls_cert_path: Option<PathBuf>,
+    /// tls key path
     #[arg(long)]
-    pub key_path: Option<PathBuf>,
+    pub tls_key_path: Option<PathBuf>,
 }

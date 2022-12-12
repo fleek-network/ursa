@@ -42,8 +42,8 @@ pub struct GatewayConfig {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct CertConfig {
-    pub cert_path: PathBuf,
-    pub key_path: PathBuf,
+    pub tls_cert_path: PathBuf,
+    pub tls_key_path: PathBuf,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -60,10 +60,10 @@ impl Default for GatewayConfig {
                 port: 80,
             },
             cert: CertConfig {
-                cert_path: PathBuf::from(env!("HOME"))
+                tls_cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("cert.pem"),
-                key_path: PathBuf::from(env!("HOME"))
+                tls_key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("key.pem"),
             },
@@ -79,11 +79,11 @@ impl GatewayConfig {
         if let Some(addr) = config.addr {
             self.server.addr = addr;
         }
-        if let Some(cert_path) = config.cert_path {
-            self.cert.cert_path = cert_path;
+        if let Some(cert_path) = config.tls_cert_path {
+            self.cert.tls_cert_path = cert_path;
         }
-        if let Some(key_path) = config.key_path {
-            self.cert.key_path = key_path;
+        if let Some(key_path) = config.tls_key_path {
+            self.cert.tls_key_path = key_path;
         }
     }
 }
