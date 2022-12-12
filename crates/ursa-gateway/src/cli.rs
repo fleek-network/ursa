@@ -35,4 +35,10 @@ pub struct DaemonCmdOpts {
     /// tls key path
     #[arg(long)]
     pub tls_key_path: Option<PathBuf>,
+    /// indexer cid url
+    #[arg(long)]
+    pub indexer_cid_url: Option<String>,
+    /// indexer mh url
+    #[arg(long)]
+    pub indexer_mh_url: Option<String>,
 }

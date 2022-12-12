@@ -38,18 +38,25 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
 pub struct GatewayConfig {
     pub server: ServerConfig,
     pub cert: CertConfig,
+    pub indexer: IndexerConfig,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct CertConfig {
-    pub tls_cert_path: PathBuf,
-    pub tls_key_path: PathBuf,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct IndexerConfig {
+    pub cid_url: String,
+    pub mh_url: String,
 }
 
 impl Default for GatewayConfig {
@@ -60,12 +67,16 @@ impl Default for GatewayConfig {
                 port: 80,
             },
             cert: CertConfig {
-                tls_cert_path: PathBuf::from(env!("HOME"))
+                cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("cert.pem"),
-                tls_key_path: PathBuf::from(env!("HOME"))
+                key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("key.pem"),
+            },
+            indexer: IndexerConfig {
+                cid_url: "https://cid.contact/cid".into(),
+                mh_url: "https://cid.contact/multihash".into(),
             },
         }
     }
@@ -79,11 +90,17 @@ impl GatewayConfig {
         if let Some(addr) = config.addr {
             self.server.addr = addr;
         }
-        if let Some(cert_path) = config.tls_cert_path {
-            self.cert.tls_cert_path = cert_path;
+        if let Some(tls_cert_path) = config.tls_cert_path {
+            self.cert.cert_path = tls_cert_path;
         }
-        if let Some(key_path) = config.tls_key_path {
-            self.cert.tls_key_path = key_path;
+        if let Some(tls_key_path) = config.tls_key_path {
+            self.cert.key_path = tls_key_path;
+        }
+        if let Some(indexer_cid_url) = config.indexer_cid_url {
+            self.indexer.cid_url = indexer_cid_url;
+        }
+        if let Some(indexer_mh_url) = config.indexer_mh_url {
+            self.indexer.mh_url = indexer_mh_url;
         }
     }
 }
