@@ -48,7 +48,6 @@ database_path = "~/.ursa/data/ursa_db"
 identity = "default"
 keystore_path = "~/.ursa/keystore"
 
-
 [provider_config]
 local_address = "0.0.0.0"
 port = 8070
@@ -58,7 +57,6 @@ database_path = "~/.ursa/data/index_provider_db"
 
 [metrics_config]
 port = "4070"
-api_path = "/metrics"
 
 [server_config]
 port = 4069
