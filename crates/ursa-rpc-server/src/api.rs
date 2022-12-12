@@ -209,7 +209,7 @@ where
             sender,
         };
 
-        self.network_send.send(request).await?;
+        self.network_send.send(request);
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
