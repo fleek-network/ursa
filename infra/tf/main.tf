@@ -147,12 +147,18 @@ resource "digitalocean_record" "prometheus-domain" {
   value  = digitalocean_droplet.http-tracker.ipv4_address
 }
 
+resource "digitalocean_volume" "http-tracker-volume" {
+  name       = "http-tracker-volume"
+  region     = var.droplet_region
+  size       = 1024 # 1TB
+}
+
 resource "digitalocean_droplet" "http-tracker" {
   image      = var.droplet_image
   name       = "tracker"
   region     = var.droplet_region
   size       = var.droplet_size
-
+  volume_ids = [digitalocean_volume.http-tracker-volume.id]
   backups    = false
   monitoring = true
   user_data  = templatefile("${path.module}/configs/metrics.yml", {

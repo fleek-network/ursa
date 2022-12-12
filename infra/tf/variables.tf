@@ -54,6 +54,12 @@ variable "droplet_size" {
   description = "Droplet size identifier"
 }
 
+variable "droplet_volume" {
+  type        = number
+  default     = 1024
+  description = "Droplet volume size in GB"
+}
+
 #############
 #   Misc    #
 #############
