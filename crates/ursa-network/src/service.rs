@@ -412,6 +412,10 @@ where
                     Ok(())
                 }
                 BehaviourEvent::StartPublish { public_address } => {
+                    info!(
+                        "Processing publish advertisement with address: {}",
+                        public_address
+                    );
                     let mut address = Multiaddr::empty();
                     let peer_id = *self.swarm.local_peer_id();
                     for protocol in public_address.into_iter() {
@@ -422,8 +426,11 @@ where
                             _ => {}
                         }
                     }
+
                     let root_cids = self.index_provider.get_mut_root_cids();
                     let mut cid_queue = root_cids.write().unwrap();
+
+                    let addresses: Vec<String> = [address].iter().map(|m| m.to_string()).collect();
 
                     while !cid_queue.is_empty() {
                         let root_cid = cid_queue.pop_front().unwrap();
@@ -433,10 +440,12 @@ where
                             root_cid
                         );
 
-                        let addresses: Vec<String> =
-                            [address.clone()].iter().map(|m| m.to_string()).collect();
-                        let advertisement =
-                            Advertisement::new(context_id.clone(), peer_id, addresses, false);
+                        let advertisement = Advertisement::new(
+                            context_id.clone(),
+                            peer_id,
+                            addresses.clone(),
+                            false,
+                        );
                         let provider_id = self.index_provider.create(advertisement).unwrap();
 
                         let dag = self
@@ -459,7 +468,10 @@ where
                         self.index_provider
                             .publish(provider_id)
                             .expect("publishing the ad should not fail");
-                        if let Ok(announce_msg) = self.index_provider.create_announce_msg(peer_id) {
+                        if let Ok(announce_msg) = self
+                            .index_provider
+                            .create_announce_msg(peer_id, addresses.clone())
+                        {
                             let i_topic_hash = TopicHash::from_raw("indexer/ingest/mainnet");
                             let i_topic = Topic::new("indexer/ingest/mainnet");
                             let g_msg = GossipsubMessage {
@@ -544,6 +556,10 @@ where
                 if let Some(public_address) = addrs {
                     swarm.publish_ad(public_address.clone())?;
                 } else {
+                    // NOTE: THIS SHOULDN'T HAPPEN AT PRODUCTION NODE
+                    // testing purpose only, testnet and mainnet indexers filter out
+                    // any advertisement with local addresses anyway
+                    swarm.publish_ad("/ip4/127.0.0.1/tcp/8070".parse()?)?;
                     warn!("Public address not available. If autonat is disabled and node is private, the content will not be indexed.\
                      Otherwise the autonat will get the public address soon and node will start indexing the content");
                 }

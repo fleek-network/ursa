@@ -19,7 +19,7 @@ docker-build:
 	docker build -t ursa -f ./Dockerfile .
 
 docker-run:
-	docker run --name ursa-cli -it ursa
+	docker run -p 4069:4069 -p 4070:4070 -p 6009:6009 -p 8070:8070 --name ursa-cli -it ursa
 
 compose-up:
 	docker-compose -f infra/ursa/docker-compose.yml up
