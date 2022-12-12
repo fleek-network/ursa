@@ -1,46 +1,30 @@
+mod cli;
 mod config;
-mod routes;
+mod server;
 
-use crate::config::{init_config, load_config, GatewayConfig};
-use crate::routes::api::v1::get::get_block_handler;
-use axum::{extract::Extension, routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
-use hyper::{client::HttpConnector, Body};
-use std::net::SocketAddr;
-use tracing::info;
-
-type Client = hyper::client::Client<HttpConnector, Body>;
+use crate::config::{init_config, load_config};
+use anyhow::{Context, Result};
+use clap::Parser;
+use cli::{Cli, Commands};
+use std::path::PathBuf;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    init_config();
+    let Cli { config, command } = Cli::parse();
 
-    let config = load_config();
+    let config_path = PathBuf::from(config);
 
-    let rustls_config =
-        RustlsConfig::from_pem_file(config.cert_config.cert_path, config.cert_config.key_path)
-            .await
-            .expect("problem starting server");
+    init_config(&config_path)
+        .with_context(|| format!("failed to init config from: {:?}", config_path))?;
 
-    let app = Router::new()
-        .route("/:cid", get(get_block_handler))
-        .layer(Extension((Client::new(), GatewayConfig::default())));
+    let gateway_config = load_config(&config_path)
+        .with_context(|| format!("failed to load config from: {:?}", config_path))?;
 
-    let addr = SocketAddr::from((
-        config
-            .server
-            .addr
-            .parse::<std::net::Ipv4Addr>()
-            .expect("problem parse ipv4"),
-        config.server.port,
-    ));
+    match command {
+        Commands::Daemon => server::start_server(gateway_config).await?,
+    }
 
-    info!("reverse proxy listening on {}", addr);
-
-    axum_server::bind_rustls(addr, rustls_config)
-        .serve(app.into_make_service())
-        .await
-        .expect("problem start server");
+    Ok(())
 }
