@@ -1,7 +1,4 @@
 //! Ursa Discovery implementation.
-//!
-//!
-//!
 
 use std::borrow::Cow;
 use std::{
