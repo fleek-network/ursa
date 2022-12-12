@@ -7,7 +7,7 @@
 
 # terraform
 **/.terraform*
-*.tfstate.backup
+*.tfstate*
 
 # rust
 **/target/
