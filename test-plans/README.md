@@ -4,6 +4,7 @@ First, you need to install `testground` and `docker`.
 To add a new test-plan, create a new crate in this directory 
 and copy the `manifest.toml` and `Dockerfile` into your new crate. 
 Configure these files to your test (see comments).
+Use `cargo` to build the `Cargo.Lock` file.
 
 Now start the testground daemon:
 
