@@ -3,6 +3,7 @@
 //!
 //!
 
+use std::borrow::Cow;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::NonZeroUsize,
@@ -80,7 +81,7 @@ impl DiscoveryBehaviour {
             let replication_factor = NonZeroUsize::new(8).unwrap();
             let mut kad_config = KademliaConfig::default();
             kad_config
-                .set_protocol_name(URSA_KAD_PROTOCOL)
+                .set_protocol_names(vec![Cow::from(URSA_KAD_PROTOCOL)])
                 .set_replication_factor(replication_factor);
 
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
@@ -136,7 +137,7 @@ impl DiscoveryBehaviour {
     fn handle_kad_event(&self, event: KademliaEvent) {
         info!("[KademliaEvent] {:?}", event);
 
-        if let KademliaEvent::OutboundQueryCompleted { result, .. } = event {
+        if let KademliaEvent::OutboundQueryProgressed { result, .. } = event {
             if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
                 let _peers = closest_peers.peers;
             }
@@ -157,6 +158,7 @@ impl DiscoveryBehaviour {
 
 impl NetworkBehaviour for DiscoveryBehaviour {
     type ConnectionHandler = KademliaHandlerProto<QueryId>;
+
     type OutEvent = DiscoveryEvent;
 
     fn new_handler(&mut self) -> Self::ConnectionHandler {

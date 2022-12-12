@@ -10,6 +10,7 @@ description = "Ursa's libp2p implementation"
 [dependencies]
 anyhow = "1.0.56"
 async-fs = "1.6.0"
+async-io = "1.12.0"
 async-trait = "0.1.53"
 bytes = "1.1.0"
 cid = "0.8.5"
@@ -19,9 +20,9 @@ forest_ipld = "0.1.1"
 futures = "0.3.21"
 futures-util = "0.3.21"
 fvm_ipld_car = "0.5.0"
+libp2p-bitswap = "0.25.0"
 ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
-libp2p-quic = "0.6.1"
 log = "0.4.17"
 metrics = "0.20.1"
 rand = "0.8.4"
@@ -35,37 +36,36 @@ ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
+libp2p-mdns = { version = "0.42.0", features = ["async-io"]}
 
 [dependencies.libipld]
-version = "0.12.0"
+version = "0.14.0"
 default-features = false
 
 [dependencies.libp2p]
-version = "0.46.1"
+version = "0.50.0"
 default-features = false
 features = [
     "autonat",
     "dcutr",
+    "dns",
     "identify",
     "kad",
     "gossipsub",
+    "macros",
     "metrics",
     "mdns",
     "mplex",
     "noise",
     "ping",
+    "quic",
     "relay",
     "request-response",
-    "tcp-tokio",
-    "dns-tokio",
+    "tcp",
+    "tokio",
     "yamux",
     "serde",
 ]
-
-[dependencies.libp2p-bitswap]
-version = "0.22.0"
-git = "https://github.com/b0xtch/libp2p-bitswap"
-rev = "a3779ea242816770433d37e77a69ac3afa3ce491"
 
 [dev-dependencies]
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }

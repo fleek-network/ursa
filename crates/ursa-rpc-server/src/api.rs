@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
-use tokio::sync::mpsc::{UnboundedSender as Sender};
+use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
@@ -91,10 +91,7 @@ where
         if !self.store.blockstore().has(&cid).unwrap() {
             info!("Requesting block with the cid {cid:?}");
             let (sender, receiver) = oneshot::channel();
-            let request = NetworkCommand::GetBitswap {
-                cid,
-                sender,
-            };
+            let request = NetworkCommand::GetBitswap { cid, sender };
 
             // use network sender to send command
             self.network_send.send(request);
