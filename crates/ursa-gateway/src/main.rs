@@ -19,11 +19,14 @@ async fn main() -> Result<()> {
     init_config(&config_path)
         .with_context(|| format!("failed to init config from: {:?}", config_path))?;
 
-    let gateway_config = load_config(&config_path)
+    let mut gateway_config = load_config(&config_path)
         .with_context(|| format!("failed to load config from: {:?}", config_path))?;
 
     match command {
-        Commands::Daemon => server::start_server(gateway_config).await?,
+        Commands::Daemon(config) => {
+            gateway_config.merge(config);
+            server::start_server(gateway_config).await?;
+        }
     }
 
     Ok(())

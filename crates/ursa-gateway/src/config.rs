@@ -8,6 +8,8 @@ use std::{
     path::PathBuf,
 };
 
+use crate::cli::DaemonCmdOpts;
+
 pub const DEFAULT_URSA_GATEWAY_PATH: &str = ".ursa/gateway";
 pub const DEFAULT_URSA_GATEWAY_CONFIG_PATH: &str = ".ursa/gateway/config.toml";
 
@@ -65,6 +67,23 @@ impl Default for GatewayConfig {
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("key.pem"),
             },
+        }
+    }
+}
+
+impl GatewayConfig {
+    pub fn merge(&mut self, config: DaemonCmdOpts) {
+        if let Some(port) = config.port {
+            self.server.port = port;
+        }
+        if let Some(addr) = config.addr {
+            self.server.addr = addr;
+        }
+        if let Some(cert_path) = config.cert_path {
+            self.cert.cert_path = cert_path;
+        }
+        if let Some(key_path) = config.key_path {
+            self.cert.key_path = key_path;
         }
     }
 }
