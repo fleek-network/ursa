@@ -51,7 +51,7 @@ impl Advertisement {
         // prtocolid for bitswap
         let raw_metadata = Metadata {
             ProtocolID: 0x0900,
-            Data: vec![],
+            Data: b"FleekNetwork".to_vec(),
         };
         let metadata = bincode::serialize(&raw_metadata).unwrap();
 

@@ -150,7 +150,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
     fn create(&mut self, ad: Advertisement) -> Result<usize>;
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
     fn publish(&mut self, id: usize) -> Result<()>;
-    fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>>;
+    fn create_announce_msg(&mut self, peer_id: PeerId, addrs: Vec<String>) -> Result<Vec<u8>>;
     async fn announce_http_message(&self, announce_msg: Vec<u8>);
 }
 
@@ -209,14 +209,20 @@ where
         Err(anyhow!("ad not found"))
     }
 
-    fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>> {
-        let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
-        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs, peer_id))?;
-        let msg_addrs = [multiaddrs].to_vec();
+    fn create_announce_msg(&mut self, peer_id: PeerId, mut addrs: Vec<String>) -> Result<Vec<u8>> {
+        if !self.config.domain.is_empty() {
+            addrs.push(self.config.domain.clone());
+        }
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {
                 Cid: head_cid,
-                Addrs: msg_addrs,
+                Addrs: addrs
+                    .into_iter()
+                    .map(|addr| Multiaddr::from_str(&format!("{}/http/p2p/{}", addr, peer_id)))
+                    .filter(|addr| addr.is_ok())
+                    .map(|addr| addr.unwrap())
+                    .filter(|addr| !addr.is_empty())
+                    .collect(),
                 ExtraData: *b"",
             };
 
