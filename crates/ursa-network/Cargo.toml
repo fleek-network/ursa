@@ -36,7 +36,6 @@ ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
-libp2p-mdns = { version = "0.42.0", features = ["async-io"]}
 
 [dependencies.libipld]
 version = "0.14.0"

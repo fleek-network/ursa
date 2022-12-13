@@ -1,7 +1,7 @@
+use dirs::home_dir;
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use dirs::home_dir;
 
 pub const DEFAULT_BOOTSTRAP: [&str; 2] = [
     "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p",
@@ -54,7 +54,9 @@ impl Default for NetworkConfig {
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
             database_path: home_dir().unwrap_or_default().join(DEFAULT_DB_PATH_STR),
             identity: "default".to_string(),
-            keystore_path: home_dir().unwrap_or_default().join(DEFAULT_KEYSTORE_PATH_STR),
+            keystore_path: home_dir()
+                .unwrap_or_default()
+                .join(DEFAULT_KEYSTORE_PATH_STR),
         }
     }
 }
