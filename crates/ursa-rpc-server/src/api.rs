@@ -110,7 +110,7 @@ where
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
-        if !self.store.blockstore().has(&root_cid).unwrap() {
+        if !self.store.blockstore().has(&root_cid)? {
             let (sender, receiver) = oneshot::channel();
             let request = UrsaCommand::GetBitswap {
                 cid: root_cid,
@@ -154,10 +154,10 @@ where
                 .await
                 .unwrap()
         });
-        let dag = self.get_data(root_cid).await.unwrap();
+        let dag = self.get_data(root_cid).await?;
 
         for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
+            tx.send((convert_cid(cid.to_bytes()), data)).await?;
         }
         drop(tx);
         write_task.await?;
@@ -165,7 +165,7 @@ where
         let buffer: Vec<_> = buffer.read().await.clone();
         let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
         create_dir_all(file_path.parent().unwrap()).await?;
-        let mut file = File::create(file_path).await.unwrap();
+        let mut file = File::create(file_path).await?;
         file.write_all(&buffer).await?;
         Ok(())
     }
@@ -190,10 +190,10 @@ where
                 .await
                 .unwrap()
         });
-        let dag = self.get_data(root_cid).await.unwrap();
+        let dag = self.get_data(root_cid).await?;
 
         for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await.unwrap();
+            tx.send((convert_cid(cid.to_bytes()), data)).await?;
         }
         drop(tx);
 
