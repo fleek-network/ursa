@@ -3,7 +3,6 @@ use resolve_path::PathResolveExt;
 use rpc_commands::RpcCommands;
 use std::{
     cell::RefCell,
-    io::Result,
     path::PathBuf,
     process,
     sync::{
@@ -14,7 +13,8 @@ use std::{
     time::Duration,
 };
 use structopt::StructOpt;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
+use anyhow::Result;
 
 pub mod identity;
 mod rpc_commands;

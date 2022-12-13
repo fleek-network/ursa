@@ -1,16 +1,11 @@
-extern crate core;
-
-pub mod config;
-mod ursa;
-
-use std::{path::PathBuf, sync::Arc};
-
 use crate::{
     config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR},
     ursa::identity::IdentityManager,
 };
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
+use resolve_path::PathResolveExt;
+use std::{path::PathBuf, sync::Arc};
 use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
@@ -21,14 +16,13 @@ use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::Store;
 
+pub mod config;
+mod ursa;
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-
-    if let Err(err) = load_config(&PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)) {
-        error!("[loading_config] - {:?}", err);
-    }
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
@@ -49,29 +43,29 @@ async fn main() {
                     server_config,
                 } = config;
 
-                let keystore_path = network_config.keystore_path.clone();
                 let im = match network_config.identity.as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
                     // load or create a new identity
-                    _ => {
-                        IdentityManager::load_or_new(network_config.identity.clone(), keystore_path)
-                    }
+                    _ => IdentityManager::load_or_new(
+                        network_config.identity.clone(),
+                        network_config.keystore_path.resolve().to_path_buf(),
+                    ),
                 };
 
                 let keypair = im.current();
 
-                let db_path = network_config.database_path.clone();
-
-                info!("Using {:?} as database path", db_path);
-
+                let db_path = network_config.database_path.resolve().to_path_buf();
+                info!("Opening blockstore database at {:?}", db_path);
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
-                    .expect("Opening RocksDB must succeed");
+                    .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
 
-                let provider_db_name = provider_config.database_path.clone();
-                let provider_db = RocksDb::open(provider_db_name, &RocksDbConfig::default())
-                    .expect("Opening RocksDB must succeed");
+                let provider_db = RocksDb::open(
+                    &provider_config.database_path.resolve(),
+                    &RocksDbConfig::default(),
+                )
+                .expect("Opening provider RocksDB must succeed");
 
                 let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider =

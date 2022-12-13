@@ -1,8 +1,8 @@
-use resolve_path::PathResolveExt;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir_all, File},
-    io::{Read, Result, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process,
 };
@@ -16,27 +16,17 @@ pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
 
 pub fn load_config(path: &PathBuf) -> Result<UrsaConfig> {
     info!("Loading config from: {:?}", path);
-    if !path.exists() {
+    if path.exists() {
+        let toml = read_file_to_string(path)?;
+        toml::from_str(&toml).map_err(|e| anyhow!("Failed to parse config file: {}", e))
+    } else {
+        // Missing, create and return default config at path
         let ursa_config = UrsaConfig::default();
         let toml = toml::to_string(&ursa_config).unwrap();
         create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
         file.write_all(toml.as_bytes())?;
         Ok(ursa_config)
-    } else {
-        // Read from config file
-        let toml = read_file_to_string(path)?;
-        // Parse and return the configuration file
-        let mut config: UrsaConfig = toml::from_str(&toml)?;
-        // parse relative and home directory paths
-        config.network_config.keystore_path =
-            config.network_config.keystore_path.resolve().to_path_buf();
-        config.network_config.database_path =
-            config.network_config.database_path.resolve().to_path_buf();
-        config.provider_config.database_path =
-            config.provider_config.database_path.resolve().to_path_buf();
-
-        Ok(config)
     }
 }
 
