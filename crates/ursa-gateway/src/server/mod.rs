@@ -2,6 +2,7 @@ mod model;
 mod route;
 
 use crate::config::GatewayConfig;
+use crate::config::ServerConfig;
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
@@ -12,34 +13,44 @@ use route::api::v1::get::get_block_handler;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 
-pub async fn start_server(config: GatewayConfig) -> Result<()> {
-    let rustls_config = RustlsConfig::from_pem_file(&config.cert.cert_path, &config.cert.key_path)
+pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
+    let config_reader = config.clone();
+    let GatewayConfig {
+        server:
+            ServerConfig {
+                addr,
+                port,
+                cert_path,
+                key_path,
+            },
+        ..
+    } = &(*config_reader.read().await);
+
+    let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
             format!(
                 "failed to init tls from:\ncert: {:?}:\npath:{:?}",
-                config.cert.cert_path, config.cert.key_path
+                cert_path, key_path
             )
         })?;
 
-    let client = hyper::Client::builder().build::<_, Body>(HttpsConnector::new());
-
     let addr = SocketAddr::from((
-        config
-            .server
-            .addr
-            .parse::<Ipv4Addr>()
-            .with_context(|| format!("failed to parse IPv4 with: {}", config.server.addr))?,
-        config.server.port,
+        addr.parse::<Ipv4Addr>()
+            .with_context(|| format!("failed to parse IPv4 with: {}", addr))?,
+        *port,
     ));
+
+    let client = Arc::new(hyper::Client::builder().build::<_, Body>(HttpsConnector::new()));
 
     let app = Router::new()
         .route("/:cid", get(get_block_handler))
-        .layer(Extension((client, Arc::new(config))));
+        .layer(Extension((client, config)));
 
     info!("reverse proxy listening on {}", addr);
 

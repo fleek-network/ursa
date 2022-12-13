@@ -3,25 +3,32 @@ use cid::Cid;
 use hyper::{body, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
 use std::{str::FromStr, sync::Arc};
+use tokio::sync::RwLock;
 use tracing::{debug, error};
 
 use crate::{
-    config::GatewayConfig,
+    config::{GatewayConfig, IndexerConfig},
     indexer::model::IndexerResponse,
     server::{model::HttpResponse, Client},
 };
 
 pub async fn get_block_handler(
     Path(cid): Path<String>,
-    Extension((client, config)): Extension<(Client, Arc<GatewayConfig>)>,
+    Extension((client, config)): Extension<(Arc<Client>, Arc<RwLock<GatewayConfig>>)>,
 ) -> impl IntoResponse {
+    let GatewayConfig {
+        indexer: IndexerConfig { cid_url },
+        ..
+    } = &(*config.read().await);
+
     if Cid::from_str(&cid).is_err() {
         return error_handler(
             StatusCode::BAD_REQUEST,
             format!("invalid cid string, cannot parse {} to CID", cid),
         );
     };
-    let endpoint = format!("{}/{}", config.indexer.cid_url, cid);
+
+    let endpoint = format!("{}/{}", cid_url, cid);
     let uri = match endpoint.parse::<Uri>() {
         Ok(uri) => uri,
         Err(e) => {
@@ -32,6 +39,7 @@ pub async fn get_block_handler(
             );
         }
     };
+
     let resp = match client.get(uri).await {
         Ok(resp) => resp,
         Err(e) => {
@@ -42,6 +50,7 @@ pub async fn get_block_handler(
             );
         }
     };
+
     let bytes = match body::to_bytes(resp.into_body()).await {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -52,6 +61,7 @@ pub async fn get_block_handler(
             );
         }
     };
+
     let indexer_response: IndexerResponse = match from_slice(&bytes) {
         Ok(indexer_response) => indexer_response,
         Err(e) => {
@@ -65,10 +75,12 @@ pub async fn get_block_handler(
             );
         }
     };
+
     debug!(
         "received indexer response for {cid}:\n{:?}",
         indexer_response
     );
+
     // TODO:
     // 1. filter FleekNetwork metadata
     // 2. pick node (round-robin)

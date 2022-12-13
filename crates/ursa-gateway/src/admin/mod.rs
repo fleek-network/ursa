@@ -1,7 +1,6 @@
-mod config;
+mod route;
 
-use crate::admin::config::get_config_handler;
-use crate::config::CertConfig;
+use crate::admin::route::api::v1::get::get_config_handler;
 use crate::config::GatewayConfig;
 use crate::config::ServerConfig;
 use anyhow::{Context, Result};
@@ -16,13 +15,15 @@ use tracing::info;
 pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {
-        cert: CertConfig {
-            cert_path,
-            key_path,
-        },
-        server: ServerConfig { addr, port },
+        admin_server:
+            ServerConfig {
+                addr,
+                port,
+                cert_path,
+                key_path,
+            },
         ..
-    } = &(*(config_reader.read().await));
+    } = &(*config_reader.read().await);
 
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
