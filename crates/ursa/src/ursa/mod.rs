@@ -11,6 +11,7 @@ use std::{
     },
     thread,
     time::Duration,
+    env::var,
 };
 use structopt::StructOpt;
 use tracing::{error, warn};
@@ -59,7 +60,7 @@ impl CliOpts {
                 .config
                 .as_ref()
                 .map(|p| PathBuf::from(p).resolve().to_path_buf())
-                .unwrap_or_else(|| PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)),
+                .unwrap_or_else(|| PathBuf::from(var("HOME").unwrap_or_default()).join(DEFAULT_CONFIG_PATH_STR)),
         )?;
 
         if let Some(rpc_port) = self.rpc_port {
