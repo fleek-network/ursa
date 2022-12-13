@@ -19,7 +19,7 @@ use axum::{
 use cid::Cid;
 use forest_encoding::Cbor;
 use forest_ipld::Ipld;
-use ipld_blockstore::{BlockStore, BlockStoreExt};
+use fvm_ipld_blockstore::Blockstore;
 use libipld::codec::Encode;
 use libipld_cbor::DagCborCodec;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
@@ -38,7 +38,7 @@ use ursa_store::Store;
 use ursa_utils::convert_cid;
 
 // handlers
-async fn head<S: BlockStore + Sync + Send + 'static>(
+async fn head<S: Blockstore + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
 ) -> Result<Json<SignedHead>, ProviderError> {
     if let Some(head) = *state.head.read().unwrap() {
@@ -50,13 +50,13 @@ async fn head<S: BlockStore + Sync + Send + 'static>(
     }
 }
 
-async fn get_block<S: BlockStore + Sync + Send + 'static>(
+async fn get_block<S: Blockstore + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
     Path(cid): Path<String>,
 ) -> Result<Response<Body>, ProviderError> {
     let cid =
         Cid::from_str(&cid).map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
-    match state.blockstore.blockstore().get_bytes(&cid) {
+    match state.store.db.get(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
         Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{}", e)))),
@@ -67,20 +67,20 @@ pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
     root_cids: Arc<RwLock<VecDeque<Cid>>>,
     keypair: Keypair,
-    blockstore: Arc<Store<S>>,
+    store: Arc<Store<S>>,
     temp_ads: HashMap<usize, Advertisement>,
     config: ProviderConfig,
 }
 
 impl<S> Provider<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
-    pub fn new(keypair: Keypair, blockstore: Arc<Store<S>>, config: ProviderConfig) -> Self {
+    pub fn new(keypair: Keypair, store: Arc<Store<S>>, config: ProviderConfig) -> Self {
         Provider {
             keypair,
             root_cids: Arc::new(RwLock::new(VecDeque::new())),
-            blockstore,
+            store,
             head: Arc::new(RwLock::new(None)),
             temp_ads: HashMap::new(),
             config,
@@ -113,14 +113,14 @@ where
 
 impl<S> Clone for Provider<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     fn clone(&self) -> Self {
         Self {
             head: Arc::clone(&self.head),
             root_cids: Arc::clone(&self.root_cids),
             keypair: self.keypair.clone(),
-            blockstore: Arc::clone(&self.blockstore),
+            store: Arc::clone(&self.store),
             temp_ads: self.temp_ads.clone(),
             config: self.config.clone(),
         }
@@ -157,7 +157,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
 #[async_trait]
 impl<S> ProviderInterface for Provider<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     fn create(&mut self, mut ad: Advertisement) -> Result<usize> {
         let id: usize = rand::thread_rng().gen();
@@ -174,11 +174,7 @@ where
         if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            return match self
-                .blockstore
-                .blockstore()
-                .put_obj(&chunk, Code::Blake2b256)
-            {
+            return match self.store.blockstore().put(Code::Blake2b256, &chunk) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
                     Ok(())
@@ -199,10 +195,7 @@ where
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = forest_ipld::to_ipld(&ad)?;
-            let cid = self
-                .blockstore
-                .blockstore()
-                .put_obj(&ipld_ad, Code::Blake2b256)?;
+            let cid = self.store.db.put_obj(Code::Blake2b256, &ipld_ad)?;
             *head = Some(cid);
             return Ok(());
         }

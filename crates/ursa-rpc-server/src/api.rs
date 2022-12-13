@@ -6,8 +6,8 @@ use cid::Cid;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
-use ipld_blockstore::BlockStore;
 use libipld::Cid as lCid;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -76,7 +76,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     pub store: Arc<Store<S>>,
     pub network_send: Sender<NetworkCommand>,
@@ -85,7 +85,7 @@ where
 #[async_trait]
 impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
         if !self.store.blockstore().has(&cid).unwrap() {

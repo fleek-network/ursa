@@ -19,10 +19,10 @@ forest_encoding = "0.2.2"
 forest_ipld = "0.1.1"
 futures = "0.3.21"
 futures-util = "0.3.21"
+fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_car = "0.5.0"
-libp2p-bitswap = "0.25.0"
-ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
+libp2p-bitswap = "0.25.0"
 log = "0.4.17"
 metrics = "0.20.1"
 rand = "0.8.4"
@@ -36,7 +36,6 @@ ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
-libp2p-mdns = { version = "0.42.0", features = ["async-io"]}
 
 [dependencies.libipld]
 version = "0.14.0"
@@ -68,6 +67,6 @@ features = [
 ]
 
 [dev-dependencies]
-db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 simple_logger = "2.1.0"
 tokio = { version = "1.20.1", features = ["full"] }

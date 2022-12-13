@@ -1,6 +1,7 @@
 use anyhow::anyhow;
+use db::Store as Store_;
 use fnv::FnvHashSet;
-use ipld_blockstore::BlockStore;
+use fvm_ipld_blockstore::Blockstore;
 use libipld::store::DefaultParams;
 use libipld::{Block, Cid, Result};
 use libp2p_bitswap::BitswapStore;
@@ -13,7 +14,7 @@ pub struct Store<S> {
 
 impl<S> Store<S>
 where
-    S: BlockStore + Send + Sync + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     pub fn new(db: Arc<S>) -> Self {
         Self { db }
@@ -26,27 +27,24 @@ where
 
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where
-    P: BlockStore + Sync + Send + 'static;
+    P: Blockstore + Store_ + Send + Sync + 'static;
 
 impl<P> BitswapStore for BitswapStorage<P>
 where
-    P: BlockStore + Sync + Send + 'static,
+    P: Blockstore + Store_ + Send + Sync + 'static,
 {
     type Params = DefaultParams;
 
     fn contains(&mut self, cid: &Cid) -> Result<bool> {
-        Ok(self.0.db.exists(cid.to_bytes())?)
+        Ok(self.0.db.has(cid)?)
     }
 
     fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.db.read(cid.to_bytes()).unwrap())
+        Ok(self.0.db.get(cid).unwrap())
     }
 
     fn insert(&mut self, block: &Block<Self::Params>) -> Result<()> {
-        self.0
-            .db
-            .write(&block.cid().to_bytes(), block.data())
-            .unwrap();
+        self.0.db.put_keyed(&block.cid(), block.data()).unwrap();
 
         Ok(())
     }
@@ -75,7 +73,7 @@ pub trait Dag {
 
 impl<S> Dag for Store<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let mut res = Vec::new();
@@ -89,7 +87,7 @@ where
             if refs.contains(&cid) {
                 continue;
             }
-            match self.blockstore().get(&convert_cid(cid.to_bytes()))? {
+            match self.db.get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data).unwrap();

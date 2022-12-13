@@ -17,7 +17,7 @@ use cid::Cid;
 use fnv::FnvHashMap;
 use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
-use ipld_blockstore::BlockStore;
+use fvm_ipld_blockstore::Blockstore;
 use libipld::DefaultParams;
 use libp2p::autonat::{Event as AutonatEvent, NatStatus};
 use libp2p::dcutr::behaviour::Event as DcutrEvent;
@@ -204,7 +204,7 @@ pub struct UrsaService<S> {
 
 impl<S> UrsaService<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///

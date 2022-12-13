@@ -16,11 +16,11 @@ bytes = "1.1.0"
 cid = "0.8.5"
 fnv = "1.0.7"
 futures = "0.3.21"
+fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_car = "0.5.0"
 hyper = "0.14.20"
-ipld_blockstore = "0.1.1"
 jsonrpc-v2 = "0.11.0"
-serde = { version = "1.0.137", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.81"
 tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 tokio-util = { version = "0.7", features = ["io", "compat"] }
@@ -37,11 +37,11 @@ version = "0.12.0"
 default-features = false
 
 [dev-dependencies]
-db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 simple_logger = "2.1.0"
 
 [dependencies.libp2p]
-version = "0.46.1"
+version = "0.50.0"
 default-features = false
 features = [
     "identify",

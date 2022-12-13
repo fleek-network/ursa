@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{Extension, Router};
-use ipld_blockstore::BlockStore;
+use fvm_ipld_blockstore::Blockstore;
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
@@ -14,7 +14,7 @@ use tracing::info;
 
 pub struct Server<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     rpc_server: RpcServer,
     interface: Arc<NodeNetworkInterface<S>>,
@@ -22,7 +22,7 @@ where
 
 impl<S> Server<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     pub fn new(interface: Arc<NodeNetworkInterface<S>>) -> Self {
         Self {
