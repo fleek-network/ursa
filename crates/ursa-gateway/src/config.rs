@@ -42,7 +42,7 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
     toml::from_str(&toml).context("failed to deserialize")
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
@@ -50,19 +50,19 @@ pub struct GatewayConfig {
     pub indexer: IndexerConfig,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct CertConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct IndexerConfig {
     pub cid_url: String,
     /*
