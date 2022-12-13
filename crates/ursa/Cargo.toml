@@ -28,6 +28,7 @@ ursa-rpc-client = { path = "../ursa-rpc-client" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-store = { path = "../ursa-store" }
 ursa-gateway = { path = "../ursa-gateway" }
+resolve-path = "0.1.0"
 
 [build-dependencies]
 toml = "0.5"

@@ -1,12 +1,9 @@
-mod rpc_commands;
-
-use crate::config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR};
+use crate::config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR};
 use rpc_commands::RpcCommands;
 use std::{
     cell::RefCell,
-    fs::File,
-    io::{prelude::*, Result},
-    path::{Path, PathBuf},
+    io::Result,
+    path::PathBuf,
     process,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -19,6 +16,7 @@ use structopt::StructOpt;
 use tracing::{error, info, warn};
 
 pub mod identity;
+mod rpc_commands;
 
 /// CLI structure generated when interacting with URSA binary
 #[derive(StructOpt)]
@@ -55,36 +53,19 @@ pub struct CliOpts {
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let mut path = PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR);
-        if let Some(config_file) = &self.config {
-            info!(
-                "Reading configuration from user provided config file {}",
-                config_file
-            );
-            path = PathBuf::from(&config_file);
-        }
+        let path = match &self.config {
+            Some(path) => {
+                info!(
+                    "Reading configuration from user provided config file {}",
+                    self.config.as_ref().unwrap()
+                );
+                PathBuf::from(path)
+            }
+            None => PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR),
+        };
 
-        // Read from config file
-        let toml = read_file_to_string(&path).unwrap();
-        // Parse and return the configuration file
-        let toml_str: UrsaConfig = toml::from_str(&toml).unwrap();
-
-        Ok(toml_str)
+        load_config(&path)
     }
-}
-
-/// Read file as a `String`.
-pub fn read_file_to_string(path: &Path) -> Result<String> {
-    let mut file = match File::open(path) {
-        Ok(file) => file,
-        Err(error) => {
-            error!("Problem opening the file: {:?}", error);
-            process::exit(1);
-        }
-    };
-    let mut string = String::new();
-    file.read_to_string(&mut string)?;
-    Ok(string)
 }
 
 pub fn wait_until_ctrlc() {
