@@ -10,7 +10,7 @@ use axum::{
 };
 use hyper::HeaderMap;
 use serde_json::{json, Value};
-use sled::Db;
+use rocksdb::{DB, IteratorMode, WriteBatch};
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -27,7 +27,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db = Arc::new(sled::open("tracker_db").unwrap());
+    let db = Arc::new(DB::open_default("tracker_db").unwrap());
     let token = env::var("IPINFO_TOKEN").expect("IPINFO_TOKEN is not set");
 
     let app = Router::new()
@@ -49,7 +49,7 @@ async fn main() {
 async fn registration_handler(
     headers: HeaderMap,
     ConnectInfo(req_addr): ConnectInfo<SocketAddr>,
-    db: Extension<Arc<Db>>,
+    db: Extension<Arc<DB>>,
     token: Extension<String>,
     Json(registration): Json<TrackerRegistration>,
 ) -> (StatusCode, Json<Value>) {
@@ -88,10 +88,9 @@ async fn registration_handler(
 
     info!("Storing node {} with config {:?}", id, entry);
 
-    match db
-        .0
-        .insert(id.to_base58().as_bytes(), json.to_string().as_bytes())
-    {
+    let mut batch = WriteBatch::default();
+    batch.put(id.to_base58().as_bytes(), json.to_string().as_bytes());
+    match db.write(batch) {
         Ok(_) => (StatusCode::OK, Json(json)),
         Err(e) => {
             error!("Error writing to db: {}", e);
@@ -104,15 +103,12 @@ async fn registration_handler(
 }
 
 /// Prometheus HTTP Service Discovery
-async fn http_sd_handler(db: Extension<Arc<Db>>) -> (StatusCode, Json<Value>) {
+async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
     let services: Vec<PrometheusDiscoveryChunk> =
-        db.0.iter()
-            .filter_map(|i| {
-                if let Ok((_, v)) = i {
-                    let node: Node = serde_json::from_slice(&v.as_ref()).unwrap();
-                    if !node.telemetry {
-                        return None;
-                    }
+        db.iterator(IteratorMode::Start)
+            .filter_map(|(_, v)| {
+                let node: Node = serde_json::from_slice(&v).unwrap();
+                if node.telemetry {
                     Some(node.into())
                 } else {
                     None
@@ -136,12 +132,12 @@ mod tests {
             .init();
     }
 
-    fn db() -> Arc<Db> {
-        Arc::new(sled::open("tracker_db").unwrap())
+    fn db() -> Arc<DB> {
+        Arc::new(DB::open_default("tracker_db").unwrap())
     }
 
     async fn make_registration(
-        db: Arc<Db>,
+        db: Arc<DB>,
         addr: Option<String>,
         id: PeerId,
     ) -> (StatusCode, Json<Value>) {
@@ -174,7 +170,7 @@ mod tests {
         info!("{:?}", res);
         assert_eq!(res.0, 200);
 
-        db.remove(id.to_string().as_bytes()).unwrap();
+        db.delete(id.to_string().as_bytes()).unwrap();
     }
 
     #[tokio::test]
@@ -186,7 +182,7 @@ mod tests {
         let res = make_registration(db.clone(), Some("8.8.8.8".to_string()), id).await;
         info!("{:?}", res);
         assert_eq!(res.0, 200);
-        db.remove(id.to_string().as_bytes()).unwrap();
+        db.delete(id.to_string().as_bytes()).unwrap();
     }
 
     #[tokio::test]
@@ -199,7 +195,7 @@ mod tests {
         info!("{:?}", res.1.to_string());
         assert_eq!(res.0, 200);
 
-        db.remove(id.to_string().as_bytes()).unwrap();
+        db.delete(id.to_string().as_bytes()).unwrap();
     }
 
     #[tokio::test]
@@ -221,6 +217,6 @@ mod tests {
             panic!("Expected array");
         }
 
-        db.remove(id.to_string().as_bytes()).unwrap();
+        db.delete(id.to_string().as_bytes()).unwrap();
     }
 }
