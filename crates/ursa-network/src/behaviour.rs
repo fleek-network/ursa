@@ -176,9 +176,9 @@ impl<P: StoreParams> Behaviour<P> {
     pub fn publish(
         &mut self,
         topic: Topic,
-        data: GossipsubMessage,
+        data: impl Into<Vec<u8>>,
     ) -> Result<MessageId, PublishError> {
-        self.gossipsub.publish(topic, data.data)
+        self.gossipsub.publish(topic, data)
     }
 
     pub fn public_address(&self) -> Option<&Multiaddr> {

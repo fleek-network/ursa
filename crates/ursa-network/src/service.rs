@@ -12,6 +12,7 @@
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
 use anyhow::{anyhow, Error, Result};
+use bytes::Bytes;
 use cid::Cid;
 use db::Store as Store_;
 use fnv::FnvHashMap;
@@ -93,6 +94,12 @@ pub enum GossipsubMessage {
         topic: TopicHash,
         sender: oneshot::Sender<Result<bool, PublishError>>,
     },
+    /// Publish a message to a specific topic.
+    Publish {
+        topic: TopicHash,
+        data: Bytes,
+        sender: oneshot::Sender<Result<MessageId, PublishError>>,
+    },
     /// An Indexer message.
     IndexPublish {
         cids: Vec<Cid>,
@@ -111,7 +118,7 @@ pub enum GossipsubEvent {
         /// validating a message (if required).
         message_id: MessageId,
         /// The decompressed message itself.
-        message: GossipsubMessage,
+        message: libp2p::gossipsub::GossipsubMessage,
     },
     /// A remote subscribed to a topic.
     Subscribed {
@@ -470,7 +477,7 @@ where
         match gossip_event {
             libp2p::gossipsub::GossipsubEvent::Message {
                 propagation_source,
-                message_id: _,
+                message_id,
                 message,
             } => {
                 trace!(
@@ -561,6 +568,12 @@ where
                 //         }
                 //     }
                 // }
+
+                self.emit_event(NetworkEvent::Gossipsub(GossipsubEvent::Message {
+                    peer_id: propagation_source,
+                    message_id,
+                    message,
+                }));
             }
             libp2p::gossipsub::GossipsubEvent::Subscribed { peer_id, topic } => {
                 self.emit_event(NetworkEvent::Gossipsub(GossipsubEvent::Subscribed {
@@ -756,6 +769,20 @@ where
                     sender
                         .send(unsubscribe)
                         .map_err(|_| anyhow!("Failed to unsubscribe!"))?;
+                }
+                GossipsubMessage::Publish {
+                    topic,
+                    data,
+                    sender,
+                } => {
+                    let publish = self
+                        .swarm
+                        .behaviour_mut()
+                        .publish(Topic::new(topic.into_string()), data.to_vec());
+
+                    sender
+                        .send(publish)
+                        .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
                 GossipsubMessage::IndexPublish {
                     public_address,
