@@ -3,12 +3,12 @@ use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
+use db::Store as Store_;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
-use libipld::Cid as lCid;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,7 +56,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
 
-    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>>;
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
 
     /// get the file locally via cli
     async fn get_file(&self, path: String, cid: Cid) -> Result<()>;
@@ -76,7 +76,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     pub store: Arc<Store<S>>,
     pub network_send: Sender<NetworkCommand>,
@@ -85,7 +85,7 @@ where
 #[async_trait]
 impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
         if !self.store.blockstore().has(&cid).unwrap() {
@@ -105,7 +105,7 @@ where
         self.store.blockstore().get(&cid)
     }
 
-    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         if !self.store.blockstore().has(&root_cid).unwrap() {
             let (sender, receiver) = oneshot::channel();
             let request = NetworkCommand::GetBitswap {
@@ -201,8 +201,8 @@ where
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::Index {
-            cids: cids.clone(),
+        let request = NetworkCommand::GetBitswap {
+            cid: cids[0],
             sender,
         };
 

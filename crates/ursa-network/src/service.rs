@@ -14,6 +14,7 @@
 use anyhow::{anyhow, Result};
 
 use cid::Cid;
+use db::Store as Store_;
 use fnv::FnvHashMap;
 use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
@@ -204,7 +205,7 @@ pub struct UrsaService<S> {
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///

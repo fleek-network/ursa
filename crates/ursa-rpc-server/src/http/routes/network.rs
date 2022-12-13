@@ -10,13 +10,14 @@ use axum::{
     Extension, Json, Router,
 };
 use cid::Cid;
+use db::Store as Store_;
 use futures::io::Cursor;
 use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
 use std::{str::FromStr, sync::Arc};
 use tracing::{error, info};
 
-pub fn init<S: Blockstore + Sync + Send + 'static>() -> Router {
+pub fn init<S: Blockstore + Store_ + Send + Sync + 'static>() -> Router {
     Router::new()
         .route("/", post(upload_handler::<S>))
         .route("/:cid", get(get_handler::<S>))
@@ -44,7 +45,7 @@ pub async fn upload_handler<S>(
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
 ) -> impl IntoResponse
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     info!("uploading file via http");
     if let Some(field) = buf.next_field().await.unwrap() {
@@ -80,7 +81,7 @@ pub async fn get_handler<S>(
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
 ) -> Result<impl IntoResponse, NetworkError>
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     info!("Streaming file over http");
     if let Ok(cid) = Cid::from_str(&cid_str) {
