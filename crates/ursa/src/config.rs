@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir_all, File},
@@ -17,15 +17,15 @@ pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
 pub fn load_config(path: &PathBuf) -> Result<UrsaConfig> {
     info!("Loading config from: {:?}", path);
     if path.exists() {
-        let toml = read_file_to_string(path)?;
-        toml::from_str(&toml).map_err(|e| anyhow!("Failed to parse config file: {}", e))
+        let toml = read_file_to_string(path).context(format!("Failed to read config file {}", path.to_string_lossy()))?;
+        toml::from_str(&toml).map_err(|e| anyhow!("Failed to parse config toml: {}", e))
     } else {
         // Missing, create and return default config at path
         let ursa_config = UrsaConfig::default();
         let toml = toml::to_string(&ursa_config).unwrap();
-        create_dir_all(path.parent().unwrap())?;
-        let mut file = File::create(path)?;
-        file.write_all(toml.as_bytes())?;
+        create_dir_all(path.parent().unwrap()).context(format!("Failed to create default config directory: {}", path.to_string_lossy()))?;
+        let mut file = File::create(path).context(format!("Failed to create default config: {}", path.to_string_lossy()))?;
+        file.write_all(toml.as_bytes()).context(format!("Failed to write default config: {}", path.to_string_lossy()))?;
         Ok(ursa_config)
     }
 }

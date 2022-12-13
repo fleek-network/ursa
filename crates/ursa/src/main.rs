@@ -123,7 +123,7 @@ async fn main() {
             }
         }
         Err(e) => {
-            cli_error_and_die(&format!("Error parsing config. Error was: {}", e), 1);
+            cli_error_and_die(&format!("Config error: {}", e), 1);
         }
     };
 }
