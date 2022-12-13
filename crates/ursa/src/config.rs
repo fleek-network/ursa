@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     process,
 };
-use tracing::error;
+use tracing::{error, info};
 use ursa_index_provider::config::ProviderConfig;
 use ursa_metrics::config::MetricsServiceConfig;
 use ursa_network::NetworkConfig;
@@ -15,6 +15,7 @@ use ursa_rpc_server::config::ServerConfig;
 pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
 
 pub fn load_config(path: &PathBuf) -> Result<UrsaConfig> {
+    info!("Loading config from: {:?}", path);
     if !path.exists() {
         let ursa_config = UrsaConfig::default();
         let toml = toml::to_string(&ursa_config).unwrap();

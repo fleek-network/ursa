@@ -1,4 +1,5 @@
 use crate::config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR};
+use resolve_path::PathResolveExt;
 use rpc_commands::RpcCommands;
 use std::{
     cell::RefCell,
@@ -53,18 +54,19 @@ pub struct CliOpts {
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let path = match &self.config {
-            Some(path) => {
-                info!(
-                    "Reading configuration from user provided config file {}",
-                    self.config.as_ref().unwrap()
-                );
-                PathBuf::from(path)
-            }
-            None => PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR),
-        };
+        let mut config = load_config(
+            &self
+                .config
+                .as_ref()
+                .map(|p| PathBuf::from(p).resolve().to_path_buf())
+                .unwrap_or_else(|| PathBuf::from(env!("HOME")).join(DEFAULT_CONFIG_PATH_STR)),
+        )?;
 
-        load_config(&path)
+        if let Some(rpc_port) = self.rpc_port {
+            config.server_config.port = rpc_port;
+        }
+
+        Ok(config)
     }
 }
 

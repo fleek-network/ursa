@@ -46,11 +46,8 @@ async fn main() {
                     network_config,
                     provider_config,
                     metrics_config,
-                    mut server_config,
+                    server_config,
                 } = config;
-                if opts.rpc_port.is_some() {
-                    server_config.port = opts.rpc_port.unwrap();
-                }
 
                 let keystore_path = network_config.keystore_path.clone();
                 let im = match network_config.identity.as_str() {
