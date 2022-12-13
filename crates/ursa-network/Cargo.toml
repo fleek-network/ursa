@@ -10,7 +10,6 @@ description = "Ursa's libp2p implementation"
 [dependencies]
 anyhow = "1.0.56"
 async-fs = "1.6.0"
-async-io = "1.12.0"
 async-trait = "0.1.53"
 bytes = "1.1.0"
 cid = "0.8.6"
@@ -36,6 +35,7 @@ ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
+libp2p-mdns = { version = "0.42.0", features = ["async-io"]}
 
 [dependencies.libipld]
 version = "0.14.0"
