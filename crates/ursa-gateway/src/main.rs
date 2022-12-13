@@ -4,13 +4,15 @@ mod config;
 mod indexer;
 mod server;
 
-use crate::config::{init_config, load_config};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Commands};
-use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::{sync::RwLock, task};
 use tracing::{error, Level};
+
+use crate::config::{init_config, load_config};
 
 #[tokio::main]
 async fn main() -> Result<()> {

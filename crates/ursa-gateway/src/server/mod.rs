@@ -1,20 +1,21 @@
 mod model;
 mod route;
 
-use crate::config::GatewayConfig;
-use crate::config::ServerConfig;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
+
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use hyper::client::HttpConnector;
-use hyper::Body;
+use hyper::{client::HttpConnector, Body};
 use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_block_handler;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
+
+use crate::config::{GatewayConfig, ServerConfig};
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 

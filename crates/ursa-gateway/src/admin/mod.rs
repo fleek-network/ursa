@@ -1,16 +1,20 @@
 mod route;
 
-use crate::admin::route::api::v1::get::get_config_handler;
-use crate::config::GatewayConfig;
-use crate::config::ServerConfig;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
+
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
+
+use crate::{
+    admin::route::api::v1::get::get_config_handler,
+    config::{GatewayConfig, ServerConfig},
+};
 
 pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
     let config_reader = config.clone();

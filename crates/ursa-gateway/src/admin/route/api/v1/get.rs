@@ -1,6 +1,7 @@
+use std::sync::Arc;
+
 use axum::{Extension, Json};
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::GatewayConfig;

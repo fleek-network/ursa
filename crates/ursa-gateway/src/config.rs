@@ -1,12 +1,12 @@
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use tracing::{info, Level};
-
 use std::{
     fs::{create_dir_all, read_to_string, File},
     io::Write,
     path::PathBuf,
 };
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use tracing::{info, Level};
 
 use crate::cli::DaemonCmdOpts;
 
@@ -75,20 +75,20 @@ impl Default for GatewayConfig {
                 port: 80,
                 cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("cert.pem"),
+                    .join("server_cert.pem"),
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("key.pem"),
+                    .join("server_key.pem"),
             },
             admin_server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 5001,
                 cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("cert.pem"),
+                    .join("admin_cert.pem"),
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("key.pem"),
+                    .join("admin_key.pem"),
             },
             indexer: IndexerConfig {
                 cid_url: "https://cid.contact/cid".into(),
