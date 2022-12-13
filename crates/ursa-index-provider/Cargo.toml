@@ -36,3 +36,4 @@ ursa-utils ={ path = "../ursa-utils" }
 
 [dev-dependencies]
 simple_logger = "2.1.0"
+ursa-network = { path = "../ursa-network" }

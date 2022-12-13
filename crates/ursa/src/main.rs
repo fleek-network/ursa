@@ -7,7 +7,7 @@ use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursa_index_provider::provider::Provider;
+use ursa_index_provider::{provider::Provider, engine::ProviderEngine};
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider =
-                    Provider::new(keypair.clone(), index_store, provider_config.clone());
+                    ProviderEngine::new(keypair.clone(), store, index_store, provider_config.clone());
 
                 let service = UrsaService::new(keypair, &network_config, Arc::clone(&store))?;
                 let rpc_sender = service.command_sender();
