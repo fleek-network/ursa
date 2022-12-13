@@ -18,7 +18,7 @@ use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
-use ursa_network::{BitswapType, NetworkCommand};
+use ursa_network::NetworkCommand;
 use ursa_store::{Dag, Store};
 use ursa_utils::convert_cid;
 
@@ -88,13 +88,13 @@ where
     S: Blockstore + Store_ + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
-        if !self.store.blockstore().has(&cid).unwrap() {
+        if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
             let (sender, receiver) = oneshot::channel();
             let request = NetworkCommand::GetBitswap { cid, sender };
 
             // use network sender to send command
-            self.network_send.send(request);
+            self.network_send.send(request)?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -105,7 +105,7 @@ where
         self.store.blockstore().get(&cid)
     }
 
-    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         if !self.store.blockstore().has(&root_cid)? {
             let (sender, receiver) = oneshot::channel();
             let request = NetworkCommand::GetBitswap {
@@ -114,7 +114,7 @@ where
             };
 
             // use network sender to send command
-            self.network_send.send(request);
+            self.network_send.send(request)?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -206,7 +206,7 @@ where
             sender,
         };
 
-        self.network_send.send(request);
+        self.network_send.send(request)?;
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(

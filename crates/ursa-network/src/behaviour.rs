@@ -50,8 +50,6 @@ use crate::{
     discovery::DiscoveryBehaviour,
 };
 
-pub type BlockSenderChannel<T> = oneshot::Sender<Result<T, Error>>;
-
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 
 fn ursa_agent() -> String {
