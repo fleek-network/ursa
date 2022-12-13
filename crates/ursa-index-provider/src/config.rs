@@ -25,7 +25,7 @@ impl Default for ProviderConfig {
             port: 8070,
             domain: "".to_string(),
             indexer_url: "https://dev.cid.contact".to_string(),
-            database_path: PathBuf::from(home_dir().unwrap_or_default().join(DEFAULT_DB_PATH_STR),
+            database_path: home_dir().unwrap_or_default().join(DEFAULT_DB_PATH_STR),
         }
     }
 }
