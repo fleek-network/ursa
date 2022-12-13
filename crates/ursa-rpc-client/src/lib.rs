@@ -74,8 +74,8 @@ where
 
             if code != 200 {
                 error!(
-                    "[RPCClient] - server responded with the error code {:?}",
-                    code
+                    "[RPCClient] - server responded with http error code {:?} - {}",
+                    code, res
                 );
                 return Err(Error::Full {
                     message: format!("Error code from HTTP Response: {}", code),
@@ -91,10 +91,7 @@ where
                     return Err(Error::Full {
                         data: None,
                         code: 200,
-                        message: format!(
-                            "Parse Error: Response from RPC endpoint could not be parsed. Error was: {}",
-                            e,
-                        ),
+                        message: format!("Parse Error: {}\nData: {}", e, res),
                     })
                 }
             };
