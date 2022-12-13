@@ -11,10 +11,12 @@ description = "Ursa's cli"
 anyhow = "1.0.57"
 ctrlc = "3.1"
 db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+dirs = "4"
 dotenv = "0.15.0"
 futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "serde"] }
 pem = "1.1.0"
+resolve-path = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
 tokio = { version = "1.20.1", features = ["full"] }
@@ -28,7 +30,6 @@ ursa-rpc-client = { path = "../ursa-rpc-client" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-store = { path = "../ursa-store" }
 ursa-gateway = { path = "../ursa-gateway" }
-resolve-path = "0.1.0"
 
 [build-dependencies]
 toml = "0.5"
