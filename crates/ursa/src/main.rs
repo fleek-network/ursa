@@ -1,11 +1,11 @@
 use crate::{
-    config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR},
+    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
     ursa::identity::IdentityManager,
 };
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
