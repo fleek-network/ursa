@@ -28,4 +28,3 @@ interface IFleekToken {
     function transferController(address _newController) external;
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
-

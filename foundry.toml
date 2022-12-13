@@ -4,4 +4,5 @@ solc_version = '0.8.15'
 optimizer_runs = 1_000
 src = 'contracts/src'
 out = 'contracts/out'
+test = 'contracts/test'
 libs = ['contracts/lib']

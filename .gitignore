@@ -29,4 +29,5 @@ infra/ursa/data/grafana/png
 contracts/out/
 contracts/broadcast/
 contracts/cache/
+cache/
 

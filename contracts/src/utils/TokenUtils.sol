@@ -11,11 +11,7 @@ library TokenUtils {
      * @param _from Address sending the tokens
      * @param _amount Amount of tokens to transfer
      */
-    function pullTokens(
-        FleekToken _fleekToken,
-        address _from,
-        uint256 _amount
-    ) internal {
+    function pullTokens(FleekToken _fleekToken, address _from, uint256 _amount) internal {
         if (_amount > 0) {
             require(_fleekToken.transferFrom(_from, address(this), _amount), "transfer failed");
         }
@@ -27,11 +23,7 @@ library TokenUtils {
      * @param _to Address receiving the tokens
      * @param _amount Amount of tokens to transfer
      */
-    function pushTokens(
-        FleekToken _fleekToken,
-        address _to,
-        uint256 _amount
-    ) internal {
+    function pushTokens(FleekToken _fleekToken, address _to, uint256 _amount) internal {
         if (_amount > 0) {
             require(_fleekToken.transfer(_to, _amount), "transfer failed");
         }

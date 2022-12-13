@@ -14,15 +14,17 @@ contract FleekToken is Controlled, ERC20 {
     event MinterAdded(address indexed account);
     event MinterRemoved(address indexed account);
 
+        modifier onlyMinter() {
+        require(isMinter(msg.sender), "Only minter can call");
+        _;
+    }
 
     constructor(uint256 _initialSupply) ERC20("Fleek", "FLK", 18) {
-
         Controlled._init(msg.sender);
-        
+
         _mint(msg.sender, _initialSupply);
 
         _addMinter(msg.sender);
-
     }
 
     /**
@@ -41,6 +43,23 @@ contract FleekToken is Controlled, ERC20 {
         _removeMinter(_account);
     }
 
+    /**
+     * @dev Mint new tokens.
+     * @param _to Address to send the newly minted tokens
+     * @param _amount Amount of tokens to mint
+     */
+    function mint(address _to, uint256 _amount) external onlyMinter {
+        _mint(_to, _amount);
+    }
+
+    /**
+     * @dev Return if the `_account` is a minter or not.
+     * @param _account Address to check
+     * @return True if the `_account` is minter
+     */
+    function isMinter(address _account) public view returns (bool) {
+        return _minters[_account];
+    }
 
 
     /**
@@ -51,7 +70,6 @@ contract FleekToken is Controlled, ERC20 {
         _minters[_account] = true;
         emit MinterAdded(_account);
     }
-
 
     /**
      * @dev Remove a minter.
@@ -70,6 +88,4 @@ contract FleekToken is Controlled, ERC20 {
     function burn(uint256 amount) external {
         _burn(msg.sender, amount);
     }
-
-
 }

@@ -5,29 +5,37 @@ import "./libs/Stakes.sol";
 import "../management/Controlled.sol";
 import "../token/FleekToken.sol";
 import "../utils/TokenUtils.sol";
+import "../utils/MathUtils.sol";
 
 /**
  * @title Staking contract
- * @dev The Staking contract allows nodes to take to be elieble to be part of the network
+ * @dev The Staking contract allows nodes to take to be eligable to be part of the network
  */
 contract Staking is Controlled {
     using Stakes for Stakes.Node;
 
-/* STORAGE */
+    /* STORAGE */
 
     FleekToken internal _fleekToken;
 
     /// Minimum amount of tokens an node needs to stake
     uint256 public minimumNodeStake;
 
-    /// Time in blocks to before node can unstake
+    /// Time in blocks to before a staked node can be whitelisted
+    uint256 public nodeElegibiliyPeriod; // in blocks
+
+    /// Time in blocks to before node can withdrawl tokens
     uint32 public lockTime; // in blocks
 
-    /// Indexer stakes : indexer => Stake
+    /// node stakes : node => Stake
     mapping(address => Stakes.Node) public stakes;
 
     /// List of addresses allowed to slash stakes
     mapping(address => bool) public slashers;
+
+    // Destination of accrued rewards : beneficiary => rewards destination
+    // if unset, rewards will be restaked
+    mapping(address => address) public rewardsDestination;
 
     //PLACEHOLDER unknown if needed
     /// Percentage of fees burned as protocol fee
@@ -37,12 +45,17 @@ contract Staking is Controlled {
     // 100% in parts per million
     uint32 private constant MAX_PPM = 1000000;
 
-/* EVENTS */
+    /* EVENTS */
 
     /**
-        * @dev Emitted when a 'node' stakes fleek token 'amount'.
-    */
+     * @dev Emitted when a 'node' stakes fleek token 'amount'.
+     */
     event StakeDeposited(address indexed node, uint256 amount);
+
+    /**
+     * @dev Emitted when `node` unstaked and locked `tokens` amount `until` block.
+     */
+    event StakeLocked(address indexed node, uint256 tokens, uint256 until);
 
     /**
      * @dev Emitted when 'node' withdraws staked fleek 'amount'.
@@ -53,12 +66,7 @@ contract Staking is Controlled {
      * @dev Emitted when 'node' was slashed for a total of fleek token 'amount'
      * also emits the 'reward' of fleek tokens give to the 'beneficiary' that made the claim
      */
-    event StakeSlashed(
-        address indexed node,
-        uint256 amount,
-        uint256 reward,
-        address beneficiary
-    );
+    event StakeSlashed(address indexed node, uint256 amount, uint256 reward, address beneficiary);
 
     /**
      * @dev Emitted when `caller` set `slasher` address as `allowed` to slash stakes.
@@ -66,9 +74,24 @@ contract Staking is Controlled {
     event SlasherUpdate(address indexed caller, address indexed slasher, bool allowed);
 
     /**
-    * @dev Emitted when a contract parameter has been updated
-    */
+     * @dev Emitted when `node` was whitelisted.
+     */
+     event NodeWhitelisted(address indexed node);
+
+    /**
+     * @dev Emitted when `node` was removed from the whitlist.
+     */
+     event NodeWhitelistRemoval(address indexed node);
+
+    /**
+     * @dev Emitted when a contract parameter has been updated
+     */
     event ParameterUpdated(string param);
+
+    /**
+     * @dev Emitted when `node` set an address to receive rewards.
+     */
+    event SetRewardsDestination(address indexed node, address indexed destination);
 
     /**
      * @dev Check if the caller is the slasher.
@@ -78,13 +101,14 @@ contract Staking is Controlled {
         _;
     }
 
-     /**
+    /**
      * @dev Initialize this contract.
      */
     function initialize(
         address _controller,
         address token,
         uint256 _minimumNodeStake,
+        uint32 _elegibilityTime,
         uint32 _lockTime,
         uint32 _protocolPercentage
     ) external {
@@ -95,9 +119,8 @@ contract Staking is Controlled {
         // Settings
         _setMinimumNodeStake(_minimumNodeStake);
         _setLockTime(_lockTime);
-
+        _setNodeElegibilityPeriod(_elegibilityTime);
         _setProtocolPercentage(_protocolPercentage);
-
     }
 
     /**
@@ -116,6 +139,24 @@ contract Staking is Controlled {
         require(_minimumNodeStake > 0, "minimumNodeStake must be > 0");
         minimumNodeStake = _minimumNodeStake;
         emit ParameterUpdated("minimumNodeStake");
+    }
+
+    /**
+     * @dev  Set the time in blocks that a node must wait before being eligible to be whitelisted.
+     * @param _elegibilityTime Time in blocks to wait before a node can be whitelisted
+     */
+    function setNodeElegibilityPeriod(uint32 _elegibilityTime) external onlyController {
+        _setNodeElegibilityPeriod(_elegibilityTime);
+    }
+
+    /**
+     * @dev Set the time in blocks that a node must wait before being eligible to be whitelisted.
+     * @param _elegibilityTime Time in blocks to wait before a node can be whitelisted
+     */
+    function _setNodeElegibilityPeriod(uint32 _elegibilityTime) private {
+        require(_elegibilityTime > 0, "elegibilityTime must be > 0");
+        nodeElegibiliyPeriod = _elegibilityTime;
+        emit ParameterUpdated("nodeElegibiliyPeriod");
     }
 
     /**
@@ -185,11 +226,38 @@ contract Staking is Controlled {
     }
 
     /**
+    * @dev Get the block number when the node is eligible to be whitelisted.
+    * @param _node Address of the node
+    * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
+     */
+    function getEligibleBlock(address _node) external view returns (uint256) {
+        return stakes[_node].eligableAt;
+    }
+
+    /**
+    * @dev Get the amount a node has locked for withdrawal.
+    * @param _node Address of the node
+    * @return Amount of tokens locked for withdrawal
+     */
+    function getLockedTokens(address _node) external view returns (uint256) {
+        return stakes[_node].tokensLocked;
+    }
+
+    /**
+    * @dev Get the block number when the node is eligible to be whitelisted.
+    * @param _node Address of the node
+    * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
+     */
+    function getLockedUntil(address _node) external view returns (uint256) {
+        return stakes[_node].tokensLockedUntil;
+    }
+
+    /**
      * @dev Deposit tokens on the node stake.
      * @param _tokens Amount of tokens to stake
      */
     function stake(uint256 _tokens) external {
-          stakeTo(msg.sender, _tokens);
+        stakeTo(msg.sender, _tokens);
     }
 
     /**
@@ -201,16 +269,13 @@ contract Staking is Controlled {
         require(_tokens > 0, "_tokens cannot be 0");
 
         // Ensure minimum stake
-        require(
-            stakes[_node].tokensStaked + _tokens >= minimumNodeStake,
-            "Your stake does not meet the minimum"
-      );
+        require(stakes[_node].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum");
 
         // Transfer tokens to stake from caller to this contract
         TokenUtils.pullTokens(_fleekToken, msg.sender, _tokens);
 
         // Stake the transferred tokens
-      _stake(_node, _tokens);
+        _stake(_node, _tokens);
     }
 
     /**
@@ -225,7 +290,154 @@ contract Staking is Controlled {
         // Deposit tokens into the indexer stake
         stakes[_node].deposit(_tokens);
 
+        // Set elegibility if not already set
+        if(stakes[_node].eligableAt == 0) {
+            stakes[_node].setElegibleBlock(nodeElegibiliyPeriod);
+        }
+
         emit StakeDeposited(_node, _tokens);
     }
 
+    /**
+     * @dev Unstake tokens from the indexer stake, lock them until thawing period expires.
+     * NOTE: The function accepts an amount greater than the currently staked tokens.
+     * If that happens, it will try to unstake the max amount of tokens it can.
+     * The reason for this behaviour is to avoid time conditions while the transaction
+     * is in flight.
+     * @param _tokens Amount of tokens to unstake
+     */
+    function unstake(uint256 _tokens) external {
+        address node = msg.sender;
+        Stakes.Node storage nodeStake = stakes[node];
+
+        require(nodeStake.tokensStaked > 0, "node has nothing staked");
+
+        // Tokens to lock is capped to the available tokens
+        uint256 tokensToLock = MathUtils.min(nodeStake.tokensStaked, _tokens);
+        require(tokensToLock > 0, "Nothing to unstake");
+
+        // Ensure minimum stake
+        uint256 newStake = nodeStake.tokensStaked - tokensToLock;
+
+        if(newStake < minimumNodeStake) {
+            _removeFromWhitelist(node);
+        }
+
+        // Before locking more tokens, withdraw any unlocked ones if possible
+        uint256 tokensToWithdraw = nodeStake.tokensWithdrawable();
+        if (tokensToWithdraw > 0) {
+            _withdraw(node);
+        }
+
+        // Update the indexer stake locking tokens
+        nodeStake.lockTokens(tokensToLock, lockTime);
+
+        emit StakeLocked(node, nodeStake.tokensLocked, nodeStake.tokensLockedUntil);
+    }
+
+    /**
+     * @dev Withdraw node tokens once the lock time has passed.
+     */
+    function withdraw() external {
+        _withdraw(msg.sender);
+    }
+
+    /**
+     * @dev Withdraw node tokens once the lock time has passed.
+     * @param _node Address of node to withdraw funds from
+     */
+    function _withdraw(address _node) private {
+        // Get tokens available for withdraw and update balance
+        uint256 tokensToWithdraw = stakes[_node].withdrawTokens();
+        require(tokensToWithdraw > 0, "No tokens eligable for withdraw");
+
+        // Return tokens to the indexer
+        TokenUtils.pushTokens(_fleekToken, _node, tokensToWithdraw);
+
+        emit StakeWithdrawn(_node, tokensToWithdraw);
+    }
+
+    function whitelistNode(address _node) external {
+        require(stakes[_node].eligableAt >= block.number, "Node is not elegible");
+
+        //TODO: Call the NodeRegistry contract and whitelist the node
+        
+
+        emit NodeWhitelisted(_node);
+    }
+
+    /**
+     * @dev Set the destination where to send rewards.
+     * @param _destination Rewards destination address. If set to zero, rewards will be restaked
+     */
+    function setRewardsDestination(address _destination) external {
+        rewardsDestination[msg.sender] = _destination;
+        emit SetRewardsDestination(msg.sender, _destination);
+    }
+
+    /**
+     * @dev Slash the node stake. Can only be called by the slasher role
+     * @param _node Address of node to slash
+     * @param _tokens Amount of tokens to slash from the node stake
+     * @param _reward Amount of reward tokens to send to a beneficiary
+     * @param _beneficiary Address of a beneficiary to receive a reward for the slashing
+     */
+    function slash(address _node, uint256 _tokens, uint256 _reward, address _beneficiary) external onlySlasher {
+        Stakes.Node storage nodeStake = stakes[_node];
+
+        // Only able to slash a non-zero number of tokens
+        require(_tokens > 0, "Cant slash 0 tokens");
+
+        // Cannot reward more than you are slashing
+        require(_tokens >= _reward, "Cannot reward more than you are slashing");
+
+        // TODO: Add tokens available to stakes library instead of tokensStaked+tokensLocked
+        // Cannot slash stake of an indexer without any or enough stake
+        require(nodeStake.tokensStaked + nodeStake.tokensLocked > 0, "Node has no tokens to slash");
+
+        _tokens = MathUtils.min(_tokens, nodeStake.tokensStaked + nodeStake.tokensLocked);
+        //The reward can not be more than the slashed tokens
+        _reward = MathUtils.min(_reward, _tokens);
+        // Validate beneficiary of slashed tokens
+        // Should it be able to to be zero? 
+        require(_beneficiary != address(0), "beneficiary cannot be zero address");
+
+        // Slashing more tokens than freely available
+        // Unlock locked tokens to avoid the node to withdraw them
+        if (_tokens > nodeStake.tokensStaked && nodeStake.tokensLocked > 0) {
+            uint256 tokensToUnlock = _tokens - nodeStake.tokensStaked;
+            nodeStake.unlockTokens(tokensToUnlock);
+            nodeStake.release(_tokens - tokensToUnlock);
+        } else {
+            // Remove tokens to slash from the stake
+            nodeStake.release(_tokens);
+        }
+
+        // Make sure the node has enough stake to remain in the whitelist
+        if(nodeStake.tokensStaked < minimumNodeStake) {
+            _removeFromWhitelist(_node);
+        }
+
+        // -- Interactions --
+
+        // Set apart the reward for the beneficiary and burn remaining slashed stake
+        TokenUtils.burnTokens(_fleekToken, _tokens - _reward);
+
+        // Give the beneficiary a reward for slashing
+        TokenUtils.pushTokens(_fleekToken, _beneficiary, _reward);
+
+        emit StakeSlashed(_node, _tokens, _reward, _beneficiary);
+    }
+
+    /**
+     * @dev Remove a node from the whitelist
+     * @param _node Address of node to remove from the whitelist
+     */
+    function _removeFromWhitelist(address _node) private {
+        stakes[_node].removeElegibility();
+
+        //TODO: Call the NodeRegistry contract and remove the node from the whitelist
+
+        emit NodeWhitelistRemoval(_node);
+    }
 }
