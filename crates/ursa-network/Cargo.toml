@@ -14,6 +14,7 @@ async-trait = "0.1.53"
 bytes = "1.1.0"
 cid = "0.8.6"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
+dirs = "4"
 fnv = "1.0.7"
 forest_encoding = "0.2.2"
 forest_ipld = "0.1.1"
