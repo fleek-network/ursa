@@ -1,9 +1,14 @@
 use anyhow::anyhow;
+use cid::{
+    multihash::{Code, MultihashDigest},
+    Cid,
+};
 use db::Store as Store_;
 use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
 use libipld::store::DefaultParams;
-use libipld::{Block, Cid, Result};
+use libipld::{Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 use ursa_utils::convert_cid;
@@ -24,6 +29,64 @@ where
         &self.db
     }
 }
+
+/// Extension methods for inserting and retrieving IPLD data with CIDs
+pub trait BlockstoreExt: Blockstore {
+    /// Get typed object from block store by CID
+    fn get_obj<T>(&self, cid: &Cid) -> anyhow::Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        match self.get(cid)? {
+            Some(bz) => Ok(Some(from_slice(&bz)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Put an object in the block store and return the Cid identifier.
+    fn put_obj<S>(&self, obj: &S, code: Code) -> anyhow::Result<Cid>
+    where
+        S: Serialize,
+    {
+        let bytes = to_vec(obj)?;
+        self.put_raw(bytes, code)
+    }
+
+    /// Put raw bytes in the block store and return the Cid identifier.
+    fn put_raw(&self, bytes: Vec<u8>, code: Code) -> anyhow::Result<Cid> {
+        let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
+        self.put_keyed(&cid, &bytes)?;
+        Ok(cid)
+    }
+
+    /// Batch put CBOR objects into block store and returns vector of CIDs
+    fn bulk_put<'a, S, V>(&self, values: V, code: Code) -> anyhow::Result<Vec<Cid>>
+    where
+        Self: Sized,
+        S: Serialize + 'a,
+        V: IntoIterator<Item = &'a S>,
+    {
+        let keyed_objects = values
+            .into_iter()
+            .map(|value| {
+                let bytes = to_vec(value)?;
+                let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
+                Ok((cid, bytes))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let cids = keyed_objects
+            .iter()
+            .map(|(cid, _)| cid.to_owned())
+            .collect();
+
+        self.put_many_keyed(keyed_objects)?;
+
+        Ok(cids)
+    }
+}
+
+impl<T: Blockstore> BlockstoreExt for T {}
 
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where

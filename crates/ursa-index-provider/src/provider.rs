@@ -34,7 +34,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tracing::{error, info, trace};
-use ursa_store::Store;
+use ursa_store::{BlockstoreExt, Store};
 use ursa_utils::convert_cid;
 
 // handlers
@@ -174,7 +174,7 @@ where
         if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            return match self.store.blockstore().put(Code::Blake2b256, &chunk) {
+            return match self.store.db.put_obj(&chunk, Code::Blake2b256) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
                     Ok(())
@@ -195,7 +195,7 @@ where
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = forest_ipld::to_ipld(&ad)?;
-            let cid = self.store.db.put_obj(Code::Blake2b256, &ipld_ad)?;
+            let cid = self.store.db.put_obj(&ipld_ad, Code::Blake2b256)?;
             *head = Some(cid);
             return Ok(());
         }

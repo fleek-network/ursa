@@ -10,13 +10,12 @@ description = "Ursa's rpc client implementation"
 [dependencies]
 anyhow = "1.0.57"
 async-trait = "0.1.53"
-cid = "0.8.5"
+cid = "0.8.6"
 jsonrpc-v2 = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.81"
 simple_logger = "2.1.0"
 surf = { version = "2.3", default-features = true, features = ["curl-client"] }
-tiny-cid = "0.3.0"
 tokio = { version = "1.19.2", features = ["rt", "net", "macros", "sync"] }
 tracing = "0.1.35"
 ursa-network = { path = "../ursa-network" }
