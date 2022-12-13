@@ -1,7 +1,7 @@
 use crate::config::DEFAULT_URSA_GATEWAY_CONFIG_PATH;
 use clap::{Args, Parser, Subcommand};
-use tracing::Level;
 use std::path::PathBuf;
+use tracing::Level;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
