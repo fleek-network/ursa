@@ -1,7 +1,7 @@
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
 use hyper::{body, StatusCode, Uri};
-use serde_json::{from_slice, json};
+use serde_json::{from_slice, json, Value};
 use std::{str::FromStr, sync::Arc};
 use tracing::{debug, error};
 
@@ -16,12 +16,9 @@ pub async fn get_block_handler(
     Extension((client, config)): Extension<(Client, Arc<GatewayConfig>)>,
 ) -> impl IntoResponse {
     if Cid::from_str(&cid).is_err() {
-        return (
+        return error_handler(
             StatusCode::BAD_REQUEST,
-            Json(json!(HttpResponse {
-                message: Some(format!("invalid cid string, cannot parse {} to CID", cid)),
-                data: None
-            })),
+            format!("invalid cid string, cannot parse {} to CID", cid),
         );
     };
     let endpoint = format!("{}/{}", config.indexer.cid_url, cid);
@@ -29,12 +26,9 @@ pub async fn get_block_handler(
         Ok(uri) => uri,
         Err(e) => {
             error!("error parsed uri: {}\n{}", endpoint, e);
-            return (
+            return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!(HttpResponse {
-                    message: Some(format!("error parsed uri: {}", endpoint)),
-                    data: None
-                })),
+                format!("error parsed uri: {}", endpoint),
             );
         }
     };
@@ -42,12 +36,9 @@ pub async fn get_block_handler(
         Ok(resp) => resp,
         Err(e) => {
             error!("error requested uri: {}\n{}", endpoint, e);
-            return (
+            return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!(HttpResponse {
-                    message: Some(format!("error requested uri: {}", endpoint)),
-                    data: None
-                })),
+                format!("error requested uri: {}", endpoint),
             );
         }
     };
@@ -55,12 +46,9 @@ pub async fn get_block_handler(
         Ok(bytes) => bytes,
         Err(e) => {
             error!("error read data from upstream: {}\n{}", endpoint, e);
-            return (
+            return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!(HttpResponse {
-                    message: Some(format!("error read data from upstream: {}", endpoint)),
-                    data: None
-                })),
+                format!("error read data from upstream: {}", endpoint),
             );
         }
     };
@@ -71,15 +59,9 @@ pub async fn get_block_handler(
                 "error parsed indexer response from upstream: {}\n{}",
                 endpoint, e
             );
-            return (
+            return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!(HttpResponse {
-                    message: Some(format!(
-                        "error parsed indexer response from upstream: {}",
-                        endpoint
-                    )),
-                    data: None
-                })),
+                format!("error parsed indexer response from upstream: {}", endpoint),
             );
         }
     };
@@ -87,5 +69,27 @@ pub async fn get_block_handler(
         "received indexer response for {cid}:\n{:?}",
         indexer_response
     );
+    // TODO:
+    // 1. filter FleekNetwork metadata
+    // 2. pick node (round-robin)
+    // 3. call get_block to node
+    // 4.
+    //   4.1 return block?
+    //   4.2 resolve?
+    //
+    // IMPROVEMENTS:
+    // 1. maintain N workers keep track of indexing data
+    // 2. cherry-pick closest node
+    // 3. cache TTL
     (StatusCode::OK, Json(json!(indexer_response)))
+}
+
+fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
+    (
+        status_code,
+        Json(json!(HttpResponse {
+            message: Some(message),
+            data: None
+        })),
+    )
 }
