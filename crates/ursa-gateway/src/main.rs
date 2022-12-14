@@ -1,14 +1,18 @@
+mod admin;
 mod cli;
 mod config;
 mod indexer;
 mod server;
 
-use crate::config::{init_config, load_config};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Commands};
-use std::{path::PathBuf, str::FromStr};
-use tracing::Level;
+use tokio::{sync::RwLock, task};
+use tracing::{error, Level};
+
+use crate::config::{init_config, load_config};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,7 +39,17 @@ async fn main() -> Result<()> {
         Commands::Daemon(opts) => {
             // sync
             gateway_config.merge_daemon_opts(opts);
-            server::start_server(gateway_config).await?;
+
+            let server_config = Arc::new(RwLock::new(gateway_config));
+            let admin_config = server_config.clone();
+
+            task::spawn(async {
+                if let Err(e) = admin::start_server(admin_config).await {
+                    error!("[admin server] - {:?}", e);
+                };
+            });
+
+            server::start_server(server_config).await?;
         }
     }
 

@@ -1,12 +1,12 @@
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use tracing::{info, Level};
-
 use std::{
     fs::{create_dir_all, read_to_string, File},
     io::Write,
     path::PathBuf,
 };
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use tracing::{info, Level};
 
 use crate::cli::DaemonCmdOpts;
 
@@ -46,20 +46,16 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
-    pub cert: CertConfig,
+    pub admin_server: ServerConfig,
     pub indexer: IndexerConfig,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct CertConfig {
-    pub cert_path: PathBuf,
-    pub key_path: PathBuf,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -73,18 +69,26 @@ pub struct IndexerConfig {
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            log_level: "info".into(),
+            log_level: "INFO".into(),
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 80,
-            },
-            cert: CertConfig {
                 cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("cert.pem"),
+                    .join("server_cert.pem"),
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
-                    .join("key.pem"),
+                    .join("server_key.pem"),
+            },
+            admin_server: ServerConfig {
+                addr: "0.0.0.0".into(),
+                port: 5001,
+                cert_path: PathBuf::from(env!("HOME"))
+                    .join(DEFAULT_URSA_GATEWAY_PATH)
+                    .join("admin_cert.pem"),
+                key_path: PathBuf::from(env!("HOME"))
+                    .join(DEFAULT_URSA_GATEWAY_PATH)
+                    .join("admin_key.pem"),
             },
             indexer: IndexerConfig {
                 cid_url: "https://cid.contact/cid".into(),
@@ -103,17 +107,29 @@ impl GatewayConfig {
         }
     }
     pub fn merge_daemon_opts(&mut self, config: DaemonCmdOpts) {
-        if let Some(port) = config.port {
+        if let Some(port) = config.server_port {
             self.server.port = port;
         }
-        if let Some(addr) = config.addr {
+        if let Some(addr) = config.server_addr {
             self.server.addr = addr;
         }
-        if let Some(tls_cert_path) = config.tls_cert_path {
-            self.cert.cert_path = tls_cert_path;
+        if let Some(tls_cert_path) = config.server_tls_cert_path {
+            self.server.cert_path = tls_cert_path;
         }
-        if let Some(tls_key_path) = config.tls_key_path {
-            self.cert.key_path = tls_key_path;
+        if let Some(tls_key_path) = config.server_tls_key_path {
+            self.server.key_path = tls_key_path;
+        }
+        if let Some(port) = config.admin_port {
+            self.admin_server.port = port;
+        }
+        if let Some(addr) = config.admin_addr {
+            self.admin_server.addr = addr;
+        }
+        if let Some(tls_cert_path) = config.admin_tls_cert_path {
+            self.admin_server.cert_path = tls_cert_path;
+        }
+        if let Some(tls_key_path) = config.admin_tls_key_path {
+            self.admin_server.key_path = tls_key_path;
         }
         if let Some(indexer_cid_url) = config.indexer_cid_url {
             self.indexer.cid_url = indexer_cid_url;

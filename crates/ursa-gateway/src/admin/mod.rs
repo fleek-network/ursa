@@ -1,4 +1,3 @@
-mod model;
 mod route;
 
 use std::{
@@ -9,20 +8,18 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use hyper::{client::HttpConnector, Body};
-use hyper_tls::HttpsConnector;
-use route::api::v1::get::get_block_handler;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::config::{GatewayConfig, ServerConfig};
-
-type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
+use crate::{
+    admin::route::api::v1::get::get_config_handler,
+    config::{GatewayConfig, ServerConfig},
+};
 
 pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {
-        server:
+        admin_server:
             ServerConfig {
                 addr,
                 port,
@@ -47,13 +44,11 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
         *port,
     ));
 
-    let client = Arc::new(hyper::Client::builder().build::<_, Body>(HttpsConnector::new()));
-
     let app = Router::new()
-        .route("/:cid", get(get_block_handler))
-        .layer(Extension((client, config)));
+        .route("/config", get(get_config_handler))
+        .layer(Extension(config));
 
-    info!("reverse proxy listening on {}", addr);
+    info!("admin server listening on {}", addr);
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())

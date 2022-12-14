@@ -1,7 +1,9 @@
-use crate::config::DEFAULT_URSA_GATEWAY_CONFIG_PATH;
-use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand};
 use tracing::Level;
+
+use crate::config::DEFAULT_URSA_GATEWAY_CONFIG_PATH;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
@@ -30,16 +32,28 @@ pub enum Commands {
 pub struct DaemonCmdOpts {
     /// server port
     #[arg(long)]
-    pub port: Option<u16>,
+    pub server_port: Option<u16>,
     /// server address
     #[arg(long)]
-    pub addr: Option<String>,
-    /// tls cert path
+    pub server_addr: Option<String>,
+    /// server tls cert path
     #[arg(long)]
-    pub tls_cert_path: Option<PathBuf>,
-    /// tls key path
+    pub server_tls_cert_path: Option<PathBuf>,
+    /// server tls key path
     #[arg(long)]
-    pub tls_key_path: Option<PathBuf>,
+    pub server_tls_key_path: Option<PathBuf>,
+    /// admin port
+    #[arg(long)]
+    pub admin_port: Option<u16>,
+    /// admin address
+    #[arg(long)]
+    pub admin_addr: Option<String>,
+    /// admin tls cert path
+    #[arg(long)]
+    pub admin_tls_cert_path: Option<PathBuf>,
+    /// admin tls key path
+    #[arg(long)]
+    pub admin_tls_key_path: Option<PathBuf>,
     /// indexer cid url
     #[arg(long)]
     pub indexer_cid_url: Option<String>,
