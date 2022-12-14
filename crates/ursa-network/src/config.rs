@@ -1,6 +1,7 @@
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use dirs::home_dir;
 
 pub const DEFAULT_TRACKER_URL: &str = "https://tracker.ursa.earth/register";
 pub const DEFAULT_BOOTSTRAP: [&str; 2] = [
@@ -54,10 +55,11 @@ impl Default for NetworkConfig {
             bootstrap_nodes,
             bootstrapper: false,
             swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
-            database_path: PathBuf::from(env!("HOME")).join(DEFAULT_DB_PATH_STR),
+            database_path: home_dir().unwrap_or_default().join(DEFAULT_DB_PATH_STR),
             identity: "default".to_string(),
             keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
             tracker: DEFAULT_TRACKER_URL.into(),
+            keystore_path: home_dir().unwrap_or_default().join(DEFAULT_KEYSTORE_PATH_STR),
         }
     }
 }
