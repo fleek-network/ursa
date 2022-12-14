@@ -33,7 +33,9 @@ tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.36" 
 ursa-store = { path = "../ursa-store" }
 ursa-utils ={ path = "../ursa-utils" }
+futures = "0.3.21"
 
 [dev-dependencies]
 simple_logger = "2.1.0"
 ursa-network = { path = "../ursa-network" }
+

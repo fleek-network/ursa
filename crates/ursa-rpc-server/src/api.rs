@@ -10,6 +10,7 @@ use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
 use serde::{Deserialize, Serialize};
+use ursa_index_provider::engine::ProviderCommand;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
@@ -80,6 +81,7 @@ where
 {
     pub store: Arc<Store<S>>,
     pub network_send: Sender<NetworkCommand>,
+    pub provider_send: Sender<ProviderCommand>,
 }
 
 #[async_trait]
@@ -197,16 +199,17 @@ where
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
         let cids = load_car(self.store.blockstore(), reader).await?;
+        let root_cid = cids[0];
 
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::GetBitswap {
-            cid: cids[0],
+        let request = ProviderCommand::Put {
+            context_id: root_cid.to_bytes(),
             sender,
         };
 
-        self.network_send.send(request)?;
+        self.provider_send.send(request)?;
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(

@@ -37,7 +37,7 @@ use tracing::{error, info, trace};
 use ursa_store::{BlockstoreExt, Store};
 use ursa_utils::convert_cid;
 
-const HEAD_KEY: &str = "head";
+pub const HEAD_KEY: &str = "head";
 // handlers
 async fn head<S: Blockstore + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
@@ -91,6 +91,15 @@ where
 
     pub fn store(&self) -> Arc<Store<S>> {
         Arc::clone(&self.store)
+    }
+
+    pub fn keypair(&self) -> &Keypair {
+        &self.keypair
+    }
+
+    pub fn head(&self) -> Option<Cid> {
+        let head_lock = self.head.read().unwrap();
+        *head_lock
     }
 
     // pub async fn start(self, provider_config: &ProviderConfig) -> Result<()> {

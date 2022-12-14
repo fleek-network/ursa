@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider =
-                    ProviderEngine::new(keypair.clone(), store, index_store, provider_config.clone());
+                    ProviderEngine::new(keypair.clone(), Arc::clone(&store), index_store, provider_config.clone());
 
                 let service = UrsaService::new(keypair, &network_config, Arc::clone(&store))?;
                 let rpc_sender = service.command_sender();
@@ -81,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
                     network_send: rpc_sender,
+                    provider_send: index_provider.command_sender(), 
                 });
                 let server = Server::new(interface);
 
