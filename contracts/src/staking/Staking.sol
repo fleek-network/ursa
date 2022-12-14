@@ -4,6 +4,7 @@ pragma solidity ^0.8.15;
 import "./libs/Stakes.sol";
 import "../management/Controlled.sol";
 import "../token/FleekToken.sol";
+import "../registry/NodeRegistry.sol";
 import "../utils/TokenUtils.sol";
 import "../utils/MathUtils.sol";
 
@@ -17,6 +18,7 @@ contract Staking is Controlled {
     /* STORAGE */
 
     FleekToken internal _fleekToken;
+    NodeRegistry internal _nodeRegistry;
 
     /// Minimum amount of tokens an node needs to stake
     uint256 public minimumNodeStake;
@@ -27,8 +29,12 @@ contract Staking is Controlled {
     /// Time in blocks to before node can withdrawl tokens
     uint32 public lockTime; // in blocks
 
-    /// node stakes : node => Stake
+    /// node stakes : node public key => Stake
     mapping(address => Stakes.Node) public stakes;
+
+    ///TODO: this mapping may need to be flipped with stakes mapping so we can lookup stakes directly from node address
+    /// Node address to owner address
+    mapping(uint256 => address) public nodeAddressToOwner;
 
     /// List of addresses allowed to slash stakes
     mapping(address => bool) public slashers;
@@ -76,12 +82,12 @@ contract Staking is Controlled {
     /**
      * @dev Emitted when `node` was whitelisted.
      */
-     event NodeWhitelisted(address indexed node);
+    event NodeWhitelisted(address indexed node);
 
     /**
      * @dev Emitted when `node` was removed from the whitlist.
      */
-     event NodeWhitelistRemoval(address indexed node);
+    event NodeWhitelistRemoval(address indexed node);
 
     /**
      * @dev Emitted when a contract parameter has been updated
@@ -197,6 +203,22 @@ contract Staking is Controlled {
     }
 
     /**
+    * @dev Set the node registry address
+    * @param _nodeRegistryAddress The address of the NodeRegistry contract
+    */
+     function setNodeRegistryContract(address _nodeRegistryAddress) external onlyController {
+        _setNodeRegistryContract(_nodeRegistryAddress);
+     }
+
+    /**
+    * @dev Set the node registry address
+    * @param _nodeRegistryAddress The address of the NodeRegistry contract
+    */
+     function _setNodeRegistryContract(address _nodeRegistryAddress) private {
+        _nodeRegistry = _nodeRegistryAddress;
+     }
+
+    /**
      * @dev Set or unset an address as allowed slasher.
      * @param _slasher Address of the party allowed to slash Nodes
      * @param _allowed True if slasher is allowed
@@ -226,27 +248,27 @@ contract Staking is Controlled {
     }
 
     /**
-    * @dev Get the block number when the node is eligible to be whitelisted.
-    * @param _node Address of the node
-    * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
+     * @dev Get the block number when the node is eligible to be whitelisted.
+     * @param _node Address of the node
+     * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
      */
     function getEligibleBlock(address _node) external view returns (uint256) {
         return stakes[_node].eligableAt;
     }
 
     /**
-    * @dev Get the amount a node has locked for withdrawal.
-    * @param _node Address of the node
-    * @return Amount of tokens locked for withdrawal
+     * @dev Get the amount a node has locked for withdrawal.
+     * @param _node Address of the node
+     * @return Amount of tokens locked for withdrawal
      */
     function getLockedTokens(address _node) external view returns (uint256) {
         return stakes[_node].tokensLocked;
     }
 
     /**
-    * @dev Get the block number when the node is eligible to be whitelisted.
-    * @param _node Address of the node
-    * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
+     * @dev Get the block number when the node is eligible to be whitelisted.
+     * @param _node Address of the node
+     * @return Block number when the node is eligible to be whitelisted. 0 if the node is not currently ever going to be eligible.
      */
     function getLockedUntil(address _node) external view returns (uint256) {
         return stakes[_node].tokensLockedUntil;
@@ -255,27 +277,45 @@ contract Staking is Controlled {
     /**
      * @dev Deposit tokens on the node stake.
      * @param _tokens Amount of tokens to stake
+     * @param _nodeAddress Public Address of your node
      */
-    function stake(uint256 _tokens) external {
-        stakeTo(msg.sender, _tokens);
-    }
-
-    /**
-     * @dev Deposit tokens on the node stake.
-     * @param _node Address of the node
-     * @param _tokens Amount of tokens to stake
-     */
-    function stakeTo(address _node, uint256 _tokens) public {
+    function stake(uint256 _tokens, uint256 _nodeAddress) external {
         require(_tokens > 0, "_tokens cannot be 0");
-
         // Ensure minimum stake
-        require(stakes[_node].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum");
+        require(stakes[msg.sender].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum");
+
+        if (nodeAddressToOwner[_nodeAddress] == address(0)) {
+            nodeAddressToOwner[_nodeAddress] = msg.sender;
+            stakes[msg.sender].nodeAddress = _nodeAddress;
+        }
+        require(nodeAddressToOwner[_nodeAddress] == msg.sender, "You are not the owner of this node address");
 
         // Transfer tokens to stake from caller to this contract
         TokenUtils.pullTokens(_fleekToken, msg.sender, _tokens);
 
         // Stake the transferred tokens
-        _stake(_node, _tokens);
+        _stake(msg.sender, _tokens);
+    }
+
+    /**
+     * @dev Deposit tokens on the node stake.
+     * @param _node Public address of the node
+     * @param _tokens Amount of tokens to stake
+     */
+    function stakeTo(uint256 _node, uint256 _tokens) public {
+        require(_tokens > 0, "_tokens cannot be 0");
+
+        address nodeOwner = nodeAddressToOwner[_node];
+        require(nodeOwner != address(0), "Node does not exist");
+
+        // Ensure minimum stake
+        require(stakes[nodeOwner].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum");
+
+        // Transfer tokens to stake from caller to this contract
+        TokenUtils.pullTokens(_fleekToken, msg.sender, _tokens);
+
+        // Stake the transferred tokens
+        _stake(nodeOwner, _tokens);
     }
 
     /**
@@ -291,7 +331,7 @@ contract Staking is Controlled {
         stakes[_node].deposit(_tokens);
 
         // Set elegibility if not already set
-        if(stakes[_node].eligableAt == 0) {
+        if (stakes[_node].eligableAt == 0) {
             stakes[_node].setElegibleBlock(nodeElegibiliyPeriod);
         }
 
@@ -319,7 +359,7 @@ contract Staking is Controlled {
         // Ensure minimum stake
         uint256 newStake = nodeStake.tokensStaked - tokensToLock;
 
-        if(newStake < minimumNodeStake) {
+        if (newStake < minimumNodeStake) {
             _removeFromWhitelist(node);
         }
 
@@ -357,13 +397,16 @@ contract Staking is Controlled {
         emit StakeWithdrawn(_node, tokensToWithdraw);
     }
 
-    function whitelistNode(address _node) external {
-        require(stakes[_node].eligableAt >= block.number, "Node is not elegible");
+    function whitelistNode() external {
+        require(stakes[msg.sender].eligableAt >= block.number, "Node is not elegible");
+        require(_nodeRegistry != address(0), "Node Registry contract not set");
 
-        //TODO: Call the NodeRegistry contract and whitelist the node
-        
+        ///TODO: Add URL to stakes struct
+        _nodeRegistry.register(stakes[msg.sender].nodeAddress, msg.sender, "placeholder");
 
-        emit NodeWhitelisted(_node);
+        ///TODO: Should we emit this here? Already emitted on Registry contract with more info
+        //Maybe its good to emit here because this just specifically says what address whitelisted the node
+        emit NodeWhitelisted(msg.sender);
     }
 
     /**
@@ -399,7 +442,7 @@ contract Staking is Controlled {
         //The reward can not be more than the slashed tokens
         _reward = MathUtils.min(_reward, _tokens);
         // Validate beneficiary of slashed tokens
-        // Should it be able to to be zero? 
+        // Should it be able to to be zero?
         require(_beneficiary != address(0), "beneficiary cannot be zero address");
 
         // Slashing more tokens than freely available
@@ -414,7 +457,7 @@ contract Staking is Controlled {
         }
 
         // Make sure the node has enough stake to remain in the whitelist
-        if(nodeStake.tokensStaked < minimumNodeStake) {
+        if (nodeStake.tokensStaked < minimumNodeStake) {
             _removeFromWhitelist(_node);
         }
 
@@ -434,9 +477,11 @@ contract Staking is Controlled {
      * @param _node Address of node to remove from the whitelist
      */
     function _removeFromWhitelist(address _node) private {
+        require(_nodeRegistry != address(0), "Node Registry contract not set");
+
         stakes[_node].removeElegibility();
 
-        //TODO: Call the NodeRegistry contract and remove the node from the whitelist
+        _nodeRegistry.removeNode(stakes[_node].nodeAddress);
 
         emit NodeWhitelistRemoval(_node);
     }

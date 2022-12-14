@@ -16,7 +16,7 @@ library Stakes {
         uint256 tokensLocked; // Tokens locked for withdrawal subject to lockPeriod
         uint256 tokensLockedUntil; // The block that locked tokens can be withdrawn
         uint256 eligableAt; // The block this node is eligable to be whitelisted
-        address nodeAddress; //The address associated with this node
+        uint256 nodeAddress; //The address associated with this node
     }
 
     /**

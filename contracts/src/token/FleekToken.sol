@@ -14,7 +14,7 @@ contract FleekToken is Controlled, ERC20 {
     event MinterAdded(address indexed account);
     event MinterRemoved(address indexed account);
 
-        modifier onlyMinter() {
+    modifier onlyMinter() {
         require(isMinter(msg.sender), "Only minter can call");
         _;
     }
@@ -60,7 +60,6 @@ contract FleekToken is Controlled, ERC20 {
     function isMinter(address _account) public view returns (bool) {
         return _minters[_account];
     }
-
 
     /**
      * @dev Add a new minter.

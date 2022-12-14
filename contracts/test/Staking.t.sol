@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {FleekToken} from "../src/token/FleekToken.sol";
 import {Staking} from "../src/staking/Staking.sol";
 
-contract StakingTest is Test{
+contract StakingTest is Test {
     FleekToken token;
     Staking staking;
 
@@ -14,13 +14,17 @@ contract StakingTest is Test{
     address dalton = address(0x3);
     address slasher = address(0x4);
 
+    uint256 bobNode = uint256(1);
+    uint256 maryNode = uint256(2);
+    uint256 daltonNode = uint256(3);
+
     function setUp() public {
         // Deploy with initial supply of 1 million
         token = new FleekToken(1000000);
 
         // Deploy staking contract
         staking = new Staking();
-        staking.initialize(address(this), address(token), 100, 1, 1,1);
+        staking.initialize(address(this), address(token), 100, 1, 1, 1);
         staking.setSlasher(slasher, true);
 
         //mint bob/mary some tokens
@@ -53,11 +57,11 @@ contract StakingTest is Test{
         vm.startPrank(bob);
         //Have bob stake 500 tokens
         token.approve(address(staking), 500);
-        staking.stake(500);
+        staking.stake(500, bobNode);
 
         uint256 bobsStake = staking.getNodeStakedTokens(address(bob));
         assertEq(bobsStake, 500);
-        
+
         uint256 bobsNewBalance = token.balanceOf(bob);
         assertEq(bobsNewBalance, 500);
 
@@ -79,7 +83,7 @@ contract StakingTest is Test{
 
         assertEq(newLocked, 500);
         assertEq(lockDate, block.number + 1);
-        assertEq (bobBalance, 500);
+        assertEq(bobBalance, 500);
         assertEq(elegibleAt, 0);
 
         vm.expectRevert("No tokens eligable for withdraw");
@@ -103,7 +107,7 @@ contract StakingTest is Test{
 
         //Have bob stake 500 tokens but unstake 250 so he should have 250 locked/250 staked
         token.approve(address(staking), 500);
-        staking.stake(500);
+        staking.stake(500, bobNode);
         staking.unstake(250);
 
         uint256 bobStaked = staking.getNodeStakedTokens(bob);
@@ -118,7 +122,7 @@ contract StakingTest is Test{
 
         vm.startPrank(mary);
         token.approve(address(staking), 500);
-        staking.stake(500);
+        staking.stake(500, maryNode);
         staking.unstake(250);
 
         vm.stopPrank();
@@ -175,8 +179,5 @@ contract StakingTest is Test{
         assertEq(marysStaked, 0);
         assertEq(marysLocked, 0);
         assertEq(daltonsBalance, 699);
-
     }
-
 }
-
