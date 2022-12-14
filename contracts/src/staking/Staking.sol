@@ -215,7 +215,7 @@ contract Staking is Controlled {
     * @param _nodeRegistryAddress The address of the NodeRegistry contract
     */
      function _setNodeRegistryContract(address _nodeRegistryAddress) private {
-        _nodeRegistry = _nodeRegistryAddress;
+        _nodeRegistry = NodeRegistry(_nodeRegistryAddress);
      }
 
     /**
@@ -398,11 +398,11 @@ contract Staking is Controlled {
     }
 
     function whitelistNode() external {
-        require(stakes[msg.sender].eligableAt >= block.number, "Node is not elegible");
-        require(_nodeRegistry != address(0), "Node Registry contract not set");
+        require(stakes[msg.sender].eligableAt <= block.number, "Node is not elegible");
+        require(address(_nodeRegistry) != address(0), "Node Registry contract not set");
 
         ///TODO: Add URL to stakes struct
-        _nodeRegistry.register(stakes[msg.sender].nodeAddress, msg.sender, "placeholder");
+        _nodeRegistry.registerNode(stakes[msg.sender].nodeAddress, msg.sender, "placeholder");
 
         ///TODO: Should we emit this here? Already emitted on Registry contract with more info
         //Maybe its good to emit here because this just specifically says what address whitelisted the node
@@ -477,7 +477,7 @@ contract Staking is Controlled {
      * @param _node Address of node to remove from the whitelist
      */
     function _removeFromWhitelist(address _node) private {
-        require(_nodeRegistry != address(0), "Node Registry contract not set");
+        require(address(_nodeRegistry) != address(0), "Node Registry contract not set");
 
         stakes[_node].removeElegibility();
 

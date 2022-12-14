@@ -4,10 +4,13 @@ pragma solidity ^0.8.15;
 import "forge-std/Test.sol";
 import {FleekToken} from "../src/token/FleekToken.sol";
 import {Staking} from "../src/staking/Staking.sol";
+import {NodeRegistry} from "../src/registry/NodeRegistry.sol";
+
 
 contract StakingTest is Test {
     FleekToken token;
     Staking staking;
+    NodeRegistry nodeRegistry;
 
     address bob = address(0x1);
     address mary = address(0x2);
@@ -30,6 +33,12 @@ contract StakingTest is Test {
         //mint bob/mary some tokens
         token.mint(bob, 1000);
         token.mint(mary, 1000);
+
+         // Deploy Node Registry
+        nodeRegistry = new NodeRegistry();
+        nodeRegistry.initialize(address(this), address(staking));
+
+        staking.setNodeRegistryContract(address(nodeRegistry));
     }
 
     function testStakeParameters() public {

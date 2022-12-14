@@ -77,7 +77,9 @@ contract NodeRegistry is Controlled {
     }
 
     function _removeNode(uint256 _nodeAddress) private {
-        require(whitelist[_nodeAddress].owner == address(0), "No node with that address on whitelist");
+       //TODO: Re-visit this require. Since it is always hit when someone unstakes below the balance 
+       //we dont neccasarilly want to revert. If someone wants to unstake their reminder when dropped below minimum
+       // require(whitelist[_nodeAddress].owner != address(0), "No node with that address on whitelist");
 
         whitelist[_nodeAddress].url = "";
         whitelist[_nodeAddress].owner = address(0);
