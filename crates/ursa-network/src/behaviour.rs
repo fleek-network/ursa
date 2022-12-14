@@ -78,7 +78,7 @@ pub struct Behaviour<P: StoreParams> {
     dcutr: Toggle<dcutr::behaviour::Behaviour>,
 
     /// Bitswap for exchanging data between blocks between peers.
-    bitswap: Bitswap<P>,
+    pub(crate) bitswap: Bitswap<P>,
 
     /// Ursa's gossiping protocol for message propagation.
     pub(crate) gossipsub: Gossipsub,

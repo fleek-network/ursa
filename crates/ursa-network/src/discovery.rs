@@ -53,6 +53,7 @@ pub struct DiscoveryBehaviour {
 
 impl DiscoveryBehaviour {
     pub fn new(keypair: &Keypair, config: &NetworkConfig) -> Self {
+        let mut peers = HashSet::new();
         let local_peer_id = PeerId::from(keypair.public());
 
         let bootstrap_nodes: Vec<(PeerId, Multiaddr)> = config
@@ -72,7 +73,7 @@ impl DiscoveryBehaviour {
             .collect();
 
         // setup kademlia config
-        let kademlia = {
+        let mut kademlia = {
             let store = MemoryStore::new(local_peer_id);
             // todo(botch): move replication factor to config
             let replication_factor = NonZeroUsize::new(8).unwrap();
@@ -84,6 +85,16 @@ impl DiscoveryBehaviour {
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
 
+        for (peer_id, address) in bootstrap_nodes.clone() {
+            kademlia.add_address(&peer_id, address.clone());
+            peers.insert(peer_id);
+        }
+
+        // boostrap
+        if let Err(error) = kademlia.bootstrap() {
+            warn!("Failed to bootstrap with Kademlia: {}", error);
+        }
+
         let mdns = if config.mdns {
             Some(Mdns::new(Default::default()).expect("mDNS start"))
         } else {
@@ -93,7 +104,7 @@ impl DiscoveryBehaviour {
         Self {
             kademlia,
             bootstrap_nodes,
-            peers: HashSet::new(),
+            peers,
             peer_info: HashMap::new(),
             events: VecDeque::new(),
             mdns: mdns.into(),
@@ -113,15 +124,8 @@ impl DiscoveryBehaviour {
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
-        for (peer_id, address) in self.bootstrap_addrs() {
-            self.add_address(&peer_id, address.clone());
-        }
-
-        if self.bootstrap_nodes.is_empty() {
-            return Err(anyhow!("No bootstrap nodes configured"));
-        }
-
         info!("Bootstrapping with {:?}", self.bootstrap_nodes);
+
         self.kademlia
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
