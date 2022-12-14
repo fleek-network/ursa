@@ -523,6 +523,7 @@ where
 
                     Ok(())
                 }
+                _ => { Ok(())}
             },
             // Do we need to handle any of the below events?
             SwarmEvent::Dialing { .. }

@@ -124,6 +124,8 @@ pub enum BehaviourEvent {
     StartPublish {
         public_address: Multiaddr,
     },
+    Ping { peer: PeerId  },
+    Pong { peer: PeerId  }
 }
 
 /// Composes protocols for the behaviour of the node in the network.
@@ -414,7 +416,7 @@ impl<P: StoreParams> Behaviour<P> {
         self.inner.bitswap.cancel(id);
     }
 
-    fn handle_ping(&mut self, event: PingEvent) {
+    fn handle_ping(&mut self, event: PingEvent) -> Option<BehaviourEvent> {
         let peer = event.peer.to_base58();
 
         match event.result {
@@ -424,6 +426,7 @@ impl<P: StoreParams> Behaviour<P> {
                         "PingSuccess::Pong] - received a ping and sent back a pong to {}",
                         peer
                     );
+                    return Some(BehaviourEvent::Ping { peer: event.peer });
                 }
                 PingSuccess::Ping { rtt } => {
                     trace!(
@@ -431,6 +434,7 @@ impl<P: StoreParams> Behaviour<P> {
                         rtt.as_millis(),
                         peer
                     );
+                    return Some(BehaviourEvent::Ping { peer: event.peer });
                     // perhaps we can set rtt for each peer
                 }
             },
@@ -455,6 +459,7 @@ impl<P: StoreParams> Behaviour<P> {
                 }
             }
         }
+        None
     }
 
     fn handle_identify(&mut self, event: IdentifyEvent) {
@@ -739,7 +744,7 @@ impl<P: StoreParams> NetworkBehaviour for Behaviour<P> {
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
                     let mut gen_event = None;
                     match event {
-                        InternalBehaviourEvent::Ping(e) => self.handle_ping(e),
+                        InternalBehaviourEvent::Ping(e) => gen_event = self.handle_ping(e),
                         InternalBehaviourEvent::Identify(e) => self.handle_identify(e),
                         InternalBehaviourEvent::Autonat(e) => gen_event = self.handle_autonat(e),
                         InternalBehaviourEvent::RelayClient(e) => self.handle_relay_client(e),

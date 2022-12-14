@@ -22,8 +22,13 @@ tokio = { version = "1", default-features = false, features = ["sync", "rt-multi
 tokio-stream = { version = "0.1", default-features = false, features = [] }
 tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
 futures = "0.3.1"
+db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
 ursa-network = { path = "../../crates/ursa-network" }
+ursa-store = { path = "../../crates/ursa-store"}
 
+[dependencies.libipld]
+version = "0.14.0"
+default-features = false
 
 [patch.crates-io]
 ipld_blockstore = { git = "https://github.com/b0xtch/blockstore" }

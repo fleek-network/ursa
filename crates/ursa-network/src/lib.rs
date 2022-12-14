@@ -8,3 +8,4 @@ mod transport;
 
 pub use self::config::*;
 pub use self::service::*;
+pub use self::behaviour::{Behaviour, BehaviourEvent};
