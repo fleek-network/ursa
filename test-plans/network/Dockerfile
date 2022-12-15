@@ -28,7 +28,7 @@ RUN cd ./plan/ \
     && mv /usr/src/testplan/plan/target/debug/${BINARY_NAME} /usr/local/bin/testplan
 
 FROM debian:bullseye
-RUN apt-get update && apt-get install -y libssl-dev
+RUN apt-get update && apt-get install -y libcurl4-openssl-dev
 # Rename ping to name of your crate
 COPY --from=builder /usr/local/bin/testplan /usr/local/bin/testplan
 EXPOSE 6060
