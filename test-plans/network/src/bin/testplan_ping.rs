@@ -4,7 +4,7 @@ use futures::future::ready;
 use futures::{FutureExt, StreamExt};
 use libp2p::PeerId;
 use log::info;
-use network_testplan::TestSwarm;
+use testplan_network::TestSwarm;
 use rand::Rng;
 use std::{borrow::Cow, time::Duration};
 use serde::{Deserialize, Serialize};
