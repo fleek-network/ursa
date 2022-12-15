@@ -12,15 +12,16 @@ mod tests {
     use futures::StreamExt;
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
+    use libp2p::request_response::RequestResponseEvent;
     use libp2p::{
         gossipsub::IdentTopic as Topic, identity::Keypair, multiaddr::Protocol, swarm::SwarmEvent,
         Multiaddr, PeerId,
     };
     use libp2p_bitswap::BitswapStore;
     use simple_logger::SimpleLogger;
-    use tracing::warn;
     use std::{sync::Arc, time::Duration, vec};
     use tokio::{select, sync::oneshot, time::timeout};
+    use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
     use ursa_index_provider::{config::ProviderConfig, provider::Provider};
     use ursa_store::{BitswapStorage, Store};
@@ -28,6 +29,35 @@ mod tests {
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
+    }
+
+    fn setup_logger(level: LevelFilter) {
+        if let Err(err) = SimpleLogger::new()
+            .with_level(level)
+            .with_utc_timestamps()
+            .init()
+        {
+            info!("Logger already set. Ignore.")
+        }
+    }
+
+    fn get_store() -> Arc<Store<MemoryDB>> {
+        let db = Arc::new(MemoryDB::default());
+        Arc::new(Store::new(Arc::clone(&db)))
+    }
+
+    fn get_block(content: &[u8]) -> Block<DefaultParams> {
+        create_block(ipld!(&content[..]))
+    }
+
+    fn insert_block(mut s: BitswapStorage<MemoryDB>, b: &Block<DefaultParams>) {
+        match s.insert(b) {
+            Err(err) => error!(
+                "there was an error while inserting into the blockstore {:?}",
+                err
+            ),
+            Ok(()) => info!("block inserted successfully"),
+        }
     }
 
     async fn run_bootstrap(
@@ -88,35 +118,6 @@ mod tests {
         Ok((service, node_addrs, peer_id, store))
     }
 
-    fn setup_logger(level: LevelFilter) {
-        if let Err(err) = SimpleLogger::new()
-            .with_level(level)
-            .with_utc_timestamps()
-            .init()
-        {
-            info!("Logger already set. Ignore.")
-        }
-    }
-
-    fn get_store() -> Arc<Store<MemoryDB>> {
-        let db = Arc::new(MemoryDB::default());
-        Arc::new(Store::new(Arc::clone(&db)))
-    }
-
-    fn get_block(content: &[u8]) -> Block<DefaultParams> {
-        create_block(ipld!(&content[..]))
-    }
-
-    fn insert_block(mut s: BitswapStorage<MemoryDB>, b: &Block<DefaultParams>) {
-        match s.insert(b) {
-            Err(err) => error!(
-                "there was an error while inserting into the blockstore {:?}",
-                err
-            ),
-            Ok(()) => info!("block inserted successfully"),
-        }
-    }
-
     #[tokio::test]
     async fn test_network_start() -> Result<()> {
         setup_logger(LevelFilter::Info);
@@ -126,7 +127,7 @@ mod tests {
 
         loop {
             if let SwarmEvent::NewListenAddr { address, .. } =
-                timeout(Duration::from_secs(20), service.swarm.select_next_some())
+                timeout(Duration::from_secs(5), service.swarm.select_next_some())
                     .await
                     .expect("event to be received")
             {
@@ -227,7 +228,10 @@ mod tests {
     #[tokio::test]
     async fn test_network_discovery() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig::default();
+        let mut config = NetworkConfig {
+            mdns: true,
+            ..Default::default()
+        };
 
         let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
         let (mut node_2, ..) = network_init(&mut config, None, None).await?;
@@ -258,34 +262,18 @@ mod tests {
         let (mut node_2, _, peer_id_2, ..) =
             network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
 
-        let node_1_sender = node_1.command_sender();
-
-        // tokio::task::spawn(async move { node_1.start().await.unwrap() });
-
-        let (sender, receiver) = oneshot::channel();
-        let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
-        let msg = NetworkCommand::SendRequest {
-            peer_id: peer_id_2,
-            request,
-            channel: sender,
-        };
-
+        // Wait for at least one connection
         loop {
-            select! {
-                event_2 = node_2.swarm.select_next_some() => {
-
-                    if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event_2 {
-                        info!("[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ", peer_id, peer_id_1);
-                        if peer_id == peer_id_1 {
-                            break
-                        }
-                    }
-                }
-                _ = node_1.swarm.select_next_some() => {}
-            };
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = node_1.swarm.select_next_some().await {
+                info!("[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ", peer_id, peer_id_1);
+                break;
+            }
         }
 
-        let (sender, receiver) = oneshot::channel();
+        let node_1_sender = node_1.command_sender();
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+
+        let (sender, _) = oneshot::channel();
         let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
         let msg = NetworkCommand::SendRequest {
             peer_id: peer_id_2,
@@ -293,32 +281,19 @@ mod tests {
             channel: sender,
         };
 
-        node_1_sender.send(msg)?;
-        let value = receiver
-            .await
-            .expect("Unable to receive from peers channel");
-
-        println!("Req/Res: {:?}: ", value);
-
-        // wait for the peers to get connected before requesting bitswap
-        // loop {
-        //     let (peers_sender, peers_receiver) = oneshot::channel();
-        //     let peers_msg = NetworkCommand::GetPeers { sender: peers_sender };
-        //     node_1_sender.send(peers_msg)?;
-        //     let value = peers_receiver.await.expect("Unable to receive from peers channel");
-        //     println!("Req/Res: {:?}: ", value);
-        //     break;
-        // }
-
-        // loop {
-        //     if let Some(SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
-        //         RequestResponseEvent::Message { peer, message },
-        //     ))) = swarm_2.next().await
-        //     {
-        //         info!("Node 2 RequestMessage: {:?}", message);
-        //         break;
-        //     }
-        // }
+        assert!(node_1_sender.send(msg).is_ok());
+        
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
+                RequestResponseEvent::Message { peer, message },
+            )) = timeout(Duration::from_secs(5), node_2.swarm.select_next_some())
+                .await
+                .expect("event to be received")
+            {
+                info!("[RequestResponseEvent::Message]: {peer:?}, {message:?}");
+                break;
+            }
+        }
 
         Ok(())
     }

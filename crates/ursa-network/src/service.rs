@@ -238,10 +238,8 @@ where
             (None, None)
         };
 
-        let transport = build_transport(&keypair, config, relay_transport);
-
         let bitswap_store = BitswapStorage(store.clone());
-
+        let transport = build_transport(&keypair, config, relay_transport);
         let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client);
 
         let limits = ConnectionLimits::default()
@@ -274,7 +272,7 @@ where
         // subscribe to topic
         let topic = Topic::new(URSA_GLOBAL);
         if let Err(error) = swarm.behaviour_mut().subscribe(&topic) {
-            warn!("Failed to subscribe with topic: {}", error);
+            warn!("Failed to subscribe to topic: {}", error);
         }
 
         let (event_sender, event_receiver) = unbounded_channel();
@@ -446,7 +444,7 @@ where
     ) -> Result<(), anyhow::Error> {
         match bitswap_event {
             libp2p_bitswap::BitswapEvent::Progress(query_id, _) => {
-                debug!("bitswap request in progress with, id: {}", query_id);
+                trace!("bitswap request in progress with, id: {}", query_id);
             }
             libp2p_bitswap::BitswapEvent::Complete(query_id, result) => match result {
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
@@ -508,7 +506,7 @@ where
     fn handle_discovery(&mut self, discovery_event: DiscoveryEvent) -> Result<(), anyhow::Error> {
         match discovery_event {
             DiscoveryEvent::Connected(peer_id) => {
-                debug!(
+                trace!(
                     "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
                     peer_id
                 );
@@ -517,7 +515,7 @@ where
                 self.emit_event(NetworkEvent::PeerConnected(peer_id));
             }
             DiscoveryEvent::Disconnected(peer_id) => {
-                debug!(
+                trace!(
                     "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
                     peer_id
                 );
@@ -647,10 +645,7 @@ where
                     .send_request(&peer_id, request);
                 self.pending_responses.insert(request_id, channel);
 
-                let event_sender = self.event_sender.clone();
-                if let Err(e) = event_sender.send(NetworkEvent::RequestMessage { request_id }) {
-                    warn!("Failed to send request!: {:?}", e);
-                }
+                self.emit_event(NetworkEvent::RequestMessage { request_id });
             }
             NetworkCommand::GossipsubMessage {
                 peer_id: _,
@@ -716,7 +711,7 @@ where
         address: Multiaddr,
         response: oneshot::Sender<Result<()>>,
     ) -> Result<()> {
-        log::trace!("dial peer ({peer_id}) at address {address}");
+        trace!("dial peer ({peer_id}) at address {address}");
 
         match self.swarm.dial(address.clone()) {
             Ok(_) => {
