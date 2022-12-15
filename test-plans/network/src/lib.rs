@@ -3,8 +3,6 @@ use db::MemoryDB;
 use futures::future::ready;
 use futures::{FutureExt, StreamExt};
 use libipld::DefaultParams;
-use libp2p::swarm::derive_prelude::FromSwarm;
-use libp2p::swarm::SwarmEvent::ConnectionEstablished;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::{identity, tokio_development_transport, Multiaddr, PeerId, Swarm};
 use libp2p_bitswap::BitswapStore;
@@ -57,10 +55,12 @@ impl TestSwarm {
             autonat: false,
             relay_client: false,
             bootstrapper: false,
-            swarm_addrs: vec![local_addr.clone()],
             bootstrap_nodes: vec![],
+
+            // unused
+            swarm_addrs: vec![local_addr.clone()],
             database_path: Default::default(),
-            identity: "".to_string(),
+            identity: "default".to_string(),
             keystore_path: Default::default(),
         };
 

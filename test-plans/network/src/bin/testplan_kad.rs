@@ -1,8 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use env_logger::Env;
 use futures::future::ready;
 use futures::StreamExt;
-use libp2p::swarm::SwarmEvent;
 use log::info;
 use rand::Rng;
 use std::{borrow::Cow, time::Duration};
@@ -10,7 +9,6 @@ use testground::network_conf::{
     FilterAction, LinkShape, NetworkConfiguration, RoutingPolicyType, DEFAULT_DATA_NETWORK,
 };
 use testplan::{TestSwarm, BOOTSTRAP_COUNT};
-use ursa_network::NetworkConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
