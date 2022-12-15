@@ -1,7 +1,14 @@
+use std::sync::Arc;
+
 use axum::Extension;
 use hyper::StatusCode;
+use tokio::sync::RwLock;
 
-pub async fn purge_cache_handler(Extension((_, cache)): super::ExtensionLayer) -> StatusCode {
+use crate::cache::LFUCacheTLL;
+
+pub async fn purge_cache_handler(
+    Extension(cache): Extension<Arc<RwLock<LFUCacheTLL>>>,
+) -> StatusCode {
     cache.write().await.purge();
     StatusCode::OK
 }

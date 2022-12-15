@@ -1,13 +1,15 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
 use hyper::{body, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
+use tokio::sync::RwLock;
 use tracing::{debug, error};
 
-use super::ExtensionLayer;
+use super::Client;
 use crate::{
+    cache::LFUCacheTLL,
     config::{GatewayConfig, IndexerConfig},
     indexer::model::IndexerResponse,
     server::model::HttpResponse,
@@ -15,7 +17,9 @@ use crate::{
 
 pub async fn get_block_handler(
     Path(cid): Path<String>,
-    Extension((client, config, cache)): ExtensionLayer,
+    Extension(cache): Extension<Arc<RwLock<LFUCacheTLL>>>,
+    Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
+    Extension(client): Extension<Arc<Client>>,
 ) -> impl IntoResponse {
     let GatewayConfig {
         indexer: IndexerConfig { cid_url },

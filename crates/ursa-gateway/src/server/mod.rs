@@ -52,7 +52,9 @@ pub async fn start_server(
 
     let app = Router::new()
         .route("/:cid", get(get_block_handler))
-        .layer(Extension((client, config, cache)));
+        .layer(Extension(client))
+        .layer(Extension(config))
+        .layer(Extension(cache));
 
     info!("reverse proxy listening on {addr}");
 

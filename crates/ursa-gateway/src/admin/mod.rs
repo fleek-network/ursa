@@ -56,7 +56,8 @@ pub async fn start_server(
         .route("/config", get(get_config_handler))
         .route("/cache", get(get_cache_handler))
         .route("/purge-cache", post(purge_cache_handler))
-        .layer(Extension((config, cache)));
+        .layer(Extension(config))
+        .layer(Extension(cache));
 
     info!("admin server listening on {addr}");
 
