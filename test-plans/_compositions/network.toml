@@ -2,8 +2,8 @@
   name = "rust-cross-versions-{{ $.Env.GitReference }}"
 
 [global]
-  plan = "libp2p/ping/rust"
-  case = "ping"
+  plan = "network"
+  case = "network"
   builder = "docker:generic"
   runner = "local:docker"
   concurrent_builds = 1
