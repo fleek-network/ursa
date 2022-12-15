@@ -1,0 +1,21 @@
+[metadata]
+  name = "rust-cross-versions-{{ $.Env.GitReference }}"
+
+[global]
+  plan = "libp2p/ping/rust"
+  case = "ping"
+  builder = "docker:generic"
+  runner = "local:docker"
+  concurrent_builds = 1
+
+[[groups]]
+  id = "ping"
+  instances = { count = 1 }
+  [groups.build_config.build_args]
+    BINARY_NAME = 'testplan_ping'
+
+[[groups]]
+  id = "kad"
+  instances = { count = 1 }
+  [groups.build_config.build_args]
+    BINARY_NAME = 'testplan_kad'
