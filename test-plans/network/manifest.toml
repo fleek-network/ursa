@@ -13,9 +13,12 @@ enabled = true
 [[testcases]]
 name = "ping"
 instances = { min = 2, max = 10000, default = 5 }
+  [testcases.params]
+  max_latency_ms    = { type = "int", desc = "maximum value for random local link latency", unit = "ms", default = 1000 }
+  iterations        = { type = "int", desc = "number of ping iterations we'll run against each peer", unit = "count", default = 5 }
 
-[testcases.params]
-max_latency_ms    = { type = "int", desc = "maximum value for random local link latency", unit = "ms", default = 1000 }
-iterations        = { type = "int", desc = "number of ping iterations we'll run against each peer", unit = "count", default = 5 }
+[[testcases]]
+name = "kad"
+instances = { min = 4, max = 12, default = 5 }
 
 # Add new test case here

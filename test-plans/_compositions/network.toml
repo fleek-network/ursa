@@ -2,7 +2,7 @@
   name = "rust-cross-versions-{{ $.Env.GitReference }}"
 
 [global]
-  plan = "network"
+  plan = "ursa/network"
   case = "network"
   builder = "docker:generic"
   runner = "local:docker"
