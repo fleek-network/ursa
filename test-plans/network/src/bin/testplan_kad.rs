@@ -4,7 +4,7 @@ use futures::future::ready;
 use futures::StreamExt;
 use libp2p::PeerId;
 use log::info;
-use network_testplan::{TestSwarm, BOOTSTRAP_COUNT};
+use testplan_network::{TestSwarm, BOOTSTRAP_COUNT};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
