@@ -120,6 +120,22 @@ impl TestSwarm {
             }
         }
     }
+    
+    pub async fn await_specific_pings(&mut self, peers: Vec<PeerId>) {
+        let mut received_pings = HashSet::with_capacity(peers.len());
+
+        while received_pings.len() < peers.len() {
+            if let Some(SwarmEvent::Behaviour(BehaviourEvent::Ping(libp2p::ping::Event {
+                peer,
+                result,
+            }))) = self.swarm.next().await
+            {
+                if result.is_ok() && peers.contains(&peer) {
+                    received_pings.insert(peer);
+                }
+            }
+        }
+    }
 
     pub async fn drive_until_signal<S: ToString>(&mut self, tag: S) -> Result<()> {
         let tag = tag.to_string();
