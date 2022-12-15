@@ -1,20 +1,12 @@
-use crate::{
-    advertisement::{self, EntryChunk},
-    config::ProviderConfig,
-    signed_head::SignedHead,
-};
-use db::Store as Store_;
+use crate::advertisement::{self, EntryChunk};
+
 use advertisement::Advertisement;
 use anyhow::{anyhow, Error, Result};
+use db::Store as Store_;
 
-use async_trait::async_trait;
 use axum::{
-    body::Body,
-    extract::Path,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
-    Extension, Json, Router,
 };
 use cid::Cid;
 use forest_encoding::Cbor;
@@ -28,7 +20,7 @@ use rand;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     io::Write,
     str::FromStr,
     sync::{Arc, RwLock},
@@ -38,31 +30,6 @@ use ursa_store::{BlockstoreExt, Store};
 use ursa_utils::convert_cid;
 
 pub const HEAD_KEY: &str = "head";
-// handlers
-async fn head<S: Blockstore + Sync + Send + 'static>(
-    Extension(state): Extension<Provider<S>>,
-) -> Result<Json<SignedHead>, ProviderError> {
-    if let Some(head) = *state.head.read().unwrap() {
-        let signed_head = SignedHead::new(&state.keypair, head)
-            .map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
-        Ok(Json(signed_head))
-    } else {
-        Err(ProviderError::NotFoundError(anyhow!("No head found")))
-    }
-}
-
-async fn get_block<S: Blockstore + Sync + Send + 'static>(
-    Extension(state): Extension<Provider<S>>,
-    Path(cid): Path<String>,
-) -> Result<Response<Body>, ProviderError> {
-    let cid =
-        Cid::from_str(&cid).map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
-    match state.store.db.get(&cid) {
-        Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
-        Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
-        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{}", e)))),
-    }
-}
 
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
@@ -154,16 +121,13 @@ impl IntoResponse for ProviderError {
     }
 }
 
-#[async_trait]
 pub trait ProviderInterface: Sync + Send + 'static {
     fn create(&mut self, ad: Advertisement) -> Result<usize>;
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
     fn publish(&mut self, id: usize) -> Result<()>;
-    // fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>>;
-    // async fn announce_http_message(&self, announce_msg: Vec<u8>);
+    fn create_announce_message(&mut self, peer_id: PeerId, domain: String) -> Result<Vec<u8>>;
 }
 
-#[async_trait]
 impl<S> ProviderInterface for Provider<S>
 where
     S: Blockstore + Store_ + Sync + Send + 'static,
@@ -208,43 +172,36 @@ where
                 .store
                 .blockstore()
                 .put_obj(&ipld_ad, Code::Blake2b256)?;
-            self.store.db.write(HEAD_KEY, cid.to_bytes());
+            self.store.db.write(HEAD_KEY, cid.to_bytes())?;
             *head = Some(cid);
             return Ok(());
         }
         Err(anyhow!("ad not found"))
     }
 
-    // fn create_announce_msg(&mut self, peer_id: PeerId) -> Result<Vec<u8>> {
-    //     let mut multiaddrs = Multiaddr::from_str(&self.config.domain)?;
-    //     multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs, peer_id))?;
-    //     let msg_addrs = [multiaddrs].to_vec();
-    //     if let Some(head_cid) = *self.head.read().unwrap() {
-    //         let message = Message {
-    //             Cid: head_cid,
-    //             Addrs: msg_addrs,
-    //             ExtraData: *b"",
-    //         };
+    fn create_announce_message(&mut self, peer_id: PeerId, mut domain: String) -> Result<Vec<u8>> {
+        if domain.is_empty() {
+            domain = "/ip4/127.0.0.1/tcp/8070".to_string();
+        }
+        let mut multiaddrs = Multiaddr::from_str(&domain)?;
+        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs, peer_id))?;
+        let message_addrs = [multiaddrs].to_vec();
+        if let Some(head_cid) = *self.head.read().unwrap() {
+            let message = Message {
+                Cid: head_cid,
+                Addrs: message_addrs,
+                ExtraData: *b"",
+            };
 
-    //         info!(
-    //             "Announcing the advertisement with the message {:?}",
-    //             message
-    //         );
-    //         Ok(message.marshal_cbor().unwrap())
-    //     } else {
-    //         Err(anyhow!("No head found for announcement!"))
-    //     }
-    // }
-
-    // async fn announce_http_message(&self, announce_msg: Vec<u8>) {
-    //     let res = surf::put(format!("{}/ingest/announce", self.config.indexer_url))
-    //         .body(announce_msg)
-    //         .await;
-    //     match res {
-    //         Ok(r) => info!("http announce successful {:?}", r.status()),
-    //         Err(e) => error!("error: http announce failed {:?}", e),
-    //     };
-    // }
+            info!(
+                "Announcing the advertisement with the message {:?}",
+                message
+            );
+            Ok(message.marshal_cbor().unwrap())
+        } else {
+            Err(anyhow!("No head found for announcement!"))
+        }
+    }
 }
 
 #[allow(non_snake_case)]

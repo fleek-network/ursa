@@ -10,7 +10,6 @@ use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
 use serde::{Deserialize, Serialize};
-use ursa_index_provider::engine::ProviderCommand;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
@@ -19,6 +18,7 @@ use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
+use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
 use ursa_store::{Dag, Store};
 use ursa_utils::convert_cid;
@@ -237,6 +237,7 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tokio::task;
     use tracing::{error, log::LevelFilter};
+    use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
     use ursa_network::{NetworkConfig, UrsaService};
     use ursa_store::Store;
 
@@ -262,8 +263,17 @@ mod tests {
         let keypair = Keypair::generate_ed25519();
 
         let store = get_store("test_db1");
-        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
-        let rpc_sender = service.command_sender().clone();
+
+        let provider_config = ProviderConfig::default();
+        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
+            .expect("Opening RocksDB must succeed");
+        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+
+        let service =
+            UrsaService::new(keypair, &config, Arc::clone(&store));
+
+        let provider_engine = ProviderEngine::new(keypair.clone(), Arc::clone(&store), index_store, provider_config.clone(), service.command_sender());
+
 
         // Start libp2p service
         task::spawn(async {
@@ -274,7 +284,8 @@ mod tests {
 
         let interface = Arc::new(NodeNetworkInterface {
             store,
-            network_send: rpc_sender,
+            network_send: service.command_sender(),
+            provider_send: provider_engine.command_sender(),
         });
 
         let cids = interface

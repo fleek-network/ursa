@@ -158,6 +158,10 @@ pub enum NetworkCommand {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
+    GetListenerAddresses {
+        sender: oneshot::Sender<Vec<Multiaddr>>,
+    },
+
     SendRequest {
         peer_id: PeerId,
         request: UrsaExchangeRequest,
@@ -640,6 +644,15 @@ where
                 let peers = self.swarm.behaviour_mut().peers();
                 sender
                     .send(peers)
+                    .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
+            }
+            NetworkCommand::GetListenerAddresses { sender } => {
+                let mut addresses: Vec<&Multiaddr> = self.swarm.listeners().collect();
+                if let Some(value) = self.swarm.behaviour().public_address() {
+                    addresses.push(value);
+                }
+                sender
+                    .send(addresses.into_iter().cloned().collect())
                     .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
             }
             NetworkCommand::SendRequest {
