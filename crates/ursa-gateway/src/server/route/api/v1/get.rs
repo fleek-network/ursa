@@ -1,21 +1,21 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
 use hyper::{body, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
-use tokio::sync::RwLock;
 use tracing::{debug, error};
 
+use super::ExtensionLayer;
 use crate::{
     config::{GatewayConfig, IndexerConfig},
     indexer::model::IndexerResponse,
-    server::{model::HttpResponse, Client},
+    server::model::HttpResponse,
 };
 
 pub async fn get_block_handler(
     Path(cid): Path<String>,
-    Extension((client, config)): Extension<(Arc<Client>, Arc<RwLock<GatewayConfig>>)>,
+    Extension((client, config, cache)): ExtensionLayer,
 ) -> impl IntoResponse {
     let GatewayConfig {
         indexer: IndexerConfig { cid_url },
@@ -28,6 +28,10 @@ pub async fn get_block_handler(
             format!("invalid cid string, cannot parse {cid} to CID"),
         );
     };
+
+    if let Some(bytes) = cache.read().await._get(&cid.to_string()) {
+        return (StatusCode::OK, Json(json!(&bytes)));
+    }
 
     let endpoint = format!("{cid_url}/{cid}");
     let uri = match endpoint.parse::<Uri>() {

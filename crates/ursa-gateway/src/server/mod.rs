@@ -9,17 +9,21 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use hyper::{client::HttpConnector, Body};
+use hyper::Body;
 use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_block_handler;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::config::{GatewayConfig, ServerConfig};
+use crate::{
+    cache::LFUCacheTLL,
+    config::{GatewayConfig, ServerConfig},
+};
 
-type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
-
-pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
+pub async fn start_server(
+    config: Arc<RwLock<GatewayConfig>>,
+    cache: Arc<RwLock<LFUCacheTLL>>,
+) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {
         server:
@@ -48,7 +52,7 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
 
     let app = Router::new()
         .route("/:cid", get(get_block_handler))
-        .layer(Extension((client, config)));
+        .layer(Extension((client, config, cache)));
 
     info!("reverse proxy listening on {addr}");
 

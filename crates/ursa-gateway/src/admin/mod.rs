@@ -6,17 +6,28 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use axum::{extract::Extension, routing::get, Router};
+use axum::{
+    extract::Extension,
+    routing::{get, post},
+    Router,
+};
 use axum_server::tls_rustls::RustlsConfig;
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    admin::route::api::v1::get::get_config_handler,
+    admin::route::api::v1::{
+        get::{get_cache_handler, get_config_handler},
+        post::purge_cache_handler,
+    },
+    cache::LFUCacheTLL,
     config::{GatewayConfig, ServerConfig},
 };
 
-pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
+pub async fn start_server(
+    config: Arc<RwLock<GatewayConfig>>,
+    cache: Arc<RwLock<LFUCacheTLL>>,
+) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {
         admin_server:
@@ -43,7 +54,9 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
 
     let app = Router::new()
         .route("/config", get(get_config_handler))
-        .layer(Extension(config));
+        .route("/cache", get(get_cache_handler))
+        .route("/purge-cache", post(purge_cache_handler))
+        .layer(Extension((config, cache)));
 
     info!("admin server listening on {addr}");
 
