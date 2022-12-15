@@ -18,17 +18,11 @@ thiserror = "1"
 tokio = { version = "1", default-features = false, features = ["sync", "rt-multi-thread", "macros", "net"] }
 tokio-stream = { version = "0.1", default-features = false, features = [] }
 tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
-
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-dirs = "4"
-dotenv = "0.15.0"
 futures = "0.3.21"
-resolve-path = "0.1.0"
 ursa-index-provider = { path = "../../crates/ursa-index-provider" }
 ursa-metrics = { path = "../../crates/ursa-metrics" }
 ursa-network = { path = "../../crates/ursa-network" }
-ursa-rpc-client = { path = "../../crates/ursa-rpc-client" }
-ursa-rpc-server = { path = "../../crates/ursa-rpc-server" }
 ursa-store = { path = "../../crates/ursa-store" }
 libp2p-bitswap = "0.25.0"
 
