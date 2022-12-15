@@ -19,13 +19,17 @@ RUN echo "fn main() {}" > ./plan/src/main.rs
 COPY ./plan/Cargo.toml ./plan/
 RUN cd ./plan/ && cargo build --release
 
-
 COPY . .
-RUN cd ./plan/ && cargo build --release && cargo install --path .
+
+ARG BINARY_NAME
+RUN cd ./plan/ \
+    && cargo build --bin=${BINARY_NAME} \
+    && mv /usr/src/testplan/plan/target/debug/${BINARY_NAME} /usr/local/bin/testplan
 
 FROM debian:bullseye-slim
+ARG BINARY_NAME
 # Rename ping to name of your crate
-COPY --from=builder /usr/local/cargo/bin/network_testplan /usr/local/bin/testplan
+COPY --from=builder /usr/local/cargo/bin/${BINARY_NAME} /usr/local/bin/testplan
 EXPOSE 6060
 ENV RUST_BACKTRACE=1
 ENTRYPOINT ["testplan"]

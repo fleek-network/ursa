@@ -24,16 +24,6 @@ testground run composition --plan ursa --file ./_compositions/network.toml
 
 > Progess of the tests can be monitored in the daemon's console.
 
-You can also run a single test case with:
-
-```bash
-testground run single -i 5 \
-   -b docker:generic \
-   -r local:docker \
-   -p ursa/network \
-   --testcase ping
-```
-
 ## Test cases
 
 The following test cases are available:
