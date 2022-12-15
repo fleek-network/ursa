@@ -99,7 +99,7 @@ where
     type Params = DefaultParams;
 
     fn contains(&mut self, cid: &Cid) -> Result<bool> {
-        Ok(self.0.db.has(cid)?)
+        self.0.db.has(cid)
     }
 
     fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
@@ -107,7 +107,7 @@ where
     }
 
     fn insert(&mut self, block: &Block<Self::Params>) -> Result<()> {
-        self.0.db.put_keyed(&block.cid(), block.data()).unwrap();
+        self.0.db.put_keyed(block.cid(), block.data()).unwrap();
 
         Ok(())
     }

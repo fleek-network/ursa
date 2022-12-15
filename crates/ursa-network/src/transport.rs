@@ -28,7 +28,7 @@ pub(crate) fn build_transport(
 
     let tcp = {
         let tcp_config = tcp::Config::default().port_reuse(true);
-        let tcp_transport = tcp::tokio::Transport::new(tcp_config.clone());
+        let tcp_transport = tcp::tokio::Transport::new(tcp_config);
 
         let noise = {
             let dh_keys = noise::Keypair::<noise::X25519Spec>::new()
