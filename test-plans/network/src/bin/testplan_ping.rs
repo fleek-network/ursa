@@ -2,13 +2,22 @@ use anyhow::Result;
 use env_logger::Env;
 use futures::future::ready;
 use futures::{FutureExt, StreamExt};
+use libp2p::PeerId;
 use log::info;
+use network_testplan::TestSwarm;
 use rand::Rng;
 use std::{borrow::Cow, time::Duration};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use testground::network_conf::{
     FilterAction, LinkShape, NetworkConfiguration, RoutingPolicyType, DEFAULT_DATA_NETWORK,
 };
-use testplan::TestSwarm;
+
+#[derive(Deserialize, Serialize)]
+struct PeerBroadcast {
+    pub id: PeerId,
+    pub addr: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,7 +28,6 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let local_addr = rt.local_addr.to_string();
-
     let test_instance_count = rt.client.run_parameters().test_instance_count as usize;
     let mut address_stream = rt
         .client
@@ -28,29 +36,30 @@ async fn main() -> Result<()> {
         .take(test_instance_count)
         .map(|a| {
             let value = a.unwrap();
-            value["Addrs"][0].as_str().unwrap().to_string()
+            serde_json::from_value::<PeerBroadcast>(value).unwrap()
         })
         // Note: we sidestep simultaneous connect issues by ONLY connecting to peers
         // who published their addresses before us (this is enough to dedup and avoid
         // two peers dialling each other at the same time).
         //
         // We can do this because sync service pubsub is ordered.
-        .take_while(|a| ready(a != &local_addr));
+        .take_while(|a| ready(&a.addr != &local_addr));
 
-    let payload = serde_json::json!({
-        "ID": rt.local_peer_id(),
-        "Addrs": [
-            local_addr
-        ],
-    });
-
-    rt.client.publish("peers", Cow::Owned(payload)).await?;
+    rt.client
+        .publish(
+            "peers",
+            Cow::Owned(json!(PeerBroadcast {
+                id: rt.local_peer_id(),
+                addr: rt.local_addr.to_string(),
+            })),
+        )
+        .await?;
 
     let mut to_connect = 0;
-    while let Some(addr) = address_stream.next().await {
+    while let Some(peer) = address_stream.next().await {
         to_connect += 1;
-        info!("Dialing node: {}", addr);
-        rt.dial(&addr)?;
+        info!("Dialing node: {}", peer.addr);
+        rt.dial(&peer.addr)?;
     }
 
     // Otherwise the testground background task gets blocked sending

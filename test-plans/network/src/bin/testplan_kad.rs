@@ -2,13 +2,23 @@ use anyhow::Result;
 use env_logger::Env;
 use futures::future::ready;
 use futures::StreamExt;
+use libp2p::PeerId;
 use log::info;
+use network_testplan::{TestSwarm, BOOTSTRAP_COUNT};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{borrow::Cow, time::Duration};
 use testground::network_conf::{
     FilterAction, LinkShape, NetworkConfiguration, RoutingPolicyType, DEFAULT_DATA_NETWORK,
 };
-use testplan::{TestSwarm, BOOTSTRAP_COUNT};
+
+#[derive(Deserialize, Serialize)]
+struct PeerBroadcast {
+    pub id: PeerId,
+    pub addr: String,
+    pub bootstrap: bool,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,34 +40,35 @@ async fn main() -> Result<()> {
         .take(test_instance_count)
         .map(|a| {
             let value = a.unwrap();
-            (
-                value["Addrs"][0].as_str().unwrap().to_string(),
-                value["Bootstrap"].as_bool().unwrap(),
-            )
+            serde_json::from_value::<PeerBroadcast>(value).unwrap()
         })
         // Note: we sidestep simultaneous connect issues by ONLY connecting to peers
         // who published their addresses before us (this is enough to dedup and avoid
         // two peers dialling each other at the same time).
         //
         // We can do this because sync service pubsub is ordered.
-        .take_while(|(a, _)| ready(a != &local_addr));
+        .take_while(|a| ready(&a.addr != &local_addr));
 
-    let payload = serde_json::json!({
-        "ID": rt.local_peer_id(),
-        "Addrs": [
-            local_addr
-        ],
-        "Bootstrap": bootstrap,
-    });
+    rt.client
+        .publish(
+            "peers",
+            Cow::Owned(json!(PeerBroadcast {
+                id: rt.local_peer_id(),
+                addr: rt.local_addr.to_string(),
+                bootstrap,
+            })),
+        )
+        .await?;
 
-    rt.client.publish("peers", Cow::Owned(payload)).await?;
-
-    let mut to_connect = 0;
-    while let Some((addr, bootstrap)) = address_stream.next().await {
-        if bootstrap {
-            to_connect += 1;
-            info!("Dialing bootstrap node: {}", addr);
-            rt.dial(&addr)?;
+    let mut bootstraps: Vec<PeerId> = vec![];
+    let mut nodes: Vec<PeerId> = vec![];
+    while let Some(peer) = address_stream.next().await {
+        if peer.bootstrap {
+            bootstraps.push(peer.id);
+            info!("Dialing bootstrap node: {}", peer.addr);
+            rt.dial(&peer.addr)?;
+        } else {
+            nodes.push(peer.id);
         }
     }
 
@@ -66,10 +77,14 @@ async fn main() -> Result<()> {
     drop(address_stream);
 
     info!("Wait to connect to each peer.");
-    rt.await_connections(to_connect).await;
+    rt.await_connections(bootstraps.len()).await;
     rt.drive_until_signal("connected").await?;
 
-    // ping(&client, &mut swarm, "initial".to_string()).await?;
+    // wait for bootstrap connections to be established
+    specific_ping(&mut rt, bootstraps, "bootstrap").await?;
+
+    // wait for kad to share peers, connect, and ping
+    specific_ping(&mut rt, nodes, "node").await?;
 
     let iterations: usize = rt
         .client
@@ -130,4 +145,11 @@ async fn main() -> Result<()> {
         .record_success()
         .await
         .map_err(|e| anyhow::anyhow!(e))
+}
+
+async fn specific_ping<S: ToString>(rt: &mut TestSwarm, peers: Vec<PeerId>, tag: S) -> Result<()> {
+    let tag = tag.to_string();
+    rt.await_specific_pings(peers).await;
+    rt.drive_until_signal(&tag).await?;
+    Ok(())
 }

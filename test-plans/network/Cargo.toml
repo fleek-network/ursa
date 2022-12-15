@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "testplan"
+name = "network_testplan"
 version = "0.1.0"
 
 [dependencies]
