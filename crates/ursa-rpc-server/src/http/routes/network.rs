@@ -16,6 +16,7 @@ use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
 use std::{str::FromStr, sync::Arc};
 use tracing::{error, info};
+use tokio::task;
 
 pub fn init<S: Blockstore + Store_ + Send + Sync + 'static>() -> Router {
     Router::new()
@@ -47,6 +48,7 @@ pub async fn upload_handler<S>(
 where
     S: Blockstore + Store_ + Send + Sync + 'static,
 {
+    let upload_task = task::spawn(async move {
     info!("uploading file via http");
     if let Some(field) = buf.next_field().await.unwrap() {
         let content_type = field.content_type().unwrap().to_string();
@@ -74,6 +76,11 @@ where
     } else {
         (StatusCode::BAD_REQUEST, Json("No files found".to_string()))
     }
+});
+    match upload_task.await {
+        Ok(res) => res,
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())),
+}
 }
 
 pub async fn get_handler<S>(

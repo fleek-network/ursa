@@ -61,9 +61,5 @@ where
 }
 
 fn is_rpc_request<B>(req: &Request<B>) -> bool {
-    req.headers()
-        .get(CONTENT_TYPE)
-        .map(|content_type| content_type.as_bytes())
-        .filter(|content_type| content_type.starts_with(b"application/json"))
-        .is_some()
+    req.uri().path().starts_with("/rpc")
 }

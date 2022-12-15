@@ -269,11 +269,15 @@ mod tests {
             .expect("Opening RocksDB must succeed");
         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
 
-        let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store));
+        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
 
-        let provider_engine = ProviderEngine::new(keypair.clone(), Arc::clone(&store), index_store, provider_config.clone(), service.command_sender());
-
+        let provider_engine = ProviderEngine::new(
+            keypair.clone(),
+            Arc::clone(&store),
+            index_store,
+            provider_config.clone(),
+            service.command_sender(),
+        );
 
         // Start libp2p service
         task::spawn(async {

@@ -1,4 +1,8 @@
-use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
+use crate::{
+    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
+    ursa::identity::IdentityManager,
+};
+use anyhow::{anyhow, Error, Result};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
@@ -17,7 +21,7 @@ pub mod config;
 mod ursa;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -59,7 +63,8 @@ async fn main() -> anyhow::Result<()> {
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
-                let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store));
+                let service =
+                    UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
                 let provider_db = RocksDb::open(
                     &provider_config.database_path.resolve(),
