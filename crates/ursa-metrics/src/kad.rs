@@ -16,14 +16,12 @@ impl Recorder for KademliaEvent {
 
                 match result {
                     QueryResult::GetRecord(result) => match result {
-                        Ok(v) => {
-                            match v {
-                                GetRecordOk::FoundRecord(_) => {
-                                    increment_counter!("kad_query_result_get_record_ok")
-                                }
-                                GetRecordOk::FinishedWithNoAdditionalRecord { .. } => {}
+                        Ok(v) => match v {
+                            GetRecordOk::FoundRecord(_) => {
+                                increment_counter!("kad_query_result_get_record_ok")
                             }
-                        }
+                            GetRecordOk::FinishedWithNoAdditionalRecord { .. } => {}
+                        },
                         Err(_) => increment_counter!("kad_query_result_get_record_err"),
                     },
                     QueryResult::GetClosestPeers(result) => match result {

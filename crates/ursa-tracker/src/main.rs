@@ -1,7 +1,3 @@
-use crate::{
-    ip_api::get_ip_info,
-    types::{Node, TrackerRegistration, PrometheusDiscoveryChunk},
-};
 use axum::http::StatusCode;
 use axum::{
     extract::{ConnectInfo, Extension},
@@ -9,11 +5,16 @@ use axum::{
     Json, Router,
 };
 use hyper::HeaderMap;
+use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
-use rocksdb::{DB, IteratorMode, WriteBatch};
 use std::{env, net::SocketAddr, sync::Arc};
-use tracing::{info, error};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::{
+    ip_api::get_ip_info,
+    types::{Node, PrometheusDiscoveryChunk, TrackerRegistration},
+};
 
 mod ip_api;
 mod types;
@@ -104,21 +105,21 @@ async fn registration_handler(
 
 /// Prometheus HTTP Service Discovery
 async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
-    let services: Vec<PrometheusDiscoveryChunk> =
-        db.iterator(IteratorMode::Start)
-            .filter_map(|res| {
-                if let Ok((_, v)) = res {
-                    let node: Node = serde_json::from_slice(&v).unwrap();
-                    if node.telemetry {
-                        Some(node.into())
-                    } else {
-                        None
-                    }
+    let services: Vec<PrometheusDiscoveryChunk> = db
+        .iterator(IteratorMode::Start)
+        .filter_map(|res| {
+            if let Ok((_, v)) = res {
+                let node: Node = serde_json::from_slice(&v).unwrap();
+                if node.telemetry {
+                    Some(node.into())
                 } else {
                     None
                 }
-            })
-            .collect();
+            } else {
+                None
+            }
+        })
+        .collect();
 
     (StatusCode::OK, Json(json!(services)))
 }

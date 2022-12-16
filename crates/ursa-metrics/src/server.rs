@@ -1,26 +1,23 @@
 use crate::config::MetricsServiceConfig;
 use anyhow::Result;
 use axum::{http::StatusCode, routing::get, Extension, Router};
+use lazy_static::lazy_static;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use prometheus::{Encoder, TextEncoder, Registry};
+use prometheus::{Encoder, Registry, TextEncoder};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use lazy_static::lazy_static;
 use tracing::info;
 
-lazy_static!(
+lazy_static! {
     pub static ref BITSWAP_REGISTRY: Arc<Registry> = Arc::new(Registry::new());
-);
-
+}
 
 async fn get_ping_handler() -> (StatusCode, String) {
     (StatusCode::OK, "pong".to_string())
 }
 
 fn setup_metrics_handler() -> PrometheusHandle {
-    PrometheusBuilder::new()
-        .install_recorder()
-        .unwrap()
+    PrometheusBuilder::new().install_recorder().unwrap()
 }
 
 async fn metrics_handler(handle: Extension<Arc<PrometheusHandle>>) -> (StatusCode, String) {

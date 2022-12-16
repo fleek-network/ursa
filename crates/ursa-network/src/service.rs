@@ -11,40 +11,46 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`NetworkCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
-use std::collections::{HashMap, HashSet};
-use std::num::{NonZeroU8, NonZeroUsize};
-use std::sync::Arc;
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
-
 use cid::Cid;
 use db::Store as Store_;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use libipld::DefaultParams;
-use libp2p::autonat::{Event as AutonatEvent, NatStatus};
-use libp2p::gossipsub::error::{PublishError, SubscriptionError};
-use libp2p::gossipsub::{MessageId, TopicHash};
-use libp2p::identify::Event as IdentifyEvent;
-use libp2p::multiaddr::Protocol;
-use libp2p::ping::Event as PingEvent;
-use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
-use libp2p::swarm::{ConnectionHandler, IntoConnectionHandler, NetworkBehaviour};
-use libp2p::Multiaddr;
 use libp2p::{
-    gossipsub::IdentTopic as Topic,
+    autonat::{Event as AutonatEvent, NatStatus},
+    gossipsub::{
+        error::{PublishError, SubscriptionError},
+        IdentTopic as Topic, MessageId, TopicHash,
+    },
+    identify::Event as IdentifyEvent,
     identity::Keypair,
+    multiaddr::Protocol,
+    ping::Event as PingEvent,
     relay::v2::client::Client as RelayClient,
-    request_response::{RequestId, ResponseChannel},
+    request_response::{RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel},
+    swarm::{ConnectionHandler, IntoConnectionHandler, NetworkBehaviour},
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
-    PeerId, Swarm,
+    Multiaddr, PeerId, Swarm,
 };
-
 use libp2p_bitswap::{BitswapEvent, BitswapStore, QueryId};
-use log::trace;
-
-use tracing::{debug, error, info, warn};
+use rand::prelude::SliceRandom;
+use std::{
+    collections::{HashMap, HashSet},
+    num::{NonZeroU8, NonZeroUsize},
+    sync::Arc,
+};
+use tokio::{
+    select,
+    sync::{
+        mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+        oneshot,
+    },
+};
+use tracing::{debug, error, info, trace, warn};
+use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, Store};
 use ursa_utils::convert_cid;
 
@@ -55,13 +61,6 @@ use crate::{
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
 };
-use rand::prelude::SliceRandom;
-use tokio::sync::oneshot;
-use tokio::{
-    select,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
-};
-use ursa_metrics::Recorder;
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
@@ -518,10 +517,7 @@ where
         match req_res_event {
             RequestResponseEvent::Message { peer, message } => {
                 match message {
-                    RequestResponseMessage::Request {
-                        request_id,
-                        ..
-                    } => {
+                    RequestResponseMessage::Request { request_id, .. } => {
                         trace!("[BehaviourEvent::RequestMessage] {} ", peer);
                         self.emit_event(NetworkEvent::RequestMessage { request_id });
                     }
@@ -557,20 +553,23 @@ where
     pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                BehaviourEvent::Identify(identify_event) => self.handle_identify(identify_event),
+                BehaviourEvent::Identify(identify_event) => {
+                    identify_event.record();
+                    self.handle_identify(identify_event)
+                }
                 BehaviourEvent::Autonat(autonat_event) => self.handle_autonat(autonat_event),
                 BehaviourEvent::Ping(ping_event) => {
                     ping_event.record();
                     self.handle_ping(ping_event)
-                },
+                }
                 BehaviourEvent::Bitswap(bitswap_event) => {
                     // bitswap metrics are internal
                     self.handle_bitswap(bitswap_event)
-                },
+                }
                 BehaviourEvent::Gossipsub(gossip_event) => {
                     gossip_event.record();
                     self.handle_gossip(gossip_event)
-                },
+                }
                 BehaviourEvent::Discovery(discovery_event) => {
                     self.handle_discovery(discovery_event)
                 }
@@ -581,7 +580,7 @@ where
                 BehaviourEvent::RelayServer(relay_event) => {
                     relay_event.record();
                     Ok(())
-                },
+                }
                 BehaviourEvent::RelayClient(_) => Ok(()),
                 BehaviourEvent::Dcutr(_dcutr_event) => Ok(()),
             },

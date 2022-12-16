@@ -1,6 +1,7 @@
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
 use metrics::{histogram, increment_counter, Label};
 use std::time::Instant;
+use tracing::info;
 
 pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
     let start = Instant::now();
@@ -17,6 +18,14 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
 
     increment_counter!("rpc_request_received");
     if latency != 0.0 {
+        info!(
+            "Captured RPC request: {} {} {} {}ms",
+            method,
+            path,
+            status,
+            latency * 1000.0
+        );
+
         histogram!(
             "rpc_response_duration",
             latency,

@@ -1,10 +1,6 @@
 use anyhow::{anyhow, Result};
 use geohash::encode;
-use hyper::{
-    client::connect::dns::GaiResolver,
-    service::Service,
-    Client
-};
+use hyper::{client::connect::dns::GaiResolver, service::Service, Client};
 use hyper_tls::HttpsConnector;
 use serde_derive::Deserialize;
 
