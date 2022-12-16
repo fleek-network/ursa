@@ -1,7 +1,4 @@
-use crate::{
-    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
-    ursa::identity::IdentityManager,
-};
+use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
@@ -20,7 +17,7 @@ pub mod config;
 mod ursa;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -71,12 +68,7 @@ async fn main() {
                 let index_provider =
                     Provider::new(keypair.clone(), index_store, provider_config.clone());
 
-                let service = UrsaService::new(
-                    keypair,
-                    &network_config,
-                    Arc::clone(&store),
-                    index_provider.clone(),
-                );
+                let service = UrsaService::new(keypair, &network_config, Arc::clone(&store))?;
                 let rpc_sender = service.command_sender();
 
                 // Start libp2p service
@@ -126,4 +118,5 @@ async fn main() {
             cli_error_and_die(&format!("Config error: {}", e), 1);
         }
     };
+    Ok(())
 }

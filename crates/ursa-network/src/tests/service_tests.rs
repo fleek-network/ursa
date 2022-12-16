@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::behaviour::BehaviourEvent;
-    use crate::GossipsubMessage;
     use crate::{
         codec::protocol::{RequestType, UrsaExchangeRequest},
         discovery::DiscoveryEvent,
@@ -27,7 +26,6 @@ mod tests {
     use tokio::{select, sync::oneshot, time::timeout};
     use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
-    use ursa_index_provider::{config::ProviderConfig, provider::Provider};
     use ursa_store::{BitswapStorage, Store};
     use ursa_utils::convert_cid;
 
@@ -41,7 +39,7 @@ mod tests {
             .with_utc_timestamps()
             .init()
         {
-            info!("Logger already set. Ignore.")
+            error!("Logger already set {:?}:", err)
         }
     }
 
@@ -64,7 +62,7 @@ mod tests {
         }
     }
 
-    async fn run_bootstrap(
+    async fn _run_bootstrap(
         config: &mut NetworkConfig,
         port: u16,
     ) -> Result<(UrsaService<MemoryDB>, String)> {
@@ -95,15 +93,12 @@ mod tests {
         };
         let peer_id = PeerId::from(keypair.clone().public());
         let store = get_store();
-        let index_store = get_store();
 
         if let Some(addr) = bootstrap_addr {
             config.bootstrap_nodes = [addr].iter().map(|node| node.parse().unwrap()).collect();
         }
-        let provider_config = ProviderConfig::default();
-        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
-        let mut service = UrsaService::new(keypair, &config, Arc::clone(&store), index_provider)?;
+        let mut service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
 
         let node_addrs = async {
             loop {
@@ -147,8 +142,7 @@ mod tests {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
-        let (mut node_1, node_1_addrs, peer_id_1, ..) =
-            network_init(&mut config, None, None).await?;
+        let (mut node_1, node_1_addrs, _, ..) = network_init(&mut config, None, None).await?;
         let (mut node_2, ..) =
             network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
 
@@ -308,7 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bitswap_get() -> Result<()> {
-        setup_logger(LevelFilter::Info);
+        setup_logger(LevelFilter::Debug);
         let mut config = NetworkConfig {
             mdns: true,
             ..Default::default()
@@ -316,7 +310,7 @@ mod tests {
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
             network_init(&mut config, None, None).await?;
-        let (mut node_2, _, peer_id_2, store_2) =
+        let (node_2, _, _, store_2) =
             network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
 
         let bitswap_store_1 = BitswapStorage(store_1.clone());
@@ -351,24 +345,26 @@ mod tests {
             sender,
         };
 
-        let _ = tokio::task::spawn(async move {
-            assert!(node_2_sender.send(msg).is_ok());
+        assert!(node_2_sender.send(msg).is_ok());
 
-            let value = receiver
-                .await
-                .expect("Unable to receive from bitswap channel");
+        let res = receiver
+            .await
+            .expect("Unable to receive from bitswap channel");
 
-            match value {
-                Ok(_) => {
-                    let store_1_block = bitswap_store_2
-                        .get(&convert_cid(block.cid().to_bytes()))
-                        .unwrap();
-                    assert_eq!(store_1_block, Some(block.data().to_vec()));
-                }
-                Err(e) => panic!("{:?}", e),
+        match res {
+            Ok(_) => {
+                let store_1_block = bitswap_store_2
+                    .get(&convert_cid(block.cid().to_bytes()))
+                    .unwrap();
+
+                info!(
+                    "inserting block into bitswap store for node 1, {:?}",
+                    store_1_block
+                );
+                assert_eq!(store_1_block, Some(block.data().to_vec()));
             }
-        })
-        .await?;
+            Err(e) => panic!("{:?}", e),
+        }
 
         Ok(())
     }
@@ -383,7 +379,7 @@ mod tests {
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
             network_init(&mut config, None, None).await?;
-        let (mut node_2, _, peer_id_2, store_2) =
+        let (node_2, _, _, store_2) =
             network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
 
         let mut bitswap_store_2 = BitswapStorage(store_2.clone());
@@ -406,7 +402,7 @@ mod tests {
         // Start nodes
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
-        
+
         // put the car file in store 1
         let path = "../../test_files/test.car";
         let file = File::open(path).await?;
@@ -428,24 +424,23 @@ mod tests {
             sender,
         };
 
-        let _ = tokio::task::spawn(async move {
-            assert!(node_2_sender.send(msg).is_ok());
+        assert!(node_2_sender.send(msg).is_ok());
 
-            let value = receiver
-                .await
-                .expect("Unable to receive from bitswap channel");
-            match value {
-                Ok(_) => {
-                    for cid in cids_vec {
-                        assert!(bitswap_store_2
-                            .contains(&convert_cid(cid.to_bytes()))
-                            .unwrap());
-                    }
+        let res = receiver
+            .await
+            .expect("Unable to receive from bitswap channel");
+
+        match res {
+            Ok(_) => {
+                for cid in cids_vec {
+                    assert!(bitswap_store_2
+                        .contains(&convert_cid(cid.to_bytes()))
+                        .unwrap());
                 }
-                Err(e) => panic!("{:?}", e),
             }
-        })
-        .await?;
+            Err(e) => panic!("{:?}", e),
+        }
+
         Ok(())
     }
 }

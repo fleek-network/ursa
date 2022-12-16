@@ -16,7 +16,6 @@ use bytes::Bytes;
 use cid::Cid;
 use db::Store as Store_;
 use fnv::FnvHashMap;
-use forest_ipld::Ipld;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use libipld::DefaultParams;
@@ -44,12 +43,8 @@ use std::collections::HashMap;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::{collections::HashSet, sync::Arc};
 use tracing::{debug, error, info, trace, warn};
-use ursa_index_provider::{
-    advertisement::{Advertisement, MAX_ENTRIES},
-    provider::{Provider, ProviderInterface},
-};
 use ursa_metrics::events::{track, MetricEvent};
-use ursa_store::{BitswapStorage, Dag, Store};
+use ursa_store::{BitswapStorage, Store};
 use ursa_utils::convert_cid;
 
 use crate::discovery::{DiscoveryEvent, URSA_KAD_PROTOCOL};
@@ -179,8 +174,6 @@ pub enum NetworkCommand {
 pub struct UrsaService<S> {
     /// Store.
     store: Arc<Store<S>>,
-    /// index provider.
-    index_provider: Provider<S>,
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers.
@@ -218,12 +211,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(
-        keypair: Keypair,
-        config: &NetworkConfig,
-        store: Arc<Store<S>>,
-        index_provider: Provider<S>,
-    ) -> Result<Self> {
+    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<Store<S>>) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -280,7 +268,6 @@ where
 
         Ok(UrsaService {
             swarm,
-            index_provider,
             store,
             command_sender,
             command_receiver,
@@ -361,31 +348,30 @@ where
                 }
 
                 // check if received identify is from a peer on the same network
-                // if info
-                //     .protocols
-                //     .iter()
-                //     .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
-                // {
+                if info
+                    .protocols
+                    .iter()
+                    .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
+                {
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer_id);
 
-                // }
-                self.swarm
-                    .behaviour_mut()
-                    .gossipsub
-                    .add_explicit_peer(&peer_id);
-
-                for address in info.listen_addrs {
-                    self.swarm
-                        .behaviour_mut()
-                        .bitswap
-                        .add_address(&peer_id, address.clone());
-                    self.swarm
-                        .behaviour_mut()
-                        .discovery
-                        .add_address(&peer_id, address.clone());
-                    self.swarm
-                        .behaviour_mut()
-                        .request_response
-                        .add_address(&peer_id, address.clone());
+                    for address in info.listen_addrs {
+                        self.swarm
+                            .behaviour_mut()
+                            .bitswap
+                            .add_address(&peer_id, address.clone());
+                        self.swarm
+                            .behaviour_mut()
+                            .discovery
+                            .add_address(&peer_id, address.clone());
+                        self.swarm
+                            .behaviour_mut()
+                            .request_response
+                            .add_address(&peer_id, address.clone());
+                    }
                 }
             }
             IdentifyEvent::Sent { .. }
@@ -438,15 +424,14 @@ where
         Ok(())
     }
 
-    fn handle_bitswap(
-        &mut self,
-        bitswap_event: libp2p_bitswap::BitswapEvent,
-    ) -> Result<(), anyhow::Error> {
+    fn handle_bitswap(&mut self, bitswap_event: BitswapEvent) -> Result<(), anyhow::Error> {
+        let mut blockstore = BitswapStorage(self.store.clone());
+
         match bitswap_event {
-            libp2p_bitswap::BitswapEvent::Progress(query_id, _) => {
+            BitswapEvent::Progress(query_id, _) => {
                 trace!("bitswap request in progress with, id: {}", query_id);
             }
-            libp2p_bitswap::BitswapEvent::Complete(query_id, result) => match result {
+            BitswapEvent::Complete(query_id, result) => match result {
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
                     Some(cid) => {
                         let labels = vec![
@@ -455,7 +440,34 @@ where
                         ];
 
                         track(MetricEvent::Bitswap, Some(labels), None);
-                        self.emit_event(NetworkEvent::BitswapHave { cid, query_id });
+
+                        if let Some(chans) = self.response_channels.remove(&cid) {
+                            // TODO: in some cases, the insert takes few milliseconds after query complete is received
+                            // wait for block to be inserted
+                            let bitswap_cid = convert_cid(cid.to_bytes());
+                            // if let true = block_found {
+                            //     loop {
+                            //         if blockstore.contains(&bitswap_cid).unwrap() {
+                            //             break;
+                            //         }
+                            //     }
+                            // }
+
+                            for chan in chans.into_iter() {
+                                if blockstore.contains(&bitswap_cid).unwrap() {
+                                    if chan.send(Ok(())).is_err() {
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                    }
+                                } else {
+                                    error!("[BitswapEvent::Complete] - block not found.");
+                                    if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                    }
+                                }
+                            }
+                        } else {
+                            debug!("[BitswapEvent::Complete] - Received Bitswap response, but response channel cannot be found");
+                        }
                     }
                     _ => {
                         error!(
@@ -606,27 +618,44 @@ where
     /// Handle commands
     pub fn handle_command(&mut self, command: NetworkCommand) -> Result<()> {
         match command {
-            NetworkCommand::GetBitswap { cid, .. } => {
+            NetworkCommand::GetBitswap { cid, sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
-                let query = self
-                    .swarm
-                    .behaviour_mut()
-                    .get_block(cid, peers.iter().copied());
 
-                match query {
-                    Ok(query_id) => {
+                if peers.is_empty() {
+                    error!(
+                        "There were no peers provided and the block does not exist in local store"
+                    );
+                    return sender
+                        .send(Err(anyhow!(
+                        "There were no peers provided and the block does not exist in local store"
+                    )))
+                        .map_err(|_| anyhow!("Failed to get a bitswap block!"));
+                } else {
+                    if let Some(chans) = self.response_channels.get_mut(&cid) {
+                        chans.push(sender);
+                    } else {
+                        self.response_channels.insert(cid, vec![sender]);
+                    }
+
+                    let query = self
+                        .swarm
+                        .behaviour_mut()
+                        .get_block(cid, peers.iter().copied());
+
+                    if let Ok(query_id) = query {
                         self.bitswap_queries.insert(query_id, cid);
                         self.emit_event(NetworkEvent::BitswapWant { cid, query_id });
-                    }
-                    _ => {
+                    } else {
                         error!(
                             "[NetworkCommand::BitswapWant] - no block found for cid {:?}.",
                             cid
                         )
                     }
                 }
+
+                println!("cosmos");
             }
-            NetworkCommand::Put { cid, sender } => (),
+            NetworkCommand::Put { cid: _, sender: _ } => (),
             NetworkCommand::GetPeers { sender } => {
                 let peers = self.swarm.behaviour_mut().peers();
                 sender

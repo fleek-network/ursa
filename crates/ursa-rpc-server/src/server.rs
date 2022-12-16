@@ -63,7 +63,6 @@ mod tests {
     use libp2p::{identity::Keypair, PeerId};
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
-    use ursa_index_provider::{config::ProviderConfig, provider::Provider};
     use ursa_store::Store;
 
     use ursa_network::{config::NetworkConfig, service::UrsaService};
@@ -71,24 +70,16 @@ mod tests {
     fn ursa_network_init(
         config: &NetworkConfig,
         store: Arc<Store<RocksDb>>,
-    ) -> (UrsaService<RocksDb>, PeerId) {
+    ) -> anyhow::Result<(UrsaService<RocksDb>, PeerId)> {
         let keypair = Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
 
-        let provider_config = ProviderConfig::default();
-        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
-            .expect("Opening RocksDB must succeed");
-        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
-        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
-
-        let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
-
-        (service, local_peer_id)
+        Ok((service, local_peer_id))
     }
 
     #[tokio::test]
-    async fn test_rpc_start() {
+    async fn test_rpc_start() -> anyhow::Result<()> {
         SimpleLogger::new()
             .with_utc_timestamps()
             .with_level(LevelFilter::Info)
@@ -107,7 +98,7 @@ mod tests {
         let store = Arc::new(Store::new(Arc::clone(&db)));
 
         let network_config = NetworkConfig::default();
-        let (ursa_node, _) = ursa_network_init(&network_config, Arc::clone(&store));
+        let (ursa_node, _) = ursa_network_init(&network_config, Arc::clone(&store))?;
         let ursa_node_sender = ursa_node.command_sender().clone();
 
         let interface = Arc::new(NodeNetworkInterface {
@@ -118,5 +109,7 @@ mod tests {
         let rpc = Server::new(interface);
 
         let _ = rpc.start(config).await;
+
+        Ok(())
     }
 }

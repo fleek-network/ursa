@@ -268,8 +268,7 @@ mod tests {
 
         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
 
-        let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
         let rpc_sender = service.command_sender().clone();
 
         // Start libp2p service
