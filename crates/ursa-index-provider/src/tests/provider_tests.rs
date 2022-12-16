@@ -1,18 +1,20 @@
-
 #[cfg(test)]
 mod tests {
-use crate::{advertisement::Advertisement, signed_head::SignedHead, tests::provider_engine_init, provider::ProviderInterface};
-use anyhow::Error;
-use forest_ipld::Ipld;
-use multihash::{Code, MultihashDigest};
-use surf::Error as SurfError;
-use tokio::task;
-use tracing::error;
+    use crate::{
+        advertisement::Advertisement, provider::ProviderInterface, signed_head::SignedHead,
+        tests::provider_engine_init,
+    };
 
-#[tokio::test]
+    use anyhow::Error;
+    use forest_ipld::Ipld;
+    use multihash::{Code, MultihashDigest};
+    use surf::Error as SurfError;
+    use tokio::task;
+    use tracing::error;
+
+    #[tokio::test]
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
         let (provider_engine, peer_id) = provider_engine_init()?;
-
         let mut provider_interface = provider_engine.provider();
 
         task::spawn(async move {
@@ -46,13 +48,11 @@ use tracing::error;
             let bytes = forest_encoding::to_vec(&entries)?;
             provider_interface.add_chunk(bytes, id)?;
             provider_interface.publish(id)?;
-
             let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head")
                 .recv_json()
                 .await
                 .map_err(|e| SurfError::into_inner(e))?;
             assert_eq!(signed_head.open()?.1, provider_interface.head().unwrap());
-
             Ok::<_, Error>(())
         })
         .await?;

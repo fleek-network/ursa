@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.63"
+async-fs = "1.6.0"
 async-trait = "0.1.53"
 axum = "0.5.15"
 base64 = "0.13.0"
@@ -17,7 +18,9 @@ db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBe
 dirs = "4"
 forest_encoding = "0.2"
 forest_ipld = "0.1"
+futures = "0.3.21"
 fvm_ipld_blockstore = "0.1.1"
+fvm_ipld_car = "0.5.0"
 libipld = "0.14.0"
 libipld-cbor = "0.14.0"
 # libp2p = { version = "0.50.0", default-features = false, features = ["identify", "serde"] }
@@ -28,15 +31,14 @@ rustc-serialize = "0.3.24"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.74"
 serde_with = { version = "1.11.0", features = ["base64"] }
+simple_logger = "4.0.0"
 surf = { version = "2.3", default-features = true, features = ["curl-client"] }
 thiserror = "1.0.30"
 tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.36" 
+ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils ={ path = "../ursa-utils" }
-ursa-network = { path = "../ursa-network" }
-futures = "0.3.21"
-simple_logger = "4.0.0"
 
 [dev-dependencies]
 ursa-network = { path = "../ursa-network" }

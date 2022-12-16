@@ -389,7 +389,7 @@ mod tests {
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         // put the car file in store 1
-        let path = Path::new("./src/tests/test.car");
+        let path = Path::new("../../test_files/test.car");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
         let cids = load_car(store_1.blockstore(), reader).await?;

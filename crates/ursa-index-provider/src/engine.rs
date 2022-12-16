@@ -178,7 +178,7 @@ where
                         let peer_id = PeerId::from(self.provider.keypair().public());
 
                         if let Err(e) = self.publish_local(cid).await {
-                            error!("Error while puclishing the advertisement locally: {:?}", e)
+                            error!("Error while publishing the advertisement locally: {:?}", e)
                         } else {
                             match self
                                 .provider
