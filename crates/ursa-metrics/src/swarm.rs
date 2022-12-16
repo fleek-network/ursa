@@ -11,7 +11,6 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
             SwarmEvent::ConnectionEstablished {
                 endpoint,
                 num_established,
-                peer_id,
                 ..
             } => {
                 if u32::from(*num_established) == 1 {

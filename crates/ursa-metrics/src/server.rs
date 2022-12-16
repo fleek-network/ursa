@@ -32,7 +32,7 @@ async fn metrics_handler(handle: Extension<Arc<PrometheusHandle>>) -> (StatusCod
     TextEncoder::new()
         .encode(&BITSWAP_REGISTRY.gather(), &mut buffer)
         .unwrap();
-    if buffer.len() > 0 {
+    if !buffer.is_empty() {
         metrics.push_str(&String::from_utf8(buffer).unwrap());
     }
 

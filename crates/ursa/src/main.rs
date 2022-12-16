@@ -61,7 +61,9 @@ async fn main() -> anyhow::Result<()> {
                     agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
                     addr: None, // if we have a dns address, we can set it here
                     p2p_port: network_config
-                        .swarm_addr
+                        .swarm_addrs
+                        .first()
+                        .expect("no tcp swarm address")
                         .iter()
                         .find_map(|proto| match proto {
                             Protocol::Tcp(port) => Some(port),
@@ -74,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let db_path = network_config.database_path.resolve().to_path_buf();
                 info!("Opening blockstore database at {:?}", db_path);
-              
+
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
@@ -88,7 +90,6 @@ async fn main() -> anyhow::Result<()> {
                 let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider =
                     Provider::new(keypair.clone(), index_store, provider_config.clone());
-
 
                 // Start metrics service
                 let metrics_task = task::spawn(async move {
@@ -130,7 +131,9 @@ async fn main() -> anyhow::Result<()> {
 
                 // register with ursa node tracker
                 if !network_config.tracker.is_empty() {
-                    match ursa_tracker::register_with_tracker(network_config.tracker, registration).await {
+                    match ursa_tracker::register_with_tracker(network_config.tracker, registration)
+                        .await
+                    {
                         Ok(res) => info!("Registered with tracker: {res:?}"),
                         Err(err) => error!("Failed to register with tracker: {err:?}"),
                     }

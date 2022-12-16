@@ -22,7 +22,7 @@ mod types;
 async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -106,10 +106,14 @@ async fn registration_handler(
 async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
     let services: Vec<PrometheusDiscoveryChunk> =
         db.iterator(IteratorMode::Start)
-            .filter_map(|(_, v)| {
-                let node: Node = serde_json::from_slice(&v).unwrap();
-                if node.telemetry {
-                    Some(node.into())
+            .filter_map(|res| {
+                if let Ok((_, v)) = res {
+                    let node: Node = serde_json::from_slice(&v).unwrap();
+                    if node.telemetry {
+                        Some(node.into())
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -127,7 +131,7 @@ mod tests {
     fn tracer() {
         tracing_subscriber::registry()
             .with(tracing_subscriber::EnvFilter::new(
-                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+                env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
             ))
             .init();
     }

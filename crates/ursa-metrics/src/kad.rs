@@ -18,7 +18,7 @@ impl Recorder for KademliaEvent {
                     QueryResult::GetRecord(result) => match result {
                         Ok(v) => {
                             match v {
-                                GetRecordOk::FoundRecord(v) => {
+                                GetRecordOk::FoundRecord(_) => {
                                     increment_counter!("kad_query_result_get_record_ok")
                                 }
                                 GetRecordOk::FinishedWithNoAdditionalRecord { .. } => {}

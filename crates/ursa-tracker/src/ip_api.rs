@@ -34,7 +34,7 @@ pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> 
             .call(addr.parse()?)
             .await?
             .next()
-            .ok_or(anyhow!("No ip found"))?
+            .ok_or_else(|| anyhow!("No ip found"))?
             .ip()
             .to_string()
     } else {
@@ -69,6 +69,7 @@ pub fn geohash(lat: f64, lon: f64) -> Result<String> {
     encode(coord, 7).map_err(|e| anyhow!(e))
 }
 
+#[cfg(test)]
 mod tests {
     use super::{geohash, get_ip_info};
 

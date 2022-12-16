@@ -108,12 +108,8 @@ mod tests {
 
         let rpc = Server::new(interface);
 
-<<<<<<< HEAD
         let _ = rpc.start(&config).await;
-=======
-        let _ = rpc.start(config).await;
 
         Ok(())
->>>>>>> main
     }
 }
