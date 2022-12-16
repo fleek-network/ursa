@@ -11,16 +11,19 @@ description = "Ursa's store implementation"
 [dependencies]
 anyhow = "1.0.65"
 async-trait = "0.1.56"
-db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+cid = "0.8.6"
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 fnv = "1.0.7"
-ipld_blockstore = "0.1.1"
-libipld = { version = "0.14.0" }
+fvm_ipld_blockstore = "0.1.1"
+fvm_ipld_encoding = "0.3.0"
+libipld = "0.14.0"
+libp2p-bitswap = "0.25.0"
+serde = { version = "1.0", features = ["derive"] }
 simple_logger = "2.2.0"
 tokio = { version = "1.20.1", features = ["full"] }
 tracing = "0.1.35"
 ursa-utils = { path = "../ursa-utils" }
-libp2p-bitswap = "0.25.0"
 
 [features]
 default = ["rocksdb"]
-rocksdb = ["db/rocksdb", "ipld_blockstore/rocksdb"]
+rocksdb = ["db/rocksdb"]

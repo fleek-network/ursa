@@ -55,7 +55,6 @@ impl Identity for Keypair {
                     }
                 }
             }
-            _ => panic!("Unsupported key type"),
         };
 
         pem::encode(&pem_data)

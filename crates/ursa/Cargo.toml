@@ -10,7 +10,7 @@ description = "Ursa's cli"
 [dependencies]
 anyhow = "1.0.57"
 ctrlc = "3.1"
-db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
 futures = "0.3.21"
@@ -29,13 +29,3 @@ ursa-network = { path = "../ursa-network" }
 ursa-rpc-client = { path = "../ursa-rpc-client" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-store = { path = "../ursa-store" }
-ursa-gateway = { path = "../ursa-gateway" }
-
-[build-dependencies]
-toml = "0.5"
-serde = { version = "1.0", features = ["derive"] }
-ursa-index-provider = { path = "../ursa-index-provider" }
-ursa-network = { path = "../ursa-network" }
-ursa-rpc-client = { path = "../ursa-rpc-client" }
-ursa-rpc-server = { path = "../ursa-rpc-server" }
-ursa-metrics = { path = "../ursa-metrics" }

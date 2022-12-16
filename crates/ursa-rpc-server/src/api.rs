@@ -3,22 +3,22 @@ use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
+use db::Store as Store_;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
-use ipld_blockstore::BlockStore;
-use libipld::Cid as lCid;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
-use ursa_network::{BitswapType, UrsaCommand};
+use ursa_network::NetworkCommand;
 use ursa_store::{Dag, Store};
 use ursa_utils::convert_cid;
 
@@ -56,7 +56,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
 
-    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>>;
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
 
     /// get the file locally via cli
     async fn get_file(&self, path: String, cid: Cid) -> Result<()>;
@@ -76,29 +76,25 @@ pub trait NetworkInterface: Sync + Send + 'static {
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     pub store: Arc<Store<S>>,
-    pub network_send: Sender<UrsaCommand>,
+    pub network_send: Sender<NetworkCommand>,
 }
 
 #[async_trait]
 impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
-        if !self.store.blockstore().has(&cid).unwrap() {
+        if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
             let (sender, receiver) = oneshot::channel();
-            let request = UrsaCommand::GetBitswap {
-                cid,
-                query: BitswapType::Get,
-                sender,
-            };
+            let request = NetworkCommand::GetBitswap { cid, sender };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request)?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -109,17 +105,16 @@ where
         self.store.blockstore().get(&cid)
     }
 
-    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(lCid, Vec<u8>)>> {
+    async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         if !self.store.blockstore().has(&root_cid)? {
             let (sender, receiver) = oneshot::channel();
-            let request = UrsaCommand::GetBitswap {
+            let request = NetworkCommand::GetBitswap {
                 cid: root_cid,
-                query: BitswapType::Sync,
                 sender,
             };
 
             // use network sender to send command
-            self.network_send.send(request).await?;
+            self.network_send.send(request)?;
             if let Err(e) = receiver.await? {
                 return Err(anyhow!(
                     "The bitswap failed, please check server logs {:?}",
@@ -206,12 +201,12 @@ where
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = UrsaCommand::Index {
-            cids: cids.clone(),
+        let request = NetworkCommand::GetBitswap {
+            cid: cids[0],
             sender,
         };
 
-        self.network_send.send(request).await?;
+        self.network_send.send(request)?;
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
@@ -239,7 +234,6 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tokio::task;
     use tracing::{error, log::LevelFilter};
-    use ursa_index_provider::{config::ProviderConfig, provider::Provider};
     use ursa_network::{NetworkConfig, UrsaService};
     use ursa_store::Store;
 
@@ -265,16 +259,7 @@ mod tests {
         let keypair = Keypair::generate_ed25519();
 
         let store = get_store("test_db1");
-
-        let provider_config = ProviderConfig::default();
-        let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
-            .expect("Opening RocksDB must succeed");
-        let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
-
-        let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
-
-        let service =
-            UrsaService::new(keypair, &config, Arc::clone(&store), index_provider.clone());
+        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
         let rpc_sender = service.command_sender().clone();
 
         // Start libp2p service
