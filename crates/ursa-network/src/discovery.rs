@@ -138,10 +138,12 @@ impl DiscoveryBehaviour {
     fn handle_kad_event(&self, event: KademliaEvent) {
         info!("[KademliaEvent] {:?}", event);
 
-        if let KademliaEvent::OutboundQueryProgressed { result, .. } = event {
-            if let QueryResult::GetClosestPeers(Ok(closest_peers)) = result {
-                let _peers = closest_peers.peers;
-            }
+        if let KademliaEvent::OutboundQueryProgressed {
+            result: QueryResult::GetClosestPeers(Ok(closest_peers)),
+            ..
+        } = event
+        {
+            let _peers = closest_peers.peers;
         }
     }
 

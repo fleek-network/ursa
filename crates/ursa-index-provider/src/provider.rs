@@ -212,8 +212,7 @@ where
                 Addrs: addrs
                     .into_iter()
                     .map(|addr| Multiaddr::from_str(&format!("{}/http/p2p/{}", addr, peer_id)))
-                    .filter(|addr| addr.is_ok())
-                    .map(|addr| addr.unwrap())
+                    .filter_map(|addr| addr.ok())
                     .filter(|addr| !addr.is_empty())
                     .collect(),
                 ExtraData: *b"",
