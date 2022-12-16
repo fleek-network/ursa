@@ -20,7 +20,6 @@ use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use libipld::DefaultParams;
 use libp2p::autonat::{Event as AutonatEvent, NatStatus};
-use libp2p::dcutr::behaviour::Event as DcutrEvent;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::{MessageId, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -418,12 +417,6 @@ where
         Ok(())
     }
 
-    fn handle_dcutr(&self, dcutr_event: DcutrEvent) -> Result<(), anyhow::Error> {
-        //     debug!("Relay circuit closed");
-        //     track(MetricEvent::RelayCircuitClosed, None, None);
-        Ok(())
-    }
-
     fn handle_bitswap(&mut self, bitswap_event: BitswapEvent) -> Result<(), anyhow::Error> {
         let mut blockstore = BitswapStorage(self.store.clone());
 
@@ -598,7 +591,7 @@ where
                 BehaviourEvent::Autonat(autonat_event) => self.handle_autonat(autonat_event),
                 BehaviourEvent::RelayClient(_) => Ok(()),
                 BehaviourEvent::RelayServer(_) => Ok(()),
-                BehaviourEvent::Dcutr(dcutr_event) => self.handle_dcutr(dcutr_event),
+                BehaviourEvent::Dcutr(_dcutr_event) => Ok(()),
                 BehaviourEvent::Bitswap(bitswap_event) => self.handle_bitswap(bitswap_event),
                 BehaviourEvent::Gossipsub(gossip_event) => self.handle_gossip(gossip_event),
                 BehaviourEvent::Discovery(discovery_event) => {

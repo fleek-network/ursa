@@ -22,6 +22,7 @@ mod tests {
     };
     use libp2p_bitswap::BitswapStore;
     use simple_logger::SimpleLogger;
+    use std::path::Path;
     use std::{sync::Arc, time::Duration, vec};
     use tokio::{select, sync::oneshot, time::timeout};
     use tracing::warn;
@@ -154,22 +155,6 @@ mod tests {
                         if let Err(error) = node_1.swarm.behaviour_mut().publish(topic, Bytes::from_static(b"hello world!")) {
                             warn!("Failed to send with error: {:?}", error);
                         };
-                        // let (sender, receiver) = oneshot::channel();
-                        // let msg = NetworkCommand::GossipsubMessage {
-                        //     peer_id: peer_id_1,
-                        //     message: GossipsubMessage::Publish {
-                        //         topic: topic.hash(),
-                        //         data: Bytes::from_static(b"hello world!"),
-                        //         sender,
-                        //     },
-                        // };
-
-                        // let res = command_sender.send(msg);
-                        // assert!(res.is_ok());
-
-                        // let res = receiver.await;
-                        // assert!(res.is_ok());
-                        // assert!(res.unwrap().is_ok());
                     }
                 }
                 event_2 = node_2.swarm.select_next_some() => {
@@ -251,7 +236,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_network_req_res() -> Result<()> {
-        setup_logger(LevelFilter::Debug);
+        setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
         let (mut node_1, node_1_addrs, peer_id_1, ..) =
@@ -302,7 +287,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bitswap_get() -> Result<()> {
-        setup_logger(LevelFilter::Debug);
+        setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig {
             mdns: true,
             ..Default::default()
@@ -404,7 +389,7 @@ mod tests {
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         // put the car file in store 1
-        let path = "../../test_files/test.car";
+        let path = Path::new("./src/tests/test.car");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
         let cids = load_car(store_1.blockstore(), reader).await?;
@@ -435,7 +420,7 @@ mod tests {
                 for cid in cids_vec {
                     assert!(bitswap_store_2
                         .contains(&convert_cid(cid.to_bytes()))
-                        .unwrap());
+                        .is_ok());
                 }
             }
             Err(e) => panic!("{:?}", e),
