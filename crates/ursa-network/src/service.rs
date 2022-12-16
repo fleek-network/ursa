@@ -382,36 +382,33 @@ where
 
     fn handle_autonat(&mut self, autonat_event: AutonatEvent) -> Result<(), anyhow::Error> {
         match autonat_event {
-            AutonatEvent::StatusChanged { old, new } => {
-                match (old, new) {
-                    (NatStatus::Unknown, NatStatus::Private) => {
-                        let behaviour = self.swarm.behaviour_mut();
-                        if behaviour.is_relay_client_enabled() {
-                            // get random bootstrap node and listen on their relay
-                            if let Some((relay_peer, relay_addr)) = behaviour
-                                .discovery()
-                                .bootstrap_addrs()
-                                .choose(&mut rand::thread_rng())
-                            {
-                                let addr = relay_addr
-                                    .clone()
-                                    .with(Protocol::P2p((*relay_peer).into()))
-                                    .with(Protocol::P2pCircuit);
-                                warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
-                                self.swarm
-                                    .listen_on(addr)
-                                    .expect("failed to listen on relay");
-                            }
+            AutonatEvent::StatusChanged { old, new } => match (old, new) {
+                (NatStatus::Unknown, NatStatus::Private) => {
+                    let behaviour = self.swarm.behaviour_mut();
+                    if behaviour.is_relay_client_enabled() {
+                        if let Some((relay_peer, relay_addr)) = behaviour
+                            .discovery()
+                            .bootstrap_addrs()
+                            .choose(&mut rand::thread_rng())
+                        {
+                            let addr = relay_addr
+                                .clone()
+                                .with(Protocol::P2p((*relay_peer).into()))
+                                .with(Protocol::P2pCircuit);
+                            warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                            self.swarm
+                                .listen_on(addr)
+                                .expect("failed to listen on relay");
                         }
                     }
-                    (_, NatStatus::Public(addr)) => {
-                        info!("Public Nat verified! Public listening address: {}", addr);
-                    }
-                    (old, new) => {
-                        warn!("NAT status changed from {:?} to {:?}", old, new);
-                    }
                 }
-            }
+                (_, NatStatus::Public(addr)) => {
+                    info!("Public Nat verified! Public listening address: {}", addr);
+                }
+                (old, new) => {
+                    warn!("NAT status changed from {:?} to {:?}", old, new);
+                }
+            },
             AutonatEvent::InboundProbe(_) | AutonatEvent::OutboundProbe(_) => (),
         }
         Ok(())
@@ -422,7 +419,10 @@ where
 
         match bitswap_event {
             BitswapEvent::Progress(query_id, _) => {
-                trace!("bitswap request in progress with, id: {}", query_id);
+                trace!(
+                    "[BitswapEvent::Progress] - bitswap request in progress with, id: {}",
+                    query_id
+                );
             }
             BitswapEvent::Complete(query_id, result) => match result {
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
@@ -435,17 +435,7 @@ where
                         track(MetricEvent::Bitswap, Some(labels), None);
 
                         if let Some(chans) = self.response_channels.remove(&cid) {
-                            // TODO: in some cases, the insert takes few milliseconds after query complete is received
-                            // wait for block to be inserted
                             let bitswap_cid = convert_cid(cid.to_bytes());
-                            // if let true = block_found {
-                            //     loop {
-                            //         if blockstore.contains(&bitswap_cid).unwrap() {
-                            //             break;
-                            //         }
-                            //     }
-                            // }
-
                             for chan in chans.into_iter() {
                                 if blockstore.contains(&bitswap_cid).unwrap() {
                                     if chan.send(Ok(())).is_err() {
@@ -511,17 +501,14 @@ where
     fn handle_discovery(&mut self, discovery_event: DiscoveryEvent) -> Result<(), anyhow::Error> {
         match discovery_event {
             DiscoveryEvent::Connected(peer_id) => {
-                trace!(
-                    "[BehaviourEvent::PeerConnected] - Peer connected {:?}",
-                    peer_id
-                );
+                trace!("[DiscoveryEvent::Connected] - Peer connected {:?}", peer_id);
 
                 track(MetricEvent::PeerConnected, None, None);
                 self.emit_event(NetworkEvent::PeerConnected(peer_id));
             }
             DiscoveryEvent::Disconnected(peer_id) => {
                 trace!(
-                    "[BehaviourEvent::PeerDisconnected] - Peer disconnected {:?}",
+                    "[DiscoveryEvent::PeerDisconnected] - Peer disconnected {:?}",
                     peer_id
                 );
 
