@@ -35,6 +35,10 @@ docker: docker-build docker-run
 test:
 	cargo test --all
 
+# Run unit tests
+test-network:
+	cargo test service
+
 # Generate rust docs
 doc:
 	cargo doc --no-deps
@@ -56,7 +60,6 @@ clean:
 	rm -rf target
 
 # Passive check
-check:
-	cargo check --all --all-targets --all-features
-	cargo fmt -- --check
-	cargo clippy --locked -- -D warnings
+cargo check --all --all-targets --all-features
+
+ci: check fmt soft-clippy

@@ -1,4 +1,4 @@
-name: Docker
+name: docker-build-push
 
 on:
   schedule:
@@ -15,16 +15,12 @@ env:
 
 jobs:
   build:
-
+    name: ${{ matrix.make.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        toolchain:
-          - stable
-          # - 1.61.0
-        os:
-          - ubuntu-latest
-          # - macos-latest
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
     permissions:
       contents: read
       packages: write
@@ -39,12 +35,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install toolchain
+      - name: Install Rust ${{ matrix.rust }}
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: ${{ matrix.toolchain }}
-            default: true
-            profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          profile: minimal
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v1.3.0
