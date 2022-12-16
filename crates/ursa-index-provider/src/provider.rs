@@ -69,24 +69,6 @@ where
         *head_lock
     }
 
-    // pub async fn start(self, provider_config: &ProviderConfig) -> Result<()> {
-    //     info!("Index provider starting up!");
-
-    //     let app_router = Router::new()
-    //         .route("/head", get(head::<S>))
-    //         .route("/:cid", get(get_block::<S>))
-    //         .layer(Extension(self.clone()));
-
-    //     let app_address = format!("{}:{}", provider_config.local_address, provider_config.port)
-    //         .parse()
-    //         .unwrap();
-
-    //     info!("index provider listening on: {:?}", &app_address);
-    //     let _server = axum::Server::bind(&app_address)
-    //         .serve(app_router.into_make_service())
-    //         .await;
-    //     Ok(())
-    // }
 }
 
 impl<S> Clone for Provider<S>
@@ -230,93 +212,6 @@ impl Cbor for Message {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
-//     use libp2p::PeerId;
-//     use multihash::MultihashDigest;
-//     use simple_logger::SimpleLogger;
-//     use tokio::task;
-//     use tracing::log::LevelFilter;
-
-//     async fn init(keypair: Keypair) -> Provider<RocksDb> {
-//         let provider_config = ProviderConfig::default();
-//         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
-//             .expect("Opening RocksDB must succeed");
-//         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
-//         let index_provider = Provider::new(keypair.clone(), index_store);
-
-//         let provider_interface = index_provider.clone();
-//         if let Err(err) = index_provider.start(&provider_config).await {
-//             error!("[provider_task] - {:?}", err);
-//         }
-
-//         provider_interface
-//     }
-
-//     #[tokio::test]
-//     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
-//         SimpleLogger::new()
-//             .with_level(LevelFilter::Debug)
-//             .with_utc_timestamps()
-//             .init()
-//             .unwrap();
-
-//         let keypair = Keypair::generate_ed25519();
-//         let peer_id = PeerId::from(keypair.public());
-
-//         let provider_config = ProviderConfig::default();
-//         let provider_db = RocksDb::open("index_provider_db", &RocksDbConfig::default())
-//             .expect("Opening RocksDB must succeed");
-//         let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
-//         let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
-
-//         let mut provider_interface = index_provider.clone();
-//         let provider_interface_copy = index_provider.clone();
-
-//         task::spawn(async move {
-//             if let Err(err) = index_provider.start(&provider_config).await {
-//                 error!("[provider_task] - {:?}", err);
-//             }
-//         });
-
-//         let _ = task::spawn(async move {
-//             let ad = Advertisement {
-//                 PreviousID: None,
-//                 Provider: peer_id.to_base58(),
-//                 Addresses: vec!["/ip4/127.0.0.1/tcp/6009".into()],
-//                 Signature: Ipld::Bytes(vec![]),
-//                 Entries: None,
-//                 Metadata: Ipld::Bytes(vec![]),
-//                 ContextID: Ipld::Bytes("ursa".into()),
-//                 IsRm: false,
-//             };
-
-//             let id = provider_interface.create(ad).unwrap();
-
-//             let mut entries: Vec<Ipld> = vec![];
-//             let count = 10;
-
-//             for i in 0..count {
-//                 let b = Into::<i32>::into(i).to_ne_bytes();
-//                 let mh = Code::Blake2b256.digest(&b);
-//                 entries.push(Ipld::Bytes(mh.to_bytes()))
-//             }
-//             let bytes = forest_encoding::to_vec(&entries)?;
-//             provider_interface.add_chunk(bytes, id)?;
-//             provider_interface.publish(id)?;
-
-//             Ok::<_, Error>(())
-//         })
-//         .await?;
-
-//         let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head").recv_json().await?;
-//         assert_eq!(
-//             signed_head.open()?.1,
-//             provider_interface_copy.head.read().unwrap().unwrap()
-//         );
-
-//         Ok(())
-//     }
-// }
+#[cfg(test)]
+#[path = "tests/engine_tests.rs"]
+mod engine_tests;

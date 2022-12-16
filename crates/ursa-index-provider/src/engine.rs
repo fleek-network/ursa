@@ -288,3 +288,7 @@ where
         };
     }
 }
+
+#[cfg(test)]
+#[path = "tests/engine_tests.rs"]
+mod engine_tests;
