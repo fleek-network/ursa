@@ -1,7 +1,7 @@
+use dirs::home_dir;
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use dirs::home_dir;
 
 pub const DEFAULT_TRACKER_URL: &str = "https://tracker.ursa.earth/register";
 pub const DEFAULT_BOOTSTRAP: [&str; 2] = [
@@ -26,7 +26,7 @@ pub struct NetworkConfig {
     /// set true if it is a bootstrap node. default = false
     pub bootstrapper: bool,
     /// Swarm listening Address.
-    pub swarm_addr: Multiaddr,
+    pub swarm_addrs: Vec<Multiaddr>,
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// Database path.
@@ -54,12 +54,16 @@ impl Default for NetworkConfig {
             relay_server: true,
             bootstrap_nodes,
             bootstrapper: false,
-            swarm_addr: "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
+            swarm_addrs: vec![
+                "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
+                "/ip4/0.0.0.0/udp/4890/quic-v1".parse().unwrap(),
+            ],
             database_path: home_dir().unwrap_or_default().join(DEFAULT_DB_PATH_STR),
             identity: "default".to_string(),
-            keystore_path: PathBuf::from(env!("HOME")).join(DEFAULT_KEYSTORE_PATH_STR),
             tracker: DEFAULT_TRACKER_URL.into(),
-            keystore_path: home_dir().unwrap_or_default().join(DEFAULT_KEYSTORE_PATH_STR),
+            keystore_path: home_dir()
+                .unwrap_or_default()
+                .join(DEFAULT_KEYSTORE_PATH_STR),
         }
     }
 }

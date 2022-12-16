@@ -134,12 +134,16 @@ mod tests {
     use crate::functions::{get_block, put_file};
 
     use cid::Cid;
-    use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, DefaultParams, Ipld};
+    use libipld::block::Block;
+    use libipld::cbor::DagCborCodec;
+    use libipld::ipld::Ipld;
+    use libipld::multihash::Code;
+    use libipld::store::DefaultParams;
     use ursa_rpc_server::api::{NetworkGetParams, NetworkPutFileParams};
     use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
-        Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
+        Block::<DefaultParams>::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
     }
 
     fn setup_logger(level: LevelFilter) {
@@ -153,7 +157,7 @@ mod tests {
     #[tokio::test]
     async fn test_rpc_get_cid() {
         setup_logger(LevelFilter::Info);
-        let block = create_block(ipld!(&b"hello world"[..]));
+        let block = create_block(Ipld::String("Hello World!".to_string()));
         let cid = convert_cid(block.cid().to_bytes());
         let string_cid = Cid::to_string(&cid);
         let params = NetworkGetParams {

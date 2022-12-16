@@ -1,6 +1,6 @@
+use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use dirs::home_dir;
 
 const DEFAULT_DB_PATH_STR: &str = ".ursa/data/index_provider_db";
 

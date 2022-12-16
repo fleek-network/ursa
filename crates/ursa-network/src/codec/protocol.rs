@@ -133,8 +133,6 @@ impl RequestResponseCodec for UrsaExchangeCodec {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_read_request() {
         todo!()

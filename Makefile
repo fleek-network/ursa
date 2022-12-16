@@ -47,6 +47,9 @@ fmt:
 clippy:
 	cargo clippy --locked -- -D warnings
 
+soft-clippy:
+	cargo clippy --locked
+
 # Deep clean
 clean:
 	cargo clean

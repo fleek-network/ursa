@@ -10,7 +10,7 @@ description = "Ursa's cli"
 [dependencies]
 anyhow = "1.0.57"
 ctrlc = "3.1"
-db = { package = "forest_db", version = "0.1", git = "https://github.com/theBeardA/forest-rocksdb", branch = "main", features = ["rocksdb"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
 futures = "0.3.21"

@@ -1,8 +1,14 @@
 use anyhow::anyhow;
+use cid::{
+    multihash::{Code, MultihashDigest},
+    Cid,
+};
+use db::Store as Store_;
 use fnv::FnvHashSet;
-use ipld_blockstore::BlockStore;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
 use libipld::store::DefaultParams;
-use libipld::{Block, Cid, Result};
+use libipld::{Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 use ursa_utils::convert_cid;
@@ -13,7 +19,7 @@ pub struct Store<S> {
 
 impl<S> Store<S>
 where
-    S: BlockStore + Send + Sync + 'static,
+    S: Blockstore + Store_ + Send + Sync + 'static,
 {
     pub fn new(db: Arc<S>) -> Self {
         Self { db }
@@ -24,29 +30,84 @@ where
     }
 }
 
+/// Extension methods for inserting and retrieving IPLD data with CIDs
+pub trait BlockstoreExt: Blockstore {
+    /// Get typed object from block store by CID
+    fn get_obj<T>(&self, cid: &Cid) -> anyhow::Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        match self.get(cid)? {
+            Some(bz) => Ok(Some(from_slice(&bz)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Put an object in the block store and return the Cid identifier.
+    fn put_obj<S>(&self, obj: &S, code: Code) -> anyhow::Result<Cid>
+    where
+        S: Serialize,
+    {
+        let bytes = to_vec(obj)?;
+        self.put_raw(bytes, code)
+    }
+
+    /// Put raw bytes in the block store and return the Cid identifier.
+    fn put_raw(&self, bytes: Vec<u8>, code: Code) -> anyhow::Result<Cid> {
+        let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
+        self.put_keyed(&cid, &bytes)?;
+        Ok(cid)
+    }
+
+    /// Batch put CBOR objects into block store and returns vector of CIDs
+    fn bulk_put<'a, S, V>(&self, values: V, code: Code) -> anyhow::Result<Vec<Cid>>
+    where
+        Self: Sized,
+        S: Serialize + 'a,
+        V: IntoIterator<Item = &'a S>,
+    {
+        let keyed_objects = values
+            .into_iter()
+            .map(|value| {
+                let bytes = to_vec(value)?;
+                let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
+                Ok((cid, bytes))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let cids = keyed_objects
+            .iter()
+            .map(|(cid, _)| cid.to_owned())
+            .collect();
+
+        self.put_many_keyed(keyed_objects)?;
+
+        Ok(cids)
+    }
+}
+
+impl<T: Blockstore> BlockstoreExt for T {}
+
 pub struct BitswapStorage<P>(pub Arc<Store<P>>)
 where
-    P: BlockStore + Sync + Send + 'static;
+    P: Blockstore + Store_ + Send + Sync + 'static;
 
 impl<P> BitswapStore for BitswapStorage<P>
 where
-    P: BlockStore + Sync + Send + 'static,
+    P: Blockstore + Store_ + Send + Sync + 'static,
 {
     type Params = DefaultParams;
 
     fn contains(&mut self, cid: &Cid) -> Result<bool> {
-        Ok(self.0.db.exists(cid.to_bytes())?)
+        self.0.db.has(cid)
     }
 
     fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.db.read(cid.to_bytes()).unwrap())
+        Ok(self.0.db.get(cid).unwrap())
     }
 
     fn insert(&mut self, block: &Block<Self::Params>) -> Result<()> {
-        self.0
-            .db
-            .write(&block.cid().to_bytes(), block.data())
-            .unwrap();
+        self.0.db.put_keyed(block.cid(), block.data()).unwrap();
 
         Ok(())
     }
@@ -75,7 +136,7 @@ pub trait Dag {
 
 impl<S> Dag for Store<S>
 where
-    S: BlockStore + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let mut res = Vec::new();
@@ -89,7 +150,7 @@ where
             if refs.contains(&cid) {
                 continue;
             }
-            match self.blockstore().get(&convert_cid(cid.to_bytes()))? {
+            match self.db.get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data).unwrap();
