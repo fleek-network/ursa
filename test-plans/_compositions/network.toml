@@ -9,13 +9,7 @@
   concurrent_builds = 1
 
 [[groups]]
-  id = "ping"
-  instances = { count = 1 }
+  id = "service"
+  instances = { count = 3 }
   [groups.build_config.build_args]
-    BINARY_NAME = 'testplan_ping'
-
-[[groups]]
-  id = "kad"
-  instances = { count = 1 }
-  [groups.build_config.build_args]
-    BINARY_NAME = 'testplan_kad'
+    BINARY_NAME = 'testplan_service'
