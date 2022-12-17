@@ -1,14 +1,14 @@
-use ursa_network::{UrsaService, NetworkCommand, NetworkConfig};
-use ursa_store::UrsaStore;
-use ursa_index_provider::provider::Provider;
-use std::sync::Arc;
 use db::MemoryDB;
-use libp2p::{Multiaddr, PeerId};
-use ursa_index_provider::config::ProviderConfig;
 use env_logger::Env;
+use futures::StreamExt;
+use libp2p::{Multiaddr, PeerId};
 use std::borrow::Cow;
 use std::collections::HashSet;
-use futures::StreamExt;
+use std::sync::Arc;
+use ursa_index_provider::config::ProviderConfig;
+use ursa_index_provider::provider::Provider;
+use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
+use ursa_store::UrsaStore;
 
 #[tokio::main]
 async fn main() {
@@ -58,7 +58,9 @@ async fn main() {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
         let (peers_sender, peers_receiver) = tokio::sync::oneshot::channel();
-        let msg = NetworkCommand::GetPeers{sender: peers_sender};
+        let msg = NetworkCommand::GetPeers {
+            sender: peers_sender,
+        };
         cmd_sender.send(msg).unwrap();
 
         peers = peers_receiver.await.expect("Success");
@@ -66,11 +68,12 @@ async fn main() {
         client.record_message(format!("Node: Peers: {:?}", peers));
     }
 
-    if peers.contains(&PeerId::try_from_multiaddr(&Multiaddr::try_from(bootstrap_addr).unwrap()).unwrap())  {
+    if peers.contains(
+        &PeerId::try_from_multiaddr(&Multiaddr::try_from(bootstrap_addr).unwrap()).unwrap(),
+    ) {
         client.signal("done").await.unwrap();
         client.record_success().await.expect("Success");
     }
-
 }
 
 fn get_store() -> Arc<UrsaStore<MemoryDB>> {
@@ -96,9 +99,12 @@ async fn run_bootstrap(client: testground::client::Client) {
     let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(local_key.public()));
     // Publish its address so other nodes know who is the bootstrapper.
     let payload = serde_json::json!({
-            "Addrs": addr,
-        });
-    client.publish("bootstrap-addr", Cow::Owned(payload)).await.unwrap();
+        "Addrs": addr,
+    });
+    client
+        .publish("bootstrap-addr", Cow::Owned(payload))
+        .await
+        .unwrap();
 
     // Start service.
     let service = node_init(local_key, config);
@@ -111,12 +117,10 @@ async fn run_bootstrap(client: testground::client::Client) {
     client.signal("bootstrap-ready").await.unwrap();
 
     // Wait for others to finish before exiting.
-    client.barrier("done", client.run_parameters().test_instance_count-1).await.unwrap();
-
     client
-        .record_success()
+        .barrier("done", client.run_parameters().test_instance_count - 1)
         .await
-        .expect("Success");
+        .unwrap();
 
-    return;
+    client.record_success().await.expect("Success");
 }
