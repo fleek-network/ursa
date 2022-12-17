@@ -3,7 +3,7 @@ use cid::{
     multihash::{Code, MultihashDigest},
     Cid,
 };
-use db::Store as Store_;
+use db::Store;
 use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
@@ -13,13 +13,13 @@ use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 use ursa_utils::convert_cid;
 
-pub struct Store<S> {
+pub struct UrsaStore<S> {
     pub db: Arc<S>,
 }
 
-impl<S> Store<S>
+impl<S> UrsaStore<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
     pub fn new(db: Arc<S>) -> Self {
         Self { db }
@@ -88,13 +88,13 @@ pub trait BlockstoreExt: Blockstore {
 
 impl<T: Blockstore> BlockstoreExt for T {}
 
-pub struct BitswapStorage<P>(pub Arc<Store<P>>)
+pub struct BitswapStorage<P>(pub Arc<UrsaStore<P>>)
 where
-    P: Blockstore + Store_ + Send + Sync + 'static;
+    P: Blockstore + Store + Send + Sync + 'static;
 
 impl<P> BitswapStore for BitswapStorage<P>
 where
-    P: Blockstore + Store_ + Send + Sync + 'static,
+    P: Blockstore + Store + Send + Sync + 'static,
 {
     type Params = DefaultParams;
 
@@ -134,7 +134,7 @@ pub trait Dag {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
 }
 
-impl<S> Dag for Store<S>
+impl<S> Dag for UrsaStore<S>
 where
     S: Blockstore + Sync + Send + 'static,
 {
@@ -160,7 +160,8 @@ where
                 None => {
                     // TODO: handle the case where parts of the dags are missing
                     return Err(anyhow!(
-                        "Some of the cids for root is missing for the root {:?}",
+                        "The block wiht cid {:?} from the dag with the root {:?} is missing ",
+                        cid,
                         root_cid
                     ));
                 }
@@ -187,7 +188,7 @@ mod tests {
                 .expect("Opening RocksDB must succeed"),
         );
 
-        let store1 = Arc::new(Store::new(Arc::clone(&db1)));
+        let store1 = Arc::new(UrsaStore::new(Arc::clone(&db1)));
         let mut bitswap_store_1 = BitswapStorage(store1.clone());
 
         let cid =
