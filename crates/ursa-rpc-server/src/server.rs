@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{Extension, Router};
-use db::Store as Store;
+use db::Store;
 use fvm_ipld_blockstore::Blockstore;
 use std::{net::SocketAddr, sync::Arc};
 

@@ -24,13 +24,15 @@ pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
-pub fn provider_engine_init(port: u16) -> Result<(ProviderEngine<MemoryDB>, UrsaService<MemoryDB>, PeerId)> {
+pub fn provider_engine_init(
+    port: u16,
+) -> Result<(ProviderEngine<MemoryDB>, UrsaService<MemoryDB>, PeerId)> {
     setup_logger(LevelFilter::Info);
     let mut config = ProviderConfig::default();
     config.port = port;
 
     let mut network_config = NetworkConfig::default();
-    network_config.swarm_addrs = vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()];;
+    network_config.swarm_addrs = vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()];
     let keypair = Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
 

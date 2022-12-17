@@ -14,7 +14,7 @@
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use cid::Cid;
-use db::Store as Store;
+use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;

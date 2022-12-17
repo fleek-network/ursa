@@ -3,7 +3,7 @@ use cid::{
     multihash::{Code, MultihashDigest},
     Cid,
 };
-use db::Store as Store;
+use db::Store;
 use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};

@@ -5,7 +5,7 @@ use crate::{
     signed_head::SignedHead,
 };
 use bytes::Bytes;
-use db::Store as Store;
+use db::Store;
 use forest_ipld::Ipld;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
@@ -27,7 +27,12 @@ use cid::Cid;
 
 use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
-use std::{collections::VecDeque, str::FromStr, sync::Arc, net::{SocketAddr, IpAddr, Ipv4Addr}};
+use std::{
+    collections::VecDeque,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
+    sync::Arc,
+};
 use tracing::{error, info, warn};
 use ursa_store::{BlockstoreExt, Dag, UrsaStore};
 use ursa_utils::convert_cid;

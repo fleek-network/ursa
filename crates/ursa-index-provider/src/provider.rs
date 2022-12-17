@@ -2,7 +2,7 @@ use crate::advertisement::{self, EntryChunk};
 
 use advertisement::Advertisement;
 use anyhow::{anyhow, Error, Result};
-use db::Store as Store;
+use db::Store;
 
 use axum::{
     http::StatusCode,

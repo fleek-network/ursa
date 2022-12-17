@@ -3,7 +3,7 @@ use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
-use db::Store as Store;
+use db::Store;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};

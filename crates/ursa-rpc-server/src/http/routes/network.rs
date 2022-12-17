@@ -10,7 +10,7 @@ use axum::{
     Extension, Json, Router,
 };
 use cid::Cid;
-use db::Store as Store;
+use db::Store;
 use futures::io::Cursor;
 use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
