@@ -1,15 +1,10 @@
-name: rust-clippy-test
+name: rust-ci
 
 on:
   push:
     branches: [ "main" ]
-    tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   tests:
@@ -19,51 +14,56 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        rust: [stable]
+        rust: [nightly]
         make:
           - name: Clippy
             task: "check"
-          - name: Unit tests
+          - name: Tests
             task: "test-network"
           - name: Doc
             task: "doc"
         include:
           - os: ubuntu-latest
-            sccache-path: /home/runner/.cache/sccache
+            env:
+            CARGO_INCREMENTAL: '0'
+            RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+            RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
           - os: macos-latest
-            sccache-path: /Users/runner/Library/Caches/Mozilla.sccache
+            env:
+            CARGO_INCREMENTAL: '0'
+            RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+            RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
         exclude:
-          - os: macos-latest
-            rust: stable
+          - os: ubuntu-latest
+            rust: nightly
             make:
-              name: Clippy
+              name: Clippy Doc
+          - os: macos-latest
+            rust: nightly
+            make:
+              name: Clippy Doc
+
     env:
-      RUST_BACKTRACE: full
-      RUSTC_WRAPPER: sccache
       RUSTV: ${{ matrix.rust }}
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{ matrix.sccache-path }}
-      # SCCACHE_RECACHE: 1 # Uncomment this to clear cache, then comment it back out
+
     steps:
       - name: Install Dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
 
-      - uses: actions/checkout@v3
-      - name: Install sccache (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          LINK: https://github.com/mozilla/sccache/releases/download
-          SCCACHE_VERSION: 0.3.3
-        run: |
-          SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
-          mkdir -p $HOME/.local/bin
-          curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
-          mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
-          echo "$HOME/.local/bin" >> $GITHUB_PATH        
+      - name: Checkout repository
+        uses: actions/checkout@master
 
-      - name: Install sccache & protoc (macos-latest)
+      # - name: Install protoc (ubuntu-latest)
+      #   if: matrix.os == 'ubuntu-latest'
+      #   run: |
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+
+      - name: Install protoc (macos-latest)
         if: matrix.os == 'macos-latest'
         run: |
           brew update
@@ -77,40 +77,28 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
           profile: minimal
+          components: clippy, rustc-dev, llvm-tools-preview
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        continue-on-error: false
+      - name: Cache Cargo
+        uses: actions/cache@v3
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git            
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-                        ${{ runner.os }}-cargo-
-
-      - name: Save sccache
-        uses: actions/cache@v2
-        continue-on-error: false
-        with:
-          path: ${{ matrix.sccache-path }}
-          key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-                        ${{ runner.os }}-sccache-
-
-      - name: Start sccache server
-        run: sccache --start-server
-
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+          
       - name: ${{ matrix.make.name }}
         run: make ${{ matrix.make.task }}
 
-      - name: Print sccache stats
-        run: sccache --show-stats
+      - name: Setup grcov
+        id: coverage
+        uses: actions-rs/grcov@v0.1
 
-      - name: Stop sccache server
-        run: sccache --stop-server || true
+      - name: grcov upload to codecov.io
+        uses: codecov/codecov-action@v3
+        with:
+          file: ${{ steps.coverage.outputs.report }}

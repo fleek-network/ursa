@@ -41,7 +41,7 @@ test-network:
 
 # Generate rust docs
 doc:
-	cargo doc --no-deps
+	cargo doc --no-deps --all-features
 
 # Format all sources
 fmt: 
@@ -60,6 +60,7 @@ clean:
 	rm -rf target
 
 # Passive check
-cargo check --all --all-targets --all-features
+check:
+	cargo check --all --all-targets --all-features
 
-ci: check fmt soft-clippy
+ci:	check fmt soft-clippy
