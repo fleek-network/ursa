@@ -19,7 +19,7 @@ jobs:
           - name: Clippy
             task: "check"
           - name: Tests
-            task: "test-network"
+            task: cargo test -p ursa-network
           - name: Doc
             task: "doc"
         include:

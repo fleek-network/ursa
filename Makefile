@@ -35,10 +35,6 @@ docker: docker-build docker-run
 test:
 	cargo test --all
 
-# Run unit tests
-test-network:
-	cargo test service
-
 # Generate rust docs
 doc:
 	cargo doc --no-deps --all-features
