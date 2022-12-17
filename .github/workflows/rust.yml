@@ -16,11 +16,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         rust: [nightly]
         make:
-          - name: Clippy
+          - name: clippy
             task: "check"
-          - name: Tests
-            task: test-network
-          - name: Doc
+          - name: test
+            task: "test-network"
+          - name: doc
             task: "doc"
 
     env:
@@ -79,10 +79,12 @@ jobs:
         run: make ${{ matrix.make.task }}
 
       - name: Setup grcov
+        if: matrix.make == 'Tests'
         id: coverage
         uses: actions-rs/grcov@v0.1
 
       - name: grcov upload to codecov.io
+        if: matrix.make == 'Tests'
         uses: codecov/codecov-action@v3
         with:
           file: ${{ steps.coverage.outputs.report }}
