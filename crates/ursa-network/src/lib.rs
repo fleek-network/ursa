@@ -1,4 +1,4 @@
-pub mod behaviour;
+mod behaviour;
 mod codec;
 pub mod config;
 mod discovery;
