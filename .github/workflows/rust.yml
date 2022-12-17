@@ -22,30 +22,12 @@ jobs:
             task: cargo test -p ursa-network
           - name: Doc
             task: "doc"
-        include:
-          - os: ubuntu-latest
-            env:
-            CARGO_INCREMENTAL: '0'
-            RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-            RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          - os: macos-latest
-            env:
-            CARGO_INCREMENTAL: '0'
-            RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-            RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-        exclude:
-          - os: ubuntu-latest
-            rust: nightly
-            make:
-              name: Clippy Doc
-          - os: macos-latest
-            rust: nightly
-            make:
-              name: Clippy Doc
 
     env:
-      RUSTV: ${{ matrix.rust }}
-
+      CARGO_INCREMENTAL: '0'
+      RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+      RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+      
     steps:
       - name: Install Dependencies
         if: matrix.os == 'ubuntu-latest'
