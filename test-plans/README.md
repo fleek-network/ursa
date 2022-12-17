@@ -19,7 +19,7 @@ testground plan import --from ./ --name ursa
 Once you have the Testground daemon running, you can run a composition of tests with:
 
 ```bash
-testground run composition --plan ursa --file ./_compositions/network.toml
+testground run composition --plan ursa --file ./bootstrap/_compositions/rust.toml
 ```
 
 > Progess of the tests can be monitored in the daemon's console.
@@ -27,5 +27,4 @@ testground run composition --plan ursa --file ./_compositions/network.toml
 ## Test cases
 
 The following test cases are available:
-- ping
-- kad
+- Bootstrap
