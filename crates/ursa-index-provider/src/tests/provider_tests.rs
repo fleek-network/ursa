@@ -14,7 +14,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
-        let (provider_engine, peer_id) = provider_engine_init()?;
+        let (provider_engine, _, peer_id) = provider_engine_init(8070)?;
         let mut provider_interface = provider_engine.provider();
 
         task::spawn(async move {

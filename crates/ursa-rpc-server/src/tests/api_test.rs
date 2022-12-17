@@ -9,6 +9,7 @@ mod tests {
     use tokio::task;
     use tracing::{error, log::LevelFilter};
 
+    #[ignore]
     #[tokio::test]
     async fn test_stream() -> anyhow::Result<()> {
         // TODO: fix this test case. running indefinitely

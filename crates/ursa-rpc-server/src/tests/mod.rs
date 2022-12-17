@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tracing::{error, log::LevelFilter};
 use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
 use ursa_network::{NetworkConfig, UrsaService};
-use ursa_store::Store;
+use ursa_store::UrsaStore;
 
 pub fn setup_logger(level: LevelFilter) {
     if let Err(err) = SimpleLogger::new()
@@ -20,15 +20,15 @@ pub fn setup_logger(level: LevelFilter) {
     }
 }
 
-pub fn get_store() -> Arc<Store<MemoryDB>> {
+pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     let db = Arc::new(MemoryDB::default());
-    Arc::new(Store::new(Arc::clone(&db)))
+    Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
 pub fn init() -> anyhow::Result<(
     UrsaService<MemoryDB>,
     ProviderEngine<MemoryDB>,
-    Arc<Store<MemoryDB>>,
+    Arc<UrsaStore<MemoryDB>>,
 )> {
     let store = get_store();
     let network_config = NetworkConfig::default();

@@ -9,6 +9,7 @@ mod tests {
     use std::sync::Arc;
     use tracing::log::LevelFilter;
 
+    #[ignore]
     #[tokio::test]
     async fn test_rpc_start() -> anyhow::Result<()> {
         setup_logger(LevelFilter::Info);

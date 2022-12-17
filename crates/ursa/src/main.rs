@@ -15,7 +15,7 @@ use ursa_index_provider::{engine::ProviderEngine, provider::Provider};
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
-use ursa_store::Store;
+use ursa_store::UrsaStore;
 
 pub mod config;
 mod ursa;
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
                 info!("Opening blockstore database at {:?}", db_path);
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
-                let store = Arc::new(Store::new(Arc::clone(&Arc::new(db))));
+                let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
                 let service =
                     UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
                 )
                 .expect("Opening provider RocksDB must succeed");
 
-                let index_store = Arc::new(Store::new(Arc::clone(&Arc::new(provider_db))));
+                let index_store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider_engine = ProviderEngine::new(
                     keypair.clone(),
                     Arc::clone(&store),

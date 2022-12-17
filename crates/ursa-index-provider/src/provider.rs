@@ -2,7 +2,7 @@ use crate::advertisement::{self, EntryChunk};
 
 use advertisement::Advertisement;
 use anyhow::{anyhow, Error, Result};
-use db::Store as Store_;
+use db::Store as Store;
 
 use axum::{
     http::StatusCode,
@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tracing::{error, info, trace};
-use ursa_store::{BlockstoreExt, Store};
+use ursa_store::{BlockstoreExt, UrsaStore};
 use ursa_utils::convert_cid;
 
 pub const HEAD_KEY: &str = "head";
@@ -34,15 +34,15 @@ pub const HEAD_KEY: &str = "head";
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
     keypair: Keypair,
-    store: Arc<Store<S>>,
+    store: Arc<UrsaStore<S>>,
     temp_ads: HashMap<usize, Advertisement>,
 }
 
 impl<S> Provider<S>
 where
-    S: Blockstore + Store_ + Sync + Send + 'static,
+    S: Blockstore + Store + Sync + Send + 'static,
 {
-    pub fn new(keypair: Keypair, store: Arc<Store<S>>) -> Self {
+    pub fn new(keypair: Keypair, store: Arc<UrsaStore<S>>) -> Self {
         let head = store
             .blockstore()
             .read(HEAD_KEY)
@@ -56,7 +56,7 @@ where
         }
     }
 
-    pub fn store(&self) -> Arc<Store<S>> {
+    pub fn store(&self) -> Arc<UrsaStore<S>> {
         Arc::clone(&self.store)
     }
 
@@ -68,12 +68,11 @@ where
         let head_lock = self.head.read().unwrap();
         *head_lock
     }
-
 }
 
 impl<S> Clone for Provider<S>
 where
-    S: Blockstore + Store_ + Sync + Send + 'static,
+    S: Blockstore + Store + Sync + Send + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -112,7 +111,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
 
 impl<S> ProviderInterface for Provider<S>
 where
-    S: Blockstore + Store_ + Sync + Send + 'static,
+    S: Blockstore + Store + Sync + Send + 'static,
 {
     fn create(&mut self, mut ad: Advertisement) -> Result<usize> {
         let id: usize = rand::thread_rng().gen();
@@ -213,5 +212,5 @@ impl Cbor for Message {
 }
 
 #[cfg(test)]
-#[path = "tests/engine_tests.rs"]
-mod engine_tests;
+#[path = "tests/provider_tests.rs"]
+mod provider_tests;

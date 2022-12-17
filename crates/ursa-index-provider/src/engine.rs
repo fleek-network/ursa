@@ -5,7 +5,7 @@ use crate::{
     signed_head::SignedHead,
 };
 use bytes::Bytes;
-use db::Store as Store_;
+use db::Store as Store;
 use forest_ipld::Ipld;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
@@ -27,9 +27,9 @@ use cid::Cid;
 
 use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
-use std::{collections::VecDeque, str::FromStr, sync::Arc};
+use std::{collections::VecDeque, str::FromStr, sync::Arc, net::{SocketAddr, IpAddr, Ipv4Addr}};
 use tracing::{error, info, warn};
-use ursa_store::{BlockstoreExt, Dag, Store};
+use ursa_store::{BlockstoreExt, Dag, UrsaStore};
 use ursa_utils::convert_cid;
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
@@ -53,7 +53,7 @@ impl IntoResponse for ProviderError {
     }
 }
 // handlers
-async fn head<S: Blockstore + Store_ + Sync + Send + 'static>(
+async fn head<S: Blockstore + Store + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
 ) -> Result<Json<SignedHead>, ProviderError> {
     if let Ok(Some(head)) = state.store().blockstore().read(HEAD_KEY) {
@@ -65,7 +65,7 @@ async fn head<S: Blockstore + Store_ + Sync + Send + 'static>(
     }
 }
 
-async fn get_block<S: Blockstore + Store_ + Sync + Send + 'static>(
+async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
     Path(cid): Path<String>,
 ) -> Result<Response<Body>, ProviderError> {
@@ -102,7 +102,7 @@ pub struct ProviderEngine<S> {
     /// index provider
     provider: Provider<S>,
     /// main cache node store to get all the cids in a dag
-    store: Arc<Store<S>>,
+    store: Arc<UrsaStore<S>>,
     /// provider config
     config: ProviderConfig,
     /// used by other processes to send message to provider engine
@@ -115,12 +115,12 @@ pub struct ProviderEngine<S> {
 
 impl<S> ProviderEngine<S>
 where
-    S: Blockstore + Store_ + Sync + Send + 'static,
+    S: Blockstore + Store + Sync + Send + 'static,
 {
     pub fn new(
         keypair: Keypair,
-        store: Arc<Store<S>>,
-        provider_store: Arc<Store<S>>,
+        store: Arc<UrsaStore<S>>,
+        provider_store: Arc<UrsaStore<S>>,
         config: ProviderConfig,
         network_command_sender: Sender<NetworkCommand>,
     ) -> Self {
@@ -142,6 +142,10 @@ where
         self.provider.clone()
     }
 
+    pub fn store(&self) -> Arc<UrsaStore<S>> {
+        Arc::clone(&self.store)
+    }
+
     pub async fn start(mut self) -> Result<()> {
         info!("Index provider engine starting up!");
 
@@ -156,17 +160,16 @@ where
 
         info!("index provider listening on: {:?}", &app_address);
 
-        // let poll_cid_queue = self.poll_cid_queue();
         let (server, engine) = tokio::join!(
             axum::Server::bind(&app_address).serve(app_router.into_make_service()),
-            self.poll_command()
+            self.handle_command_receiver()
         );
         engine.expect("failed to start the engine");
         server.expect("failed to start the server");
         Ok(())
     }
 
-    pub async fn poll_command(&mut self) -> Result<()> {
+    pub async fn handle_command_receiver(&mut self) -> Result<()> {
         loop {
             if let Some(command) = self.command_receiver.recv().await {
                 match command {

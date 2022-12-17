@@ -3,7 +3,7 @@ use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
-use db::Store as Store_;
+use db::Store as Store;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
@@ -20,7 +20,7 @@ use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
-use ursa_store::{Dag, Store};
+use ursa_store::{Dag, UrsaStore};
 use ursa_utils::convert_cid;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
@@ -77,9 +77,9 @@ pub trait NetworkInterface: Sync + Send + 'static {
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
-    pub store: Arc<Store<S>>,
+    pub store: Arc<UrsaStore<S>>,
     pub network_send: Sender<NetworkCommand>,
     pub provider_send: Sender<ProviderCommand>,
 }
@@ -87,7 +87,7 @@ where
 #[async_trait]
 impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
         if !self.store.blockstore().has(&cid)? {

@@ -1,6 +1,3 @@
-mod engine_tests;
-mod provider_tests;
-
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -10,7 +7,7 @@ use libp2p::{identity::Keypair, PeerId};
 use simple_logger::SimpleLogger;
 use tracing::{info, log::LevelFilter};
 use ursa_network::{NetworkConfig, UrsaService};
-use ursa_store::Store;
+use ursa_store::UrsaStore;
 
 pub fn setup_logger(level: LevelFilter) {
     if let Err(_) = SimpleLogger::new()
@@ -22,16 +19,18 @@ pub fn setup_logger(level: LevelFilter) {
     }
 }
 
-pub fn get_store() -> Arc<Store<MemoryDB>> {
+pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     let db = Arc::new(MemoryDB::default());
-    Arc::new(Store::new(Arc::clone(&db)))
+    Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
-pub fn provider_engine_init() -> Result<(ProviderEngine<MemoryDB>, PeerId)> {
-    setup_logger(LevelFilter::Debug);
+pub fn provider_engine_init(port: u16) -> Result<(ProviderEngine<MemoryDB>, UrsaService<MemoryDB>, PeerId)> {
+    setup_logger(LevelFilter::Info);
     let mut config = ProviderConfig::default();
+    config.port = port;
 
-    let network_config = NetworkConfig::default();
+    let mut network_config = NetworkConfig::default();
+    network_config.swarm_addrs = vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()];;
     let keypair = Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
 
@@ -47,5 +46,5 @@ pub fn provider_engine_init() -> Result<(ProviderEngine<MemoryDB>, PeerId)> {
         config.clone(),
         service.command_sender(),
     );
-    Ok((provider_engine, peer_id))
+    Ok((provider_engine, service, peer_id))
 }
