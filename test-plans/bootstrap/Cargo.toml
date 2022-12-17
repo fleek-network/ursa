@@ -1,0 +1,16 @@
+[package]
+edition = "2021"
+name = "bootstrap"
+version = "0.1.0"
+
+[dependencies]
+env_logger = "0.9.0"
+futures = "0.3.1"
+libp2p = { version = "0.50", features = ["websocket", "mplex", "yamux", "tcp", "async-std", "ping", "noise", "dns", "rsa", "macros"]}
+serde_json = "1"
+testground = "0.4"
+tokio = { version = "1.23", default-features = false, features = ["sync", "rt-multi-thread", "macros", "net"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
+ursa-network = { git = "https://github.com/fleek-network/ursa" }
+ursa-store = { git = "https://github.com/fleek-network/ursa" }
+ursa-index-provider = { git = "https://github.com/fleek-network/ursa" }

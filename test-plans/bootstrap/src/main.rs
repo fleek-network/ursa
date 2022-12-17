@@ -1,5 +1,5 @@
 use ursa_network::{UrsaService, NetworkCommand, NetworkConfig};
-use ursa_store::Store;
+use ursa_store::UrsaStore;
 use ursa_index_provider::provider::Provider;
 use std::sync::Arc;
 use db::MemoryDB;
@@ -73,18 +73,14 @@ async fn main() {
 
 }
 
-fn get_store() -> Arc<Store<MemoryDB>> {
+fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     let db = Arc::new(MemoryDB::default());
-    Arc::new(Store::new(Arc::clone(&db)))
+    Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
 fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaService<MemoryDB> {
     let store = get_store();
-    let index_store = get_store();
-
-    let provider_config = ProviderConfig::default();
-    let index_provider = Provider::new(keypair.clone(), index_store, provider_config.clone());
-    UrsaService::new(keypair, &config, Arc::clone(&store), index_provider).unwrap()
+    UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
 }
 
 async fn run_bootstrap(client: testground::client::Client) {

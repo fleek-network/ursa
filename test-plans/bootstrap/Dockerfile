@@ -7,29 +7,19 @@ RUN apt-get update && apt-get install -y cmake protobuf-compiler libclang-dev li
 # See https://blog.mgattozzi.dev/caching-rust-docker-builds/
 # And https://github.com/rust-lang/cargo/issues/2644
 
-# Clone latest ursa
-RUN git clone https://github.com/fleek-network/ursa
-ARG CHECKOUT="feat/test-plan"
-# Checkout test-plan branch (we need these changes temporarily)
-RUN cd ursa && git checkout feat/test-plan && git pull
-RUN cp -r ursa/crates ../crates
-
 RUN mkdir -p ./plan/src/
 RUN echo "fn main() {}" > ./plan/src/main.rs
-#COPY ./Cargo.lock ./plan/
 COPY ./plan/Cargo.toml ./plan/
-RUN cd ./plan/ && cargo build
+RUN cd ./plan/  && cargo build --release
 
 COPY . .
 
-ARG BINARY_NAME
-RUN cd ./plan/ \
-    && cargo build  --bin=${BINARY_NAME} \
-    && mv /usr/src/testplan/plan/target/debug/${BINARY_NAME} /usr/local/bin/testplan
+RUN cd ./plan/  \
+    && cargo build --release \
+    && mv /usr/src/testplan/plan/target/release/bootstrap /usr/local/bin/testplan
 
 FROM debian:bullseye
 RUN apt-get update && apt-get install -y libcurl4-openssl-dev
-# Rename ping to name of your crate
 COPY --from=builder /usr/local/bin/testplan /usr/local/bin/testplan
 EXPOSE 6060
 ENV RUST_BACKTRACE=1

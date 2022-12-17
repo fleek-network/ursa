@@ -2,14 +2,14 @@
   name = "rust-cross-versions-{{ $.Env.GitReference }}"
 
 [global]
-  plan = "ursa/network"
-  case = "network"
+  plan = "ursa/bootstrap"
+  case = "bootstrap"
   builder = "docker:generic"
   runner = "local:docker"
   concurrent_builds = 1
 
 [[groups]]
-  id = "service"
+  id = "bootstrap"
   instances = { count = 3 }
   [groups.build_config.build_args]
-    BINARY_NAME = 'testplan_service'
+    BINARY_NAME = 'bootstrap'
