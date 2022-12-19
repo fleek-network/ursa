@@ -5,7 +5,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackerRegistration {
     pub id: PeerId,
-    pub storage: u64, // in bytes
     pub agent: String,
     pub addr: Option<String>,
     pub p2p_port: Option<u16>,

@@ -149,7 +149,6 @@ mod tests {
         let data = TrackerRegistration {
             id,
             addr,
-            storage: 0,
             p2p_port: Some(6009),
             rpc_port: Some(6009),
             metrics_port: Some(6009),

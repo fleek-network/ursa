@@ -62,8 +62,6 @@ async fn main() -> Result<()> {
 
                 let registration = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
-                    // TODO: calculate or get from config the supplied storage in bytes
-                    storage: 0,
                     agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
                     addr: None, // if we have a dns address, we can set it here
                     p2p_port: network_config
@@ -105,6 +103,7 @@ async fn main() -> Result<()> {
                 );
 
                 // Start metrics service
+                // todo(oz): track storage/ram/cpu
                 let metrics_task = task::spawn(async move {
                     if let Err(err) = server::start(&metrics_config).await {
                         error!("[metrics_task] - {:?}", err);
