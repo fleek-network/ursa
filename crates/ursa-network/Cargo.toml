@@ -62,6 +62,4 @@ features = [
 ]
 
 [dev-dependencies]
-db.workspace = true
 simple_logger.workspace = true
-tokio.workspace = true
