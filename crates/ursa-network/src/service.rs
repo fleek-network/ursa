@@ -432,8 +432,8 @@ where
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
                     Some(cid) => {
                         let labels = vec![
-                            Label::new("cid", format!("{}", cid)),
-                            Label::new("query_id", format!("{}", query_id)),
+                            Label::new("cid", format!("{cid}")),
+                            Label::new("query_id", format!("{query_id}")),
                         ];
 
                         track(MetricEvent::Bitswap, Some(labels), None);
@@ -447,7 +447,7 @@ where
                                     }
                                 } else {
                                     error!("[BitswapEvent::Complete] - block not found.");
-                                    if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
+                                    if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
                                         error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
                                 }
@@ -458,8 +458,7 @@ where
                     }
                     _ => {
                         error!(
-                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
-                            query_id
+                            "[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map"
                         )
                     }
                 },
@@ -469,10 +468,7 @@ where
         Ok(())
     }
 
-    fn handle_gossip(
-        &mut self,
-        gossip_event: libp2p::gossipsub::GossipsubEvent,
-    ) -> Result<()> {
+    fn handle_gossip(&mut self, gossip_event: libp2p::gossipsub::GossipsubEvent) -> Result<()> {
         match gossip_event {
             libp2p::gossipsub::GossipsubEvent::Message {
                 propagation_source,
@@ -528,43 +524,41 @@ where
         req_res_event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
     ) -> Result<()> {
         match req_res_event {
-            RequestResponseEvent::Message { peer, message } => {
-                match message {
-                    RequestResponseMessage::Request {
-                        request_id,
-                        request,
-                        ..
-                    } => {
-                        trace!("[BehaviourEvent::RequestMessage] {} ", peer);
-                        let labels = vec![
-                            Label::new("peer", format!("{}", peer)),
-                            Label::new("request", format!("{:?}", request)),
-                        ];
+            RequestResponseEvent::Message { peer, message } => match message {
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    ..
+                } => {
+                    trace!("[BehaviourEvent::RequestMessage] {} ", peer);
+                    let labels = vec![
+                        Label::new("peer", format!("{peer}")),
+                        Label::new("request", format!("{request:?}")),
+                    ];
 
-                        track(MetricEvent::RequestMessage, Some(labels), None);
-                        self.emit_event(NetworkEvent::RequestMessage { request_id });
-                    }
-                    RequestResponseMessage::Response {
-                        request_id,
-                        response,
-                    } => {
-                        trace!(
-                            "[RequestResponseMessage::Response] - {} {}: {:?}",
-                            request_id,
-                            peer,
-                            response
-                        );
-
-                        if let Some(request) = self.pending_responses.remove(&request_id) {
-                            if request.send(Ok(response)).is_err() {
-                                warn!("[RequestResponseMessage::Response] - failed to send request: {:?}", request_id);
-                            }
-                        }
-
-                        debug!("[RequestResponseMessage::Response] - failed to remove channel for: {:?}", request_id);
-                    }
+                    track(MetricEvent::RequestMessage, Some(labels), None);
+                    self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }
-            }
+                RequestResponseMessage::Response {
+                    request_id,
+                    response,
+                } => {
+                    trace!(
+                        "[RequestResponseMessage::Response] - {} {}: {:?}",
+                        request_id,
+                        peer,
+                        response
+                    );
+
+                    if let Some(request) = self.pending_responses.remove(&request_id) {
+                        if request.send(Ok(response)).is_err() {
+                            warn!("[RequestResponseMessage::Response] - failed to send request: {request_id:?}");
+                        }
+                    }
+
+                    debug!("[RequestResponseMessage::Response] - failed to remove channel for: {request_id:?}");
+                }
+            },
             RequestResponseEvent::OutboundFailure { .. }
             | RequestResponseEvent::InboundFailure { .. }
             | RequestResponseEvent::ResponseSent { .. } => (),
@@ -652,7 +646,7 @@ where
                 }
                 sender
                     .send(addresses.into_iter().cloned().collect())
-                    .map_err(|_| anyhow!("Failed to get listener adddresses from network"))?;
+                    .map_err(|_| anyhow!("Failed to get listener addresses from network"))?;
             }
             NetworkCommand::SendRequest {
                 peer_id,

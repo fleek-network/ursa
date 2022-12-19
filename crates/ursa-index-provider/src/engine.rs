@@ -61,7 +61,7 @@ async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
     match state.store().blockstore().get_obj::<Vec<u8>>(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
-        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{}", e)))),
+        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{e}")))),
     }
 }
 

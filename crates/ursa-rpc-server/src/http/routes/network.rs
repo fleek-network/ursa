@@ -62,10 +62,10 @@ where
                         error!("{:?}", err);
                         (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(format!("{:?}", err)),
+                            Json(format!("{err:?}")),
                         )
                     }
-                    Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
+                    Ok(res) => (StatusCode::OK, Json(format!("{res:?}"))),
                 }
             } else {
                 (
@@ -102,7 +102,7 @@ where
                 );
                 headers.insert(
                     CONTENT_DISPOSITION,
-                    format!("attachment; filename=\"{}.car\"", cid_str)
+                    format!("attachment; filename=\"{cid_str}.car\"")
                         .parse()
                         .unwrap(),
                 );
@@ -111,13 +111,12 @@ where
             }
             Err(err) => {
                 error!("{:?}", err);
-                Err(NetworkError::InternalError(anyhow!("{}", err)))
+                Err(NetworkError::InternalError(anyhow!("{err}")))
             }
         };
     } else {
         Err(NetworkError::InternalError(anyhow!(
-            "Invalid Cid String, Cannot Parse {} to CID",
-            &cid_str
+            "Invalid Cid String, Cannot Parse {cid_str} to CID"
         )))
     }
 }

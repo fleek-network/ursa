@@ -36,14 +36,13 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
         .await
         .with_context(|| {
             format!(
-                "failed to init tls from:\ncert: {:?}:\npath:{:?}",
-                cert_path, key_path
+                "failed to init tls from:\ncert: {cert_path:?}:\npath: {key_path:?}"
             )
         })?;
 
     let addr = SocketAddr::from((
         addr.parse::<Ipv4Addr>()
-            .with_context(|| format!("failed to parse IPv4 with: {}", addr))?,
+            .with_context(|| format!("failed to parse IPv4 with: {addr}"))?,
         *port,
     ));
 
@@ -53,7 +52,7 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
         .route("/:cid", get(get_block_handler))
         .layer(Extension((client, config)));
 
-    info!("reverse proxy listening on {}", addr);
+    info!("reverse proxy listening on {addr}");
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())

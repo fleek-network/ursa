@@ -25,7 +25,6 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
         Label::new("method", method.to_string()),
         Label::new("path", path),
         Label::new("status", status),
-        Label::new("latency", format!("{}", latency)),
     ];
 
     track(MetricEvent::RpcRequestReceived, None, None);

@@ -133,7 +133,7 @@ where
                     ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
                     Ok(())
                 }
-                Err(e) => Err(anyhow!(format!("{}", e))),
+                Err(e) => Err(anyhow!(format!("{e}"))),
             };
         }
 
@@ -165,7 +165,7 @@ where
             domain = "/ip4/127.0.0.1/tcp/8070".to_string();
         }
         let mut multiaddrs = Multiaddr::from_str(&domain)?;
-        multiaddrs = Multiaddr::try_from(format!("{}/http/p2p/{}", multiaddrs, peer_id))?;
+        multiaddrs = Multiaddr::try_from(format!("{multiaddrs}/http/p2p/{peer_id}"))?;
         let message_addrs = [multiaddrs].to_vec();
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {
@@ -174,10 +174,7 @@ where
                 ExtraData: *b"",
             };
 
-            info!(
-                "Announcing the advertisement with the message {:?}",
-                message
-            );
+            info!("Announcing the advertisement with the message {message:?}");
             Ok(message.marshal_cbor().unwrap())
         } else {
             Err(anyhow!("No head found for announcement!"))

@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
                     UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
                 let provider_db = RocksDb::open(
-                    &provider_config.database_path.resolve(),
+                    provider_config.database_path.resolve(),
                     &RocksDbConfig::default(),
                 )
                 .expect("Opening provider RocksDB must succeed");
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
             }
         }
         Err(e) => {
-            cli_error_and_die(&format!("Config error: {}", e), 1);
+            cli_error_and_die(&format!("Config error: {e}"), 1);
         }
     };
     Ok(())

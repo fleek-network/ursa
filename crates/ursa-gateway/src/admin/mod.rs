@@ -32,15 +32,12 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!(
-                "failed to init tls from:\ncert: {:?}:\npath:{:?}",
-                cert_path, key_path
-            )
+            format!("failed to init tls from:\ncert: {cert_path:?}:\npath:{key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
         addr.parse::<Ipv4Addr>()
-            .with_context(|| format!("failed to parse IPv4 with: {}", addr))?,
+            .with_context(|| format!("failed to parse IPv4 with: {addr}"))?,
         *port,
     ));
 
@@ -48,7 +45,7 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
         .route("/config", get(get_config_handler))
         .layer(Extension(config));
 
-    info!("admin server listening on {}", addr);
+    info!("admin server listening on {addr}");
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())

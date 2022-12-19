@@ -160,7 +160,7 @@ where
         write_task.await?;
 
         let buffer: Vec<_> = buffer.read().await.clone();
-        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
+        let file_path = PathBuf::from(path).join(format!("{root_cid}.car"));
         create_dir_all(file_path.parent().unwrap()).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(&buffer).await?;
@@ -213,8 +213,7 @@ where
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
-                "The PUT failed, please check server logs {:?}",
-                e
+                "The PUT failed, please check server logs {e:?}"
             ))),
         }
     }

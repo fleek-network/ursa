@@ -189,13 +189,13 @@ mod tests {
         );
 
         let store1 = Arc::new(UrsaStore::new(Arc::clone(&db1)));
-        let mut bitswap_store_1 = BitswapStorage(store1.clone());
+        let mut bitswap_store_1 = BitswapStorage(store1);
 
         let cid =
             Cid::from_str("bafybeihybv5apjuvkpaw62l34ui7t363pt3hwxbz7rltrpjklvzrbviq5m").unwrap();
 
         if let Ok(res) = bitswap_store_1.missing_blocks(&convert_cid(cid.to_bytes())) {
-            println!("vec of missing blocks: {:?}", res);
+            println!("vec of missing blocks: {res:?}");
         }
     }
 }

@@ -38,7 +38,7 @@ impl Display for Metric {
             Metric::NodeGossipMessages => write!(f, "node_gossip_messages"),
             Metric::NodeRequestMessages => write!(f, "node_request_messages"),
             Metric::NodeResponseInfo => write!(f, "node_response_info"),
-            Metric::Unknown(s) => write!(f, "{}", s),
+            Metric::Unknown(s) => write!(f, "{s}"),
         }
     }
 }
