@@ -8,14 +8,13 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use cid::Cid;
+use cid::{Cid, multihash::Code};
 use forest_encoding::Cbor;
 use forest_ipld::Ipld;
 use fvm_ipld_blockstore::Blockstore;
 use libipld::codec::Encode;
 use libipld_cbor::DagCborCodec;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
-use multihash::Code;
 use rand;
 use rand::Rng;
 use serde::{Deserialize, Serialize};

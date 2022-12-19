@@ -1,10 +1,10 @@
+use cid::multihash::{ MultihashDigest, Code};
 use forest_ipld::Ipld;
 use libp2p::{
     core::{signed_envelope, SignedEnvelope},
     identity::Keypair,
     PeerId,
 };
-use multihash::MultihashDigest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -116,7 +116,7 @@ impl Advertisement {
         payload.extend_from_slice(metadata);
         payload.extend_from_slice(&is_rm_payload);
 
-        Ok(multihash::Code::Sha2_256.digest(&payload).to_bytes())
+        Ok(Code::Sha2_256.digest(&payload).to_bytes())
     }
 }
 

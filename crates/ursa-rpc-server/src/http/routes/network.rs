@@ -42,13 +42,13 @@ impl IntoResponse for NetworkError {
 }
 
 pub async fn upload_handler<S>(
-    mut buf: Multipart,
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
-) -> impl IntoResponse
+    mut buf: Multipart,
+) -> Result<impl IntoResponse, NetworkError>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
-    let upload_task = task::spawn(async move {
+    // let upload_task = task::spawn(async move {
         info!("uploading file via http");
         if let Some(field) = buf.next_field().await.unwrap() {
             let content_type = field.content_type().unwrap().to_string();
@@ -60,27 +60,27 @@ where
                 match interface.put_car(reader).await {
                     Err(err) => {
                         error!("{:?}", err);
-                        (
+                        Ok((
                             StatusCode::INTERNAL_SERVER_ERROR,
                             Json(format!("{:?}", err)),
-                        )
+                        ))
                     }
-                    Ok(res) => (StatusCode::OK, Json(format!("{:?}", res))),
+                    Ok(res) => Ok((StatusCode::OK, Json(format!("{:?}", res)))),
                 }
             } else {
-                (
+                Ok((
                     StatusCode::BAD_REQUEST,
                     Json("Content type do not match. Only .car files can be uploaded".to_string()),
-                )
+                ))
             }
         } else {
-            (StatusCode::BAD_REQUEST, Json("No files found".to_string()))
+            Ok((StatusCode::BAD_REQUEST, Json("No files found".to_string())))
         }
-    });
-    match upload_task.await {
-        Ok(res) => res,
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())),
-    }
+    // });
+    // match upload_task.await {
+    //     Ok(res) => res,
+    //     Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())),
+    // }
 }
 
 pub async fn get_handler<S>(
