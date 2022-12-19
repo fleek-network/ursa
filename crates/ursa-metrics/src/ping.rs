@@ -12,35 +12,16 @@ impl Recorder for Event {
                 histogram!("ping_rtt", rtt.as_secs_f64());
             }
             Err(f) => {
-                increment_counter!("ping_error", vec![Failure::from(f).into()]);
+                increment_counter!("ping_error", vec![failure_label(f)]);
             }
         }
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-enum FailureLabel {
-    Timeout,
-    Unsupported,
-    Other,
-}
-
-impl From<&Failure> for FailureLabel {
-    fn from(failure: &Failure) -> Self {
-        match failure {
-            Failure::Timeout => FailureLabel::Timeout,
-            Failure::Unsupported => FailureLabel::Unsupported,
-            Failure::Other { .. } => FailureLabel::Other,
-        }
-    }
-}
-
-impl From<FailureLabel> for Label {
-    fn from(failure: FailureLabel) -> Self {
-        match failure {
-            FailureLabel::Timeout => Label::new("failure", "timeout"),
-            FailureLabel::Unsupported => Label::new("failure", "unsupported"),
-            FailureLabel::Other => Label::new("failure", "other"),
-        }
+fn failure_label(f: &Failure) -> Label {
+    match f {
+        Failure::Timeout => Label::new("failure", "timeout"),
+        Failure::Unsupported => Label::new("failure", "unsupported"),
+        Failure::Other { .. } => Label::new("failure", "other"),
     }
 }
