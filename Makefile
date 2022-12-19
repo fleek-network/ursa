@@ -49,10 +49,10 @@ fmt:
 
 # Run clippy on the sources 
 clippy:
-	cargo clippy --locked -- -D warnings
+	cargo clippy -- -D warnings
 
 soft-clippy:
-	cargo clippy --locked
+	cargo clippy
 
 # Deep clean
 clean:
