@@ -16,13 +16,13 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    cache::LFUCacheTLL,
+    cache::TLRFUCache,
     config::{GatewayConfig, ServerConfig},
 };
 
 pub async fn start_server(
     config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<LFUCacheTLL>>,
+    cache: Arc<RwLock<TLRFUCache>>,
 ) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {

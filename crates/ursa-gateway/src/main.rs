@@ -9,7 +9,7 @@ mod worker;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
-use cache::LFUCacheTLL;
+use cache::TLRFUCache;
 use clap::Parser;
 use cli::{Cli, Commands};
 use tokio::{sync::RwLock, task};
@@ -43,8 +43,10 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let server_cache =
-                Arc::new(RwLock::new(LFUCacheTLL::new(gateway_config.cache.max_size)));
+            let server_cache = Arc::new(RwLock::new(TLRFUCache::new(
+                gateway_config.cache.max_size,
+                0,
+            )));
             let admin_cache = server_cache.clone();
 
             let server_config = Arc::new(RwLock::new(gateway_config));

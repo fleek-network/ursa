@@ -20,13 +20,13 @@ use crate::{
         get::{get_cache_handler, get_config_handler},
         post::purge_cache_handler,
     },
-    cache::LFUCacheTLL,
+    cache::TLRFUCache,
     config::{GatewayConfig, ServerConfig},
 };
 
 pub async fn start_server(
     config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<LFUCacheTLL>>,
+    cache: Arc<RwLock<TLRFUCache>>,
 ) -> Result<()> {
     let config_reader = config.clone();
     let GatewayConfig {

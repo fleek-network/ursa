@@ -4,7 +4,7 @@ use axum::{Extension, Json};
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::{cache::LFUCacheTLL, config::GatewayConfig};
+use crate::{cache::TLRFUCache, config::GatewayConfig};
 
 pub async fn get_config_handler(
     Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
@@ -13,7 +13,7 @@ pub async fn get_config_handler(
 }
 
 pub async fn get_cache_handler(
-    Extension(cache): Extension<Arc<RwLock<LFUCacheTLL>>>,
+    Extension(cache): Extension<Arc<RwLock<TLRFUCache>>>,
 ) -> Json<Value> {
     Json(json!(&(*cache.read().await)))
 }
