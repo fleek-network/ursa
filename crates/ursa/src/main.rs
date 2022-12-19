@@ -9,7 +9,7 @@ use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursa_index_provider::{engine::ProviderEngine, provider::Provider};
+use ursa_index_provider::engine::ProviderEngine;
 use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};

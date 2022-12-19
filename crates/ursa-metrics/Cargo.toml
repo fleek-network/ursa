@@ -9,9 +9,8 @@ description = "Ursa metrics"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static = "1"
-prometheus = "0.13.2"
-
+prometheus = "0.13.2" # used by libp2p_bitswap's internal metrics
+lazy_static.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 tracing-subscriber.workspace = true

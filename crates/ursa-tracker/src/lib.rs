@@ -24,6 +24,6 @@ pub async fn register_with_tracker(
     if status.is_success() {
         Ok(body)
     } else {
-        Err(anyhow!("Tracker returned error: {} - {}", status, body))
+        Err(anyhow!("Tracker returned error: {status} - {body}"))
     }
 }

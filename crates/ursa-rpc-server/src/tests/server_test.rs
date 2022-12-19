@@ -22,7 +22,7 @@ mod tests {
         });
 
         let rpc = Server::new(interface);
-        let _ = rpc.start(ServerConfig::default()).await;
+        let _ = rpc.start(&ServerConfig::default()).await;
         // TODO: test server start! call the http and rpc endpoints?
         Ok(())
     }

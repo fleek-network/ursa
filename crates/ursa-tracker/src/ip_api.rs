@@ -37,7 +37,7 @@ pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> 
         addr.clone()
     };
 
-    let url = format!("https://ipinfo.io/{}?{}", ip, token);
+    let url = format!("https://ipinfo.io/{ip}?{token}");
     let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
 
     let res = client.get(url.parse()?).await?;
@@ -61,7 +61,7 @@ pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> 
 }
 
 pub fn geohash(lat: f64, lon: f64) -> Result<String> {
-    let coord = geohash::Coordinate { x: lon, y: lat };
+    let coord = geo_types::Coord { x: lon, y: lat };
     encode(coord, 7).map_err(|e| anyhow!(e))
 }
 

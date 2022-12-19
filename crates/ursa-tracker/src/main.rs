@@ -9,7 +9,7 @@ use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     ip_api::get_ip_info,
@@ -22,7 +22,7 @@ mod types;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
+        .with(EnvFilter::new(
             env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
@@ -38,7 +38,7 @@ async fn main() {
         .layer(Extension(token));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
-    println!("Ursa-tracker listening on {}", addr);
+    info!("Ursa tracker listening on {addr}");
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -55,7 +55,7 @@ async fn registration_handler(
     Json(registration): Json<TrackerRegistration>,
 ) -> (StatusCode, Json<Value>) {
     let id = registration.id;
-    info!("Received registration for: {}", id);
+    info!("Received registration for: {id}");
 
     // todo: registration verification
 
@@ -87,7 +87,7 @@ async fn registration_handler(
     );
     let json = json!(entry);
 
-    info!("Storing node {} with config {:?}", id, entry);
+    info!("Storing node {id} with config {entry:?}");
 
     let mut batch = WriteBatch::default();
     batch.put(id.to_base58().as_bytes(), json.to_string().as_bytes());

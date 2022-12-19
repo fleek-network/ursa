@@ -516,11 +516,7 @@ where
     ) -> Result<()> {
         match req_res_event {
             RequestResponseEvent::Message { peer, message } => match message {
-                RequestResponseMessage::Request {
-                    request_id,
-                    request,
-                    ..
-                } => {
+                RequestResponseMessage::Request { request_id, .. } => {
                     trace!("[BehaviourEvent::RequestMessage] {} ", peer);
                     self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }

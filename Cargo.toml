@@ -48,6 +48,7 @@ fvm_ipld_encoding = "0.3.0"
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 jsonrpc-v2 = "0.11.0"
+lazy_static = "1.4"
 libipld = { version = "0.14.0", default-features = false }
 libp2p = { version = "0.50.0", default-features = false }
 libp2p-bitswap = "0.25.0"
@@ -60,6 +61,7 @@ prometheus-client = "0.18.0"
 rand = "0.8.5"
 resolve-path = "0.1.0"
 serde = "1.0.151"
+serde_derive = "1.0.147"
 serde_json = "1.0.91"
 serde_with = { version = "2.1.0", features = ["base64"] }
 simple_logger = "4.0.0"
@@ -68,7 +70,8 @@ surf = { version = "2.3.2", default-features = true, features = ["curl-client"] 
 thiserror = "1.0.30"
 tokio = { version = "1.23.0", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io", "compat"] }
+tokio-stream = "0.1"
 toml = "0.5.10"
 tower = "0.4.13"
 tracing = "0.1.37"
-tracing-subscriber = "0.3.16"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

@@ -18,9 +18,9 @@ impl<TRequest: Debug, TResponse: Debug> super::Recorder
                         increment_counter!(
                             "req-res_request_received",
                             vec![
-                                Label::new("peer", format!("{}", peer)),
+                                Label::new("peer", peer.to_string()),
                                 Label::new("request_id", request_id.to_string()),
-                                Label::new("request", format!("{:?}", request)),
+                                Label::new("request", format!("{request:?}")),
                             ]
                         );
                     }
@@ -29,7 +29,7 @@ impl<TRequest: Debug, TResponse: Debug> super::Recorder
                         increment_counter!(
                             "req-res_response_sent",
                             vec![
-                                Label::new("peer", format!("{}", peer)),
+                                Label::new("peer", peer.to_string()),
                                 Label::new("request_id", request_id.to_string()),
                                 // channel?
                             ]
