@@ -16,8 +16,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         rust: [nightly]
         make:
-          - name: clippy
-            task: "clippy"
+          - name: check-fmt-clippy
+            task: "ci"
           - name: test
             task: "test-network"
           - name: doc
