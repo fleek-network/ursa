@@ -76,13 +76,9 @@ async fn main() {
     }
 }
 
-fn get_store() -> Arc<UrsaStore<MemoryDB>> {
-    let db = Arc::new(MemoryDB::default());
-    Arc::new(UrsaStore::new(Arc::clone(&db)))
-}
-
 fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaService<MemoryDB> {
-    let store = get_store();
+    let db = Arc::new(MemoryDB::default());
+    let store = Arc::new(UrsaStore::new(Arc::clone(&db)));
     UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
 }
 
