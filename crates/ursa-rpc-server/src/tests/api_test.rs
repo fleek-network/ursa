@@ -2,7 +2,6 @@
 mod tests {
     use crate::{
         api::{NetworkInterface, NodeNetworkInterface},
-        service,
         tests::{init, setup_logger},
     };
     use std::sync::Arc;

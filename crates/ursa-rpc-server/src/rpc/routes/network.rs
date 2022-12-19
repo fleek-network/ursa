@@ -14,7 +14,7 @@ use crate::{
         NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkInterface,
         NetworkPutFileParams, NetworkPutFileResult,
     },
-    rpc::rpc::rpc_handler,
+    rpc::rpc_handler,
 };
 
 use tracing::error;

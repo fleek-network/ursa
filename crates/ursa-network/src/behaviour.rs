@@ -218,6 +218,6 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) -> Result<QueryId> {
         let cid = convert_cid(cid.to_bytes());
-        Ok(self.bitswap.sync(cid, providers, std::iter::once(cid)))
+        Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
     }
 }

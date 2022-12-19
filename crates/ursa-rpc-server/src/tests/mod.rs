@@ -25,11 +25,13 @@ pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
-pub fn init() -> anyhow::Result<(
+type InitResult = anyhow::Result<(
     UrsaService<MemoryDB>,
     ProviderEngine<MemoryDB>,
     Arc<UrsaStore<MemoryDB>>,
-)> {
+)>;
+
+pub fn init() -> InitResult {
     let store = get_store();
     let network_config = NetworkConfig::default();
     let keypair = Keypair::generate_ed25519();

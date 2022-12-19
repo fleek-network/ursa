@@ -1,4 +1,4 @@
-use axum::{body::BoxBody, http::header::CONTENT_TYPE, response::IntoResponse};
+use axum::{body::BoxBody, response::IntoResponse};
 use futures::future::BoxFuture;
 use hyper::{Body, Request, Response};
 use std::{

@@ -33,7 +33,7 @@ where
 /// Extension methods for inserting and retrieving IPLD data with CIDs
 pub trait BlockstoreExt: Blockstore {
     /// Get typed object from block store by CID
-    fn get_obj<T>(&self, cid: &Cid) -> anyhow::Result<Option<T>>
+    fn get_obj<T>(&self, cid: &Cid) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
@@ -44,7 +44,7 @@ pub trait BlockstoreExt: Blockstore {
     }
 
     /// Put an object in the block store and return the Cid identifier.
-    fn put_obj<S>(&self, obj: &S, code: Code) -> anyhow::Result<Cid>
+    fn put_obj<S>(&self, obj: &S, code: Code) -> Result<Cid>
     where
         S: Serialize,
     {
@@ -53,14 +53,14 @@ pub trait BlockstoreExt: Blockstore {
     }
 
     /// Put raw bytes in the block store and return the Cid identifier.
-    fn put_raw(&self, bytes: Vec<u8>, code: Code) -> anyhow::Result<Cid> {
+    fn put_raw(&self, bytes: Vec<u8>, code: Code) -> Result<Cid> {
         let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
         self.put_keyed(&cid, &bytes)?;
         Ok(cid)
     }
 
     /// Batch put CBOR objects into block store and returns vector of CIDs
-    fn bulk_put<'a, S, V>(&self, values: V, code: Code) -> anyhow::Result<Vec<Cid>>
+    fn bulk_put<'a, S, V>(&self, values: V, code: Code) -> Result<Vec<Cid>>
     where
         Self: Sized,
         S: Serialize + 'a,
@@ -73,7 +73,7 @@ pub trait BlockstoreExt: Blockstore {
                 let cid = Cid::new_v1(DAG_CBOR, code.digest(&bytes));
                 Ok((cid, bytes))
             })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         let cids = keyed_objects
             .iter()
@@ -189,13 +189,13 @@ mod tests {
         );
 
         let store1 = Arc::new(UrsaStore::new(Arc::clone(&db1)));
-        let mut bitswap_store_1 = BitswapStorage(store1.clone());
+        let mut bitswap_store_1 = BitswapStorage(store1);
 
         let cid =
             Cid::from_str("bafybeihybv5apjuvkpaw62l34ui7t363pt3hwxbz7rltrpjklvzrbviq5m").unwrap();
 
         if let Ok(res) = bitswap_store_1.missing_blocks(&convert_cid(cid.to_bytes())) {
-            println!("vec of missing blocks: {:?}", res);
+            println!("vec of missing blocks: {res:?}");
         }
     }
 }

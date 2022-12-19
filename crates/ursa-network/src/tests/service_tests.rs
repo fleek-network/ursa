@@ -50,7 +50,7 @@ mod tests {
     }
 
     fn get_block(content: &[u8]) -> Block<DefaultParams> {
-        create_block(ipld!(&content[..]))
+        create_block(ipld!(content))
     }
 
     fn insert_block(mut s: BitswapStorage<MemoryDB>, b: &Block<DefaultParams>) {
@@ -68,7 +68,7 @@ mod tests {
         port: u16,
     ) -> Result<(UrsaService<MemoryDB>, String)> {
         let keypair = Keypair::generate_ed25519();
-        let swarm_addr = format!("/ip4/127.0.0.1/tcp/{}", port);
+        let swarm_addr = format!("/ip4/127.0.0.1/tcp/{port}");
         config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
         let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(keypair.public()));
         let (bootstrap, ..) = network_init(config, Some(addr.clone()), Some(keypair)).await?;
@@ -99,7 +99,7 @@ mod tests {
             config.bootstrap_nodes = [addr].iter().map(|node| node.parse().unwrap()).collect();
         }
 
-        let mut service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
+        let mut service = UrsaService::new(keypair, config, Arc::clone(&store))?;
 
         let node_addrs = async {
             loop {
@@ -131,7 +131,7 @@ mod tests {
                     .await
                     .expect("event to be received")
             {
-                info!("SwarmEvent::NewListenAddr: {:?}:", address);
+                info!("SwarmEvent::NewListenAddr: {address:?}");
                 break;
             }
         }
@@ -143,7 +143,7 @@ mod tests {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
-        let (mut node_1, node_1_addrs, _, ..) = network_init(&mut config, None, None).await?;
+        let (mut node_1, node_1_addrs, ..) = network_init(&mut config, None, None).await?;
         let (mut node_2, ..) =
             network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
 
@@ -153,7 +153,7 @@ mod tests {
                     if let SwarmEvent::ConnectionEstablished { .. } = event_1 {
                         let topic = Topic::new(URSA_GLOBAL);
                         if let Err(error) = node_1.swarm.behaviour_mut().publish(topic, Bytes::from_static(b"hello world!")) {
-                            warn!("Failed to send with error: {:?}", error);
+                            warn!("Failed to send with error: {error:?}");
                         };
                     }
                 }
@@ -167,14 +167,13 @@ mod tests {
                     )) = event_2
                     {
                         info!(
-                            "peer: {:?}, id: {:?}, messsage: {:?}",
-                            propagation_source, message_id, message
+                            "peer: {propagation_source:?}, id: {message_id:?}, message: {message:?}"
                         );
                         assert_eq!(Bytes::from_static(b"hello world!"), message.data);
                         break;
                     }
                 }
-            };
+            }
         }
 
         Ok(())
@@ -195,14 +194,14 @@ mod tests {
             select! {
                 event_2 = node_2.swarm.select_next_some() => {
                     if let SwarmEvent::Behaviour(BehaviourEvent::Discovery(DiscoveryEvent::Connected(peer_id))) = event_2 {
-                        info!("[BehaviourEvent::Discovery(event)]: {:?}, {:?}: ", peer_id, peer_id_1);
+                        info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
                         }
                     }
                 }
                 _ = node_1.swarm.select_next_some() => {}
-            };
+            }
         }
         Ok(())
     }
@@ -222,14 +221,14 @@ mod tests {
             select! {
                 event_2 = node_2.swarm.select_next_some() => {
                     if let SwarmEvent::Behaviour(BehaviourEvent::Discovery(DiscoveryEvent::Connected(peer_id))) = event_2 {
-                        info!("[BehaviourEvent::Discovery(event)]: {:?}, {:?}: ", peer_id, peer_id_1);
+                        info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
                         }
                     }
                 }
                 _ = node_1.swarm.select_next_some() => {}
-            };
+            }
         }
         Ok(())
     }
@@ -249,10 +248,7 @@ mod tests {
             if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
                 node_1.swarm.select_next_some().await
             {
-                info!(
-                    "[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ",
-                    peer_id, peer_id_1
-                );
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
                 break;
             }
         }
@@ -348,7 +344,7 @@ mod tests {
                 );
                 assert_eq!(store_1_block, Some(block.data().to_vec()));
             }
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         }
 
         Ok(())
@@ -374,10 +370,7 @@ mod tests {
             if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
                 node_1.swarm.select_next_some().await
             {
-                info!(
-                    "[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ",
-                    peer_id, peer_id_1
-                );
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
                 break;
             }
         }
@@ -423,7 +416,7 @@ mod tests {
                         .is_ok());
                 }
             }
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         }
 
         Ok(())

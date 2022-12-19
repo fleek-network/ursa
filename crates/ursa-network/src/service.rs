@@ -186,13 +186,13 @@ pub struct UrsaService<S> {
     /// Handles events emitted by the ursa network.
     event_sender: Sender<NetworkEvent>,
     /// Handles events received by the ursa network.
-    event_receiver: Receiver<NetworkEvent>,
+    _event_receiver: Receiver<NetworkEvent>,
     /// Bitswap pending queries.
     bitswap_queries: FnvHashMap<QueryId, Cid>,
     /// hashmap for keeping track of rpc response channels.
     response_channels: FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>,
     /// Pending requests.
-    pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
+    _pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
     /// Pending responses.
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
 }
@@ -266,7 +266,7 @@ where
             warn!("Failed to subscribe to topic: {}", error);
         }
 
-        let (event_sender, event_receiver) = unbounded_channel();
+        let (event_sender, _event_receiver) = unbounded_channel();
         let (command_sender, command_receiver) = unbounded_channel();
 
         Ok(UrsaService {
@@ -275,10 +275,10 @@ where
             command_sender,
             command_receiver,
             event_sender,
-            event_receiver,
+            _event_receiver,
             response_channels: Default::default(),
             bitswap_queries: Default::default(),
-            pending_requests: HashMap::default(),
+            _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
         })
     }
@@ -334,7 +334,7 @@ where
         Ok(())
     }
 
-    fn handle_identify(&mut self, identify_event: IdentifyEvent) -> Result<(), anyhow::Error> {
+    fn handle_identify(&mut self, identify_event: IdentifyEvent) -> Result<(), Error> {
         match identify_event {
             IdentifyEvent::Received { peer_id, info } => {
                 trace!(
@@ -384,7 +384,7 @@ where
         Ok(())
     }
 
-    fn handle_autonat(&mut self, autonat_event: AutonatEvent) -> Result<(), anyhow::Error> {
+    fn handle_autonat(&mut self, autonat_event: AutonatEvent) -> Result<(), Error> {
         match autonat_event {
             AutonatEvent::StatusChanged { old, new } => match (old, new) {
                 (NatStatus::Unknown, NatStatus::Private) => {
@@ -418,7 +418,7 @@ where
         Ok(())
     }
 
-    fn handle_bitswap(&mut self, bitswap_event: BitswapEvent) -> Result<(), anyhow::Error> {
+    fn handle_bitswap(&mut self, bitswap_event: BitswapEvent) -> Result<()> {
         let mut blockstore = BitswapStorage(self.store.clone());
 
         match bitswap_event {
@@ -432,8 +432,8 @@ where
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
                     Some(cid) => {
                         let labels = vec![
-                            Label::new("cid", format!("{}", cid)),
-                            Label::new("query_id", format!("{}", query_id)),
+                            Label::new("cid", format!("{cid}")),
+                            Label::new("query_id", format!("{query_id}")),
                         ];
 
                         track(MetricEvent::Bitswap, Some(labels), None);
@@ -447,7 +447,7 @@ where
                                     }
                                 } else {
                                     error!("[BitswapEvent::Complete] - block not found.");
-                                    if chan.send(Err(anyhow!("The requested block with cid {:?} is not found with any peers", cid))).is_err() {
+                                    if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
                                         error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
                                 }
@@ -458,8 +458,7 @@ where
                     }
                     _ => {
                         error!(
-                            "[BitswapEvent::Complete] - Query Id {:?} not found in the hash map",
-                            query_id
+                            "[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map"
                         )
                     }
                 },
@@ -469,10 +468,7 @@ where
         Ok(())
     }
 
-    fn handle_gossip(
-        &mut self,
-        gossip_event: libp2p::gossipsub::GossipsubEvent,
-    ) -> Result<(), anyhow::Error> {
+    fn handle_gossip(&mut self, gossip_event: libp2p::gossipsub::GossipsubEvent) -> Result<()> {
         match gossip_event {
             libp2p::gossipsub::GossipsubEvent::Message {
                 propagation_source,
@@ -502,7 +498,7 @@ where
         Ok(())
     }
 
-    fn handle_discovery(&mut self, discovery_event: DiscoveryEvent) -> Result<(), anyhow::Error> {
+    fn handle_discovery(&mut self, discovery_event: DiscoveryEvent) -> Result<()> {
         match discovery_event {
             DiscoveryEvent::Connected(peer_id) => {
                 trace!("[DiscoveryEvent::Connected] - Peer connected {:?}", peer_id);
@@ -526,46 +522,43 @@ where
     fn handle_req_res(
         &mut self,
         req_res_event: RequestResponseEvent<UrsaExchangeRequest, UrsaExchangeResponse>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<()> {
         match req_res_event {
-            RequestResponseEvent::Message { peer, message } => {
-                match message {
-                    RequestResponseMessage::Request {
-                        request_id,
-                        request,
-                        channel,
-                    } => {
-                        trace!("[BehaviourEvent::RequestMessage] {} ", peer);
-                        let labels = vec![
-                            Label::new("peer", format!("{}", peer)),
-                            Label::new("request", format!("{:?}", request)),
-                            Label::new("channel", format!("{:?}", channel)),
-                        ];
+            RequestResponseEvent::Message { peer, message } => match message {
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    ..
+                } => {
+                    trace!("[BehaviourEvent::RequestMessage] {} ", peer);
+                    let labels = vec![
+                        Label::new("peer", format!("{peer}")),
+                        Label::new("request", format!("{request:?}")),
+                    ];
 
-                        track(MetricEvent::RequestMessage, Some(labels), None);
-                        self.emit_event(NetworkEvent::RequestMessage { request_id });
-                    }
-                    RequestResponseMessage::Response {
-                        request_id,
-                        response,
-                    } => {
-                        trace!(
-                            "[RequestResponseMessage::Response] - {} {}: {:?}",
-                            request_id,
-                            peer,
-                            response
-                        );
-
-                        if let Some(request) = self.pending_responses.remove(&request_id) {
-                            if request.send(Ok(response)).is_err() {
-                                warn!("[RequestResponseMessage::Response] - failed to send request: {:?}", request_id);
-                            }
-                        }
-
-                        debug!("[RequestResponseMessage::Response] - failed to remove channel for: {:?}", request_id);
-                    }
+                    track(MetricEvent::RequestMessage, Some(labels), None);
+                    self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }
-            }
+                RequestResponseMessage::Response {
+                    request_id,
+                    response,
+                } => {
+                    trace!(
+                        "[RequestResponseMessage::Response] - {} {}: {:?}",
+                        request_id,
+                        peer,
+                        response
+                    );
+
+                    if let Some(request) = self.pending_responses.remove(&request_id) {
+                        if request.send(Ok(response)).is_err() {
+                            warn!("[RequestResponseMessage::Response] - failed to send request: {request_id:?}");
+                        }
+                    }
+
+                    debug!("[RequestResponseMessage::Response] - failed to remove channel for: {request_id:?}");
+                }
+            },
             RequestResponseEvent::OutboundFailure { .. }
             | RequestResponseEvent::InboundFailure { .. }
             | RequestResponseEvent::ResponseSent { .. } => (),
@@ -653,7 +646,7 @@ where
                 }
                 sender
                     .send(addresses.into_iter().cloned().collect())
-                    .map_err(|_| anyhow!("Failed to get listener adddresses from network"))?;
+                    .map_err(|_| anyhow!("Failed to get listener addresses from network"))?;
             }
             NetworkCommand::SendRequest {
                 peer_id,

@@ -8,7 +8,7 @@ use crate::{
     api::NodeNetworkInterface,
     config::ServerConfig,
     http,
-    rpc::{self, rpc::RpcServer},
+    rpc::{routes, RpcServer},
     service::MultiplexService,
 };
 use tracing::info;
@@ -35,7 +35,7 @@ where
     pub async fn start(&self, config: ServerConfig) -> Result<()> {
         info!("Server (Rpc and http) starting up");
         let rpc_router = Router::new()
-            .merge(rpc::routes::network::init())
+            .merge(routes::network::init())
             .layer(Extension(self.rpc_server.clone()));
 
         let http = Router::new()
