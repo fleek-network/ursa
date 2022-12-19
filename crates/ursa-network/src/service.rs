@@ -14,7 +14,7 @@
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use cid::Cid;
-use db::Store as Store_;
+use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
@@ -51,7 +51,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, Store};
+use ursa_store::{BitswapStorage, UrsaStore};
 use ursa_utils::convert_cid;
 
 use crate::discovery::{DiscoveryEvent, URSA_KAD_PROTOCOL};
@@ -160,6 +160,10 @@ pub enum NetworkCommand {
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
 
+    GetListenerAddresses {
+        sender: oneshot::Sender<Vec<Multiaddr>>,
+    },
+
     SendRequest {
         peer_id: PeerId,
         request: UrsaExchangeRequest,
@@ -174,7 +178,7 @@ pub enum NetworkCommand {
 
 pub struct UrsaService<S> {
     /// Store.
-    store: Arc<Store<S>>,
+    store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers.
@@ -197,7 +201,7 @@ pub struct UrsaService<S> {
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
@@ -212,7 +216,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<Store<S>>) -> Result<Self> {
+    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -638,6 +642,15 @@ where
                 sender
                     .send(peers)
                     .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
+            }
+            NetworkCommand::GetListenerAddresses { sender } => {
+                let mut addresses: Vec<&Multiaddr> = self.swarm.listeners().collect();
+                if let Some(value) = self.swarm.behaviour().public_address() {
+                    addresses.push(value);
+                }
+                sender
+                    .send(addresses.into_iter().cloned().collect())
+                    .map_err(|_| anyhow!("Failed to get listener adddresses from network"))?;
             }
             NetworkCommand::SendRequest {
                 peer_id,

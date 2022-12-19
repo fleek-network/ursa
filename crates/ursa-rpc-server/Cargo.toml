@@ -23,6 +23,7 @@ hyper = "0.14.20"
 jsonrpc-v2 = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.81"
+simple_logger = "2.1.0"
 tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
 tokio-util = { version = "0.7", features = ["io", "compat"] }
 tower = "0.4.13"
@@ -39,7 +40,6 @@ default-features = false
 
 [dev-dependencies]
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-simple_logger = "2.1.0"
 
 [dependencies.libp2p]
 version = "0.50.0"

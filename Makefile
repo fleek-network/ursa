@@ -35,9 +35,13 @@ docker: docker-build docker-run
 test:
 	cargo test --all
 
+# Run unit tests
+test-network:
+	cargo test -p ursa-network
+
 # Generate rust docs
 doc:
-	cargo doc --no-deps
+	cargo doc --no-deps --all-features
 
 # Format all sources
 fmt: 
@@ -58,5 +62,5 @@ clean:
 # Passive check
 check:
 	cargo check --all --all-targets --all-features
-	cargo fmt -- --check
-	cargo clippy --locked -- -D warnings
+
+ci:	check fmt soft-clippy

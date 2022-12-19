@@ -27,7 +27,7 @@ mod tests {
     use tokio::{select, sync::oneshot, time::timeout};
     use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
-    use ursa_store::{BitswapStorage, Store};
+    use ursa_store::{BitswapStorage, UrsaStore};
     use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
@@ -44,9 +44,9 @@ mod tests {
         }
     }
 
-    fn get_store() -> Arc<Store<MemoryDB>> {
+    fn get_store() -> Arc<UrsaStore<MemoryDB>> {
         let db = Arc::new(MemoryDB::default());
-        Arc::new(Store::new(Arc::clone(&db)))
+        Arc::new(UrsaStore::new(Arc::clone(&db)))
     }
 
     fn get_block(content: &[u8]) -> Block<DefaultParams> {
@@ -83,7 +83,7 @@ mod tests {
         UrsaService<MemoryDB>,
         Multiaddr,
         PeerId,
-        Arc<Store<MemoryDB>>,
+        Arc<UrsaStore<MemoryDB>>,
     )> {
         let keypair = match bootstrap_keypair {
             Some(k) => k,
@@ -389,7 +389,7 @@ mod tests {
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         // put the car file in store 1
-        let path = Path::new("./src/tests/test.car");
+        let path = Path::new("../../test_files/test.car");
         let file = File::open(path).await?;
         let reader = BufReader::new(file);
         let cids = load_car(store_1.blockstore(), reader).await?;

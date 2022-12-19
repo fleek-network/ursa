@@ -3,7 +3,7 @@ use async_fs::File;
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
-use db::Store as Store_;
+use db::Store;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
@@ -18,8 +18,9 @@ use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::info;
+use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
-use ursa_store::{Dag, Store};
+use ursa_store::{Dag, UrsaStore};
 use ursa_utils::convert_cid;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
@@ -76,16 +77,17 @@ pub trait NetworkInterface: Sync + Send + 'static {
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
-    pub store: Arc<Store<S>>,
+    pub store: Arc<UrsaStore<S>>,
     pub network_send: Sender<NetworkCommand>,
+    pub provider_send: Sender<ProviderCommand>,
 }
 
 #[async_trait]
 impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
-    S: Blockstore + Store_ + Send + Sync + 'static,
+    S: Blockstore + Store + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
         if !self.store.blockstore().has(&cid)? {
@@ -197,16 +199,17 @@ where
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
         let cids = load_car(self.store.blockstore(), reader).await?;
+        let root_cid = cids[0];
 
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::GetBitswap {
-            cid: cids[0],
+        let request = ProviderCommand::Put {
+            context_id: root_cid.to_bytes(),
             sender,
         };
 
-        self.network_send.send(request)?;
+        self.provider_send.send(request)?;
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
@@ -222,63 +225,5 @@ where
         let file = File::open(path.clone()).await?;
         let reader = BufReader::new(file);
         self.put_car(reader).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
-    use libp2p::identity::Keypair;
-    use simple_logger::SimpleLogger;
-    use tokio::task;
-    use tracing::{error, log::LevelFilter};
-    use ursa_network::{NetworkConfig, UrsaService};
-    use ursa_store::Store;
-
-    fn setup_logger(level: LevelFilter) {
-        SimpleLogger::new()
-            .with_level(level)
-            .with_utc_timestamps()
-            .init()
-            .unwrap()
-    }
-
-    fn get_store(path: &str) -> Arc<Store<RocksDb>> {
-        let db = Arc::new(
-            RocksDb::open(path, &RocksDbConfig::default()).expect("Opening RocksDB must succeed"),
-        );
-        Arc::new(Store::new(Arc::clone(&db)))
-    }
-
-    #[tokio::test]
-    async fn test_stream() -> Result<()> {
-        setup_logger(LevelFilter::Info);
-        let config = NetworkConfig::default();
-        let keypair = Keypair::generate_ed25519();
-
-        let store = get_store("test_db1");
-        let service = UrsaService::new(keypair, &config, Arc::clone(&store))?;
-        let rpc_sender = service.command_sender().clone();
-
-        // Start libp2p service
-        task::spawn(async {
-            if let Err(err) = service.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
-
-        let interface = Arc::new(NodeNetworkInterface {
-            store,
-            network_send: rpc_sender,
-        });
-
-        let cids = interface
-            .put_file("../../car_files/text_b.car".to_string())
-            .await?;
-        interface.stream(cids[0]).await?;
-
-        Ok(())
     }
 }

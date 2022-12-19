@@ -1,0 +1,89 @@
+name: rust-ci
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  tests:
+    name: ${{ matrix.make.name }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [nightly]
+        make:
+          - name: clippy
+            task: "check"
+          - name: test
+            task: "test-network"
+          - name: doc
+            task: "doc"
+
+    env:
+      CARGO_INCREMENTAL: '0'
+      RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+      RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+
+    steps:
+      - name: Install Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
+
+      - name: Checkout repository
+        uses: actions/checkout@master
+
+      # - name: Install protoc (ubuntu-latest)
+      #   if: matrix.os == 'ubuntu-latest'
+      #   run: |
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install protoc (macos-latest)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install protobuf
+          protoc --version      
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+          profile: minimal
+          components: clippy, rustc-dev, llvm-tools-preview
+
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+          
+      - name: ${{ matrix.make.name }}
+        run: make ${{ matrix.make.task }}
+
+      - name: Setup grcov
+        if: matrix.make == 'Tests'
+        id: coverage
+        uses: actions-rs/grcov@v0.1
+
+      - name: grcov upload to codecov.io
+        if: matrix.make == 'Tests'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ${{ steps.coverage.outputs.report }}
