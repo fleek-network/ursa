@@ -1,4 +1,4 @@
-use libp2p_relay::v2::relay::Event;
+use libp2p::relay::v2::relay::Event;
 use metrics::increment_counter;
 
 impl super::Recorder for Event {

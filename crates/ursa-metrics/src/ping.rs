@@ -1,14 +1,14 @@
 use crate::Recorder;
-use libp2p_ping::Event;
+use libp2p::ping::{Event, Failure, Success};
 use metrics::{histogram, increment_counter, Label};
 
 impl Recorder for Event {
     fn record(&self) {
         match &self.result {
-            Ok(libp2p_ping::Success::Pong) => {
+            Ok(Success::Pong) => {
                 increment_counter!("ping_pong_received");
             }
-            Ok(libp2p_ping::Success::Ping { rtt }) => {
+            Ok(Success::Ping { rtt }) => {
                 histogram!("ping_rtt", rtt.as_secs_f64());
             }
             Err(f) => {
@@ -19,28 +19,28 @@ impl Recorder for Event {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-enum Failure {
+enum FailureLabel {
     Timeout,
     Unsupported,
     Other,
 }
 
-impl From<&libp2p_ping::Failure> for Failure {
-    fn from(failure: &libp2p_ping::Failure) -> Self {
+impl From<&Failure> for FailureLabel {
+    fn from(failure: &Failure) -> Self {
         match failure {
-            libp2p_ping::Failure::Timeout => Failure::Timeout,
-            libp2p_ping::Failure::Unsupported => Failure::Unsupported,
-            libp2p_ping::Failure::Other { .. } => Failure::Other,
+            Failure::Timeout => FailureLabel::Timeout,
+            Failure::Unsupported => FailureLabel::Unsupported,
+            Failure::Other { .. } => FailureLabel::Other,
         }
     }
 }
 
-impl From<Failure> for Label {
-    fn from(failure: Failure) -> Self {
+impl From<FailureLabel> for Label {
+    fn from(failure: FailureLabel) -> Self {
         match failure {
-            Failure::Timeout => Label::new("failure", "timeout"),
-            Failure::Unsupported => Label::new("failure", "unsupported"),
-            Failure::Other => Label::new("failure", "other"),
+            FailureLabel::Timeout => Label::new("failure", "timeout"),
+            FailureLabel::Unsupported => Label::new("failure", "unsupported"),
+            FailureLabel::Other => Label::new("failure", "other"),
         }
     }
 }

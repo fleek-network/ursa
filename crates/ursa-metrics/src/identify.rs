@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
-use libp2p_core::PeerId;
-use libp2p_identify::Event;
+use libp2p::identify::Event;
+use libp2p::PeerId;
 use metrics::{increment_counter, increment_gauge, Label};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

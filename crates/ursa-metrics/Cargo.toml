@@ -9,23 +9,29 @@ description = "Ursa metrics"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.56"
-axum = "0.5.17"
 lazy_static = "1"
-metrics = "0.20.1"
-metrics-exporter-prometheus = "0.11.0"
-prometheus-client = "0.18.1"
 prometheus = "0.13.2"
-serde = { version = "1.0", features = ["derive"] }
-tracing = "0.1.33"
 
-# using the crates directly to avoid getting all of libp2p
-libp2p-core = "0.38.0"
-libp2p-swarm = "0.41.1"
-libp2p-ping = "0.41.0"
-libp2p-identify = "0.41.0"
-libp2p-kad = "0.42.0"
-libp2p-request-response = "0.23.0"
-libp2p-relay = "0.14.0"
-libp2p-gossipsub = "0.43.0"
-libp2p-bitswap = "0.25.0"
+anyhow.workspace = true
+axum.workspace = true
+tracing-subscriber.workspace = true
+libp2p-swarm .workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+prometheus-client.workspace =true
+serde.workspace = true
+tracing.workspace = true
+libp2p-bitswap.workspace = true
+
+[dependencies.libp2p]
+workspace = true
+default-features = false
+features = [
+    "serde",
+    "ping",
+    "identify",
+    "gossipsub",
+    "request-response",
+    "relay",
+    "kad"
+]

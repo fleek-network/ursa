@@ -49,9 +49,9 @@ where
             .finish();
 
         let ServerConfig { port, addr } = ServerConfig::default();
-        let api_url = format!("http://{}:{}/rpc/v0", addr, port);
+        let api_url = format!("http://{addr}:{port}/rpc/v0");
 
-        info!("Using JSON-RPC v2 HTTP URL: {}", api_url);
+        info!("Using JSON-RPC v2 HTTP URL: {api_url}");
         debug!("rpc_req {:?}", rpc_req);
 
         // TODO(arslan): Add authentication
@@ -73,12 +73,9 @@ where
             let code = http_res.status() as i64;
 
             if code != 200 {
-                error!(
-                    "[RPCClient] - server responded with http error code {:?} - {}",
-                    code, res
-                );
+                error!("[RPCClient] - server responded with http error code {code:?} - {res}");
                 return Err(Error::Full {
-                    message: format!("Error code from HTTP Response: {}", code),
+                    message: format!("Error code from HTTP Response: {code}"),
                     code,
                     data: None,
                 });
@@ -91,7 +88,7 @@ where
                     return Err(Error::Full {
                         data: None,
                         code: 200,
-                        message: format!("Parse Error: {}\nData: {}", e, res),
+                        message: format!("Parse Error: {e}\nData: {res}"),
                     })
                 }
             };
@@ -133,11 +130,10 @@ mod tests {
 
     use crate::functions::{get_block, put_file};
 
-    use cid::Cid;
+    use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
-    use libipld::multihash::Code;
     use libipld::store::DefaultParams;
     use ursa_rpc_server::api::{NetworkGetParams, NetworkPutFileParams};
     use ursa_utils::convert_cid;

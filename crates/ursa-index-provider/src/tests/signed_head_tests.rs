@@ -20,8 +20,7 @@ mod tests {
 
         let (pk, head) = signed_head.open().expect("failed to open signed_head");
 
-        println!("{:?}", head);
-        println!("{:?}", pk);
+        println!("{head:?}\n{pk:?}");
     }
 
     #[test]

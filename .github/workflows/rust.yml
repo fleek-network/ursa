@@ -16,8 +16,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         rust: [nightly]
         make:
-          - name: clippy
-            task: "check"
+          - name: check-fmt-clippy
+            task: "ci"
           - name: test
             task: "test-network"
           - name: doc
@@ -60,7 +60,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
           profile: minimal
-          components: clippy, rustc-dev, llvm-tools-preview
+          components: clippy, rustc-dev, llvm-tools-preview, rustfmt
 
       - name: Cache Cargo
         uses: actions/cache@v3
@@ -78,12 +78,12 @@ jobs:
         run: make ${{ matrix.make.task }}
 
       - name: Setup grcov
-        if: matrix.make == 'Tests'
+        if: matrix.make == 'test'
         id: coverage
         uses: actions-rs/grcov@v0.1
 
       - name: grcov upload to codecov.io
-        if: matrix.make == 'Tests'
+        if: matrix.make == 'test'
         uses: codecov/codecov-action@v3
         with:
           file: ${{ steps.coverage.outputs.report }}

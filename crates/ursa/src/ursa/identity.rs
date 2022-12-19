@@ -3,6 +3,7 @@ use libp2p::identity::Keypair;
 use libp2p::PeerId;
 use std::fs::create_dir_all;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::{
     fs::{self, File},
     io::{prelude::*, Result},
@@ -14,8 +15,8 @@ pub trait Identity {
     fn id(&self) -> PeerId;
     fn keypair(&self) -> Keypair;
     fn encode_pem(&self) -> String;
-    fn save(&self, path: &PathBuf) -> Result<()>;
-    fn load(path: &PathBuf) -> Result<Self>
+    fn save(&self, path: &Path) -> Result<()>;
+    fn load(path: &Path) -> Result<Self>
     where
         Self: Sized;
 }
@@ -60,7 +61,7 @@ impl Identity for Keypair {
         pem::encode(&pem_data)
     }
 
-    fn save(&self, path: &PathBuf) -> Result<()> {
+    fn save(&self, path: &Path) -> Result<()> {
         let pem = self.encode_pem();
         create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
@@ -72,7 +73,7 @@ impl Identity for Keypair {
         Ok(())
     }
 
-    fn load(path: &PathBuf) -> Result<Self>
+    fn load(path: &Path) -> Result<Self>
     where
         Self: Sized,
     {

@@ -1,7 +1,7 @@
 use crate::identify::PEERS;
 use crate::Recorder;
-use libp2p_core::{ConnectedPoint, PeerId};
-use libp2p_swarm::SwarmEvent;
+use libp2p::swarm::SwarmEvent;
+use libp2p::{core::ConnectedPoint, PeerId};
 use metrics::{decrement_gauge, increment_counter, increment_gauge, Label};
 
 impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {

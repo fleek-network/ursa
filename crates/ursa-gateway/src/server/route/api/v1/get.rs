@@ -25,18 +25,18 @@ pub async fn get_block_handler(
     if Cid::from_str(&cid).is_err() {
         return error_handler(
             StatusCode::BAD_REQUEST,
-            format!("invalid cid string, cannot parse {} to CID", cid),
+            format!("invalid cid string, cannot parse {cid} to CID"),
         );
     };
 
-    let endpoint = format!("{}/{}", cid_url, cid);
+    let endpoint = format!("{cid_url}/{cid}");
     let uri = match endpoint.parse::<Uri>() {
         Ok(uri) => uri,
         Err(e) => {
             error!("error parsed uri: {}\n{}", endpoint, e);
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("error parsed uri: {}", endpoint),
+                format!("error parsed uri: {endpoint}"),
             );
         }
     };
@@ -47,7 +47,7 @@ pub async fn get_block_handler(
             error!("error requested uri: {}\n{}", endpoint, e);
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("error requested uri: {}", endpoint),
+                format!("error requested uri: {endpoint}"),
             );
         }
     };
@@ -58,7 +58,7 @@ pub async fn get_block_handler(
             error!("error read data from upstream: {}\n{}", endpoint, e);
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("error read data from upstream: {}", endpoint),
+                format!("error read data from upstream: {endpoint}"),
             );
         }
     };
@@ -66,21 +66,15 @@ pub async fn get_block_handler(
     let indexer_response: IndexerResponse = match from_slice(&bytes) {
         Ok(indexer_response) => indexer_response,
         Err(e) => {
-            error!(
-                "error parsed indexer response from upstream: {}\n{}",
-                endpoint, e
-            );
+            error!("error parsed indexer response from upstream: {endpoint}\n{e}");
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("error parsed indexer response from upstream: {}", endpoint),
+                format!("error parsed indexer response from upstream: {endpoint}"),
             );
         }
     };
 
-    debug!(
-        "received indexer response for {cid}:\n{:?}",
-        indexer_response
-    );
+    debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
     // TODO:
     // 1. filter FleekNetwork metadata

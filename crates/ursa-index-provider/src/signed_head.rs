@@ -72,7 +72,7 @@ fn from_map_to_bytes(
         .as_str()
         .ok_or("missing bytes string")?;
 
-    Ok(base64::decode(bytes_str).map_err(|e| format!("{}", e))?)
+    Ok(base64::decode(bytes_str).map_err(|e| format!("{e}"))?)
 }
 
 serde_with::serde_conv!(CidAsMap, Cid, from_cid_to_map, from_map_to_cid);

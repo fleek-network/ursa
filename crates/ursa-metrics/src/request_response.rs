@@ -1,4 +1,4 @@
-use libp2p_request_response::{RequestResponseEvent, RequestResponseMessage};
+use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
 use metrics::{increment_counter, Label};
 use std::fmt::Debug;
 

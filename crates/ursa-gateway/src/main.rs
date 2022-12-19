@@ -24,9 +24,9 @@ async fn main() -> Result<()> {
 
     let config_path = PathBuf::from(config);
     init_config(&config_path)
-        .with_context(|| format!("failed to init config from: {:?}", config_path))?;
+        .with_context(|| format!("failed to init config from: {config_path:?}"))?;
     let mut gateway_config = load_config(&config_path)
-        .with_context(|| format!("failed to load config from: {:?}", config_path))?;
+        .with_context(|| format!("failed to load config from: {config_path:?}"))?;
 
     // sync
     gateway_config.merge_log_level(log);

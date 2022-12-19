@@ -1,4 +1,4 @@
-use libp2p_gossipsub::GossipsubEvent;
+use libp2p::gossipsub::GossipsubEvent;
 use metrics::increment_counter;
 use metrics::Label;
 

@@ -1,5 +1,5 @@
 use crate::Recorder;
-use libp2p_kad::{GetProvidersOk, GetRecordOk, KademliaEvent, QueryResult};
+use libp2p::kad::{GetProvidersOk, GetRecordOk, InboundRequest, KademliaEvent, QueryResult};
 use metrics::Label;
 use metrics::{histogram, increment_counter};
 
@@ -86,11 +86,11 @@ impl Recorder for KademliaEvent {
                     vec![Label::new(
                         "request",
                         match request {
-                            libp2p_kad::InboundRequest::FindNode { .. } => "find_node",
-                            libp2p_kad::InboundRequest::GetProvider { .. } => "get_providers",
-                            libp2p_kad::InboundRequest::AddProvider { .. } => "add_provider",
-                            libp2p_kad::InboundRequest::GetRecord { .. } => "get_record",
-                            libp2p_kad::InboundRequest::PutRecord { .. } => "put_record",
+                            InboundRequest::FindNode { .. } => "find_node",
+                            InboundRequest::GetProvider { .. } => "get_providers",
+                            InboundRequest::AddProvider { .. } => "add_provider",
+                            InboundRequest::GetRecord { .. } => "get_record",
+                            InboundRequest::PutRecord { .. } => "put_record",
                         }
                     ),]
                 );

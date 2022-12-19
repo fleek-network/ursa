@@ -6,8 +6,8 @@ mod tests {
     };
 
     use anyhow::Error;
+    use cid::multihash::{Code, MultihashDigest};
     use forest_ipld::Ipld;
-    use multihash::{Code, MultihashDigest};
     use surf::Error as SurfError;
     use tokio::task;
     use tracing::error;
@@ -51,7 +51,7 @@ mod tests {
             let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head")
                 .recv_json()
                 .await
-                .map_err(|e| SurfError::into_inner(e))?;
+                .map_err(SurfError::into_inner)?;
             assert_eq!(signed_head.open()?.1, provider_interface.head().unwrap());
             Ok::<_, Error>(())
         })

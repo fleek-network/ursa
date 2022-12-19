@@ -1,8 +1,5 @@
-use crate::{
-    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
-    ursa::identity::IdentityManager,
-};
-use anyhow::{anyhow, Error, Result};
+use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
+use anyhow::Result;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
@@ -12,12 +9,12 @@ use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
+use ursa_index_provider::{engine::ProviderEngine, provider::Provider};
 use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
-use ursa_tracker::TrackerRegistration;
-use ursa_index_provider::{engine::ProviderEngine, provider::Provider};
 use ursa_store::UrsaStore;
+use ursa_tracker::TrackerRegistration;
 
 pub mod config;
 mod ursa;
@@ -47,7 +44,6 @@ async fn main() -> Result<()> {
                 } = config;
 
                 // ursa service setup
-                let keystore_path = network_config.keystore_path.clone();
                 let im = match network_config.identity.as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
@@ -88,17 +84,17 @@ async fn main() -> Result<()> {
                     UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
                 let provider_db = RocksDb::open(
-                    &provider_config.database_path.resolve(),
+                    provider_config.database_path.resolve(),
                     &RocksDbConfig::default(),
                 )
                 .expect("Opening provider RocksDB must succeed");
 
                 let index_store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider_engine = ProviderEngine::new(
-                    keypair.clone(),
+                    keypair,
                     Arc::clone(&store),
                     index_store,
-                    provider_config.clone(),
+                    provider_config,
                     service.command_sender(),
                 );
 
@@ -109,9 +105,6 @@ async fn main() -> Result<()> {
                         error!("[metrics_task] - {:?}", err);
                     }
                 });
-
-                let service = UrsaService::new(keypair, &network_config, Arc::clone(&store))?;
-                let rpc_sender = service.command_sender();
 
                 // server setup
                 let interface = Arc::new(NodeNetworkInterface {
@@ -162,7 +155,7 @@ async fn main() -> Result<()> {
             }
         }
         Err(e) => {
-            cli_error_and_die(&format!("Config error: {}", e), 1);
+            cli_error_and_die(&format!("Config error: {e}"), 1);
         }
     };
     Ok(())

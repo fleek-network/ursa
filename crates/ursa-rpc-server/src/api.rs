@@ -160,7 +160,7 @@ where
         write_task.await?;
 
         let buffer: Vec<_> = buffer.read().await.clone();
-        let file_path = PathBuf::from(path).join(format!("{}.car", root_cid));
+        let file_path = PathBuf::from(path).join(format!("{root_cid}.car"));
         create_dir_all(file_path.parent().unwrap()).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(&buffer).await?;
@@ -179,7 +179,7 @@ where
         let (mut tx, mut rx) = unbounded();
         let (writer, reader) = tokio::io::duplex(1024 * 100);
 
-        let body = axum::body::StreamBody::new(ReaderStream::new(reader));
+        let body = StreamBody::new(ReaderStream::new(reader));
 
         task::spawn(async move {
             header
@@ -213,8 +213,7 @@ where
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
-                "The PUT failed, please check server logs {:?}",
-                e
+                "The PUT failed, please check server logs {e:?}"
             ))),
         }
     }

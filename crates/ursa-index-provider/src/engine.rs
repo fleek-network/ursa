@@ -15,24 +15,13 @@ use ursa_network::{GossipsubMessage, NetworkCommand};
 
 use anyhow::{anyhow, Error, Result};
 
-use axum::{
-    body::Body,
-    extract::Path,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::get,
-    Extension, Json, Router,
-};
+use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
 use cid::Cid;
 
+use crate::provider::ProviderError;
 use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
-use std::{
-    collections::VecDeque,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    str::FromStr,
-    sync::Arc,
-};
+use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_store::{BlockstoreExt, Dag, UrsaStore};
 use ursa_utils::convert_cid;
@@ -40,23 +29,6 @@ use ursa_utils::convert_cid;
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 
-pub enum ProviderError {
-    NotFoundError(Error),
-    InternalError(Error),
-}
-
-impl IntoResponse for ProviderError {
-    fn into_response(self) -> Response {
-        match self {
-            ProviderError::NotFoundError(e) => {
-                (StatusCode::NOT_FOUND, e.to_string()).into_response()
-            }
-            ProviderError::InternalError(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
-            }
-        }
-    }
-}
 // handlers
 async fn head<S: Blockstore + Store + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
@@ -79,7 +51,7 @@ async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
     match state.store().blockstore().get_obj::<Vec<u8>>(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
-        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{}", e)))),
+        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{e}")))),
     }
 }
 

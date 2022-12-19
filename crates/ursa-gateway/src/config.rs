@@ -22,7 +22,7 @@ pub fn init_config(path: &PathBuf) -> Result<()> {
         tracing::subscriber::with_default(subscriber, || info!("create config at: {:?}", path));
         let parent_dir = path
             .parent()
-            .with_context(|| format!("couldn't get parent dir from: {:?}", path))?;
+            .with_context(|| format!("couldn't get parent dir from: {path:?}"))?;
         create_dir_all(parent_dir)?;
         let gateway_config = GatewayConfig::default();
         let mut file = File::create(path)?;
