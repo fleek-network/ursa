@@ -13,7 +13,8 @@ pub fn setup_logger(level: LevelFilter) {
     if SimpleLogger::new()
         .with_level(level)
         .with_utc_timestamps()
-        .init().is_err()
+        .init()
+        .is_err()
     {
         info!("Logger already set. Ignore.")
     }

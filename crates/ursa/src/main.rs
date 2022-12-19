@@ -1,8 +1,5 @@
-use crate::{
-    config::{UrsaConfig},
-    ursa::identity::IdentityManager,
-};
-use anyhow::{Result};
+use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
+use anyhow::Result;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
@@ -11,7 +8,7 @@ use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursa_index_provider::{engine::ProviderEngine};
+use ursa_index_provider::engine::ProviderEngine;
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};

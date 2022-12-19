@@ -60,10 +60,7 @@ where
                 match interface.put_car(reader).await {
                     Err(err) => {
                         error!("{:?}", err);
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(format!("{err:?}")),
-                        )
+                        (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("{err:?}")))
                     }
                     Ok(res) => (StatusCode::OK, Json(format!("{res:?}"))),
                 }

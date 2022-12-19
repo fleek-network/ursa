@@ -15,26 +15,16 @@ use ursa_network::{GossipsubMessage, NetworkCommand};
 
 use anyhow::{anyhow, Error, Result};
 
-use axum::{
-    body::Body,
-    extract::Path,
-    response::Response,
-    routing::get,
-    Extension, Json, Router,
-};
+use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
 use cid::Cid;
 
+use crate::provider::ProviderError;
 use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
-use std::{
-    collections::VecDeque,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_store::{BlockstoreExt, Dag, UrsaStore};
 use ursa_utils::convert_cid;
-use crate::provider::ProviderError;
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;

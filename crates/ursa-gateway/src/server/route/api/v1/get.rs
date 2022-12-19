@@ -66,9 +66,7 @@ pub async fn get_block_handler(
     let indexer_response: IndexerResponse = match from_slice(&bytes) {
         Ok(indexer_response) => indexer_response,
         Err(e) => {
-            error!(
-                "error parsed indexer response from upstream: {endpoint}\n{e}"
-            );
+            error!("error parsed indexer response from upstream: {endpoint}\n{e}");
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("error parsed indexer response from upstream: {endpoint}"),
@@ -76,9 +74,7 @@ pub async fn get_block_handler(
         }
     };
 
-    debug!(
-        "received indexer response for {cid}:\n{indexer_response:?}"
-    );
+    debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
     // TODO:
     // 1. filter FleekNetwork metadata

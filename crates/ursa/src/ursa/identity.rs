@@ -3,12 +3,12 @@ use libp2p::identity::Keypair;
 use libp2p::PeerId;
 use std::fs::create_dir_all;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::{
     fs::{self, File},
     io::{prelude::*, Result},
     path::PathBuf,
 };
-use std::path::Path;
 use tracing::{error, info};
 
 pub trait Identity {

@@ -35,9 +35,7 @@ pub async fn start_server(config: Arc<RwLock<GatewayConfig>>) -> Result<()> {
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!(
-                "failed to init tls from:\ncert: {cert_path:?}:\npath: {key_path:?}"
-            )
+            format!("failed to init tls from:\ncert: {cert_path:?}:\npath: {key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
