@@ -1,8 +1,8 @@
 use crate::{
-    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
+    config::{UrsaConfig},
     ursa::identity::IdentityManager,
 };
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Result};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
@@ -11,7 +11,7 @@ use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
-use ursa_index_provider::{engine::ProviderEngine, provider::Provider};
+use ursa_index_provider::{engine::ProviderEngine};
 use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
@@ -45,7 +45,6 @@ async fn main() -> Result<()> {
                 } = config;
 
                 // ursa service setup
-                let keystore_path = network_config.keystore_path.clone();
                 let im = match network_config.identity.as_str() {
                     // ephemeral random identity
                     "random" => IdentityManager::random(),
@@ -74,10 +73,10 @@ async fn main() -> Result<()> {
 
                 let index_store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider_engine = ProviderEngine::new(
-                    keypair.clone(),
+                    keypair,
                     Arc::clone(&store),
                     index_store,
-                    provider_config.clone(),
+                    provider_config,
                     service.command_sender(),
                 );
 

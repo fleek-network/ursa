@@ -179,7 +179,7 @@ where
         let (mut tx, mut rx) = unbounded();
         let (writer, reader) = tokio::io::duplex(1024 * 100);
 
-        let body = axum::body::StreamBody::new(ReaderStream::new(reader));
+        let body = StreamBody::new(ReaderStream::new(reader));
 
         task::spawn(async move {
             header

@@ -25,7 +25,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info, trace};
+use tracing::{info, trace};
 use ursa_store::{BlockstoreExt, UrsaStore};
 use ursa_utils::convert_cid;
 

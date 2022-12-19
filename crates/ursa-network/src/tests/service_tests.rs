@@ -174,7 +174,7 @@ mod tests {
                         break;
                     }
                 }
-            };
+            }
         }
 
         Ok(())
@@ -202,7 +202,7 @@ mod tests {
                     }
                 }
                 _ = node_1.swarm.select_next_some() => {}
-            };
+            }
         }
         Ok(())
     }
@@ -229,7 +229,7 @@ mod tests {
                     }
                 }
                 _ = node_1.swarm.select_next_some() => {}
-            };
+            }
         }
         Ok(())
     }
