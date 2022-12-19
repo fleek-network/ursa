@@ -6,8 +6,8 @@ mod tests {
     };
 
     use anyhow::Error;
-    use forest_ipld::Ipld;
     use cid::multihash::{Code, MultihashDigest};
+    use forest_ipld::Ipld;
     use surf::Error as SurfError;
     use tokio::task;
     use tracing::error;

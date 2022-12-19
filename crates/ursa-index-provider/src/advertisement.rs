@@ -1,4 +1,4 @@
-use cid::multihash::{ MultihashDigest, Code};
+use cid::multihash::{Code, MultihashDigest};
 use forest_ipld::Ipld;
 use libp2p::{
     core::{signed_envelope, SignedEnvelope},

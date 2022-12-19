@@ -8,7 +8,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use cid::{Cid, multihash::Code};
+use cid::{multihash::Code, Cid};
 use forest_encoding::Cbor;
 use forest_ipld::Ipld;
 use fvm_ipld_blockstore::Blockstore;

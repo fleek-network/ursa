@@ -133,7 +133,7 @@ mod tests {
 
     use crate::functions::{get_block, put_file};
 
-    use cid::{Cid, multihash::Code};
+    use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;

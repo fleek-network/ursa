@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use libp2p::Multiaddr;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct IndexerResponse {

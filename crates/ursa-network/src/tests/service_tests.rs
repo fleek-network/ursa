@@ -9,7 +9,7 @@ mod tests {
     use anyhow::Result;
     use async_fs::File;
     use bytes::Bytes;
-    use cid::{Cid, multihash::Code };
+    use cid::{multihash::Code, Cid};
     use db::MemoryDB;
     use futures::io::BufReader;
     use futures::StreamExt;
