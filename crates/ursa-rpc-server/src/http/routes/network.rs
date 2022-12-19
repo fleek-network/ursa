@@ -42,8 +42,8 @@ impl IntoResponse for NetworkError {
 }
 
 pub async fn upload_handler<S>(
-    mut buf: Multipart,
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
+    mut buf: Multipart,
 ) -> impl IntoResponse
 where
     S: Blockstore + Store + Send + Sync + 'static,

@@ -1,3 +1,4 @@
+use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -29,5 +30,5 @@ pub struct AddrInfo {
     #[serde(rename = "ID")]
     id: String,
     #[serde(rename = "Addrs")]
-    addrs: Vec<multiaddr::Multiaddr>,
+    addrs: Vec<Multiaddr>,
 }

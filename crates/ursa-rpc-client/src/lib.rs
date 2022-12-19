@@ -133,11 +133,10 @@ mod tests {
 
     use crate::functions::{get_block, put_file};
 
-    use cid::Cid;
+    use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
-    use libipld::multihash::Code;
     use libipld::store::DefaultParams;
     use ursa_rpc_server::api::{NetworkGetParams, NetworkPutFileParams};
     use ursa_utils::convert_cid;
