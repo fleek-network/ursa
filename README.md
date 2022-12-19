@@ -1,5 +1,11 @@
 # Ursa
 
+[![website](https://img.shields.io/badge/website-000?style=for-the-badge)](https://fleek.network)&nbsp;
+[![discord](https://img.shields.io/badge/discord-333?style=for-the-badge)](https://discord.gg/fleekxyz)&nbsp;
+[![twitter](https://img.shields.io/badge/twitter-666?style=for-the-badge)](https://twitter.com/fleek_net)&nbsp;
+[![rust-ci](https://img.shields.io/github/actions/workflow/status/fleek-network/ursa/rust.yml?branch=main&label=Tests&style=for-the-badge)](https://github.com/fleek-network/ursa/actions/workflows/rust.yml)&nbsp;
+[![docker-build](https://img.shields.io/github/actions/workflow/status/fleek-network/ursa/docker-publish.yml?branch=main&label=Docker%20Build&style=for-the-badge)](https://github.com/fleek-network/ursa/pkgs/container/ursa)&nbsp;
+
 Ursa, a decentralized content delivery network.
 
 ## Run a node
