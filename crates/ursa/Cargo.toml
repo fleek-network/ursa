@@ -8,21 +8,21 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's cli"
 
 [dependencies]
-anyhow = "1.0.57"
-ctrlc = "3.1"
-db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-dirs = "4"
-dotenv = "0.15.0"
-futures = "0.3.21"
-libp2p = { version = "0.50.0", default-features = false, features = ["identify", "serde"] }
-pem = "1.1.0"
-resolve-path = "0.1.0"
-serde = { version = "1.0", features = ["derive"] }
-structopt = "0.3"
-tokio = { version = "1.20.1", features = ["full"] }
-toml = "0.5"
-tracing = "0.1.33"
-tracing-subscriber = "0.3.11"
+anyhow.workspace = true
+ctrlc.workspace = true
+db.workspace = true
+dirs.workspace = true
+dotenv.workspace = true
+futures.workspace = true
+libp2p = { workspace = true, default-features = false, features = ["identify", "serde"] }
+pem.workspace = true
+resolve-path.workspace = true
+serde.workspace = true
+structopt.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }

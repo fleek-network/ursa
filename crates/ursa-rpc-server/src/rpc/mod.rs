@@ -29,8 +29,8 @@ impl IntoResponse for ServerErrors {
 }
 
 pub async fn rpc_handler(
-    Json(req): Json<RequestObject>,
     Extension(server): Extension<RpcServer>,
+    Json(req): Json<RequestObject>,
 ) -> Result<Json<ResponseObjects>, ServerErrors> {
     match server.0.handle(req).await {
         ResponseObjects::One(r) => match r {

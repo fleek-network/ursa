@@ -8,41 +8,36 @@ repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa's multiplex server implementation"
 
 [dependencies]
-anyhow = "1.0.56"
-async-fs = "1.6.0"
-async-trait = "0.1.53"
-axum = { version = "0.5.7", features = ["multipart", "headers"] }
-bytes = "1.1.0"
-cid = "0.8.6"
-db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-fnv = "1.0.7"
-futures = "0.3.21"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_car = "0.5.0"
-hyper = "0.14.20"
-jsonrpc-v2 = "0.11.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.81"
-simple_logger = "2.1.0"
-tokio = { version = "1.20.1", features = ["rt", "net", "macros", "sync"] }
-tokio-util = { version = "0.7", features = ["io", "compat"] }
-tower = "0.4.13"
-tracing = "0.1.33"
+anyhow.workspace = true
+async-fs.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+tracing-subscriber.workspace = true
+bytes.workspace = true
+cid.workspace = true
+db.workspace = true
+fnv.workspace = true
+futures.workspace = true
+fvm_ipld_blockstore.workspace = true
+fvm_ipld_car.workspace = true
+hyper.workspace = true
+jsonrpc-v2.workspace = true
+libipld.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+simple_logger.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tokio-util.workspace = true
 ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
 
-[dependencies.libipld]
-version = "0.14.0"
-default-features = false
-
-[dev-dependencies]
-db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-
 [dependencies.libp2p]
-version = "0.50.0"
+workspace = true
 default-features = false
 features = [
     "identify",
