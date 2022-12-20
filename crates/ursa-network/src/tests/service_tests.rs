@@ -63,21 +63,9 @@ mod tests {
         }
     }
 
-    async fn _run_bootstrap(
-        config: &mut NetworkConfig,
-        port: u16,
-    ) -> Result<(UrsaService<MemoryDB>, String)> {
-        let keypair = Keypair::generate_ed25519();
-        let swarm_addr = format!("/ip4/127.0.0.1/tcp/{port}");
-        config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
-        let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(keypair.public()));
-        let (bootstrap, ..) = network_init(config, Some(addr.clone()), Some(keypair)).await?;
-        Ok((bootstrap, addr))
-    }
-
     async fn network_init(
         config: &mut NetworkConfig,
-        bootstrap_addr: Option<String>,
+        bootstrap_addrs: Vec<String>,
         bootstrap_keypair: Option<Keypair>,
     ) -> Result<(
         UrsaService<MemoryDB>,
@@ -95,9 +83,7 @@ mod tests {
         let peer_id = PeerId::from(keypair.clone().public());
         let store = get_store();
 
-        if let Some(addr) = bootstrap_addr {
-            config.bootstrap_nodes = [addr].iter().map(|node| node.parse().unwrap()).collect();
-        }
+        config.bootstrap_nodes = bootstrap_addrs.iter().map(|node| node.parse().unwrap()).collect();
 
         let mut service = UrsaService::new(keypair, config, Arc::clone(&store))?;
 
@@ -123,7 +109,7 @@ mod tests {
         setup_logger(LevelFilter::Info);
 
         let mut config = NetworkConfig::default();
-        let (mut service, ..) = network_init(&mut config, None, None).await?;
+        let (mut service, ..) = network_init(&mut config, vec![], None).await?;
 
         loop {
             if let SwarmEvent::NewListenAddr { address, .. } =
@@ -143,9 +129,9 @@ mod tests {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
-        let (mut node_1, node_1_addrs, ..) = network_init(&mut config, None, None).await?;
+        let (mut node_1, node_1_addrs, ..) = network_init(&mut config, vec![], None).await?;
         let (mut node_2, ..) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+            network_init(&mut config, vec![node_1_addrs.to_string()], None).await?;
 
         loop {
             select! {
@@ -187,8 +173,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
-        let (mut node_2, ..) = network_init(&mut config, None, None).await?;
+        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, vec![], None).await?;
+        let (mut node_2, ..) = network_init(&mut config, vec![], None).await?;
 
         loop {
             select! {
@@ -214,8 +200,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
-        let (mut node_2, ..) = network_init(&mut config, None, None).await?;
+        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, vec![], None).await?;
+        let (mut node_2, ..) = network_init(&mut config, vec![], None).await?;
 
         loop {
             select! {
@@ -239,9 +225,9 @@ mod tests {
         let mut config = NetworkConfig::default();
 
         let (mut node_1, node_1_addrs, peer_id_1, ..) =
-            network_init(&mut config, None, None).await?;
+            network_init(&mut config, vec![], None).await?;
         let (mut node_2, _, peer_id_2, ..) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+            network_init(&mut config, vec![node_1_addrs.to_string()], None).await?;
 
         // Wait for at least one connection
         loop {
@@ -290,9 +276,9 @@ mod tests {
         };
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
-            network_init(&mut config, None, None).await?;
+            network_init(&mut config, vec![], None).await?;
         let (node_2, _, _, store_2) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+            network_init(&mut config, vec![node_1_addrs.to_string()], None).await?;
 
         let bitswap_store_1 = BitswapStorage(store_1.clone());
         let mut bitswap_store_2 = BitswapStorage(store_2.clone());
@@ -359,9 +345,9 @@ mod tests {
         };
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
-            network_init(&mut config, None, None).await?;
+            network_init(&mut config, vec![], None).await?;
         let (node_2, _, _, store_2) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+            network_init(&mut config, vec![node_1_addrs.to_string()], None).await?;
 
         let mut bitswap_store_2 = BitswapStorage(store_2.clone());
 
