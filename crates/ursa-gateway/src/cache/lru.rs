@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 struct _Node<T> {
     next: RefCell<Rc<_Dll<T>>>,
     prev: RefCell<Rc<_Dll<T>>>,
-    data: T,
+    data: Rc<T>,
 }
 
 enum _Dll<T> {
@@ -13,13 +13,13 @@ enum _Dll<T> {
 
 struct _Data<K, V> {
     value: V,
-    dll: Rc<_Dll<Rc<K>>>,
+    dll: Rc<_Dll<K>>,
 }
 
 struct _Lru<K, V> {
     store: HashMap<Rc<K>, _Data<K, V>>,
-    head: Rc<_Dll<Rc<K>>>,
-    tail: Rc<_Dll<Rc<K>>>,
+    head: Rc<_Dll<K>>,
+    tail: Rc<_Dll<K>>,
     cap: Option<usize>,
 }
 
@@ -41,9 +41,9 @@ where
         }
     }
 
-    fn _get_first_key(&self) -> Option<&K> {
+    fn _get_first_key(&self) -> Option<Rc<K>> {
         if let _Dll::_Node(node) = self.head.as_ref() {
-            Some(&node.data)
+            Some(Rc::clone(&node.data))
         } else {
             None
         }
@@ -66,7 +66,7 @@ where
                 let first_key = self
                     ._get_first_key()
                     .expect("[LRU]: Failed to get the first key while deleting.");
-                self._remove(&first_key.clone()); // Rc::clone
+                self._remove(first_key.as_ref());
             }
         }
         let key = Rc::new(k);
