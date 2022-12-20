@@ -6,8 +6,10 @@ use hyper::{body, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
+use ursa_rpc_server::api::NetworkGetParams;
 
 use super::Client;
+use crate::indexer::get_provider;
 use crate::{
     cache::Tlrfu,
     config::{GatewayConfig, IndexerConfig},
@@ -84,6 +86,35 @@ pub async fn get_block_handler(
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
+    let resp = match get_provider(&indexer_response) {
+        Some(addrs) => {
+            let mut addr_iter = addrs.iter();
+
+            loop {
+                match addr_iter.next() {
+                    Some(_) => {
+                        let params = NetworkGetParams { cid: cid.clone() };
+                        if let Ok(resp) = ursa_rpc_client::functions::get_block(params).await {
+                            break resp;
+                        }
+                    }
+                    None => {
+                        return error_handler(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("failed to contact node provider"),
+                        )
+                    }
+                }
+            }
+        }
+        None => {
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to find provider"),
+            )
+        }
+    };
+
     // TODO:
     // 1. filter FleekNetwork metadata
     // 2. pick node (round-robin)
@@ -96,7 +127,7 @@ pub async fn get_block_handler(
     // 1. maintain N workers keep track of indexing data
     // 2. cherry-pick closest node
     // 3. cache TTL
-    (StatusCode::OK, Json(json!(indexer_response)))
+    (StatusCode::OK, Json(json!({ "data": resp })))
 }
 
 fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
