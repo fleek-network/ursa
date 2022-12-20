@@ -9,6 +9,8 @@ pub enum RpcCommands {
     Put {
         #[structopt(about = "The path to the file")]
         path: String,
+        #[structopt(long, about = "port where the request will be sent")]
+        port: Option<u16>,
     },
     #[structopt(
         about = "get the file from network for a given root cid and store it on given path"
@@ -16,19 +18,21 @@ pub enum RpcCommands {
     Get {
         #[structopt(about = "root cid to get the file")]
         cid: String,
-        #[structopt(about = "The path to sotre the file")]
+        #[structopt(about = "The path to store the file")]
         path: String,
+        #[structopt(long, about = "port where the request will be sent")]
+        port: Option<u16>,
     },
 }
 
 impl RpcCommands {
     pub async fn run(&self) {
         match self {
-            Self::Put { path } => {
+            Self::Put { path, port } => {
                 let params = NetworkPutFileParams {
                     path: path.to_string(),
                 };
-                match put_file(params).await {
+                match put_file(params, *port).await {
                     Ok(file) => {
                         info!("Put car file done: {:?}", file);
                     }
@@ -37,12 +41,12 @@ impl RpcCommands {
                     }
                 };
             }
-            Self::Get { cid, path } => {
+            Self::Get { cid, path, port } => {
                 let params = NetworkGetFileParams {
                     path: path.to_string(),
                     cid: cid.to_string(),
                 };
-                match get_file(params).await {
+                match get_file(params, *port).await {
                     Ok(_result) => {
                         info!("file stored at {path:?}");
                     }

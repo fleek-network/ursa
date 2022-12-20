@@ -36,7 +36,12 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-async fn call<P, R>(method_name: &str, params: P, method: RpcMethod) -> Result<R, Error>
+async fn call<P, R>(
+    method_name: &str,
+    params: P,
+    method: RpcMethod,
+    rpc_port: Option<u16>,
+) -> Result<R, Error>
 where
     P: Serialize,
     R: DeserializeOwned,
@@ -48,7 +53,10 @@ where
             .with_id(1)
             .finish();
 
-        let ServerConfig { port, addr } = ServerConfig::default();
+        let ServerConfig { mut port, addr } = ServerConfig::default();
+        if let Some(rpc_port) = rpc_port {
+            port = rpc_port;
+        }
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
@@ -175,7 +183,7 @@ mod tests {
         let params = NetworkPutFileParams {
             path: "./car_files/ursa_major.car".to_string(),
         };
-        match put_file(params).await {
+        match put_file(params, None).await {
             Ok(v) => {
                 println!("Put car file done: {v:?}");
             }

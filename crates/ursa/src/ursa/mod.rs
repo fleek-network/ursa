@@ -36,7 +36,7 @@ pub struct Cli {
     pub cmd: Option<Subcommand>,
 }
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Debug)]
 pub enum Subcommand {
     #[structopt(name = "rpc", about = "run rpc commands from cli")]
     Rpc(RpcCommands),
