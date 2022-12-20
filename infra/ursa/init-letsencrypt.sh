@@ -1,23 +1,20 @@
 #!/bin/bash
 
+if [ -z "$DOMAINS" ]; then
+    echo "Error: No domains provided."
+    echo "Please set the environment variable DOMAINS=(node.ursa.earth www.node.ursa.earth)"
+    exit 1
+fi
+
 if ! [ -x "$(command -v docker-compose)" ]; then
   echo 'Error: docker-compose is not installed.' >&2
   exit 1
 fi
 
-domains=(ursa.earth www.ursa.earth)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="major@ursa.earth" # Adding a valid address is strongly recommended
 staging=1 # Set to 1 if you're testing your setup to avoid hitting request limits
-
-if [ -d "$data_path" ]; then
-  read -p "Existing data found for $domains. Continue and replace existing certificate? (y/N) " decision
-  if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
-    exit
-  fi
-fi
-
 
 if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/ssl-dhparams.pem" ]; then
   echo "### Downloading recommended TLS parameters ..."
@@ -27,9 +24,9 @@ if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/
   echo
 fi
 
-echo "### Creating dummy certificate for $domains ..."
-path="/etc/letsencrypt/live/$domains"
-mkdir -p "$data_path/conf/live/$domains"
+echo "### Creating dummy certificate for $DOMAINS ..."
+path="/etc/letsencrypt/live/$DOMAINS"
+mkdir -p "$data_path/conf/live/$DOMAINS"
 docker-compose run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
     -keyout '$path/privkey.pem' \
@@ -37,23 +34,21 @@ docker-compose run --rm --entrypoint "\
     -subj '/CN=localhost'" certbot
 echo
 
-
 echo "### Starting nginx ..."
 docker-compose up --force-recreate -d nginx
 echo
 
-echo "### Deleting dummy certificate for $domains ..."
+echo "### Deleting dummy certificate for $DOMAINS ..."
 docker-compose run --rm --entrypoint "\
-  rm -Rf /etc/letsencrypt/live/$domains && \
-  rm -Rf /etc/letsencrypt/archive/$domains && \
-  rm -Rf /etc/letsencrypt/renewal/$domains.conf" certbot
+  rm -Rf /etc/letsencrypt/live/$DOMAINS && \
+  rm -Rf /etc/letsencrypt/archive/$DOMAINS && \
+  rm -Rf /etc/letsencrypt/renewal/$DOMAINS.conf" certbot
 echo
 
-
-echo "### Requesting Let's Encrypt certificate for $domains ..."
-#Join $domains to -d args
+echo "### Requesting Let's Encrypt certificate for $DOMAINS ..."
+#Join $DOMAINS to -d args
 domain_args=""
-for domain in "${domains[@]}"; do
+for domain in "${DOMAINS[@]}"; do
   domain_args="$domain_args -d $domain"
 done
 
@@ -72,7 +67,7 @@ docker-compose run --rm --entrypoint "\
     $email_arg \
     $domain_args \
     --rsa-key-size $rsa_key_size \
-    --agree-tos \
+    --agree-tos -n \
     --force-renewal" certbot
 echo
 

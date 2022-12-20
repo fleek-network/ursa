@@ -21,5 +21,5 @@ runcmd:
   - cd ursa/
   - cd infra/global-metrics/
   - COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f docker-compose.yml up -d
-  - chmod +x ./init-letsencrypt.sh
-  - ./init-letsencrypt.sh
+  - chmod +x ../ursa/init-letsencrypt.sh
+  - DOMAINS=(tracker.ursa.earth prometheus.ursa.earth grafana.ursa.earth) ../ursa/init-letsencrypt.sh

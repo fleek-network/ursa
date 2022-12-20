@@ -55,7 +55,8 @@ services:
     image: grafana/grafana
     volumes:
       - ./data/grafana:/var/lib/grafana
-      - ./data/grafana/provisioning:/etc/grafana/provisioning
+      - ../ursa/data/grafana/provisioning:/etc/grafana/provisioning
+      - ../ursa/data/grafana/dashboards:/etc/dashboards
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false

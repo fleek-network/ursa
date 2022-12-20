@@ -55,6 +55,7 @@ services:
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./data/grafana/provisioning:/etc/grafana/provisioning
+      - ./data/grafana/dashboards:/etc/grafana/dashboards
     environment:
       - GF_SECURITY_ADMIN_USER=${ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -66,6 +67,7 @@ services:
       - 3000
     depends_on:
       - prometheus
+    user: "$UID:$GID"
 
   ursa:
     build:
