@@ -7,6 +7,7 @@ use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 use ursa_rpc_server::api::NetworkGetParams;
+use ursa_rpc_server::config::ServerConfig;
 
 use super::Client;
 use crate::indexer::get_provider;
@@ -92,10 +93,12 @@ pub async fn get_block_handler(
 
             loop {
                 match addr_iter.next() {
-                    Some(_) => {
+                    Some(&addr) => {
+                        let server_config = ServerConfig::new(4069, addr.to_string());
                         let params = NetworkGetParams { cid: cid.clone() };
-                        if let Ok(resp) = ursa_rpc_client::functions::get_block(params).await {
-                            break resp;
+                        match ursa_rpc_client::functions::get_block(params, server_config).await {
+                            Ok(resp) => break resp,
+                            Err(_) => error!("request to RPC server failed"),
                         }
                     }
                     None => {
