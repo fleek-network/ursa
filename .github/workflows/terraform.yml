@@ -9,6 +9,10 @@ on:
   pull_request:
     paths:
       - 'infra/tf-next/**'
+  workflow_run:
+    workflows: ["rust-ci", "docker-build-push"]
+    types:
+      - completed
 
 jobs:
   terraform:
@@ -52,12 +56,12 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' }}
         run: terraform plan -no-color -input=false
         continue-on-error: true
 
       - uses: actions/github-script@v6
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
         with:
@@ -80,9 +84,9 @@ jobs:
               body: output
             })
       - name: Terraform Plan Status
-        if: steps.plan.outcome == 'failure'
+        if: ${{  steps.plan.outcome == 'failure' }}
         run: exit 1
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && github.event.workflow_run.conclusion == 'success' }}
         run: terraform apply -auto-approve -input=false
