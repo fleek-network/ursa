@@ -23,6 +23,9 @@ pub async fn get_file(params: NetworkGetFileParams, rpc_port: Option<u16>) -> Re
     call(NETWORK_GET_FILE, params, Put, rpc_port).await
 }
 
-pub async fn put_file(params: NetworkPutFileParams, rpc_port: Option<u16>) -> Result<NetworkPutFileResult> {
+pub async fn put_file(
+    params: NetworkPutFileParams,
+    rpc_port: Option<u16>,
+) -> Result<NetworkPutFileResult> {
     call(NETWORK_PUT_FILE, params, Put, rpc_port).await
 }

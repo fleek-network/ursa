@@ -36,7 +36,12 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-async fn call<P, R>(method_name: &str, params: P, method: RpcMethod, rpc_port: Option<u16>) -> Result<R, Error>
+async fn call<P, R>(
+    method_name: &str,
+    params: P,
+    method: RpcMethod,
+    rpc_port: Option<u16>,
+) -> Result<R, Error>
 where
     P: Serialize,
     R: DeserializeOwned,
