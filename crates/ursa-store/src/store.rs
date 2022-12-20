@@ -10,6 +10,7 @@ use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec
 use libipld::store::DefaultParams;
 use libipld::{Block, Result};
 use libp2p_bitswap::BitswapStore;
+use tracing::info;
 use std::sync::Arc;
 use ursa_utils::convert_cid;
 
@@ -153,7 +154,8 @@ where
             match self.blockstore().get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
-                    let next_block = Block::<DefaultParams>::new(cid, data).unwrap();
+                    info!("codec for cid {:?}", cid.codec());
+                    let next_block = Block::<DefaultParams>::new_unchecked(cid, data);
                     next_block.references(&mut current)?;
                     refs.insert(cid);
                 }
