@@ -2,8 +2,12 @@
 
 if [ -z "$DOMAINS" ]; then
     echo "Error: No domains provided."
-    echo "Please set the environment variable DOMAINS=(node.ursa.earth www.node.ursa.earth)"
+    echo "Example usage: \`DOMAINS=\"node.ursa.earth www.node.ursa.earth\" ./init-letsencrypt.sh\`"
     exit 1
+else
+    # split string into array by spaces
+    IFS=' ' read -r -a domains <<< "$DOMAINS"
+    echo "Domains: ${domains[*]}"
 fi
 
 if ! [ -x "$(command -v docker-compose)" ]; then
@@ -14,7 +18,7 @@ fi
 rsa_key_size=4096
 data_path="./data/certbot"
 email="major@ursa.earth" # Adding a valid address is strongly recommended
-staging=1 # Set to 1 if you're testing your setup to avoid hitting request limits
+staging=0 # Set to 1 if you're testing your setup to avoid hitting request limits
 
 if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/ssl-dhparams.pem" ]; then
   echo "### Downloading recommended TLS parameters ..."
@@ -24,9 +28,9 @@ if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/
   echo
 fi
 
-echo "### Creating dummy certificate for $DOMAINS ..."
-path="/etc/letsencrypt/live/$DOMAINS"
-mkdir -p "$data_path/conf/live/$DOMAINS"
+echo "### Creating dummy certificate for $domains ..."
+path="/etc/letsencrypt/live/$domains"
+mkdir -p "$data_path/conf/live/$domains"
 docker-compose run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
     -keyout '$path/privkey.pem' \
@@ -38,17 +42,17 @@ echo "### Starting nginx ..."
 docker-compose up --force-recreate -d nginx
 echo
 
-echo "### Deleting dummy certificate for $DOMAINS ..."
+echo "### Deleting dummy certificate for $domains ..."
 docker-compose run --rm --entrypoint "\
-  rm -Rf /etc/letsencrypt/live/$DOMAINS && \
-  rm -Rf /etc/letsencrypt/archive/$DOMAINS && \
-  rm -Rf /etc/letsencrypt/renewal/$DOMAINS.conf" certbot
+  rm -Rf /etc/letsencrypt/live/$domains && \
+  rm -Rf /etc/letsencrypt/archive/$domains && \
+  rm -Rf /etc/letsencrypt/renewal/$domains.conf" certbot
 echo
 
-echo "### Requesting Let's Encrypt certificate for $DOMAINS ..."
-#Join $DOMAINS to -d args
+echo "### Requesting Let's Encrypt certificate for $domains ..."
+#Join $domains to -d args
 domain_args=""
-for domain in "${DOMAINS[@]}"; do
+for domain in "${domains[@]}"; do
   domain_args="$domain_args -d $domain"
 done
 
