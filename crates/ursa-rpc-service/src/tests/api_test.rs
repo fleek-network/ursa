@@ -1,40 +1,38 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
-        api::{NetworkInterface, NodeNetworkInterface},
-        tests::{init, setup_logger},
-    };
+    use crate::tests::{get_store, setup_logger};
+    use async_fs::File;
+    use cid::Cid;
+    use futures::io::BufReader;
+    use fvm_ipld_car::{load_car, CarReader};
+    use std::path::Path;
     use std::sync::Arc;
-    use tokio::task;
-    use tracing::{error, log::LevelFilter};
+    use tracing::log::LevelFilter;
+    use ursa_store::Dag;
 
-    #[ignore]
     #[tokio::test]
     async fn test_stream() -> anyhow::Result<()> {
-        // TODO: fix this test case. running indefinitely
         setup_logger(LevelFilter::Info);
-        let (ursa_service, provider_engine, store) = init()?;
+        let store = get_store();
+        let store_2 = Arc::clone(&store);
 
-        let network_send = ursa_service.command_sender();
-        // Start libp2p service
-        println!("hit here2");
-        let service_task = task::spawn(async {
-            if let Err(err) = ursa_service.start().await {
-                error!("[service_task] - {:?}", err);
-            }
-        });
+        let path = Path::new("../../test_files/test.car");
+        let file = File::open(path).await?;
+        let reader = BufReader::new(file);
+        let cids = load_car(store.blockstore(), reader).await?;
 
-        let interface = Arc::new(NodeNetworkInterface {
-            store,
-            network_send,
-            provider_send: provider_engine.command_sender(),
-        });
-        println!("hit here1");
-        let cids = interface
-            .put_file("../../test_files/test.car".to_string())
-            .await?;
-        interface.stream(cids[0]).await?;
-        service_task.abort();
+        let file_h = File::open(path).await?;
+        let reader_h = BufReader::new(file_h);
+        let mut car_reader = CarReader::new(reader_h).await?;
+
+        let mut cids_vec = Vec::<Cid>::new();
+        while let Some(block) = car_reader.next_block().await? {
+            cids_vec.push(block.cid);
+        }
+
+        let res = store_2.dag_traversal(&cids[0])?;
+        assert_eq!(cids_vec.len(), res.len());
+        // todo: check if they both have sam cids
         Ok(())
     }
 }

@@ -136,7 +136,7 @@ pub trait Dag {
 
 impl<S> Dag for UrsaStore<S>
 where
-    S: Blockstore + Sync + Send + 'static,
+    S: Blockstore + Store + Sync + Send + 'static,
 {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let mut res = Vec::new();
@@ -150,7 +150,7 @@ where
             if refs.contains(&cid) {
                 continue;
             }
-            match self.db.get(&convert_cid(cid.to_bytes()))? {
+            match self.blockstore().get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data).unwrap();
