@@ -135,8 +135,9 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
 
-    use crate::functions::{get_block, put_file};
+    use crate::client::functions::{get_block, put_file};
 
+    use crate::api::{NetworkGetParams, NetworkPutFileParams};
     use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
