@@ -20,5 +20,4 @@ surf.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 ursa-network = { path = "../ursa-network" }
-ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-utils ={ path = "../ursa-utils" }

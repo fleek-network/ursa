@@ -35,6 +35,7 @@ ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
+ursa-rpc-client = { path = "../ursa-rpc-client" }
 
 [dependencies.libp2p]
 workspace = true

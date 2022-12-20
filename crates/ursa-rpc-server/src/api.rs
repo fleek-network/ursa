@@ -9,7 +9,6 @@ use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
@@ -26,30 +25,6 @@ use ursa_utils::convert_cid;
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
 pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // chunk to ~10MB CARs
-
-/// Network Api
-#[derive(Deserialize, Serialize)]
-pub struct NetworkGetParams {
-    pub cid: String,
-}
-
-pub type NetworkGetResult = Vec<u8>;
-pub const NETWORK_GET: &str = "ursa_get_cid";
-
-#[derive(Deserialize, Serialize)]
-pub struct NetworkPutFileParams {
-    pub path: String,
-}
-
-pub type NetworkPutFileResult = String;
-pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
-
-#[derive(Deserialize, Serialize)]
-pub struct NetworkGetFileParams {
-    pub path: String,
-    pub cid: String,
-}
-pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 
 /// Abstraction of Ursa's server commands
 #[async_trait]

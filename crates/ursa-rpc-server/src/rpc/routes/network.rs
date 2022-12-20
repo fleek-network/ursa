@@ -9,15 +9,14 @@ use ursa_metrics::middleware::track_metrics;
 
 use jsonrpc_v2::{Data, Error, Params};
 
-use crate::{
-    api::{
-        NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkInterface,
-        NetworkPutFileParams, NetworkPutFileResult,
-    },
-    rpc::rpc_handler,
-};
+use crate::{api::NetworkInterface, rpc::rpc_handler};
 
 use tracing::error;
+use ursa_rpc_client::{
+    NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkPutFileParams,
+    NetworkPutFileResult,
+};
+
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {

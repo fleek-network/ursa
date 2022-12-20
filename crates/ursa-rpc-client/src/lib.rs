@@ -6,7 +6,30 @@ use jsonrpc_v2::{Error, Id, RequestObject, V2};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
-use ursa_rpc_server::config::ServerConfig;
+
+/// Network Api
+#[derive(Deserialize, Serialize)]
+pub struct NetworkGetParams {
+    pub cid: String,
+}
+
+pub type NetworkGetResult = Vec<u8>;
+pub const NETWORK_GET: &str = "ursa_get_cid";
+
+#[derive(Deserialize, Serialize)]
+pub struct NetworkPutFileParams {
+    pub path: String,
+}
+
+pub type NetworkPutFileResult = String;
+pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
+
+#[derive(Deserialize, Serialize)]
+pub struct NetworkGetFileParams {
+    pub path: String,
+    pub cid: String,
+}
+pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 
 /// Error object in a response
 #[derive(Deserialize)]
@@ -53,10 +76,12 @@ where
             .with_id(1)
             .finish();
 
-        let ServerConfig { mut port, addr } = ServerConfig::default();
-        if let Some(rpc_port) = rpc_port {
-            port = rpc_port;
-        }
+        let port = if let Some(rpc_port) = rpc_port {
+            rpc_port
+        } else {
+            4069
+        };
+        let addr = "0.0.0.0".to_string();
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
@@ -143,7 +168,6 @@ mod tests {
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
     use libipld::store::DefaultParams;
-    use ursa_rpc_server::api::{NetworkGetParams, NetworkPutFileParams};
     use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
