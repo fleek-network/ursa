@@ -1,5 +1,5 @@
 [package]
-name = "ursa-rpc-server"
+name = "ursa-rpc-service"
 version = "0.1.0"
 edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
@@ -26,6 +26,7 @@ libipld.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 simple_logger.workspace = true
+surf.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tracing.workspace = true
@@ -35,7 +36,6 @@ ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-utils = { path = "../ursa-utils" }
-ursa-rpc-client = { path = "../ursa-rpc-client" }
 
 [dependencies.libp2p]
 workspace = true

@@ -1,35 +1,9 @@
-pub mod functions;
-
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
-
-/// Network Api
-#[derive(Deserialize, Serialize)]
-pub struct NetworkGetParams {
-    pub cid: String,
-}
-
-pub type NetworkGetResult = Vec<u8>;
-pub const NETWORK_GET: &str = "ursa_get_cid";
-
-#[derive(Deserialize, Serialize)]
-pub struct NetworkPutFileParams {
-    pub path: String,
-}
-
-pub type NetworkPutFileResult = String;
-pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
-
-#[derive(Deserialize, Serialize)]
-pub struct NetworkGetFileParams {
-    pub path: String,
-    pub cid: String,
-}
-pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 
 /// Error object in a response
 #[derive(Deserialize)]
@@ -59,7 +33,7 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-async fn call<P, R>(
+pub async fn call<P, R>(
     method_name: &str,
     params: P,
     method: RpcMethod,
