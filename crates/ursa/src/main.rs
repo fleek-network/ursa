@@ -10,7 +10,6 @@ use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_metrics::server;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
@@ -39,7 +38,6 @@ async fn main() -> Result<()> {
                 let UrsaConfig {
                     network_config,
                     provider_config,
-                    metrics_config,
                     server_config,
                 } = config;
 
@@ -70,8 +68,8 @@ async fn main() -> Result<()> {
                             Protocol::Udp(port) => Some(port),
                             _ => None,
                         }),
-                    rpc_port: Some(server_config.port),
-                    metrics_port: Some(metrics_config.port),
+                    http_port: Some(server_config.port),
+                    telemetry: Some(true),
                 };
 
                 let db_path = network_config.database_path.resolve().to_path_buf();
@@ -98,14 +96,6 @@ async fn main() -> Result<()> {
                     service.command_sender(),
                 );
 
-                // Start metrics service
-                // todo(oz): track storage/ram/cpu
-                let metrics_task = task::spawn(async move {
-                    if let Err(err) = server::start(&metrics_config).await {
-                        error!("[metrics_task] - {:?}", err);
-                    }
-                });
-
                 // server setup
                 let interface = Arc::new(NodeNetworkInterface {
                     store,
@@ -121,9 +111,12 @@ async fn main() -> Result<()> {
                     }
                 });
 
-                // Start multiplex server service(rpc and http)
+                // todo(oz): spawn task to track storage/ram/cpu metrics
+                let metrics = ursa_metrics::routes::init();
+
+                // Start multiplex server service (rpc, http, and metrics)
                 let rpc_task = task::spawn(async move {
-                    if let Err(err) = server.start(&server_config).await {
+                    if let Err(err) = server.start(&server_config, Some(metrics)).await {
                         error!("[rpc_task] - {:?}", err);
                     }
                 });
@@ -150,7 +143,6 @@ async fn main() -> Result<()> {
                 // Gracefully shutdown node & rpc
                 rpc_task.abort();
                 service_task.abort();
-                metrics_task.abort();
                 provider_task.abort();
             }
         }

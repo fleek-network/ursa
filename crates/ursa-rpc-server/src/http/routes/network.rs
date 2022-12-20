@@ -22,6 +22,7 @@ pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
     Router::new()
         .route("/", post(upload_handler::<S>))
         .route("/:cid", get(get_handler::<S>))
+        .route("/ping", get(|| async { "pong" })) // to be used for TLS verification
 }
 
 pub enum NetworkError {

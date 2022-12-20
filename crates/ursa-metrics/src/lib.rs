@@ -1,4 +1,7 @@
-pub mod config;
+use lazy_static::lazy_static;
+use prometheus::Registry;
+use std::sync::Arc;
+
 mod gossipsub;
 mod identify;
 mod kad;
@@ -6,9 +9,12 @@ pub mod middleware;
 mod ping;
 mod relay;
 mod request_response;
-pub mod server;
+pub mod routes;
 mod swarm;
-pub use server::BITSWAP_REGISTRY;
+
+lazy_static! {
+    pub static ref BITSWAP_REGISTRY: Arc<Registry> = Arc::new(Registry::new());
+}
 
 /// Recorder that can record Swarm and protocol events.
 pub trait Recorder {

@@ -129,12 +129,15 @@ mod tests {
     use super::*;
     use libp2p::PeerId;
 
+    static INIT: std::sync::Once = std::sync::Once::new();
+
     fn tracer() {
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::EnvFilter::new(
-                env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-            ))
-            .init();
+        INIT.call_once(|| {
+            tracing_subscriber::registry()
+                .with(EnvFilter::new("info"))
+                .with(tracing_subscriber::fmt::layer())
+                .init();
+        });
     }
 
     fn db() -> Arc<DB> {
@@ -150,9 +153,9 @@ mod tests {
             id,
             addr,
             p2p_port: Some(6009),
-            rpc_port: Some(6009),
-            metrics_port: Some(6009),
+            http_port: Some(4069),
             agent: "".to_string(),
+            telemetry: None,
         };
         registration_handler(
             HeaderMap::new(),

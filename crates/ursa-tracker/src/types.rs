@@ -1,6 +1,7 @@
 use libp2p::PeerId;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackerRegistration {
@@ -8,8 +9,8 @@ pub struct TrackerRegistration {
     pub agent: String,
     pub addr: Option<String>,
     pub p2p_port: Option<u16>,
-    pub rpc_port: Option<u16>,
-    pub metrics_port: Option<u16>,
+    pub http_port: Option<u16>,
+    pub telemetry: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,12 +19,12 @@ pub struct Node {
     pub agent: String,
     pub addr: String,
     pub p2p_port: u16,
-    pub rpc_port: u16,
+    pub http_port: u16,
     pub telemetry: bool,
-    pub metrics_port: u16,
     pub geohash: String,
     pub timezone: String,
     pub country_code: String,
+    pub last_registered: u64,
 }
 
 impl Node {
@@ -39,12 +40,15 @@ impl Node {
             agent: registration.agent.clone(),
             addr: registration.addr.clone().unwrap_or(addr),
             p2p_port: registration.p2p_port.unwrap_or(6009),
-            rpc_port: registration.rpc_port.unwrap_or(4069),
-            telemetry: registration.metrics_port.is_some(),
-            metrics_port: registration.metrics_port.unwrap_or(4070),
+            http_port: registration.http_port.unwrap_or(4069),
+            telemetry: registration.telemetry.unwrap_or(true),
             geohash,
             timezone,
             country_code,
+            last_registered: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
         }
     }
 }
@@ -56,7 +60,7 @@ impl From<Node> for PrometheusDiscoveryChunk {
         labels.insert("geohash".to_string(), node.geohash.clone());
         labels.insert("country_code".to_string(), node.country_code.clone());
         labels.insert("timezone".to_string(), node.timezone.clone());
-        PrometheusDiscoveryChunk::new(vec![format!("{}:{}", node.addr, node.metrics_port)], labels)
+        PrometheusDiscoveryChunk::new(vec![format!("{}:{}", node.addr, node.http_port)], labels)
     }
 }
 
