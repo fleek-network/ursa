@@ -11,6 +11,8 @@ The tracker will also perform a simple IP/DNS lookup to assign proper geo labels
 cargo run -r
 ```
 
+> Note: The tracker is intended to run through docker alongside prometheus, with nginx as a reverse proxy providing ssl. See [global-metrics/docker-compose.yml](../../infra/global-metrics/docker-compose.yml) for an example.
+
 ## Registering a node
 
 Nodes can register their configuration by sending a POST request to the tracker's `/register` endpoint.
