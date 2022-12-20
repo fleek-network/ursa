@@ -183,7 +183,7 @@ mod tests {
         let params = NetworkPutFileParams {
             path: "./car_files/ursa_major.car".to_string(),
         };
-        match put_file(params).await {
+        match put_file(params, None).await {
             Ok(v) => {
                 println!("Put car file done: {v:?}");
             }
