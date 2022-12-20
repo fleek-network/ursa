@@ -9,12 +9,11 @@ global:
 scrape_configs:
   # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
   - job_name: "ursa_metrics"
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
     static_configs:
-      - targets: ["ursa:4070"]
+      - targets: ["ursa:4069"]
+      - labels: {
+        id: "local",
+      }
 
   - job_name: 'nginxexporter'
     static_configs:
