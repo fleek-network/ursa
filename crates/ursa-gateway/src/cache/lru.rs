@@ -1,49 +1,49 @@
 use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
-struct Node<T> {
-    next: RefCell<Rc<Dll<T>>>,
-    prev: RefCell<Rc<Dll<T>>>,
+struct _Node<T> {
+    next: RefCell<Rc<_Dll<T>>>,
+    prev: RefCell<Rc<_Dll<T>>>,
     data: T,
 }
 
-enum Dll<K> {
-    _Node(Node<K>),
+enum _Dll<T> {
+    _Node(_Node<T>),
     _Nil,
 }
 
-struct Data<K, V> {
+struct _Data<K, V> {
     value: V,
-    dll: Rc<Dll<K>>,
+    dll: Rc<_Dll<Rc<K>>>,
 }
 
-struct Lru<K: Eq + Hash, V> {
-    store: HashMap<K, Data<K, V>>,
-    head: Rc<Dll<K>>,
-    tail: Rc<Dll<K>>,
+struct _Lru<K, V> {
+    store: HashMap<Rc<K>, _Data<K, V>>,
+    head: Rc<_Dll<Rc<K>>>,
+    tail: Rc<_Dll<Rc<K>>>,
     cap: Option<usize>,
 }
 
-impl<K, V> Lru<K, V>
+impl<K, V> _Lru<K, V>
 where
     K: Hash + Eq + Clone,
 {
     pub fn _new(cap: Option<usize>) -> Self {
-        let nil = Rc::new(Dll::_Nil);
+        let nil = Rc::new(_Dll::_Nil);
         Self {
             store: if let Some(cap) = cap {
                 HashMap::with_capacity(cap)
             } else {
                 HashMap::new()
             },
-            head: nil.clone(),
+            head: Rc::clone(&nil),
             tail: nil,
             cap,
         }
     }
 
-    fn _get_first_key(&self) -> Option<K> {
-        if let Dll::_Node(node) = self.head.as_ref() {
-            Some(node.data.clone())
+    fn _get_first_key(&self) -> Option<&K> {
+        if let _Dll::_Node(node) = self.head.as_ref() {
+            Some(&node.data)
         } else {
             None
         }
@@ -66,44 +66,45 @@ where
                 let first_key = self
                     ._get_first_key()
                     .expect("[LRU]: Failed to get the first key while deleting.");
-                self._remove(&first_key);
+                self._remove(&first_key.clone()); // Rc::clone
             }
         }
-        let new_tail = Rc::new(Dll::_Node(Node {
-            next: RefCell::new(Rc::new(Dll::_Nil)),
-            prev: RefCell::new(self.tail.clone()),
-            data: k.clone(),
+        let key = Rc::new(k);
+        let new_tail = Rc::new(_Dll::_Node(_Node {
+            next: RefCell::new(Rc::new(_Dll::_Nil)),
+            prev: RefCell::new(Rc::clone(&self.tail)),
+            data: Rc::clone(&key),
         }));
-        if let Dll::_Node(old_tail) = self.tail.as_ref() {
-            *old_tail.next.borrow_mut() = new_tail.clone();
+        if let _Dll::_Node(old_tail) = self.tail.as_ref() {
+            *old_tail.next.borrow_mut() = Rc::clone(&new_tail);
         }
         self.store.insert(
-            k,
-            Data {
+            key,
+            _Data {
                 value: v,
-                dll: new_tail.clone(),
+                dll: Rc::clone(&new_tail),
             },
         );
-        self.tail = new_tail.clone();
-        if let Dll::_Nil = self.head.as_ref() {
+        self.tail = Rc::clone(&new_tail);
+        if let _Dll::_Nil = self.head.as_ref() {
             self.head = new_tail;
         }
     }
 
     pub fn _remove(&mut self, k: &K) -> Option<V> {
         self.store.remove(k).map(|data| {
-            if let Dll::_Node(node) = data.dll.as_ref() {
+            if let _Dll::_Node(node) = data.dll.as_ref() {
                 let prev = node.prev.borrow_mut();
                 let next = node.next.borrow_mut();
-                if let Dll::_Node(next) = next.as_ref() {
-                    *next.prev.borrow_mut() = prev.clone();
+                if let _Dll::_Node(next) = next.as_ref() {
+                    *next.prev.borrow_mut() = Rc::clone(&prev);
                 } else {
-                    self.tail = prev.clone();
+                    self.tail = Rc::clone(&prev);
                 }
-                if let Dll::_Node(prev) = prev.as_ref() {
-                    *prev.next.borrow_mut() = next.clone();
+                if let _Dll::_Node(prev) = prev.as_ref() {
+                    *prev.next.borrow_mut() = Rc::clone(&next);
                 } else {
-                    self.head = next.clone();
+                    self.head = Rc::clone(&next);
                 }
             }
             data.value
@@ -115,30 +116,30 @@ where
 mod tests {
     use super::*;
 
-    impl<K, V> Lru<K, V>
+    impl<K, V> _Lru<K, V>
     where
         K: Hash + Eq + Clone,
     {
-        pub fn k_from_head(&self) -> Vec<K> {
+        pub fn k_from_head(&self) -> Vec<Rc<K>> {
             let mut items = vec![];
-            let mut head = self.head.clone();
+            let mut head = Rc::clone(&self.head);
             'walk: loop {
-                if let Dll::_Node(node) = head.as_ref() {
-                    items.push(node.data.clone());
-                    head = node.next.clone().into_inner();
+                if let _Dll::_Node(node) = head.as_ref() {
+                    items.push(Rc::clone(&node.data));
+                    head = node.next.clone().into_inner(); // RefCell.clone
                 } else {
                     break 'walk;
                 }
             }
             items
         }
-        pub fn k_from_tail(&self) -> Vec<K> {
+        pub fn k_from_tail(&self) -> Vec<Rc<K>> {
             let mut items = vec![];
-            let mut tail = self.tail.clone();
+            let mut tail = Rc::clone(&self.tail);
             'walk: loop {
-                if let Dll::_Node(node) = tail.as_ref() {
-                    items.push(node.data.clone());
-                    tail = node.prev.clone().into_inner();
+                if let _Dll::_Node(node) = tail.as_ref() {
+                    items.push(Rc::clone(&node.data));
+                    tail = node.prev.clone().into_inner(); // RefCell.clone
                 } else {
                     break 'walk;
                 }
@@ -147,12 +148,16 @@ mod tests {
         }
     }
 
+    pub fn ref_to_k<K: Clone>(vec: Vec<Rc<K>>) -> Vec<K> {
+        vec.into_iter().map(|k| k.as_ref().clone()).collect()
+    }
+
     mod no_cap {
         use super::*;
 
         #[test]
         fn new() {
-            let lru = Lru::<&str, u8>::_new(None);
+            let lru = _Lru::<&str, u8>::_new(None);
             assert_eq!(lru.cap, None);
             assert!(lru.k_from_head().is_empty());
             assert!(lru.k_from_tail().is_empty());
@@ -160,54 +165,48 @@ mod tests {
 
         #[test]
         fn get_empty() {
-            let lru = Lru::<&str, u8>::_new(None);
+            let lru = _Lru::<&str, u8>::_new(None);
             let res = lru._get(&"a");
             assert_eq!(res, None);
         }
 
         #[test]
         fn remove_empty() {
-            let mut lru = Lru::<&str, u8>::_new(None);
+            let mut lru = _Lru::<&str, u8>::_new(None);
             let res = lru._remove(&"a");
             assert_eq!(res, None);
         }
 
         #[test]
         fn get_one() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
-            let res = lru._get(&"a");
-            assert_eq!(res, Some(&1));
+            assert_eq!(lru._get(&"a"), Some(&1));
         }
 
         #[test]
         fn get_two() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
-            let res = lru._get(&"a");
-            assert_eq!(res, Some(&1));
-            let res = lru._get(&"b");
-            assert_eq!(res, Some(&2));
+            assert_eq!(lru._get(&"a"), Some(&1));
+            assert_eq!(lru._get(&"b"), Some(&2));
         }
 
         #[test]
         fn get_three() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._insert("c", 3);
-            let res = lru._get(&"a");
-            assert_eq!(res, Some(&1));
-            let res = lru._get(&"b");
-            assert_eq!(res, Some(&2));
-            let res = lru._get(&"c");
-            assert_eq!(res, Some(&3));
+            assert_eq!(lru._get(&"a"), Some(&1));
+            assert_eq!(lru._get(&"b"), Some(&2));
+            assert_eq!(lru._get(&"c"), Some(&3));
         }
 
         #[test]
         fn remove_one() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._remove(&"a");
             assert!(lru.k_from_head().is_empty());
@@ -216,83 +215,76 @@ mod tests {
 
         #[test]
         fn remove_head() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._remove(&"a");
-            let res = lru._get(&"a");
-            assert_eq!(res, None);
-            let res = lru._get(&"b");
-            assert_eq!(res, Some(&2));
-            assert_eq!(lru.k_from_head(), ["b"]);
-            assert_eq!(lru.k_from_tail(), ["b"]);
+            assert_eq!(lru._get(&"a"), None);
+            assert_eq!(lru._get(&"b"), Some(&2));
+            assert_eq!(ref_to_k(lru.k_from_head()), ["b"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["b"]);
         }
 
         #[test]
         fn remove_tail() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._remove(&"b");
-            let res = lru._get(&"a");
-            assert_eq!(res, Some(&1));
-            let res = lru._get(&"b");
-            assert_eq!(res, None);
-            assert_eq!(lru.k_from_head(), ["a"]);
-            assert_eq!(lru.k_from_tail(), ["a"]);
+            assert_eq!(lru._get(&"a"), Some(&1));
+            assert_eq!(lru._get(&"b"), None);
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["a"]);
         }
 
         #[test]
         fn remove_mid() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._insert("c", 3);
-            lru._remove(&"c");
-            let res = lru._get(&"a");
-            assert_eq!(res, Some(&1));
-            let res = lru._get(&"b");
-            assert_eq!(res, Some(&2));
-            let res = lru._get(&"c");
-            assert_eq!(res, None);
-            assert_eq!(lru.k_from_head(), ["a", "b"]);
-            assert_eq!(lru.k_from_tail(), ["b", "a"]);
+            lru._remove(&"b");
+            assert_eq!(lru._get(&"a"), Some(&1));
+            assert_eq!(lru._get(&"b"), None);
+            assert_eq!(lru._get(&"c"), Some(&3));
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a", "c"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["c", "a"]);
         }
 
         #[test]
         fn insert_duplicate() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("a", 1);
-            assert_eq!(lru.k_from_head(), ["a"]);
-            assert_eq!(lru.k_from_tail(), ["a"]);
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["a"]);
         }
 
         #[test]
         fn insert_one() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
-            assert_eq!(lru.k_from_head(), ["a"]);
-            assert_eq!(lru.k_from_tail(), ["a"]);
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["a"]);
         }
 
         #[test]
         fn insert_two() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
-            assert_eq!(lru.k_from_head(), ["a", "b"]);
-            assert_eq!(lru.k_from_tail(), ["b", "a"]);
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a", "b"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["b", "a"]);
         }
 
         #[test]
         fn insert_three() {
-            let mut lru = Lru::_new(None);
+            let mut lru = _Lru::_new(None);
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._insert("c", 3);
-            assert_eq!(lru.k_from_head(), ["a", "b", "c"]);
-            assert_eq!(lru.k_from_tail(), ["c", "b", "a"]);
+            assert_eq!(ref_to_k(lru.k_from_head()), ["a", "b", "c"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["c", "b", "a"]);
         }
     }
 
@@ -301,7 +293,7 @@ mod tests {
 
         #[test]
         fn new() {
-            let lru = Lru::<&str, u8>::_new(Some(3));
+            let lru = _Lru::<&str, u8>::_new(Some(3));
             assert_eq!(lru.cap, Some(3));
             assert!(lru.k_from_head().is_empty());
             assert!(lru.k_from_tail().is_empty());
@@ -309,21 +301,17 @@ mod tests {
 
         #[test]
         fn insert_exceed_cap() {
-            let mut lru = Lru::_new(Some(3));
+            let mut lru = _Lru::_new(Some(3));
             lru._insert("a", 1);
             lru._insert("b", 2);
             lru._insert("c", 3);
             lru._insert("d", 4);
-            assert_eq!(lru.k_from_head(), ["b", "c", "d"]);
-            assert_eq!(lru.k_from_tail(), ["d", "c", "b"]);
-            let res = lru._get(&"a");
-            assert_eq!(res, None);
-            let res = lru._get(&"b");
-            assert_eq!(res, Some(&2));
-            let res = lru._get(&"c");
-            assert_eq!(res, Some(&3));
-            let res = lru._get(&"d");
-            assert_eq!(res, Some(&4));
+            assert_eq!(ref_to_k(lru.k_from_head()), ["b", "c", "d"]);
+            assert_eq!(ref_to_k(lru.k_from_tail()), ["d", "c", "b"]);
+            assert_eq!(lru._get(&"a"), None);
+            assert_eq!(lru._get(&"b"), Some(&2));
+            assert_eq!(lru._get(&"c"), Some(&3));
+            assert_eq!(lru._get(&"d"), Some(&4));
         }
     }
 }
