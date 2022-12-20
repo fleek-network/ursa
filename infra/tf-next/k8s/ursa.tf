@@ -59,21 +59,20 @@ resource "kubernetes_daemonset" "ursa_node" {
             # }
           }
 
-          # todo: health check when it's available
-          # liveness_probe {
-          #   http_get {
-          #     path = "/"
-          #     port = 4069
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = 80
 
-          #     http_header {
-          #       name  = "X-Custom-Header"
-          #       value = "Awesome"
-          #     }
-          #   }
+              http_header {
+                name  = "X-Custom-Header"
+                value = "Awesome"
+              }
+            }
 
-          #   initial_delay_seconds = 3
-          #   period_seconds        = 3
-          # }
+            initial_delay_seconds = 3
+            period_seconds        = 3
+          }
 
           volume_mount {
             name       = "localfs"

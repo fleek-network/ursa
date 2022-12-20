@@ -8,6 +8,10 @@ variable "do_project_id" {
 variable "do_region" {
 }
 
+variable "registry_server" {
+  default = "ghcr.io"
+}
+
 variable "k8s_ursa_docker_image" {
   default = "nginx"
 }
