@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! [ -x "$(command -v docker-compose)" ]; then
+  echo 'Error: docker-compose is not installed.' >&2
+  exit 1
+fi
+
 if [ -z "$DOMAINS" ]; then
     echo "Error: No domains provided."
     echo "Example usage: \`DOMAINS=\"node.ursa.earth www.node.ursa.earth\" ./init-letsencrypt.sh\`"
@@ -15,11 +20,6 @@ if [ -d "$data_path" ] && [ "$1" != "y" ]; then
   if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
     exit
   fi
-fi
-
-if ! [ -x "$(command -v docker-compose)" ]; then
-  echo 'Error: docker-compose is not installed.' >&2
-  exit 1
 fi
 
 rsa_key_size=4096
