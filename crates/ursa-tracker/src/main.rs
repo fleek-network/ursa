@@ -9,7 +9,7 @@ use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
     ip_api::get_ip_info,
