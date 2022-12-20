@@ -31,7 +31,6 @@ mod rpc_commands;
 pub struct Cli {
     #[structopt(flatten)]
     pub opts: CliOpts,
-
     #[structopt(subcommand)]
     pub cmd: Option<Subcommand>,
 }
@@ -49,7 +48,7 @@ pub struct CliOpts {
     pub config: Option<String>,
     #[structopt(short, long, help = "Allow rpc to be active or not (default = true)")]
     pub rpc: bool,
-    #[structopt(short, long, help = "Port used for JSON-RPC communication")]
+    #[structopt(short = "p", long, help = "Port used for JSON-RPC communication")]
     pub rpc_port: Option<u16>,
 }
 

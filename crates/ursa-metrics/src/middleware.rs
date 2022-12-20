@@ -1,12 +1,7 @@
-use crate::events::{track, MetricEvent};
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::IntoResponse};
-use metrics::Label;
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use metrics::{histogram, increment_counter, Label};
 use std::time::Instant;
-
-pub fn setup_metrics_handler() -> PrometheusHandle {
-    PrometheusBuilder::new().install_recorder().unwrap()
-}
+use tracing::info;
 
 pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
     let start = Instant::now();
@@ -21,14 +16,26 @@ pub async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoRespon
     let latency = start.elapsed().as_secs_f64();
     let status = response.status().as_u16().to_string();
 
-    let labels = vec![
-        Label::new("method", method.to_string()),
-        Label::new("path", path),
-        Label::new("status", status),
-    ];
+    increment_counter!("rpc_request_received");
+    if latency != 0.0 {
+        info!(
+            "Captured RPC request: {} {} {} {}ms",
+            method,
+            path,
+            status,
+            latency * 1000.0
+        );
 
-    track(MetricEvent::RpcRequestReceived, None, None);
-    track(MetricEvent::RpcResponseSent, Some(labels), Some(latency));
+        histogram!(
+            "rpc_response_duration",
+            latency,
+            vec![
+                Label::new("method", method.to_string()),
+                Label::new("path", path),
+                Label::new("status", status),
+            ]
+        );
+    }
 
     response
 }

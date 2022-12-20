@@ -28,12 +28,12 @@
 
 4. Setup TLS.
 
-- Find and Replace all domain instances in `data/nginx/app.conf` and `init-letsencrypt.sh` with your domain.
+- Find and Replace all domain instances in `data/nginx/app.conf` with your domain.
 
 - Generate Certificates for your domain and restart nginx
 
   ```sh
-  bash infra/ursa/init-letsencrypt.sh
+  DOMAINS="node.ursa.earth alt.node.ursa.earth" bash infra/ursa/init-letsencrypt.sh
   ```
 
 - If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.

@@ -3,7 +3,6 @@ use env_logger::Env;
 use futures::StreamExt;
 use libp2p::{Multiaddr, PeerId};
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::sync::Arc;
 use ursa_index_provider::config::ProviderConfig;
 use ursa_index_provider::provider::Provider;

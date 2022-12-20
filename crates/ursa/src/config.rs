@@ -8,7 +8,6 @@ use std::{
 use toml::from_str;
 use tracing::info;
 use ursa_index_provider::config::ProviderConfig;
-use ursa_metrics::config::MetricsServiceConfig;
 use ursa_network::NetworkConfig;
 use ursa_rpc_server::config::ServerConfig;
 
@@ -47,7 +46,6 @@ pub fn load_config(path: &PathBuf) -> Result<UrsaConfig> {
 pub struct UrsaConfig {
     pub network_config: NetworkConfig,
     pub provider_config: ProviderConfig,
-    pub metrics_config: MetricsServiceConfig,
     pub server_config: ServerConfig,
 }
 

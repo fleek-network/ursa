@@ -2,6 +2,7 @@ use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
 use anyhow::Result;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
+use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use std::sync::Arc;
 use structopt::StructOpt;
@@ -9,10 +10,10 @@ use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_metrics::metrics;
 use ursa_network::UrsaService;
 use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
+use ursa_tracker::TrackerRegistration;
 
 pub mod config;
 mod ursa;
@@ -37,7 +38,6 @@ async fn main() -> Result<()> {
                 let UrsaConfig {
                     network_config,
                     provider_config,
-                    metrics_config,
                     server_config,
                 } = config;
 
@@ -54,8 +54,27 @@ async fn main() -> Result<()> {
 
                 let keypair = im.current();
 
+                let registration = TrackerRegistration {
+                    id: keypair.clone().public().to_peer_id(),
+                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
+                    addr: None, // if we have a dns address, we can set it here
+                    p2p_port: network_config
+                        .swarm_addrs
+                        .first()
+                        .expect("no tcp swarm address")
+                        .iter()
+                        .find_map(|proto| match proto {
+                            Protocol::Tcp(port) => Some(port),
+                            Protocol::Udp(port) => Some(port),
+                            _ => None,
+                        }),
+                    http_port: Some(server_config.port),
+                    telemetry: Some(true),
+                };
+
                 let db_path = network_config.database_path.resolve().to_path_buf();
                 info!("Opening blockstore database at {:?}", db_path);
+
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
@@ -92,17 +111,13 @@ async fn main() -> Result<()> {
                     }
                 });
 
-                // Start multiplex server service(rpc and http)
-                let rpc_task = task::spawn(async move {
-                    if let Err(err) = server.start(server_config).await {
-                        error!("[server] - {:?}", err);
-                    }
-                });
+                // todo(oz): spawn task to track storage/ram/cpu metrics
+                let metrics = ursa_metrics::routes::init();
 
-                // Start metrics service
-                let metrics_task = task::spawn(async move {
-                    if let Err(err) = metrics::start(&metrics_config).await {
-                        error!("[metrics_task] - {:?}", err);
+                // Start multiplex server service (rpc, http, and metrics)
+                let rpc_task = task::spawn(async move {
+                    if let Err(err) = server.start(&server_config, Some(metrics)).await {
+                        error!("[rpc_task] - {:?}", err);
                     }
                 });
 
@@ -113,12 +128,21 @@ async fn main() -> Result<()> {
                     }
                 });
 
+                // register with ursa node tracker
+                if !network_config.tracker.is_empty() {
+                    match ursa_tracker::register_with_tracker(network_config.tracker, registration)
+                        .await
+                    {
+                        Ok(res) => info!("Registered with tracker: {res:?}"),
+                        Err(err) => error!("Failed to register with tracker: {err:?}"),
+                    }
+                }
+
                 wait_until_ctrlc();
 
                 // Gracefully shutdown node & rpc
                 rpc_task.abort();
                 service_task.abort();
-                metrics_task.abort();
                 provider_task.abort();
             }
         }

@@ -1,0 +1,21 @@
+#cloud-config
+groups:
+  - ubuntu: [root,sys]
+
+runcmd:
+  - cd /root
+  - ufw allow 80
+  - ufw allow 443
+  - echo "IPINFO_TOKEN=${ipinfo_token}" >> /etc/environment
+  - source /etc/environment
+  - curl -fsSL https://get.docker.com -o get-docker.sh
+  - sh get-docker.sh
+  - systemctl start docker
+  - systemctl enable docker
+  - apt-get install -y build-essential clang ocl-icd-opencl-dev
+  - git clone https://github.com/fleek-network/ursa
+  - cd ursa/
+  - cd infra/global-metrics/
+  - COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f docker-compose.yml up -d
+  - chmod +x ../ursa/init-letsencrypt.sh
+  - DOMAINS="tracker.ursa.earth prometheus.ursa.earth grafana.ursa.earth" ../ursa/init-letsencrypt.sh y

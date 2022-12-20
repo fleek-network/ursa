@@ -54,14 +54,31 @@ variable "droplet_size" {
   description = "Droplet size identifier"
 }
 
+variable "droplet_volume" {
+  type        = number
+  default     = 1024
+  description = "Droplet volume size in GB"
+}
+
 #############
 #   Misc    #
 #############
+
+variable "letsencrypt_email" {
+  type    = string
+  default = "admin@ursa.earth"
+}
 
 # export variables in the format `TF_VAR_xyz` to expose them to terraform
 # TF_VAR_do_token=
 variable "do_token" {
   description = "DigitalOcean API token"
+}
+
+# TF_VAR_ipinfo_token
+variable "ipinfo_token" {
+  type       = string
+  description = "ipinfo.io API Token"
 }
 
 variable "ursa_domain" {

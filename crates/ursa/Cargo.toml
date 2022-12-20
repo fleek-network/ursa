@@ -29,3 +29,4 @@ ursa-network = { path = "../ursa-network" }
 ursa-rpc-client = { path = "../ursa-rpc-client" }
 ursa-rpc-server = { path = "../ursa-rpc-server" }
 ursa-store = { path = "../ursa-store" }
+ursa-tracker = { path = "../ursa-tracker" }

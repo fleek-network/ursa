@@ -27,6 +27,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use tracing::{info, warn};
+use ursa_metrics::Recorder;
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
@@ -218,7 +219,10 @@ impl NetworkBehaviour for DiscoveryBehaviour {
         // Poll kademlia for events
         while let Poll::Ready(action) = self.kademlia.poll(cx, params) {
             match action {
-                NetworkBehaviourAction::GenerateEvent(event) => self.handle_kad_event(event),
+                NetworkBehaviourAction::GenerateEvent(event) => {
+                    event.record();
+                    self.handle_kad_event(event)
+                }
                 NetworkBehaviourAction::Dial { opts, handler } => {
                     return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler })
                 }

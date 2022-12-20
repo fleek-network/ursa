@@ -39,6 +39,8 @@ use libp2p::{
 use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore, QueryId};
 use std::time::Duration;
 use std::{collections::HashSet, iter};
+use tracing::error;
+use ursa_metrics::BITSWAP_REGISTRY;
 use ursa_utils::convert_cid;
 
 use crate::gossipsub::build_gossipsub;
@@ -112,6 +114,11 @@ impl<P: StoreParams> Behaviour<P> {
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
+
+        if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
+            // cargo tests will attempt to register duplicate registries, can ignore safely
+            error!("Failed to register bitswap metrics: {}", e);
+        }
 
         // Setup the identify behaviour
         let identify = Identify::new(
