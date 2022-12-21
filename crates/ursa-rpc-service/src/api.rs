@@ -17,7 +17,7 @@ use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
-use tracing::{info, error};
+use tracing::{error, info};
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
 use ursa_store::{Dag, UrsaStore};
@@ -123,9 +123,7 @@ where
                 ));
             }
         }
-        let dag = self
-            .store
-            .dag_traversal(&root_cid)?;
+        let dag = self.store.dag_traversal(&root_cid)?;
         info!("Dag traversal done, now streaming the file");
 
         Ok(dag)
@@ -183,9 +181,10 @@ where
         task::spawn(async move {
             if let Err(err) = header
                 .write_stream_async(&mut writer.compat_write(), &mut rx)
-                .await {
-                    error!("Error while streaming the car file {err:?}");
-                }
+                .await
+            {
+                error!("Error while streaming the car file {err:?}");
+            }
         });
         let dag = self.get_data(root_cid).await?;
 

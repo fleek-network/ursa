@@ -36,8 +36,6 @@ db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBe
 dirs = "4"
 dotenv = "0.15.0"
 fnv = "1.0.7"
-forest_encoding = "0.2.2"
-forest_ipld = "0.1.1"
 futures = "0.3.25"
 futures-util = "0.3.25"
 fvm_ipld_blockstore = "0.1.1"

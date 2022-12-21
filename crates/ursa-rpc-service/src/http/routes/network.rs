@@ -83,10 +83,9 @@ where
             Err(NetworkError::BadRequest("No files found".to_string()))
         }
     });
-    Ok(upload_task
+    upload_task
         .await
         .map_err(|err| NetworkError::InternalError(err.to_string()))?
-        .map_err(|err| err)?)
 }
 
 pub async fn get_handler<S>(

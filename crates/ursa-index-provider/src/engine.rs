@@ -1,7 +1,7 @@
 use crate::{
     advertisement::{Advertisement, MAX_ENTRIES},
     config::ProviderConfig,
-    provider::{Provider, ProviderInterface, HEAD_KEY},
+    provider::{Provider, ProviderInterface},
     signed_head::SignedHead,
 };
 use bytes::Bytes;
@@ -25,7 +25,6 @@ use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_store::{Dag, UrsaStore};
 
-
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 
@@ -33,8 +32,8 @@ type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 async fn head<S: Blockstore + Store + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
 ) -> Result<Json<SignedHead>, ProviderError> {
-    if let Ok(Some(head)) = state.store().blockstore().read(HEAD_KEY) {
-        let signed_head = SignedHead::new(state.keypair(), Cid::try_from(head).unwrap())
+    if let Some(head) = state.head() {
+        let signed_head = SignedHead::new(state.keypair(), head)
             .map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
         Ok(Json(signed_head))
     } else {
@@ -222,9 +221,7 @@ where
             Advertisement::new(context_id.clone(), peer_id, addresses.clone(), false);
         let provider_id = self.provider.create(advertisement)?;
 
-        let dag = self
-            .store
-            .dag_traversal(&(root_cid))?;
+        let dag = self.store.dag_traversal(&(root_cid))?;
         let entries = dag
             .iter()
             .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
@@ -233,7 +230,7 @@ where
 
         info!("Inserting Index chunks.");
         for chunk in chunks.iter() {
-            let entries_bytes = forest_encoding::to_vec(&chunk)?;
+            let entries_bytes = fvm_ipld_encoding::to_vec(&chunk)?;
             self.provider
                 .add_chunk(entries_bytes, provider_id)
                 .expect(" adding chunk to advertisement should not fail!");

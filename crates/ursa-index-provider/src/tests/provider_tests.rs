@@ -6,11 +6,11 @@ mod tests {
     };
 
     use anyhow::Error;
-    use cid::{multihash::{Code, MultihashDigest}, Cid};
+    use cid::multihash::{Code, MultihashDigest};
     use libipld_core::ipld::Ipld;
     use surf::Error as SurfError;
     use tokio::task;
-    use tracing::{error, info};
+    use tracing::{debug, error, info};
 
     #[tokio::test]
     async fn test_create_and_get_add() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,7 +23,7 @@ mod tests {
             }
         });
 
-        let _ = task::spawn(async move {
+        let ad_task = task::spawn(async move {
             let ad = Advertisement {
                 PreviousID: None,
                 Provider: peer_id.to_base58(),
@@ -45,7 +45,7 @@ mod tests {
                 let mh = Code::Blake2b256.digest(&b);
                 entries.push(Ipld::Bytes(mh.to_bytes()))
             }
-            let bytes = forest_encoding::to_vec(&entries)?;
+            let bytes = fvm_ipld_encoding::to_vec(&entries)?;
             provider_interface.add_chunk(bytes, id)?;
             let published_ad = provider_interface.publish(id)?;
 
@@ -55,29 +55,31 @@ mod tests {
                 .map_err(|e| SurfError::into_inner(e))?;
             let head_cid = signed_head.open()?.1.to_string();
             assert_eq!(head_cid, provider_interface.head().unwrap().to_string());
+            debug!(
+                "{:?} \n {:?}",
+                head_cid,
+                provider_interface.head().unwrap().to_string()
+            );
             info!("The head was verified");
-            
+
             let data: Vec<u8> = surf::get(format!("http://0.0.0.0:8070/{head_cid}"))
                 .recv_bytes()
                 .await
                 .map_err(|e| SurfError::into_inner(e))?;
-
-            let ad: Advertisement = forest_encoding::from_slice(&data)?;
-            let mut ad_entries = forest_encoding::to_vec(&ad.clone().Entries.unwrap())?;
-            ad_entries.drain(0..3);
-            let entries_cid = Cid::try_from(ad_entries)?;
-            let ad_link = Ipld::Link(entries_cid.into());
-
-            let new_ad = Advertisement {
-                Entries: Some(ad_link),
-                ..ad
-            };
-            assert_eq!(new_ad, published_ad);
+            let ad: Advertisement = fvm_ipld_encoding::from_slice(&data)?;
+            debug!("{ad:?} \n {published_ad:?}");
+            assert_eq!(ad, published_ad);
+            info!("The ad was verified");
 
             Ok::<_, Error>(())
-        })
-        .await?;
+        });
 
-        Ok(())
+        match ad_task.await {
+            Ok(res) => match res {
+                Err(e) => panic!("{e}"),
+                _ => Ok(()),
+            },
+            Err(e) => panic!("{e}"),
+        }
     }
 }

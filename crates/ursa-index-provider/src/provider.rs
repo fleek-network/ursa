@@ -9,9 +9,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use cid::{multihash::Code, Cid};
-use forest_encoding::Cbor;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding;
+use fvm_ipld_encoding::Cbor;
 use libipld::codec::Encode;
 use libipld_cbor::DagCborCodec;
 use libipld_core::{ipld::Ipld, serde::to_ipld};
@@ -144,7 +143,7 @@ where
         let keypair = self.keypair.clone();
         let current_head = head.take();
         if let Some(mut ad) = self.temp_ads.remove(&id) {
-            ad.PreviousID = current_head.map(|h| Ipld::Link(h));
+            ad.PreviousID = current_head.map(Ipld::Link);
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
             let ipld_ad = to_ipld(&ad)?;
@@ -189,14 +188,14 @@ pub struct Message {
     pub ExtraData: [u8; 0],
 }
 impl Cbor for Message {
-    fn marshal_cbor(&self) -> Result<Vec<u8>, forest_encoding::Error> {
+    fn marshal_cbor(&self) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
         const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];
         let mut bytes = Vec::new();
         let _ = bytes.write_all(&MESSAGE_BUFFER_LENGTH);
         let _encoded_cid = self.Cid.encode(DagCborCodec, &mut bytes);
 
         let encoded_addrs =
-            forest_encoding::to_vec(&self.Addrs).expect("addresses serialization cannot fail");
+            fvm_ipld_encoding::to_vec(&self.Addrs).expect("addresses serialization cannot fail");
         bytes
             .write_all(&encoded_addrs)
             .expect("writing encoded address to bytes should not fail");
