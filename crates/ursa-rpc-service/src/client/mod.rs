@@ -8,28 +8,32 @@ use crate::api::{
 use jsonrpc_v2::{Error, RequestObject};
 pub use rpc::*;
 use serde::de::DeserializeOwned;
-use std::net::SocketAddr;
+use std::net::Ipv4Addr;
 use tracing::{debug, error, info};
 
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub struct Client {
-    server_addr: SocketAddr,
+    server_addr: Ipv4Addr,
+    server_port: u16,
 }
 
 impl Default for Client {
     fn default() -> Self {
-        Client::new(SocketAddr::from(([0, 0, 0, 0], 4069)))
+        Client::new(Ipv4Addr::from([0, 0, 0, 0]), 4069)
     }
 }
 
 impl Client {
-    pub fn new(server_addr: SocketAddr) -> Self {
-        Self { server_addr }
+    pub fn new(server_addr: Ipv4Addr, server_port: u16) -> Self {
+        Self {
+            server_addr,
+            server_port,
+        }
     }
 
     pub fn set_port(&mut self, port: u16) {
-        self.server_addr.set_port(port);
+        self.server_port = port;
     }
 
     pub async fn get_block(&self, params: NetworkGetParams) -> Result<NetworkGetResult> {
@@ -52,9 +56,8 @@ impl Client {
     where
         R: DeserializeOwned,
     {
-        // TODO: specify port
-        let port = 4069;
-        let addr = "0.0.0.0".to_string();
+        let port = self.server_addr.to_string();
+        let addr = self.server_port;
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
