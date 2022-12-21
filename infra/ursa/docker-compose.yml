@@ -51,7 +51,7 @@ services:
       - ursa
 
   grafana:
-    image: grafana/grafana:6.7.2
+    image: grafana/grafana
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./data/grafana/provisioning:/etc/grafana/provisioning
@@ -75,13 +75,12 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     ports:
-      # 6009 TCP and UDP, used by the P2P protocol running the network
       - "6009:6009"
+      - "4069:4069"
+      - "8070:8070"
     expose:
-      # 4069 TCP, used by the HTTP based JSON RPC API
+      # 4069 TCP, used for HTTP RPC, REST, and metrics
       - "4069"
-      # 4070 TCP, used by the HTTP metrics server
-      - "4070"
       # 6009 TCP and UDP, used by the P2P protocol running the network
       - "6009"
       # 8070 TCP, used by the HTTP based index provider
