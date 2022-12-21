@@ -1,4 +1,3 @@
-pub mod functions;
 mod rpc;
 
 use crate::api::{
