@@ -31,7 +31,7 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use ursa_metrics::Recorder;
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
