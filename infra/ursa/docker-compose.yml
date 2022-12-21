@@ -76,8 +76,6 @@ services:
     restart: on-failure
     ports:
       - "6009:6009"
-      - "4069:4069"
-      - "8070:8070"
     expose:
       # 4069 TCP, used for HTTP RPC, REST, and metrics
       - "4069"
