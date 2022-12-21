@@ -1,5 +1,6 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
+use anyhow::{Context, Result};
 use tokio::sync::RwLock;
 
 struct _Node<T> {
@@ -49,19 +50,23 @@ where
         self._store.contains_key(k)
     }
 
+    pub fn len(&self) -> usize {
+        self._store.len()
+    }
+
     pub fn _get(&self, k: &K) -> Option<&V> {
         self._store.get(k).map(|data| &data._value)
     }
 
-    pub async fn _insert(&mut self, k: K, v: V) {
+    pub async fn _insert(&mut self, k: K, v: V) -> Result<()> {
         if self._contains(&k) {
-            return;
+            return Ok(());
         }
         if let Some(cap) = self._cap {
             if cap <= self._store.len() {
                 let first_key = self
                     ._get_first_key()
-                    .expect("[LRU]: Failed to get the first key while deleting.");
+                    .context("[LRU]: Failed to get the first key while deleting.")?;
                 self._remove(first_key.as_ref()).await;
             }
         }
@@ -85,6 +90,7 @@ where
         if self._head.as_ref().is_none() {
             self._head = new_tail;
         }
+        Ok(())
     }
 
     pub async fn _remove(&mut self, k: &K) -> Option<V> {
@@ -157,6 +163,7 @@ mod tests {
         async fn new() {
             let lru = _Lru::<&str, u8>::_new(None);
             assert_eq!(lru._cap, None);
+            assert_eq!(lru.len(), 0);
             assert!(lru.k_from_head().await.is_empty());
             assert!(lru.k_from_tail().await.is_empty());
         }
@@ -178,15 +185,15 @@ mod tests {
         #[tokio::test]
         async fn get_one() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
+            lru._insert("a", 1).await.unwrap();
             assert_eq!(lru._get(&"a"), Some(&1));
         }
 
         #[tokio::test]
         async fn get_two() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), Some(&2));
         }
@@ -194,9 +201,9 @@ mod tests {
         #[tokio::test]
         async fn get_three() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
-            lru._insert("c", 3).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            lru._insert("c", 3).await.unwrap();
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), Some(&2));
             assert_eq!(lru._get(&"c"), Some(&3));
@@ -205,8 +212,9 @@ mod tests {
         #[tokio::test]
         async fn remove_one() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
+            lru._insert("a", 1).await.unwrap();
             lru._remove(&"a").await;
+            assert_eq!(lru.len(), 0);
             assert!(lru.k_from_head().await.is_empty());
             assert!(lru.k_from_tail().await.is_empty());
         }
@@ -214,9 +222,10 @@ mod tests {
         #[tokio::test]
         async fn remove_head() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
             lru._remove(&"a").await;
+            assert_eq!(lru.len(), 1);
             assert_eq!(lru._get(&"a"), None);
             assert_eq!(lru._get(&"b"), Some(&2));
             assert_eq!(ref_to_k(lru.k_from_head().await), ["b"]);
@@ -226,9 +235,10 @@ mod tests {
         #[tokio::test]
         async fn remove_tail() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
             lru._remove(&"b").await;
+            assert_eq!(lru.len(), 1);
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
@@ -238,10 +248,11 @@ mod tests {
         #[tokio::test]
         async fn remove_mid() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
-            lru._insert("c", 3).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            lru._insert("c", 3).await.unwrap();
             lru._remove(&"b").await;
+            assert_eq!(lru.len(), 2);
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
             assert_eq!(lru._get(&"c"), Some(&3));
@@ -252,8 +263,9 @@ mod tests {
         #[tokio::test]
         async fn insert_duplicate() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("a", 1).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("a", 1).await.unwrap();
+            assert_eq!(lru.len(), 1);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
             assert_eq!(ref_to_k(lru.k_from_tail().await), ["a"]);
         }
@@ -261,7 +273,8 @@ mod tests {
         #[tokio::test]
         async fn insert_one() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
+            lru._insert("a", 1).await.unwrap();
+            assert_eq!(lru.len(), 1);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
             assert_eq!(ref_to_k(lru.k_from_tail().await), ["a"]);
         }
@@ -269,8 +282,9 @@ mod tests {
         #[tokio::test]
         async fn insert_two() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            assert_eq!(lru.len(), 2);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["a", "b"]);
             assert_eq!(ref_to_k(lru.k_from_tail().await), ["b", "a"]);
         }
@@ -278,9 +292,10 @@ mod tests {
         #[tokio::test]
         async fn insert_three() {
             let mut lru = _Lru::_new(None);
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
-            lru._insert("c", 3).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            lru._insert("c", 3).await.unwrap();
+            assert_eq!(lru.len(), 3);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["a", "b", "c"]);
             assert_eq!(ref_to_k(lru.k_from_tail().await), ["c", "b", "a"]);
         }
@@ -300,10 +315,11 @@ mod tests {
         #[tokio::test]
         async fn insert_exceed_cap() {
             let mut lru = _Lru::_new(Some(3));
-            lru._insert("a", 1).await;
-            lru._insert("b", 2).await;
-            lru._insert("c", 3).await;
-            lru._insert("d", 4).await;
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            lru._insert("c", 3).await.unwrap();
+            lru._insert("d", 4).await.unwrap();
+            assert_eq!(lru.len(), 3);
             assert_eq!(ref_to_k(lru.k_from_head().await), ["b", "c", "d"]);
             assert_eq!(ref_to_k(lru.k_from_tail().await), ["d", "c", "b"]);
             assert_eq!(lru._get(&"a"), None);
