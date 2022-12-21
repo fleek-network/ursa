@@ -14,10 +14,11 @@ use libp2p::{
 };
 
 const URSA_GOSSIP_PROTOCOL: &str = "ursa/gossipsub/0.0.1";
+pub(crate) const MESH_N: usize = 8;
 
 pub(crate) fn build_gossipsub(keypair: &Keypair, config: &NetworkConfig) -> Gossipsub {
     let is_bootstrapper = config.bootstrapper;
-    let mesh_n = if is_bootstrapper { 0 } else { 8 };
+    let mesh_n = if is_bootstrapper { 0 } else { MESH_N };
     let mesh_n_low = if is_bootstrapper { 0 } else { 4 };
     let mesh_n_high = if is_bootstrapper { 0 } else { 12 };
     let gossip_lazy = mesh_n;

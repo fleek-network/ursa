@@ -8,7 +8,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::config::NetworkConfig;
+use crate::{config::NetworkConfig, gossipsub::MESH_N};
 use anyhow::{anyhow, Error, Result};
 use futures_timer::Delay;
 use futures_util::FutureExt;
@@ -295,8 +295,8 @@ impl NetworkBehaviour for DiscoveryBehaviour {
 
         // Run kademlia bootstraps periodically (if timer is set)
         if let Some(delay) = self.next_bootstrap.as_mut() {
-            // if connected peers are under 12, and timer is ready
-            if self.peers.len() < 12 && delay.poll_unpin(cx).is_ready() {
+            // if connected peers are under `mesh_n`, and timer is ready
+            if self.peers.len() < MESH_N && delay.poll_unpin(cx).is_ready() {
                 if let Err(e) = self.bootstrap() {
                     warn!("Bootstrap failed: {:?}", e);
                     // 2x longer delay if bootstrap failed
