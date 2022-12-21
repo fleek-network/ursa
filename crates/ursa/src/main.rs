@@ -4,10 +4,13 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
+use std::env;
+use std::str::FromStr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
+use tracing_subscriber::filter::LevelFilter;
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
@@ -21,10 +24,16 @@ mod ursa;
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
-    tracing_subscriber::fmt::init();
 
     // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
+
+    tracing_subscriber::fmt()
+        .with_max_level(opts.log.unwrap_or_else(|| {
+            LevelFilter::from_str(&env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
+                .unwrap()
+        }))
+        .init();
 
     match opts.to_config() {
         Ok(config) => {
