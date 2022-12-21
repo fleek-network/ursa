@@ -433,9 +433,8 @@ where
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
                     Some(cid) => {
                         if let Some(chans) = self.response_channels.remove(&cid) {
-                            let bitswap_cid = cid;
                             for chan in chans.into_iter() {
-                                if blockstore.contains(&bitswap_cid).unwrap() {
+                                if blockstore.contains(&cid).unwrap() {
                                     if chan.send(Ok(())).is_err() {
                                         error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }

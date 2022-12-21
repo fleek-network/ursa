@@ -218,12 +218,10 @@ impl<P: StoreParams> Behaviour<P> {
         cid: Cid,
         providers: impl Iterator<Item = PeerId>,
     ) -> Result<QueryId> {
-        let cid = cid;
         Ok(self.bitswap.get(cid, providers))
     }
 
     pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) -> Result<QueryId> {
-        let cid = cid;
         Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
     }
 }
