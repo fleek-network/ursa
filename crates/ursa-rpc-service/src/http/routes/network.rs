@@ -1,9 +1,8 @@
 pub const BASE_PATH: &str = "./car_files";
 
 use crate::api::{NetworkInterface, NodeNetworkInterface};
-use anyhow::{anyhow, Error};
 use axum::{
-    extract::{Multipart, Path},
+    extract::{DefaultBodyLimit, Multipart, Path},
     http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -16,6 +15,7 @@ use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
 use std::{str::FromStr, sync::Arc};
 use tokio::task;
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
 pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
@@ -23,21 +23,23 @@ pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
         .route("/", post(upload_handler::<S>))
         .route("/:cid", get(get_handler::<S>))
         .route("/ping", get(|| async { "pong" })) // to be used for TLS verification
+        .layer(DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(250 * 1024 * 1024)) // 250mb
 }
 
 pub enum NetworkError {
-    NotFoundError(Error),
-    InternalError(Error),
+    NotFoundError(String),
+    InternalError(String),
+    BadRequest(String),
 }
 impl IntoResponse for NetworkError {
     fn into_response(self) -> Response {
         match self {
-            NetworkError::NotFoundError(e) => {
-                (StatusCode::NOT_FOUND, e.to_string()).into_response()
-            }
+            NetworkError::NotFoundError(e) => (StatusCode::NOT_FOUND, e).into_response(),
             NetworkError::InternalError(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
             }
+            NetworkError::BadRequest(e) => (StatusCode::BAD_REQUEST, e).into_response(),
         }
     }
 }
@@ -45,40 +47,45 @@ impl IntoResponse for NetworkError {
 pub async fn upload_handler<S>(
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
     mut buf: Multipart,
-) -> impl IntoResponse
+) -> Result<impl IntoResponse, NetworkError>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
     let upload_task = task::spawn(async move {
         info!("uploading file via http");
-        if let Some(field) = buf.next_field().await.unwrap() {
+        if let Some(field) = buf
+            .next_field()
+            .await
+            .map_err(|e| NetworkError::InternalError(e.to_string()))?
+        {
             let content_type = field.content_type().unwrap().to_string();
             if content_type == *"application/vnd.curl.car".to_string() {
-                let data = field.bytes().await.unwrap();
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| NetworkError::InternalError(e.to_string()))?;
                 let vec_data = data.to_vec();
                 let reader = Cursor::new(&vec_data);
 
                 match interface.put_car(reader).await {
                     Err(err) => {
                         error!("{:?}", err);
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("{err:?}")))
+                        Err(NetworkError::InternalError(err.to_string()))
                     }
-                    Ok(res) => (StatusCode::OK, Json(format!("{res:?}"))),
+                    Ok(res) => Ok((StatusCode::OK, Json(format!("{res:?}")))),
                 }
             } else {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json("Content type do not match. Only .car files can be uploaded".to_string()),
-                )
+                Err(NetworkError::BadRequest(
+                    "Content type do not match. Only .car files can be uploaded".to_string(),
+                ))
             }
         } else {
-            (StatusCode::BAD_REQUEST, Json("No files found".to_string()))
+            Err(NetworkError::BadRequest("No files found".to_string()))
         }
     });
-    match upload_task.await {
-        Ok(res) => res,
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())),
-    }
+    upload_task
+        .await
+        .map_err(|err| NetworkError::InternalError(err.to_string()))?
 }
 
 pub async fn get_handler<S>(
@@ -109,12 +116,12 @@ where
             }
             Err(err) => {
                 error!("{:?}", err);
-                Err(NetworkError::InternalError(anyhow!("{err}")))
+                Err(NetworkError::InternalError(err.to_string()))
             }
         };
     } else {
-        Err(NetworkError::InternalError(anyhow!(
-            "Invalid Cid String, Cannot Parse {cid_str} to CID"
+        Err(NetworkError::InternalError(format!(
+            "Invalid Cid String, Cannot Parse {cid_str:?} to CID"
         )))
     }
 }

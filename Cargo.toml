@@ -8,7 +8,6 @@ members = [
   "crates/ursa-rpc-service",
   "crates/ursa-store",
   "crates/ursa-tracker",
-  "crates/ursa-utils",
 ]
 
 exclude = [
@@ -37,8 +36,6 @@ db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBe
 dirs = "4"
 dotenv = "0.15.0"
 fnv = "1.0.7"
-forest_encoding = "0.2.2"
-forest_ipld = "0.1.1"
 futures = "0.3.25"
 futures-util = "0.3.25"
 fvm_ipld_blockstore = "0.1.1"
@@ -48,7 +45,8 @@ hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 jsonrpc-v2 = "0.11.0"
 lazy_static = "1.4"
-libipld = { version = "0.14.0", default-features = false }
+libipld = "0.14.0"
+libipld-core = "0.14.0"
 libp2p = { version = "0.50.0", default-features = false }
 libp2p-bitswap = "0.25.0"
 libipld-cbor = "0.14.0"
@@ -60,8 +58,8 @@ pem = "1.1.0"
 prometheus-client = "0.18.0"
 rand = "0.8.5"
 resolve-path = "0.1.0"
-serde = "1.0.151"
 serde_derive = "1.0.147"
+serde = { version = "1.0.151", features = ["derive"] }
 serde_json = "1.0.91"
 serde_with = { version = "2.1.0", features = ["base64"] }
 simple_logger = "4.0.0"
@@ -73,5 +71,6 @@ tokio-util = { version = "0.7", features = ["io", "compat"] }
 tokio-stream = "0.1"
 toml = "0.5.10"
 tower = "0.4.13"
+tower-http = "0.3.5"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

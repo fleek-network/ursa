@@ -28,7 +28,6 @@ mod tests {
     use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
     use ursa_store::{BitswapStorage, UrsaStore};
-    use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -322,7 +321,7 @@ mod tests {
 
         let (sender, receiver) = oneshot::channel();
         let msg = NetworkCommand::GetBitswap {
-            cid: convert_cid(block.cid().to_bytes()),
+            cid: *block.cid(),
             sender,
         };
 
@@ -334,9 +333,7 @@ mod tests {
 
         match res {
             Ok(_) => {
-                let store_1_block = bitswap_store_2
-                    .get(&convert_cid(block.cid().to_bytes()))
-                    .unwrap();
+                let store_1_block = bitswap_store_2.get(&block.cid()).unwrap();
 
                 info!(
                     "inserting block into bitswap store for node 1, {:?}",
@@ -411,9 +408,7 @@ mod tests {
         match res {
             Ok(_) => {
                 for cid in cids_vec {
-                    assert!(bitswap_store_2
-                        .contains(&convert_cid(cid.to_bytes()))
-                        .is_ok());
+                    assert!(bitswap_store_2.contains(&cid).is_ok());
                 }
             }
             Err(e) => panic!("{e:?}"),

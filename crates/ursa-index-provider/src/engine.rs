@@ -1,12 +1,12 @@
 use crate::{
     advertisement::{Advertisement, MAX_ENTRIES},
     config::ProviderConfig,
-    provider::{Provider, ProviderInterface, HEAD_KEY},
+    provider::{Provider, ProviderInterface},
     signed_head::SignedHead,
 };
 use bytes::Bytes;
 use db::Store;
-use forest_ipld::Ipld;
+use libipld_core::ipld::Ipld;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
     oneshot,
@@ -23,8 +23,7 @@ use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
-use ursa_store::{BlockstoreExt, Dag, UrsaStore};
-use ursa_utils::convert_cid;
+use ursa_store::{Dag, UrsaStore};
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
@@ -33,8 +32,8 @@ type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 async fn head<S: Blockstore + Store + Sync + Send + 'static>(
     Extension(state): Extension<Provider<S>>,
 ) -> Result<Json<SignedHead>, ProviderError> {
-    if let Ok(Some(head)) = state.store().blockstore().read(HEAD_KEY) {
-        let signed_head = SignedHead::new(state.keypair(), Cid::try_from(head).unwrap())
+    if let Some(head) = state.head() {
+        let signed_head = SignedHead::new(state.keypair(), head)
             .map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
         Ok(Json(signed_head))
     } else {
@@ -48,10 +47,13 @@ async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
 ) -> Result<Response<Body>, ProviderError> {
     let cid =
         Cid::from_str(&cid).map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
-    match state.store().blockstore().get_obj::<Vec<u8>>(&cid) {
+    match state.store().blockstore().get(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
-        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{e}")))),
+        Err(e) => {
+            error!("{}", e);
+            Err(ProviderError::InternalError(anyhow!(format!("{e}"))))
+        }
     }
 }
 
@@ -217,11 +219,9 @@ where
         }
         let advertisement =
             Advertisement::new(context_id.clone(), peer_id, addresses.clone(), false);
-        let provider_id = self.provider.create(advertisement).unwrap();
+        let provider_id = self.provider.create(advertisement)?;
 
-        let dag = self
-            .store
-            .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+        let dag = self.store.dag_traversal(&(root_cid))?;
         let entries = dag
             .iter()
             .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))
@@ -230,7 +230,7 @@ where
 
         info!("Inserting Index chunks.");
         for chunk in chunks.iter() {
-            let entries_bytes = forest_encoding::to_vec(&chunk)?;
+            let entries_bytes = fvm_ipld_encoding::to_vec(&chunk)?;
             self.provider
                 .add_chunk(entries_bytes, provider_id)
                 .expect(" adding chunk to advertisement should not fail!");

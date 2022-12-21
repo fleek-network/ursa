@@ -28,14 +28,14 @@ serde_json.workspace = true
 simple_logger.workspace = true
 surf.workspace = true
 tokio.workspace = true
-tower.workspace = true
-tracing.workspace = true
 tokio-util.workspace = true
+tower.workspace = true
+tower-http = { workspace = true, features = ["limit"] }
+tracing.workspace = true
 ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
-ursa-utils = { path = "../ursa-utils" }
 
 [dependencies.libp2p]
 workspace = true

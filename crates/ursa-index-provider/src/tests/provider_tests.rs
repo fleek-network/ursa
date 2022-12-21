@@ -7,13 +7,13 @@ mod tests {
 
     use anyhow::Error;
     use cid::multihash::{Code, MultihashDigest};
-    use forest_ipld::Ipld;
+    use libipld_core::ipld::Ipld;
     use surf::Error as SurfError;
     use tokio::task;
-    use tracing::error;
+    use tracing::{debug, error, info};
 
     #[tokio::test]
-    async fn test_create_ad() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_create_and_get_add() -> Result<(), Box<dyn std::error::Error>> {
         let (provider_engine, _, peer_id) = provider_engine_init(8070)?;
         let mut provider_interface = provider_engine.provider();
 
@@ -23,7 +23,7 @@ mod tests {
             }
         });
 
-        let _ = task::spawn(async move {
+        let ad_task = task::spawn(async move {
             let ad = Advertisement {
                 PreviousID: None,
                 Provider: peer_id.to_base58(),
@@ -45,18 +45,41 @@ mod tests {
                 let mh = Code::Blake2b256.digest(&b);
                 entries.push(Ipld::Bytes(mh.to_bytes()))
             }
-            let bytes = forest_encoding::to_vec(&entries)?;
+            let bytes = fvm_ipld_encoding::to_vec(&entries)?;
             provider_interface.add_chunk(bytes, id)?;
-            provider_interface.publish(id)?;
+            let published_ad = provider_interface.publish(id)?;
+
             let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head")
                 .recv_json()
                 .await
-                .map_err(SurfError::into_inner)?;
-            assert_eq!(signed_head.open()?.1, provider_interface.head().unwrap());
-            Ok::<_, Error>(())
-        })
-        .await?;
+                .map_err(|e| SurfError::into_inner(e))?;
+            let head_cid = signed_head.open()?.1.to_string();
+            assert_eq!(head_cid, provider_interface.head().unwrap().to_string());
+            debug!(
+                "{:?} \n {:?}",
+                head_cid,
+                provider_interface.head().unwrap().to_string()
+            );
+            info!("The head was verified");
 
-        Ok(())
+            let data: Vec<u8> = surf::get(format!("http://0.0.0.0:8070/{head_cid}"))
+                .recv_bytes()
+                .await
+                .map_err(|e| SurfError::into_inner(e))?;
+            let ad: Advertisement = fvm_ipld_encoding::from_slice(&data)?;
+            debug!("{ad:?} \n {published_ad:?}");
+            assert_eq!(ad, published_ad);
+            info!("The ad was verified");
+
+            Ok::<_, Error>(())
+        });
+
+        match ad_task.await {
+            Ok(res) => match res {
+                Err(e) => panic!("{e}"),
+                _ => Ok(()),
+            },
+            Err(e) => panic!("{e}"),
+        }
     }
 }

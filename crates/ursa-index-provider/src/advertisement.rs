@@ -1,5 +1,5 @@
 use cid::multihash::{Code, MultihashDigest};
-use forest_ipld::Ipld;
+use libipld_core::ipld::Ipld;
 use libp2p::{
     core::{signed_envelope, SignedEnvelope},
     identity::Keypair,
@@ -25,7 +25,7 @@ struct Metadata {
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Advertisement {
     /// PreviousID is an optional link to the previous advertisement.
     #[serde(skip_serializing_if = "Option::is_none")]

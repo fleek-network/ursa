@@ -143,7 +143,6 @@ mod tests {
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
     use libipld::store::DefaultParams;
-    use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::<DefaultParams>::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -157,11 +156,12 @@ mod tests {
             .unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_rpc_get_cid() {
         setup_logger(LevelFilter::Info);
         let block = create_block(Ipld::String("Hello World!".to_string()));
-        let cid = convert_cid(block.cid().to_bytes());
+        let cid = block.cid();
         let string_cid = Cid::to_string(&cid);
         let params = NetworkGetParams {
             cid: string_cid.clone(),
@@ -176,6 +176,7 @@ mod tests {
         };
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_rpc_put_file() {
         setup_logger(LevelFilter::Info);

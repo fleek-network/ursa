@@ -52,7 +52,6 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, UrsaStore};
-use ursa_utils::convert_cid;
 
 use crate::discovery::{DiscoveryEvent, URSA_KAD_PROTOCOL};
 use crate::transport::build_transport;
@@ -434,9 +433,8 @@ where
                 Ok(_) => match self.bitswap_queries.remove(&query_id) {
                     Some(cid) => {
                         if let Some(chans) = self.response_channels.remove(&cid) {
-                            let bitswap_cid = convert_cid(cid.to_bytes());
                             for chan in chans.into_iter() {
-                                if blockstore.contains(&bitswap_cid).unwrap() {
+                                if blockstore.contains(&cid).unwrap() {
                                     if chan.send(Ok(())).is_err() {
                                         error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }

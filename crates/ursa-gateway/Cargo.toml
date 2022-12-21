@@ -13,7 +13,6 @@ axum.workspace = true
 axum-server.workspace = true
 cid.workspace = true
 clap.workspace = true
-forest_ipld.workspace = true
 hyper.workspace = true
 hyper-tls.workspace = true
 serde.workspace = true
