@@ -9,7 +9,7 @@ mod worker;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
-use cache::TLRFUCache;
+use cache::tlrfu::TLRFUCache;
 use clap::Parser;
 use cli::{Cli, Commands};
 use tokio::{sync::RwLock, task};

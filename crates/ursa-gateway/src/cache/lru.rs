@@ -3,26 +3,21 @@ use std::{collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::RwLock;
 
 struct _Node<T> {
-    next: RwLock<Arc<_Dll<T>>>,
-    prev: RwLock<Arc<_Dll<T>>>,
-    data: Arc<T>,
-}
-
-enum _Dll<T> {
-    _Node(_Node<T>),
-    _Nil,
+    _next: RwLock<Arc<Option<_Node<T>>>>,
+    _prev: RwLock<Arc<Option<_Node<T>>>>,
+    _data: Arc<T>,
 }
 
 struct _Data<K, V> {
-    value: V,
-    node: Arc<_Dll<K>>,
+    _value: V,
+    _node: Arc<Option<_Node<K>>>,
 }
 
-pub struct _Lru<K: Hash + Eq, V> {
-    store: HashMap<Arc<K>, _Data<K, V>>,
-    head: Arc<_Dll<K>>,
-    tail: Arc<_Dll<K>>,
-    cap: Option<usize>,
+pub struct _Lru<K, V> {
+    _store: HashMap<Arc<K>, _Data<K, V>>,
+    _head: Arc<Option<_Node<K>>>,
+    _tail: Arc<Option<_Node<K>>>,
+    _cap: Option<usize>,
 }
 
 impl<K, V> _Lru<K, V>
@@ -30,41 +25,40 @@ where
     K: Hash + Eq,
 {
     pub fn _new(cap: Option<usize>) -> Self {
-        let nil = Arc::new(_Dll::_Nil);
+        let nil = Arc::new(None);
         Self {
-            store: if let Some(cap) = cap {
+            _store: if let Some(cap) = cap {
                 HashMap::with_capacity(cap)
             } else {
                 HashMap::new()
             },
-            head: Arc::clone(&nil),
-            tail: nil,
-            cap,
+            _head: Arc::clone(&nil),
+            _tail: nil,
+            _cap: cap,
         }
     }
 
     fn _get_first_key(&self) -> Option<Arc<K>> {
-        if let _Dll::_Node(node) = self.head.as_ref() {
-            Some(Arc::clone(&node.data))
-        } else {
-            None
-        }
+        self._head
+            .as_ref()
+            .as_ref()
+            .map(|node| Arc::clone(&node._data))
     }
 
     fn _contains(&self, k: &K) -> bool {
-        self.store.contains_key(k)
+        self._store.contains_key(k)
     }
 
     pub fn _get(&self, k: &K) -> Option<&V> {
-        self.store.get(k).map(|data| &data.value)
+        self._store.get(k).map(|data| &data._value)
     }
 
     pub async fn _insert(&mut self, k: K, v: V) {
         if self._contains(&k) {
             return;
         }
-        if let Some(cap) = self.cap {
-            if cap <= self.store.len() {
+        if let Some(cap) = self._cap {
+            if cap <= self._store.len() {
                 let first_key = self
                     ._get_first_key()
                     .expect("[LRU]: Failed to get the first key while deleting.");
@@ -72,44 +66,44 @@ where
             }
         }
         let key = Arc::new(k);
-        let new_tail = Arc::new(_Dll::_Node(_Node {
-            next: RwLock::new(Arc::new(_Dll::_Nil)),
-            prev: RwLock::new(Arc::clone(&self.tail)),
-            data: Arc::clone(&key),
+        let new_tail = Arc::new(Some(_Node {
+            _next: RwLock::new(Arc::new(None)),
+            _prev: RwLock::new(Arc::clone(&self._tail)),
+            _data: Arc::clone(&key),
         }));
-        if let _Dll::_Node(old_tail) = self.tail.as_ref() {
-            *old_tail.next.write().await = Arc::clone(&new_tail);
+        if let Some(old_tail) = self._tail.as_ref() {
+            *old_tail._next.write().await = Arc::clone(&new_tail);
         }
-        self.store.insert(
+        self._store.insert(
             key,
             _Data {
-                value: v,
-                node: Arc::clone(&new_tail),
+                _value: v,
+                _node: Arc::clone(&new_tail),
             },
         );
-        self.tail = Arc::clone(&new_tail);
-        if let _Dll::_Nil = self.head.as_ref() {
-            self.head = new_tail;
+        self._tail = Arc::clone(&new_tail);
+        if self._head.as_ref().is_none() {
+            self._head = new_tail;
         }
     }
 
     pub async fn _remove(&mut self, k: &K) -> Option<V> {
-        if let Some(data) = self.store.remove(k) {
-            if let _Dll::_Node(node) = data.node.as_ref() {
-                let prev = node.prev.read().await;
-                let next = node.next.read().await;
-                if let _Dll::_Node(next) = next.as_ref() {
-                    *next.prev.write().await = Arc::clone(&prev);
+        if let Some(data) = self._store.remove(k) {
+            if let Some(node) = data._node.as_ref() {
+                let prev = node._prev.read().await;
+                let next = node._next.read().await;
+                if let Some(next) = next.as_ref() {
+                    *next._prev.write().await = Arc::clone(&prev);
                 } else {
-                    self.tail = Arc::clone(&prev);
+                    self._tail = Arc::clone(&prev);
                 }
-                if let _Dll::_Node(prev) = prev.as_ref() {
-                    *prev.next.write().await = Arc::clone(&next);
+                if let Some(prev) = prev.as_ref() {
+                    *prev._next.write().await = Arc::clone(&next);
                 } else {
-                    self.head = Arc::clone(&next);
+                    self._head = Arc::clone(&next);
                 }
             }
-            Some(data.value)
+            Some(data._value)
         } else {
             None
         }
@@ -126,11 +120,11 @@ mod tests {
     {
         pub async fn k_from_head(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
-            let mut head = Arc::clone(&self.head);
+            let mut head = Arc::clone(&self._head);
             'walk: loop {
-                head = if let _Dll::_Node(node) = head.as_ref() {
-                    items.push(Arc::clone(&node.data));
-                    node.next.read().await.clone()
+                head = if let Some(node) = head.as_ref() {
+                    items.push(Arc::clone(&node._data));
+                    node._next.read().await.clone()
                 } else {
                     break 'walk;
                 };
@@ -139,11 +133,11 @@ mod tests {
         }
         pub async fn k_from_tail(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
-            let mut tail = Arc::clone(&self.tail);
+            let mut tail = Arc::clone(&self._tail);
             'walk: loop {
-                tail = if let _Dll::_Node(node) = tail.as_ref() {
-                    items.push(Arc::clone(&node.data));
-                    node.prev.read().await.clone()
+                tail = if let Some(node) = tail.as_ref() {
+                    items.push(Arc::clone(&node._data));
+                    node._prev.read().await.clone()
                 } else {
                     break 'walk;
                 }
@@ -162,7 +156,7 @@ mod tests {
         #[tokio::test]
         async fn new() {
             let lru = _Lru::<&str, u8>::_new(None);
-            assert_eq!(lru.cap, None);
+            assert_eq!(lru._cap, None);
             assert!(lru.k_from_head().await.is_empty());
             assert!(lru.k_from_tail().await.is_empty());
         }
@@ -298,7 +292,7 @@ mod tests {
         #[tokio::test]
         async fn new() {
             let lru = _Lru::<&str, u8>::_new(Some(3));
-            assert_eq!(lru.cap, Some(3));
+            assert_eq!(lru._cap, Some(3));
             assert!(lru.k_from_head().await.is_empty());
             assert!(lru.k_from_tail().await.is_empty());
         }

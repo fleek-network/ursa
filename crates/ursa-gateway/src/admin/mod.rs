@@ -16,11 +16,8 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    admin::route::api::v1::{
-        get::{get_cache_handler, get_config_handler},
-        post::purge_cache_handler,
-    },
-    cache::TLRFUCache,
+    admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
+    cache::tlrfu::TLRFUCache,
     config::{GatewayConfig, ServerConfig},
 };
 
@@ -54,7 +51,7 @@ pub async fn start_server(
 
     let app = Router::new()
         .route("/config", get(get_config_handler))
-        .route("/cache", get(get_cache_handler))
+        // .route("/cache", get(get_cache_handler))
         .route("/purge-cache", post(purge_cache_handler))
         .layer(Extension(config))
         .layer(Extension(cache));
