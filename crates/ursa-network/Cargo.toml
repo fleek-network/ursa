@@ -21,6 +21,7 @@ futures-util.workspace = true
 fvm_ipld_blockstore.workspace = true
 fvm_ipld_car.workspace = true
 jsonrpc-v2.workspace = true
+libipld.workspace = true
 libp2p-bitswap.workspace = true
 metrics.workspace = true
 rand.workspace = true
@@ -31,8 +32,6 @@ tokio.workspace = true
 tracing.workspace = true
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
-
-libipld.workspace = true
 
 [dependencies.libp2p]
 workspace = true
