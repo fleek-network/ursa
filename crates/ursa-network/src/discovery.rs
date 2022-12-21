@@ -83,7 +83,7 @@ impl DiscoveryBehaviour {
             })
             .collect();
 
-        // Kickoff bootstraps with initial delay of 10s if we are not a bootstrapper
+        // Kickoff bootstraps with initial delay if we are not a bootstrap node ourselves
         let next_bootstrap = config
             .bootstrapper
             .not()
