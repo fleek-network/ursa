@@ -35,6 +35,7 @@ use tracing::{error, info, warn};
 use ursa_metrics::Recorder;
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
+const INITIAL_BOOTSTRAP_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub enum DiscoveryEvent {
@@ -59,8 +60,6 @@ pub struct DiscoveryBehaviour {
     next_bootstrap: Option<Delay>,
     /// Bootstrap interval
     bootstrap_interval: Duration,
-    /// Running bootstrap query id
-    bootstrap_query: Option<QueryId>,
 }
 
 impl DiscoveryBehaviour {
@@ -84,11 +83,11 @@ impl DiscoveryBehaviour {
             })
             .collect();
 
-        // run bootstrap with initial delay of 10s if we are not a bootstrapper
+        // Kickoff bootstraps with initial delay of 10s if we are not a bootstrapper
         let next_bootstrap = config
             .bootstrapper
             .not()
-            .then_some(Delay::new(Duration::from_secs(10)));
+            .then_some(Delay::new(INITIAL_BOOTSTRAP_DELAY));
 
         // setup kademlia config
         let mut kademlia = {
@@ -121,7 +120,6 @@ impl DiscoveryBehaviour {
             mdns: mdns.into(),
             next_bootstrap,
             bootstrap_interval: Duration::from_secs(config.bootstrap_interval),
-            bootstrap_query: None,
         }
     }
 
@@ -138,8 +136,7 @@ impl DiscoveryBehaviour {
     }
 
     pub fn bootstrap(&mut self) -> Result<QueryId, Error> {
-        info!("Bootstrapping with {:?}", self.bootstrap_nodes);
-
+        info!("Initiating bootstrap");
         self.kademlia
             .bootstrap()
             .map_err(|err| anyhow!("{:?}", err))
@@ -150,19 +147,30 @@ impl DiscoveryBehaviour {
     }
 
     fn handle_kad_event(&mut self, event: KademliaEvent) {
-        info!("[KademliaEvent] {:?}", event);
-
-        if let KademliaEvent::OutboundQueryProgressed {
-            result: QueryResult::Bootstrap(Ok(BootstrapOk { num_remaining, .. })),
-            ..
-        } = event
-        {
-            if num_remaining == 0 {
-                self.bootstrap_query = None;
-                if let Some(delay) = self.next_bootstrap.as_mut() {
-                    delay.reset(self.bootstrap_interval);
+        match event {
+            KademliaEvent::OutboundQueryProgressed {
+                result: QueryResult::Bootstrap(res),
+                ..
+            } => match res {
+                Ok(BootstrapOk { num_remaining, .. }) => {
+                    if num_remaining == 0 {
+                        info!("[KademliaEvent] Bootstrap complete");
+                        self.next_bootstrap = Some(Delay::new(self.bootstrap_interval));
+                    }
+                }
+                Err(e) => {
+                    warn!("[KademliaEvent] Bootstrap failed: {:?}", e);
+                    self.next_bootstrap = Some(Delay::new(self.bootstrap_interval * 2));
+                }
+            },
+            KademliaEvent::RoutingUpdated {
+                peer, is_new_peer, ..
+            } => {
+                if is_new_peer {
+                    info!("[KademliaEvent] Routing updated for new peer: {}", peer);
                 }
             }
+            e => info!("[KademliaEvent] {:?}", e),
         }
     }
 
@@ -273,22 +281,16 @@ impl NetworkBehaviour for DiscoveryBehaviour {
             }
         }
 
-        // Run kademlia bootstraps periodically (if enabled)
+        // Run kademlia bootstraps periodically (if timer is set)
         if let Some(delay) = self.next_bootstrap.as_mut() {
-            // if no current query running, connected peers are under 12, and timer is ready
-            if self.bootstrap_query.is_none()
-                && self.peers.len() < 12
-                && delay.poll_unpin(cx).is_ready()
-            {
-                match self.kademlia.bootstrap() {
-                    Ok(query_id) => {
-                        self.bootstrap_query = Some(query_id);
-                    }
-                    Err(err) => {
-                        error!("Failed to bootstrap: {:?}", err);
-                        // 2x longer delay if bootstrap failed
-                        self.next_bootstrap = Some(Delay::new(self.bootstrap_interval * 2));
-                    }
+            // if connected peers are under 12, and timer is ready
+            if self.peers.len() < 12 && delay.poll_unpin(cx).is_ready() {
+                if let Err(e) = self.bootstrap() {
+                    warn!("Bootstrap failed: {:?}", e);
+                    // 2x longer delay if bootstrap failed
+                    self.next_bootstrap = Some(Delay::new(self.bootstrap_interval * 2));
+                } else {
+                    self.next_bootstrap = None;
                 }
             }
         }
