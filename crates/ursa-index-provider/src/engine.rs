@@ -6,7 +6,7 @@ use crate::{
 };
 use bytes::Bytes;
 use db::Store;
-use forest_ipld::Ipld;
+use libipld_core::ipld::Ipld;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
     oneshot,
@@ -24,7 +24,7 @@ use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multi
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_store::{Dag, UrsaStore};
-use ursa_utils::convert_cid;
+
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
@@ -220,11 +220,11 @@ where
         }
         let advertisement =
             Advertisement::new(context_id.clone(), peer_id, addresses.clone(), false);
-        let provider_id = self.provider.create(advertisement).unwrap();
+        let provider_id = self.provider.create(advertisement)?;
 
         let dag = self
             .store
-            .dag_traversal(&(convert_cid(root_cid.to_bytes())))?;
+            .dag_traversal(&(root_cid))?;
         let entries = dag
             .iter()
             .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))

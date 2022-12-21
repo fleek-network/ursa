@@ -7,11 +7,9 @@ use db::Store;
 use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
-use libipld::store::DefaultParams;
-use libipld::{Block, Result};
+use libipld::{store::DefaultParams, Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
-use ursa_utils::convert_cid;
 
 pub struct UrsaStore<S> {
     pub db: Arc<S>,
@@ -143,16 +141,16 @@ where
         // get full dag starting with root id
         let mut current = FnvHashSet::default();
         let mut refs = FnvHashSet::default();
-        current.insert(convert_cid::<Cid>(root_cid.to_bytes()));
+        current.insert(*root_cid);
 
         while let Some(cid) = current.iter().next().copied() {
             current.remove(&cid);
             if refs.contains(&cid) {
                 continue;
             }
-            match self.db.get(&convert_cid(cid.to_bytes()))? {
+            match self.db.get(&cid)? {
                 Some(data) => {
-                    res.push((convert_cid(cid.to_bytes()), data.clone()));
+                    res.push((cid, data.clone()));
                     let next_block = Block::<DefaultParams>::new(cid, data)?;
                     next_block.references(&mut current)?;
                     refs.insert(cid);
@@ -179,6 +177,7 @@ mod tests {
     use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
     use simple_logger::SimpleLogger;
 
+    #[ignore]
     #[tokio::test]
     async fn get_missing_blocks() {
         SimpleLogger::new().with_utc_timestamps().init().unwrap();
@@ -194,7 +193,7 @@ mod tests {
         let cid =
             Cid::from_str("bafybeihybv5apjuvkpaw62l34ui7t363pt3hwxbz7rltrpjklvzrbviq5m").unwrap();
 
-        if let Ok(res) = bitswap_store_1.missing_blocks(&convert_cid(cid.to_bytes())) {
+        if let Ok(res) = bitswap_store_1.missing_blocks(&cid) {
             println!("vec of missing blocks: {res:?}");
         }
     }

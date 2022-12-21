@@ -17,11 +17,10 @@ use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
-use tracing::info;
+use tracing::{info, error};
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
 use ursa_store::{Dag, UrsaStore};
-use ursa_utils::convert_cid;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
@@ -126,7 +125,7 @@ where
         }
         let dag = self
             .store
-            .dag_traversal(&convert_cid(root_cid.to_bytes()))?;
+            .dag_traversal(&root_cid)?;
         info!("Dag traversal done, now streaming the file");
 
         Ok(dag)
@@ -154,7 +153,7 @@ where
         let dag = self.get_data(root_cid).await?;
 
         for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await?;
+            tx.send((cid, data)).await?;
         }
         drop(tx);
         write_task.await?;
@@ -182,15 +181,16 @@ where
         let body = StreamBody::new(ReaderStream::new(reader));
 
         task::spawn(async move {
-            header
+            if let Err(err) = header
                 .write_stream_async(&mut writer.compat_write(), &mut rx)
-                .await
-                .unwrap()
+                .await {
+                    error!("Error while streaming the car file {err:?}");
+                }
         });
         let dag = self.get_data(root_cid).await?;
 
         for (cid, data) in dag {
-            tx.send((convert_cid(cid.to_bytes()), data)).await?;
+            tx.send((cid, data)).await?;
         }
         drop(tx);
 

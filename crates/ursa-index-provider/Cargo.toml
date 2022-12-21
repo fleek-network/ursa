@@ -17,12 +17,13 @@ cid.workspace = true
 db.workspace = true
 dirs.workspace = true
 forest_encoding.workspace = true
-forest_ipld.workspace = true
 futures.workspace = true
 fvm_ipld_blockstore.workspace = true
 fvm_ipld_car.workspace = true
+fvm_ipld_encoding.workspace = true
 libipld.workspace = true
 libipld-cbor.workspace = true
+libipld-core = { workspace = true, features = ["serde-codec"] }
 libp2p.workspace = true
 rand.workspace = true
 serde.workspace = true
@@ -35,4 +36,5 @@ tokio.workspace = true
 tracing.workspace = true
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
-ursa-utils ={ path = "../ursa-utils" }
+
+

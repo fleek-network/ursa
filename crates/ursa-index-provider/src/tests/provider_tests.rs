@@ -6,12 +6,11 @@ mod tests {
     };
 
     use anyhow::Error;
-    use cid::multihash::{Code, MultihashDigest};
-    use forest_ipld::Ipld;
+    use cid::{multihash::{Code, MultihashDigest}, Cid};
+    use libipld_core::ipld::Ipld;
     use surf::Error as SurfError;
     use tokio::task;
     use tracing::{error, info};
-    use ursa_utils::convert_cid;
 
     #[tokio::test]
     async fn test_create_and_get_add() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,9 +63,10 @@ mod tests {
                 .map_err(|e| SurfError::into_inner(e))?;
 
             let ad: Advertisement = forest_encoding::from_slice(&data)?;
-            let mut ad_entries_cid = forest_encoding::to_vec(&ad.clone().Entries.unwrap())?;
-            ad_entries_cid.drain(0..3);
-            let ad_link = Ipld::Link(convert_cid(ad_entries_cid));
+            let mut ad_entries = forest_encoding::to_vec(&ad.clone().Entries.unwrap())?;
+            ad_entries.drain(0..3);
+            let entries_cid = Cid::try_from(ad_entries)?;
+            let ad_link = Ipld::Link(entries_cid.into());
 
             let new_ad = Advertisement {
                 Entries: Some(ad_link),

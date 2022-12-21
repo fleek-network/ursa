@@ -10,10 +10,11 @@ use axum::{
 };
 use cid::{multihash::Code, Cid};
 use forest_encoding::Cbor;
-use forest_ipld::Ipld;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding;
 use libipld::codec::Encode;
 use libipld_cbor::DagCborCodec;
+use libipld_core::{ipld::Ipld, serde::to_ipld};
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use rand;
 use rand::Rng;
@@ -26,7 +27,6 @@ use std::{
 };
 use tracing::{info, trace};
 use ursa_store::{BlockstoreExt, UrsaStore};
-use ursa_utils::convert_cid;
 
 pub const HEAD_KEY: &str = "head";
 
@@ -122,14 +122,14 @@ where
     }
 
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()> {
-        let entries = forest_encoding::from_slice(&bytes).unwrap();
+        let entries = fvm_ipld_encoding::from_slice(&bytes).unwrap();
 
         if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
             return match self.store.db.put_obj(&chunk, Code::Blake2b256) {
                 Ok(cid) => {
-                    ad.Entries = Some(Ipld::Link(convert_cid(cid.to_bytes())));
+                    ad.Entries = Some(Ipld::Link(cid));
                     Ok(())
                 }
                 Err(e) => Err(anyhow!(format!("{e}"))),
@@ -144,10 +144,10 @@ where
         let keypair = self.keypair.clone();
         let current_head = head.take();
         if let Some(mut ad) = self.temp_ads.remove(&id) {
-            ad.PreviousID = current_head.map(|h| Ipld::Link(convert_cid(h.to_bytes())));
+            ad.PreviousID = current_head.map(|h| Ipld::Link(h));
             let sig = ad.sign(&keypair)?;
             ad.Signature = Ipld::Bytes(sig.into_protobuf_encoding());
-            let ipld_ad = forest_ipld::to_ipld(&ad)?;
+            let ipld_ad = to_ipld(&ad)?;
             let cid = self
                 .store
                 .blockstore()

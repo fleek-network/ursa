@@ -41,7 +41,6 @@ use std::time::Duration;
 use std::{collections::HashSet, iter};
 use tracing::error;
 use ursa_metrics::BITSWAP_REGISTRY;
-use ursa_utils::convert_cid;
 
 use crate::gossipsub::build_gossipsub;
 use crate::{
@@ -219,12 +218,12 @@ impl<P: StoreParams> Behaviour<P> {
         cid: Cid,
         providers: impl Iterator<Item = PeerId>,
     ) -> Result<QueryId> {
-        let cid = convert_cid(cid.to_bytes());
+        let cid = cid;
         Ok(self.bitswap.get(cid, providers))
     }
 
     pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) -> Result<QueryId> {
-        let cid = convert_cid(cid.to_bytes());
+        let cid = cid;
         Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
     }
 }
