@@ -3,6 +3,7 @@ use std::{str::FromStr, sync::Arc};
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
 use hyper::{body, StatusCode, Uri};
+use jsonrpc_v2::Error;
 use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
@@ -97,13 +98,17 @@ pub async fn get_block_handler(
                         let params = NetworkGetParams { cid: cid.clone() };
                         match get_block(params).await {
                             Ok(resp) => break resp,
-                            Err(_) => error!("request to RPC server failed"),
+                            Err(Error::Full { code, .. }) if code == 404 => return error_handler(
+                                StatusCode::NOT_FOUND,
+                                format!("failed to find content for {cid}"),
+                            ),
+                            _ => error!("querying the node provider failed")
                         }
                     }
                     None => {
                         return error_handler(
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("failed to contact node provider"),
+                            format!("failed to get data"),
                         )
                     }
                 }
@@ -112,7 +117,7 @@ pub async fn get_block_handler(
         None => {
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to find provider"),
+                format!("querying failed"),
             )
         }
     };
