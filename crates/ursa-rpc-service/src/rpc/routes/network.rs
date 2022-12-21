@@ -16,8 +16,8 @@ use crate::{
     },
     rpc::rpc_handler,
 };
-
 use tracing::error;
+
 pub type Result<T> = anyhow::Result<T, Error>;
 
 pub fn init() -> Router {

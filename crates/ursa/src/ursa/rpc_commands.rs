@@ -1,7 +1,9 @@
 use structopt::StructOpt;
 use tracing::{error, info};
-use ursa_rpc_client::functions::{get_file, put_file};
-use ursa_rpc_server::api::{NetworkGetFileParams, NetworkPutFileParams};
+use ursa_rpc_service::{
+    api::{NetworkGetFileParams, NetworkPutFileParams},
+    client::functions::{get_file, put_file},
+};
 
 #[derive(Debug, StructOpt)]
 pub enum RpcCommands {

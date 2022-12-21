@@ -1,12 +1,9 @@
-pub mod functions;
-
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
-use ursa_rpc_server::config::ServerConfig;
 
 /// Error object in a response
 #[derive(Deserialize)]
@@ -36,7 +33,7 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-async fn call<P, R>(
+pub async fn call<P, R>(
     method_name: &str,
     params: P,
     method: RpcMethod,
@@ -53,10 +50,12 @@ where
             .with_id(1)
             .finish();
 
-        let ServerConfig { mut port, addr } = ServerConfig::default();
-        if let Some(rpc_port) = rpc_port {
-            port = rpc_port;
-        }
+        let port = if let Some(rpc_port) = rpc_port {
+            rpc_port
+        } else {
+            4069
+        };
+        let addr = "0.0.0.0".to_string();
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
@@ -136,14 +135,14 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
 
-    use crate::functions::{get_block, put_file};
+    use crate::client::functions::{get_block, put_file};
 
+    use crate::api::{NetworkGetParams, NetworkPutFileParams};
     use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
     use libipld::store::DefaultParams;
-    use ursa_rpc_server::api::{NetworkGetParams, NetworkPutFileParams};
     use ursa_utils::convert_cid;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {

@@ -11,7 +11,7 @@ use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
-use ursa_rpc_server::{api::NodeNetworkInterface, server::Server};
+use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_tracker::TrackerRegistration;
 

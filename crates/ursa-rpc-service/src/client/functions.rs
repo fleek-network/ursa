@@ -1,14 +1,11 @@
 use jsonrpc_v2::Error;
 
-use ursa_rpc_server::{
-    api::{
-        NetworkGetFileParams, NetworkPutFileParams, NetworkPutFileResult, NETWORK_GET_FILE,
-        NETWORK_PUT_FILE,
-    },
-    api::{NetworkGetParams, NetworkGetResult, NETWORK_GET},
+use crate::api::{
+    NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkPutFileParams,
+    NetworkPutFileResult, NETWORK_GET, NETWORK_GET_FILE, NETWORK_PUT_FILE,
 };
 
-use crate::{
+use super::{
     call,
     RpcMethod::{Post, Put},
 };
