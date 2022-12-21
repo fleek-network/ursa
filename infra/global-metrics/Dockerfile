@@ -19,6 +19,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM debian:bullseye-slim
 
+WORKDIR /root
+
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     && apt-get clean \
@@ -26,8 +28,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists*
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/src/app/ /
+COPY --from=builder /usr/src/app/ .
 
 # run ursa node
 ENV RUST_LOG=info
-ENTRYPOINT ["/ursa-tracker"]
+ENTRYPOINT ["./ursa-tracker"]
