@@ -16,6 +16,7 @@ use std::{
 };
 use structopt::StructOpt;
 use tracing::{error, warn};
+use tracing_subscriber::filter::LevelFilter;
 
 pub mod identity;
 mod rpc_commands;
@@ -50,6 +51,12 @@ pub struct CliOpts {
     pub rpc: bool,
     #[structopt(short = "p", long, help = "Port used for JSON-RPC communication")]
     pub rpc_port: Option<u16>,
+    #[structopt(
+        short,
+        long,
+        help = "Set logging level: info (default), error, warn, debug, trace"
+    )]
+    pub log: Option<LevelFilter>,
 }
 
 impl CliOpts {
