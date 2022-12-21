@@ -60,6 +60,7 @@ impl From<Node> for PrometheusDiscoveryChunk {
         labels.insert("geohash".to_string(), node.geohash.clone());
         labels.insert("country_code".to_string(), node.country_code.clone());
         labels.insert("timezone".to_string(), node.timezone.clone());
+        labels.insert("agent".to_string(), node.agent.clone());
         PrometheusDiscoveryChunk::new(vec![format!("{}:{}", node.addr, node.http_port)], labels)
     }
 }
