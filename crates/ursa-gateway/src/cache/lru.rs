@@ -1,6 +1,6 @@
-use std::{collections::HashMap, hash::Hash, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use tokio::sync::RwLock;
 
 struct _Node<T> {
@@ -23,7 +23,7 @@ pub struct _Lru<K, V> {
 
 impl<K, V> _Lru<K, V>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Debug,
 {
     pub fn _new(cap: Option<usize>) -> Self {
         let nil = Arc::new(None);
@@ -60,7 +60,7 @@ where
 
     pub async fn _insert(&mut self, k: K, v: V) -> Result<()> {
         if self._contains(&k) {
-            return Ok(());
+            bail!("[LRU]: Key {k:?} existed");
         }
         if let Some(cap) = self._cap {
             if cap <= self._store.len() {
@@ -124,26 +124,26 @@ mod tests {
     where
         K: Hash + Eq,
     {
-        pub async fn k_from_head(&self) -> Vec<Arc<K>> {
+        pub async fn ref_from_head(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
             let mut head = Arc::clone(&self._head);
             'walk: loop {
                 head = if let Some(node) = head.as_ref() {
                     items.push(Arc::clone(&node._data));
-                    node._next.read().await.clone()
+                    Arc::clone(&*node._next.read().await)
                 } else {
                     break 'walk;
                 };
             }
             items
         }
-        pub async fn k_from_tail(&self) -> Vec<Arc<K>> {
+        pub async fn ref_from_tail(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
             let mut tail = Arc::clone(&self._tail);
             'walk: loop {
                 tail = if let Some(node) = tail.as_ref() {
                     items.push(Arc::clone(&node._data));
-                    node._prev.read().await.clone()
+                    Arc::clone(&*node._prev.read().await)
                 } else {
                     break 'walk;
                 }
@@ -152,8 +152,8 @@ mod tests {
         }
     }
 
-    pub fn ref_to_k<K: Clone>(vec: Vec<Arc<K>>) -> Vec<K> {
-        vec.into_iter().map(|k| k.as_ref().clone()).collect()
+    pub fn ref_to_key<'a, K: 'a>(vec: &'a [Arc<K>]) -> Vec<&'a K> {
+        vec.iter().map(|k| k.as_ref()).collect()
     }
 
     mod no_cap {
@@ -164,8 +164,8 @@ mod tests {
             let lru = _Lru::<&str, u8>::_new(None);
             assert_eq!(lru._cap, None);
             assert_eq!(lru.len(), 0);
-            assert!(lru.k_from_head().await.is_empty());
-            assert!(lru.k_from_tail().await.is_empty());
+            assert!(lru.ref_from_head().await.is_empty());
+            assert!(lru.ref_from_tail().await.is_empty());
         }
 
         #[tokio::test]
@@ -215,8 +215,8 @@ mod tests {
             lru._insert("a", 1).await.unwrap();
             lru._remove(&"a").await;
             assert_eq!(lru.len(), 0);
-            assert!(lru.k_from_head().await.is_empty());
-            assert!(lru.k_from_tail().await.is_empty());
+            assert!(lru.ref_from_head().await.is_empty());
+            assert!(lru.ref_from_tail().await.is_empty());
         }
 
         #[tokio::test]
@@ -228,8 +228,8 @@ mod tests {
             assert_eq!(lru.len(), 1);
             assert_eq!(lru._get(&"a"), None);
             assert_eq!(lru._get(&"b"), Some(&2));
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["b"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["b"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"b"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"b"]);
         }
 
         #[tokio::test]
@@ -241,8 +241,8 @@ mod tests {
             assert_eq!(lru.len(), 1);
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"a"]);
         }
 
         #[tokio::test]
@@ -256,18 +256,18 @@ mod tests {
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
             assert_eq!(lru._get(&"c"), Some(&3));
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a", "c"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["c", "a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a", &"c"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"c", &"a"]);
         }
 
         #[tokio::test]
         async fn insert_duplicate() {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
-            lru._insert("a", 1).await.unwrap();
+            assert!(lru._insert("a", 1).await.is_err());
             assert_eq!(lru.len(), 1);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"a"]);
         }
 
         #[tokio::test]
@@ -275,8 +275,8 @@ mod tests {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
             assert_eq!(lru.len(), 1);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"a"]);
         }
 
         #[tokio::test]
@@ -285,8 +285,8 @@ mod tests {
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
             assert_eq!(lru.len(), 2);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a", "b"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["b", "a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a", &"b"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"b", &"a"]);
         }
 
         #[tokio::test]
@@ -296,8 +296,8 @@ mod tests {
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
             assert_eq!(lru.len(), 3);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["a", "b", "c"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["c", "b", "a"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a", &"b", &"c"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"c", &"b", &"a"]);
         }
     }
 
@@ -308,20 +308,42 @@ mod tests {
         async fn new() {
             let lru = _Lru::<&str, u8>::_new(Some(3));
             assert_eq!(lru._cap, Some(3));
-            assert!(lru.k_from_head().await.is_empty());
-            assert!(lru.k_from_tail().await.is_empty());
+            assert!(lru.ref_from_head().await.is_empty());
+            assert!(lru.ref_from_tail().await.is_empty());
         }
 
         #[tokio::test]
-        async fn insert_exceed_cap() {
+        async fn insert_exceed_with_cap_0() {
+            let mut lru = _Lru::_new(Some(0));
+            assert!(lru._insert("a", 1).await.is_err());
+        }
+
+        #[tokio::test]
+        async fn insert_exceed_with_cap_1() {
+            let mut lru = _Lru::_new(Some(1));
+            lru._insert("a", 1).await.unwrap();
+            lru._insert("b", 2).await.unwrap();
+            lru._insert("c", 3).await.unwrap();
+            lru._insert("d", 4).await.unwrap();
+            assert_eq!(lru.len(), 1);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"d"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"d"]);
+            assert_eq!(lru._get(&"a"), None);
+            assert_eq!(lru._get(&"b"), None);
+            assert_eq!(lru._get(&"c"), None);
+            assert_eq!(lru._get(&"d"), Some(&4));
+        }
+
+        #[tokio::test]
+        async fn insert_exceed_with_cap_3() {
             let mut lru = _Lru::_new(Some(3));
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
             lru._insert("d", 4).await.unwrap();
             assert_eq!(lru.len(), 3);
-            assert_eq!(ref_to_k(lru.k_from_head().await), ["b", "c", "d"]);
-            assert_eq!(ref_to_k(lru.k_from_tail().await), ["d", "c", "b"]);
+            assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"b", &"c", &"d"]);
+            assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"d", &"c", &"b"]);
             assert_eq!(lru._get(&"a"), None);
             assert_eq!(lru._get(&"b"), Some(&2));
             assert_eq!(lru._get(&"c"), Some(&3));

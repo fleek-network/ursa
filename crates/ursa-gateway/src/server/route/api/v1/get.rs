@@ -9,7 +9,7 @@ use tracing::{debug, error};
 
 use super::Client;
 use crate::{
-    cache::tlrfu::TLRFUCache,
+    cache::tlrfu::Tlrfu,
     config::{GatewayConfig, IndexerConfig},
     indexer::model::IndexerResponse,
     server::model::HttpResponse,
@@ -17,7 +17,7 @@ use crate::{
 
 pub async fn get_block_handler(
     Path(cid): Path<String>,
-    Extension(cache): Extension<Arc<RwLock<TLRFUCache>>>,
+    Extension(cache): Extension<Arc<RwLock<Tlrfu>>>,
     Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
     Extension(client): Extension<Arc<Client>>,
 ) -> impl IntoResponse {
