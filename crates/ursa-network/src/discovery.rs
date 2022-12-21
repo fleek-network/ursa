@@ -84,10 +84,11 @@ impl DiscoveryBehaviour {
             .collect();
 
         // Kickoff bootstraps with initial delay if we are not a bootstrap node ourselves
-        let next_bootstrap = config
-            .bootstrapper
-            .not()
-            .then_some(Delay::new(INITIAL_BOOTSTRAP_DELAY));
+        let next_bootstrap = if !config.bootstrapper {
+            Some(Delay::new(INITIAL_BOOTSTRAP_DELAY))
+        } else {
+            None
+        };
 
         // setup kademlia config
         let mut kademlia = {
@@ -107,9 +108,11 @@ impl DiscoveryBehaviour {
             peers.insert(peer_id);
         }
 
-        let mdns = config
-            .mdns
-            .then_some(Mdns::new(Default::default()).expect("mDNS start"));
+        let mdns = if config.mdns {
+            Some(Mdns::new(Default::default()).expect("mDNS start"))
+        } else {
+            None
+        };
 
         Self {
             kademlia,
