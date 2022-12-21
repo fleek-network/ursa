@@ -60,6 +60,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
+    command: --config=/var/lib/grafana/grafana.ini
     restart: unless-stopped
     ports:
       - "3000:3000"

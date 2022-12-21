@@ -61,9 +61,6 @@ domain = "provider.ursa.earth"
 indexer_url = "https://dev.cid.contact"
 database_path = "~/.ursa/data/index_provider_db"
 
-[metrics_config]
-port = "4070"
-
 [server_config]
 port = 4069
 addr = "0.0.0.0"
