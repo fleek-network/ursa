@@ -1,9 +1,7 @@
 use structopt::StructOpt;
 use tracing::{error, info};
-use ursa_rpc_service::{
-    api::{NetworkGetFileParams, NetworkPutFileParams},
-    client::functions::{get_file, put_file},
-};
+use ursa_rpc_service::api::{NetworkGetFileParams, NetworkPutFileParams};
+use ursa_rpc_service::client::Client;
 
 #[derive(Debug, StructOpt)]
 pub enum RpcCommands {
@@ -34,7 +32,11 @@ impl RpcCommands {
                 let params = NetworkPutFileParams {
                     path: path.to_string(),
                 };
-                match put_file(params, *port).await {
+                let mut client = Client::default();
+                if let Some(server_port) = port {
+                    client.set_port(*server_port);
+                }
+                match client.put_file(params).await {
                     Ok(file) => {
                         info!("Put car file done: {:?}", file);
                     }
@@ -48,7 +50,11 @@ impl RpcCommands {
                     path: path.to_string(),
                     cid: cid.to_string(),
                 };
-                match get_file(params, *port).await {
+                let mut client = Client::default();
+                if let Some(server_port) = port {
+                    client.set_port(*server_port);
+                }
+                match client.get_file(params).await {
                     Ok(_result) => {
                         info!("file stored at {path:?}");
                     }

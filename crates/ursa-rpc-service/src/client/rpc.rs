@@ -1,9 +1,8 @@
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::error;
 
 /// Error object in a response
 #[derive(Deserialize)]
@@ -32,100 +31,27 @@ pub enum RpcMethod {
     Post,
 }
 
-/// Utility method for sending RPC requests over HTTP
-pub async fn call<P, R>(
+pub(crate) fn create_request<P: Serialize>(
     method_name: &str,
     params: P,
-    method: RpcMethod,
-    rpc_port: Option<u16>,
-) -> Result<R, Error>
-where
-    P: Serialize,
-    R: DeserializeOwned,
-{
-    if let Ok(value) = serde_json::to_value(params) {
-        let rpc_req = RequestObject::request()
+) -> Result<RequestObject, Error> {
+    match serde_json::to_value(params) {
+        Ok(value) => Ok(RequestObject::request()
             .with_method(method_name)
             .with_params(value)
             .with_id(1)
-            .finish();
-
-        let port = if let Some(rpc_port) = rpc_port {
-            rpc_port
-        } else {
-            4069
-        };
-        let addr = "0.0.0.0".to_string();
-        let api_url = format!("http://{addr}:{port}/rpc/v0");
-
-        info!("Using JSON-RPC v2 HTTP URL: {api_url}");
-        debug!("rpc_req {:?}", rpc_req);
-
-        // TODO(arslan): Add authentication
-        if let Ok(from_json) = surf::Body::from_json(&rpc_req) {
-            let mut http_res = match method {
-                RpcMethod::Post => surf::post(api_url)
-                    .content_type("application/json")
-                    .body(from_json)
-                    .await
-                    .unwrap(),
-                RpcMethod::Put => surf::put(api_url)
-                    .content_type("application/json")
-                    .body(from_json)
-                    .await
-                    .unwrap(),
-            };
-            let res = http_res.body_string().await.unwrap();
-
-            let code = http_res.status() as i64;
-
-            if code != 200 {
-                error!("[RPCClient] - server responded with http error code {code:?} - {res}");
-                return Err(Error::Full {
-                    message: format!("Error code from HTTP Response: {code}"),
-                    code,
-                    data: None,
-                });
-            }
-
-            // Return the parsed RPC result
-            let rpc_res: JsonRpcResponse<R> = match serde_json::from_str(&res) {
-                Ok(r) => r,
-                Err(e) => {
-                    return Err(Error::Full {
-                        data: None,
-                        code: 200,
-                        message: format!("Parse Error: {e}\nData: {res}"),
-                    })
-                }
-            };
-
-            match rpc_res {
-                JsonRpcResponse::Result { result, .. } => Ok(result),
-                JsonRpcResponse::Error { error, .. } => Err(Error::Full {
-                    data: None,
-                    code: error.code,
-                    message: error.message,
-                }),
-            }
-        } else {
-            error!("[RPCClient] - There was an while serializing the rpc request");
+            .finish()),
+        Err(_) => {
+            error!(
+            "[RPCClient] - There was an error while converting the params to serializable value"
+        );
             Err(Error::Full {
                 data: None,
                 code: 200,
-                message: "There was an while serializing the rpc request".to_string(),
+                message: "There was an error while converting the params to serializable value"
+                    .to_string(),
             })
         }
-    } else {
-        error!(
-            "[RPCClient] - There was an error while converting the params to serializable value"
-        );
-        Err(Error::Full {
-            data: None,
-            code: 200,
-            message: "There was an error while converting the params to serializable value"
-                .to_string(),
-        })
     }
 }
 
@@ -135,14 +61,14 @@ mod tests {
     use simple_logger::SimpleLogger;
     use tracing::log::LevelFilter;
 
-    use crate::client::functions::{get_block, put_file};
-
     use crate::api::{NetworkGetParams, NetworkPutFileParams};
+    use crate::client::Client;
     use cid::{multihash::Code, Cid};
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
     use libipld::ipld::Ipld;
     use libipld::store::DefaultParams;
+    use tracing::info;
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::<DefaultParams>::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -166,7 +92,8 @@ mod tests {
         let params = NetworkGetParams {
             cid: string_cid.clone(),
         };
-        match get_block(params).await {
+        let client = Client::default();
+        match client.get_block(params).await {
             Ok(v) => {
                 info!("Got the bytes ({v:?}) for cid({string_cid:?}) from server.");
             }
@@ -183,7 +110,8 @@ mod tests {
         let params = NetworkPutFileParams {
             path: "./car_files/ursa_major.car".to_string(),
         };
-        match put_file(params, None).await {
+        let client = Client::default();
+        match client.put_file(params).await {
             Ok(v) => {
                 println!("Put car file done: {v:?}");
             }
