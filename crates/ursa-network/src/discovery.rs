@@ -1,6 +1,8 @@
 //! Ursa Discovery implementation.
 
 use std::borrow::Cow;
+use std::ops::Not;
+use std::time::Duration;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::NonZeroUsize,
@@ -9,6 +11,9 @@ use std::{
 
 use crate::config::NetworkConfig;
 use anyhow::{anyhow, Error, Result};
+use futures_timer::Delay;
+use futures_util::FutureExt;
+use libp2p::kad::BootstrapOk;
 use libp2p::mdns::tokio::Behaviour as Mdns;
 use libp2p::swarm::derive_prelude::FromSwarm;
 use libp2p::{
@@ -26,7 +31,7 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use ursa_metrics::Recorder;
 
 pub const URSA_KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
@@ -50,6 +55,12 @@ pub struct DiscoveryBehaviour {
     events: VecDeque<DiscoveryEvent>,
     /// Optional MDNS protocol.
     mdns: Toggle<Mdns>,
+    /// Delay until kad bootstrap
+    next_bootstrap: Option<Delay>,
+    /// Bootstrap interval
+    bootstrap_interval: Duration,
+    /// Running bootstrap query id
+    bootstrap_query: Option<QueryId>,
 }
 
 impl DiscoveryBehaviour {
@@ -73,6 +84,12 @@ impl DiscoveryBehaviour {
             })
             .collect();
 
+        // run bootstrap with initial delay of 10s if we are not a bootstrapper
+        let next_bootstrap = config
+            .bootstrapper
+            .not()
+            .then_some(Delay::new(Duration::from_secs(10)));
+
         // setup kademlia config
         let mut kademlia = {
             let store = MemoryStore::new(local_peer_id);
@@ -91,16 +108,9 @@ impl DiscoveryBehaviour {
             peers.insert(peer_id);
         }
 
-        // boostrap
-        if let Err(error) = kademlia.bootstrap() {
-            warn!("Failed to bootstrap with Kademlia: {}", error);
-        }
-
-        let mdns = if config.mdns {
-            Some(Mdns::new(Default::default()).expect("mDNS start"))
-        } else {
-            None
-        };
+        let mdns = config
+            .mdns
+            .then_some(Mdns::new(Default::default()).expect("mDNS start"));
 
         Self {
             kademlia,
@@ -109,6 +119,9 @@ impl DiscoveryBehaviour {
             peer_info: HashMap::new(),
             events: VecDeque::new(),
             mdns: mdns.into(),
+            next_bootstrap,
+            bootstrap_interval: Duration::from_secs(config.bootstrap_interval),
+            bootstrap_query: None,
         }
     }
 
@@ -136,15 +149,20 @@ impl DiscoveryBehaviour {
         self.bootstrap_nodes.clone()
     }
 
-    fn handle_kad_event(&self, event: KademliaEvent) {
+    fn handle_kad_event(&mut self, event: KademliaEvent) {
         info!("[KademliaEvent] {:?}", event);
 
         if let KademliaEvent::OutboundQueryProgressed {
-            result: QueryResult::GetClosestPeers(Ok(closest_peers)),
+            result: QueryResult::Bootstrap(Ok(BootstrapOk { num_remaining, .. })),
             ..
         } = event
         {
-            let _peers = closest_peers.peers;
+            if num_remaining == 0 {
+                self.bootstrap_query = None;
+                if let Some(delay) = self.next_bootstrap.as_mut() {
+                    delay.reset(self.bootstrap_interval);
+                }
+            }
         }
     }
 
@@ -251,6 +269,26 @@ impl NetworkBehaviour for DiscoveryBehaviour {
                         peer_id,
                         connection,
                     })
+                }
+            }
+        }
+
+        // Run kademlia bootstraps periodically (if enabled)
+        if let Some(delay) = self.next_bootstrap.as_mut() {
+            // if no current query running, connected peers are under 12, and timer is ready
+            if self.bootstrap_query.is_none()
+                && self.peers.len() < 12
+                && delay.poll_unpin(cx).is_ready()
+            {
+                match self.kademlia.bootstrap() {
+                    Ok(query_id) => {
+                        self.bootstrap_query = Some(query_id);
+                    }
+                    Err(err) => {
+                        error!("Failed to bootstrap: {:?}", err);
+                        // 2x longer delay if bootstrap failed
+                        self.next_bootstrap = Some(Delay::new(self.bootstrap_interval * 2));
+                    }
                 }
             }
         }

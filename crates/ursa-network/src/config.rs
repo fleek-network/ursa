@@ -29,6 +29,8 @@ pub struct NetworkConfig {
     pub swarm_addrs: Vec<Multiaddr>,
     /// Bootstrap nodes.
     pub bootstrap_nodes: Vec<Multiaddr>,
+    /// Interval (in seconds) to run kademlia bootstraps at. Default is 300 (5 minutes).
+    pub bootstrap_interval: u64,
     /// Database path.
     pub database_path: PathBuf,
     /// user identity name
@@ -53,6 +55,7 @@ impl Default for NetworkConfig {
             relay_client: true,
             relay_server: true,
             bootstrap_nodes,
+            bootstrap_interval: 300, // 5 minutes
             bootstrapper: false,
             swarm_addrs: vec![
                 "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),

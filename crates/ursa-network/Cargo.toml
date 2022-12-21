@@ -20,6 +20,7 @@ forest_encoding.workspace = true
 forest_ipld.workspace = true
 futures.workspace = true
 futures-util.workspace = true
+futures-timer.workspace = true
 fvm_ipld_blockstore.workspace = true
 fvm_ipld_car.workspace = true
 jsonrpc-v2.workspace = true
