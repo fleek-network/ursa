@@ -152,25 +152,35 @@ impl DiscoveryBehaviour {
                 result: QueryResult::Bootstrap(res),
                 ..
             } => match res {
-                Ok(BootstrapOk { num_remaining, .. }) => {
+                Ok(BootstrapOk {
+                    num_remaining,
+                    peer,
+                }) => {
+                    info!("Bootstrap progressed, received: {peer}");
                     if num_remaining == 0 {
-                        info!("[KademliaEvent] Bootstrap complete");
+                        info!(
+                            "Bootstrap completed. Next bootstrap will start in {} minutes",
+                            self.bootstrap_interval.as_secs_f64() / 60.0
+                        );
                         self.next_bootstrap = Some(Delay::new(self.bootstrap_interval));
                     }
                 }
                 Err(e) => {
-                    warn!("[KademliaEvent] Bootstrap failed: {:?}", e);
+                    warn!("Bootstrap failed: {e:?}");
                     self.next_bootstrap = Some(Delay::new(self.bootstrap_interval * 2));
                 }
             },
             KademliaEvent::RoutingUpdated {
-                peer, is_new_peer, ..
+                peer,
+                is_new_peer,
+                addresses,
+                ..
             } => {
                 if is_new_peer {
-                    info!("[KademliaEvent] Routing updated for new peer: {}", peer);
+                    info!("Routing updated for new peer: {peer} - {addresses:?}");
                 }
             }
-            e => info!("[KademliaEvent] {:?}", e),
+            e => info!("[KademliaEvent] {e:?}"),
         }
     }
 
