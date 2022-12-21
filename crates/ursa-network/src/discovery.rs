@@ -1,7 +1,6 @@
 //! Ursa Discovery implementation.
 
 use std::borrow::Cow;
-use std::ops::Not;
 use std::time::Duration;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
