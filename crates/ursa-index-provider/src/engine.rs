@@ -23,7 +23,7 @@ use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
-use ursa_store::{BlockstoreExt, Dag, UrsaStore};
+use ursa_store::{Dag, UrsaStore};
 use ursa_utils::convert_cid;
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
@@ -48,10 +48,13 @@ async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
 ) -> Result<Response<Body>, ProviderError> {
     let cid =
         Cid::from_str(&cid).map_err(|e| ProviderError::InternalError(anyhow!(e.to_string())))?;
-    match state.store().blockstore().get_obj::<Vec<u8>>(&cid) {
+    match state.store().blockstore().get(&cid) {
         Ok(Some(d)) => Ok(Response::builder().body(Body::from(d)).unwrap()),
         Ok(None) => Err(ProviderError::NotFoundError(anyhow!("Block not found"))),
-        Err(e) => Err(ProviderError::InternalError(anyhow!(format!("{e}")))),
+        Err(e) => {
+            error!("{}", e);
+            Err(ProviderError::InternalError(anyhow!(format!("{e}"))))
+        }
     }
 }
 

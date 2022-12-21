@@ -11,7 +11,6 @@ use libipld::store::DefaultParams;
 use libipld::{Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
-use tracing::info;
 use ursa_utils::convert_cid;
 
 pub struct UrsaStore<S> {
@@ -154,8 +153,7 @@ where
             match self.db.get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
-                    info!("codec for cid {:?}", cid.codec());
-                    let next_block = Block::<DefaultParams>::new_unchecked(cid, data);
+                    let next_block = Block::<DefaultParams>::new(cid, data)?;
                     next_block.references(&mut current)?;
                     refs.insert(cid);
                 }

@@ -104,7 +104,7 @@ impl IntoResponse for ProviderError {
 pub trait ProviderInterface: Sync + Send + 'static {
     fn create(&mut self, ad: Advertisement) -> Result<usize>;
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
-    fn publish(&mut self, id: usize) -> Result<()>;
+    fn publish(&mut self, id: usize) -> Result<Advertisement>;
     fn create_announce_message(&mut self, peer_id: PeerId, domain: String) -> Result<Vec<u8>>;
 }
 
@@ -139,7 +139,7 @@ where
         Err(anyhow!("ad not found"))
     }
 
-    fn publish(&mut self, id: usize) -> Result<()> {
+    fn publish(&mut self, id: usize) -> Result<Advertisement> {
         let mut head = self.head.write().unwrap();
         let keypair = self.keypair.clone();
         let current_head = head.take();
@@ -154,7 +154,7 @@ where
                 .put_obj(&ipld_ad, Code::Blake2b256)?;
             self.store.db.write(HEAD_KEY, cid.to_bytes())?;
             *head = Some(cid);
-            return Ok(());
+            return Ok(ad);
         }
         Err(anyhow!("ad not found"))
     }

@@ -2,7 +2,7 @@ pub const BASE_PATH: &str = "./car_files";
 
 use crate::api::{NetworkInterface, NodeNetworkInterface};
 use axum::{
-    extract::{Multipart, Path, DefaultBodyLimit},
+    extract::{DefaultBodyLimit, Multipart, Path},
     http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -13,9 +13,9 @@ use db::Store;
 use futures::io::Cursor;
 use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
-use tower_http::limit::RequestBodyLimitLayer;
 use std::{str::FromStr, sync::Arc};
 use tokio::task;
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
 pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
@@ -83,7 +83,8 @@ where
             Err(NetworkError::BadRequest("No files found".to_string()))
         }
     });
-    Ok(upload_task.await
+    Ok(upload_task
+        .await
         .map_err(|err| NetworkError::InternalError(err.to_string()))?
         .map_err(|err| err)?)
 }
