@@ -10,8 +10,8 @@ use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec
 use libipld::store::DefaultParams;
 use libipld::{Block, Result};
 use libp2p_bitswap::BitswapStore;
-use tracing::info;
 use std::sync::Arc;
+use tracing::info;
 use ursa_utils::convert_cid;
 
 pub struct UrsaStore<S> {
@@ -137,7 +137,7 @@ pub trait Dag {
 
 impl<S> Dag for UrsaStore<S>
 where
-    S: Blockstore + Store + Sync + Send + 'static,
+    S: Blockstore + Sync + Send + 'static,
 {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let mut res = Vec::new();
@@ -151,7 +151,7 @@ where
             if refs.contains(&cid) {
                 continue;
             }
-            match self.blockstore().get(&convert_cid(cid.to_bytes()))? {
+            match self.db.get(&convert_cid(cid.to_bytes()))? {
                 Some(data) => {
                     res.push((convert_cid(cid.to_bytes()), data.clone()));
                     info!("codec for cid {:?}", cid.codec());
