@@ -65,7 +65,7 @@ impl RpcServer {
             .with_method("ursa_get_file", network::get_file_handler::<I>)
             .with_method("ursa_put_file", network::put_file_handler::<I>)
             .with_method("ursa_get_peers", network::get_peers::<I>)
-            .with_method("ursa_get_listener_addresses", network::get_listener_addresses::<I>);
+            .with_method("ursa_listener_addresses",network::get_listener_addresses::<I>);
 
         RpcServer(server.finish())
     }

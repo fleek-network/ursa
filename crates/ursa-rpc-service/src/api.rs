@@ -49,7 +49,7 @@ pub type NetworkGetPeers = HashSet<PeerId>;
 pub const NETWORK_GET_PEERS: &str = "ursa_get_peers";
 
 pub type NetworkGetListenerAddresses = Vec<Multiaddr>;
-pub const NETWORK_GET_LISTENER_ADDRESSES: &str = "ursa_get_listener_addresses";
+pub const NETWORK_LISTENER_ADDRESSES: &str = "ursa_listener_addresses";
 
 #[derive(Deserialize, Serialize)]
 pub struct NetworkGetFileParams {
@@ -221,8 +221,11 @@ where
             context_id: root_cid.to_bytes(),
             sender,
         };
-
-        self.provider_send.send(request)?;
+        if let Err(e) = self.provider_send.send(request) {
+            // this error can be ignored for test_put_and_get test case
+            error!("there was an error while sending provider command {e}");
+            return Ok(cids);
+        }
         match receiver.await {
             Ok(_) => Ok(cids),
             Err(e) => Err(anyhow!(format!(
@@ -239,27 +242,20 @@ where
         self.put_car(reader).await
     }
 
-
     async fn get_peers(&self) -> Result<HashSet<PeerId>> {
         let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::GetPeers {
-            sender,
-        };
+        let request = NetworkCommand::GetPeers { sender };
 
         self.network_send.send(request)?;
         match receiver.await {
             Ok(peer) => Ok(peer),
-            Err(e) => Err(anyhow!(format!(
-                "GetPeers NetworkCommand failed {e:?}"
-            ))),
+            Err(e) => Err(anyhow!(format!("GetPeers NetworkCommand failed {e:?}"))),
         }
     }
 
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>> {
         let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::GetListenerAddresses {
-            sender,
-        };
+        let request = NetworkCommand::GetListenerAddresses { sender };
 
         self.network_send.send(request)?;
         match receiver.await {

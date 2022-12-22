@@ -117,6 +117,10 @@ where
         self.command_sender.clone()
     }
 
+    pub fn command_receiever(&mut self) -> &mut Receiver<ProviderCommand> {
+        &mut self.command_receiver
+    }
+
     pub fn provider(&self) -> Provider<S> {
         self.provider.clone()
     }

@@ -62,5 +62,4 @@ where
             .merge(metrics.unwrap_or_else(Router::new))
             .layer(Extension(self.interface.clone()))
     }
-
 }

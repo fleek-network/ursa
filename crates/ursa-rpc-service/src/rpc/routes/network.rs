@@ -11,8 +11,8 @@ use jsonrpc_v2::{Data, Error, Params};
 
 use crate::{
     api::{
-        NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkInterface,
-        NetworkPutFileParams, NetworkPutFileResult, NetworkGetPeers, NetworkGetListenerAddresses,
+        NetworkGetFileParams, NetworkGetListenerAddresses, NetworkGetParams, NetworkGetPeers,
+        NetworkGetResult, NetworkInterface, NetworkPutFileParams, NetworkPutFileResult,
     },
     rpc::rpc_handler,
 };
@@ -84,9 +84,7 @@ where
     }
 }
 
-pub async fn get_peers<I>(
-    data: Data<Arc<I>>,
-) -> Result<NetworkGetPeers>
+pub async fn get_peers<I>(data: Data<Arc<I>>) -> Result<NetworkGetPeers>
 where
     I: NetworkInterface,
 {
@@ -99,9 +97,7 @@ where
     }
 }
 
-pub async fn get_listener_addresses<I>(
-    data: Data<Arc<I>>,
-) -> Result<NetworkGetListenerAddresses>
+pub async fn get_listener_addresses<I>(data: Data<Arc<I>>) -> Result<NetworkGetListenerAddresses>
 where
     I: NetworkInterface,
 {
@@ -109,12 +105,12 @@ where
         // for rpc server unit test
         Ok(Vec::from(["/ip4/127.0.0.1/tcp/6009".parse().unwrap()]))
     } else {
-    match data.0.get_listener_addresses().await {
-        Err(err) => {
-            error!("{:?}", err);
-            Err(Error::internal(err))
+        match data.0.get_listener_addresses().await {
+            Err(err) => {
+                error!("{:?}", err);
+                Err(Error::internal(err))
+            }
+            Ok(res) => Ok(res),
         }
-        Ok(res) => Ok(res),
-    }
     }
 }

@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
     use anyhow::Error;
     use async_fs::File;
     use futures::io::BufReader;
@@ -39,6 +41,7 @@ mod tests {
                 error!("[provider_engine] - {:?}", err);
             }
         });
+        thread::sleep(Duration::from_millis(2000));
 
         let _ = provider_sender.send(message);
         let _res = receiver.await?;
