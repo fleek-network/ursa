@@ -59,4 +59,4 @@ features = [
 ]
 
 [dev-dependencies]
-simple_logger.workspace = true
+tracing-subscriber.workspace = true
