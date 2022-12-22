@@ -111,11 +111,11 @@ impl Client {
                 }),
             }
         } else {
-            error!("[RPCClient] - There was an while serializing the rpc request");
+            error!("[RPCClient] - There was an error while serializing the rpc request");
             Err(Error::Full {
                 data: None,
                 code: 200,
-                message: "There was an while serializing the rpc request".to_string(),
+                message: "There was an error while serializing the rpc request".to_string(),
             })
         }
     }
