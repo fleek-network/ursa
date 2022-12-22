@@ -1,11 +1,11 @@
 use std::time::SystemTime;
 
-#[cfg(not(feature = "mock-time"))]
-pub fn now() -> SystemTime {
+#[cfg(not(test))]
+pub fn _now() -> SystemTime {
     SystemTime::now()
 }
 
-#[cfg(feature = "mock-time")]
+#[cfg(test)]
 mod mock_time {
     use std::cell::RefCell;
 
@@ -15,7 +15,7 @@ mod mock_time {
         static MOCK_TIME: RefCell<Option<SystemTime>> = RefCell::new(None);
     }
 
-    pub fn now() -> SystemTime {
+    pub fn _now() -> SystemTime {
         MOCK_TIME.with(|cell| {
             cell.borrow()
                 .as_ref()
@@ -33,5 +33,5 @@ mod mock_time {
     }
 }
 
-#[cfg(feature = "mock-time")]
+#[cfg(test)]
 pub use mock_time::*;

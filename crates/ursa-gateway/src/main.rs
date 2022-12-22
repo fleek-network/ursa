@@ -4,6 +4,7 @@ mod cli;
 mod config;
 mod indexer;
 mod server;
+mod util;
 mod worker;
 
 use std::{path::PathBuf, str::FromStr, sync::Arc};

@@ -5,9 +5,9 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use util::timer::now;
 
 use super::lru::Lru;
+use crate::util::timer::_now;
 
 struct Data {
     value: Vec<u8>,
@@ -104,7 +104,7 @@ impl Tlrfu {
             format!("[LRU]: Failed to insert LRU with key: {lru_k}, value: {key}")
         })?;
         self.used_size += v.len() as u64; // MAX = 2^64-1 bytes
-        let tll = now()
+        let tll = _now()
             .duration_since(UNIX_EPOCH)
             .context("Failed to get system time from unix epoch")?
             .as_nanos()
@@ -130,7 +130,7 @@ impl Tlrfu {
                 return Ok(());
             };
             if ttl
-                > now()
+                > _now()
                     .duration_since(UNIX_EPOCH)
                     .context("Failed to get system time from unix epoch")?
                     .as_nanos()
@@ -166,9 +166,8 @@ impl Tlrfu {
 
 #[cfg(test)]
 mod tests {
-    use util::timer::{clear_mock_time, set_mock_time};
-
     use super::*;
+    use crate::util::timer::{clear_mock_time, set_mock_time};
 
     #[tokio::test]
     async fn new() {
@@ -436,7 +435,7 @@ mod tests {
         cache._insert("b".into(), vec![1]).await.unwrap();
         cache._insert("c".into(), vec![2]).await.unwrap();
         set_mock_time(
-            now()
+            _now()
                 .checked_add(std::time::Duration::from_nanos(1_000_000_000))
                 .unwrap(),
         );
@@ -455,7 +454,7 @@ mod tests {
         cache._insert("b".into(), vec![1]).await.unwrap();
         cache._insert("c".into(), vec![2]).await.unwrap();
         set_mock_time(
-            now()
+            _now()
                 .checked_add(std::time::Duration::from_nanos(900_000_000))
                 .unwrap(),
         );
