@@ -130,7 +130,7 @@ mod tests {
     where
         K: Hash + Eq,
     {
-        pub async fn ref_from_head(&self) -> Vec<Arc<K>> {
+        async fn ref_from_head(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
             let mut head = Arc::clone(&self.head);
             'walk: loop {
@@ -143,7 +143,7 @@ mod tests {
             }
             items
         }
-        pub async fn ref_from_tail(&self) -> Vec<Arc<K>> {
+        async fn ref_from_tail(&self) -> Vec<Arc<K>> {
             let mut items = vec![];
             let mut tail = Arc::clone(&self.tail);
             'walk: loop {
@@ -158,7 +158,7 @@ mod tests {
         }
     }
 
-    pub fn ref_to_key<'a, K: 'a>(vec: &'a [Arc<K>]) -> Vec<&'a K> {
+    fn ref_to_key<'a, K: 'a>(vec: &'a [Arc<K>]) -> Vec<&'a K> {
         vec.iter().map(|k| k.as_ref()).collect()
     }
 
