@@ -59,7 +59,7 @@ impl Tlrfu {
             })?;
             lru.is_empty().then(|| self.freq.remove(&data.freq));
             data.freq += 1;
-            let lru = self.freq.entry(data.freq).or_insert(Lru::new(None));
+            let lru = self.freq.entry(data.freq).or_insert_with(|| Lru::new(None));
             let lru_k = lru
                 .get_tail_key()
                 .map(|tail_key| *tail_key + 1)
@@ -95,7 +95,7 @@ impl Tlrfu {
             self.ttl.remove(&data._tll);
         }
         let key = Arc::new(k);
-        let lru = self.freq.entry(1).or_insert(Lru::new(None));
+        let lru = self.freq.entry(1).or_insert_with(|| Lru::new(None));
         let lru_k = lru
             .get_tail_key()
             .map(|tail_key| *tail_key + 1)

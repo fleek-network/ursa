@@ -28,7 +28,7 @@ where
     pub fn new(cap: Option<usize>) -> Self {
         let nil = Arc::new(None);
         Self {
-            store: cap.map(HashMap::with_capacity).unwrap_or(HashMap::new()),
+            store: cap.map(HashMap::with_capacity).unwrap_or_default(),
             head: Arc::clone(&nil),
             tail: nil,
             cap,
