@@ -28,11 +28,7 @@ where
     pub fn _new(cap: Option<usize>) -> Self {
         let nil = Arc::new(None);
         Self {
-            _store: if let Some(cap) = cap {
-                HashMap::with_capacity(cap)
-            } else {
-                HashMap::new()
-            },
+            _store: cap.map(HashMap::with_capacity).unwrap_or(HashMap::new()),
             _head: Arc::clone(&nil),
             _tail: nil,
             _cap: cap,
@@ -46,11 +42,19 @@ where
             .map(|node| Arc::clone(&node._data))
     }
 
+    pub fn _get_tail_key(&self) -> Option<&K> {
+        self._tail.as_ref().as_ref().map(|node| node._data.as_ref())
+    }
+
     fn _contains(&self, k: &K) -> bool {
         self._store.contains_key(k)
     }
 
-    pub fn len(&self) -> usize {
+    pub fn _is_empty(&self) -> bool {
+        self._store.is_empty()
+    }
+
+    pub fn _len(&self) -> usize {
         self._store.len()
     }
 
@@ -64,10 +68,7 @@ where
         }
         if let Some(cap) = self._cap {
             if cap <= self._store.len() {
-                let first_key = self
-                    ._get_first_key()
-                    .context("[LRU]: Failed to get the first key while deleting.")?;
-                self._remove(first_key.as_ref()).await;
+                self._remove_head().await?;
             }
         }
         let key = Arc::new(k);
@@ -87,10 +88,15 @@ where
             },
         );
         self._tail = Arc::clone(&new_tail);
-        if self._head.as_ref().is_none() {
-            self._head = new_tail;
-        }
+        self._head.as_ref().is_none().then(|| self._head = new_tail);
         Ok(())
+    }
+
+    pub async fn _remove_head(&mut self) -> Result<Option<V>> {
+        let first_key = self
+            ._get_first_key()
+            .context("[LRU]: Failed to get the first key while deleting.")?;
+        Ok(self._remove(first_key.as_ref()).await)
     }
 
     pub async fn _remove(&mut self, k: &K) -> Option<V> {
@@ -163,7 +169,7 @@ mod tests {
         async fn new() {
             let lru = _Lru::<&str, u8>::_new(None);
             assert_eq!(lru._cap, None);
-            assert_eq!(lru.len(), 0);
+            assert_eq!(lru._len(), 0);
             assert!(lru.ref_from_head().await.is_empty());
             assert!(lru.ref_from_tail().await.is_empty());
         }
@@ -214,7 +220,7 @@ mod tests {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
             lru._remove(&"a").await;
-            assert_eq!(lru.len(), 0);
+            assert_eq!(lru._len(), 0);
             assert!(lru.ref_from_head().await.is_empty());
             assert!(lru.ref_from_tail().await.is_empty());
         }
@@ -224,8 +230,8 @@ mod tests {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
-            lru._remove(&"a").await;
-            assert_eq!(lru.len(), 1);
+            lru._remove_head().await.unwrap();
+            assert_eq!(lru._len(), 1);
             assert_eq!(lru._get(&"a"), None);
             assert_eq!(lru._get(&"b"), Some(&2));
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"b"]);
@@ -238,7 +244,7 @@ mod tests {
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
             lru._remove(&"b").await;
-            assert_eq!(lru.len(), 1);
+            assert_eq!(lru._len(), 1);
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
@@ -252,7 +258,7 @@ mod tests {
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
             lru._remove(&"b").await;
-            assert_eq!(lru.len(), 2);
+            assert_eq!(lru._len(), 2);
             assert_eq!(lru._get(&"a"), Some(&1));
             assert_eq!(lru._get(&"b"), None);
             assert_eq!(lru._get(&"c"), Some(&3));
@@ -265,7 +271,7 @@ mod tests {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
             assert!(lru._insert("a", 1).await.is_err());
-            assert_eq!(lru.len(), 1);
+            assert_eq!(lru._len(), 1);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"a"]);
         }
@@ -274,7 +280,7 @@ mod tests {
         async fn insert_one() {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
-            assert_eq!(lru.len(), 1);
+            assert_eq!(lru._len(), 1);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"a"]);
         }
@@ -284,7 +290,7 @@ mod tests {
             let mut lru = _Lru::_new(None);
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
-            assert_eq!(lru.len(), 2);
+            assert_eq!(lru._len(), 2);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a", &"b"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"b", &"a"]);
         }
@@ -295,7 +301,7 @@ mod tests {
             lru._insert("a", 1).await.unwrap();
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
-            assert_eq!(lru.len(), 3);
+            assert_eq!(lru._len(), 3);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"a", &"b", &"c"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"c", &"b", &"a"]);
         }
@@ -325,7 +331,7 @@ mod tests {
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
             lru._insert("d", 4).await.unwrap();
-            assert_eq!(lru.len(), 1);
+            assert_eq!(lru._len(), 1);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"d"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"d"]);
             assert_eq!(lru._get(&"a"), None);
@@ -341,7 +347,7 @@ mod tests {
             lru._insert("b", 2).await.unwrap();
             lru._insert("c", 3).await.unwrap();
             lru._insert("d", 4).await.unwrap();
-            assert_eq!(lru.len(), 3);
+            assert_eq!(lru._len(), 3);
             assert_eq!(ref_to_key(&lru.ref_from_head().await), [&"b", &"c", &"d"]);
             assert_eq!(ref_to_key(&lru.ref_from_tail().await), [&"d", &"c", &"b"]);
             assert_eq!(lru._get(&"a"), None);
