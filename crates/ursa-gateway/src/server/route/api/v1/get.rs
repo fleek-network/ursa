@@ -85,7 +85,7 @@ pub async fn get_block_handler(
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
-    let resp = match get_provider(&indexer_response) {
+    let resp = match get_provider(indexer_response) {
         Some(addrs) => {
             let mut addr_iter = addrs.into_iter();
 

@@ -7,18 +7,21 @@ use std::net::SocketAddrV4;
 use tracing::error;
 
 // Randomly chooses a provider and returns its addresses.
-pub fn get_provider(indexer_response: &IndexerResponse) -> Option<Vec<SocketAddrV4>> {
-    let provider = &indexer_response
-        .multihash_results
-        .get(0)
-        .unwrap()
-        .provider_results;
+pub fn get_provider(indexer_response: IndexerResponse) -> Option<Vec<SocketAddrV4>> {
+    // We expect that MultihashResults will have at most 1 element.
+    let providers = match indexer_response.multihash_results.get(0) {
+        Some(result) => &result.provider_results,
+        None => {
+            error!("indexer result did not contain a multi-hash result");
+            return None;
+        }
+    };
 
-    if !provider.is_empty() {
-        let len = provider.len();
+    if !providers.is_empty() {
+        let len = providers.len();
         let mut rng = rand::thread_rng();
         let rand_i = rng.gen_range(std::ops::Range { start: 0, end: len });
-        let multiaddrs = provider[rand_i as usize].provider.addrs.iter();
+        let multiaddrs = providers[rand_i as usize].provider.addrs.iter();
 
         let mut provider_addrs = Vec::new();
         for maddr in multiaddrs {
@@ -44,6 +47,7 @@ pub fn get_provider(indexer_response: &IndexerResponse) -> Option<Vec<SocketAddr
 
         Some(provider_addrs)
     } else {
+        error!("multi-hash result did not contain a provider");
         None
     }
 }
