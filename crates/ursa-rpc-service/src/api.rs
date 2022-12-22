@@ -9,7 +9,9 @@ use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader};
+use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::create_dir_all;
@@ -43,6 +45,12 @@ pub struct NetworkPutFileParams {
 pub type NetworkPutFileResult = String;
 pub const NETWORK_PUT_FILE: &str = "ursa_put_file";
 
+pub type NetworkGetPeers = HashSet<PeerId>;
+pub const NETWORK_GET_PEERS: &str = "ursa_get_peers";
+
+pub type NetworkGetListenerAddresses = Vec<Multiaddr>;
+pub const NETWORK_GET_LISTENER_ADDRESSES: &str = "ursa_get_listener_addresses";
+
 #[derive(Deserialize, Serialize)]
 pub struct NetworkGetFileParams {
     pub path: String,
@@ -72,6 +80,12 @@ pub trait NetworkInterface: Sync + Send + 'static {
 
     // Put a file using a local path
     async fn put_file(&self, path: String) -> Result<Vec<Cid>>;
+
+    // get peers from the network
+    async fn get_peers(&self) -> Result<HashSet<PeerId>>;
+
+    // get the addrresses that p2p node is listening on
+    async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
@@ -223,5 +237,36 @@ where
         let file = File::open(path.clone()).await?;
         let reader = BufReader::new(file);
         self.put_car(reader).await
+    }
+
+
+    async fn get_peers(&self) -> Result<HashSet<PeerId>> {
+        let (sender, receiver) = oneshot::channel();
+        let request = NetworkCommand::GetPeers {
+            sender,
+        };
+
+        self.network_send.send(request)?;
+        match receiver.await {
+            Ok(peer) => Ok(peer),
+            Err(e) => Err(anyhow!(format!(
+                "GetPeers NetworkCommand failed {e:?}"
+            ))),
+        }
+    }
+
+    async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>> {
+        let (sender, receiver) = oneshot::channel();
+        let request = NetworkCommand::GetListenerAddresses {
+            sender,
+        };
+
+        self.network_send.send(request)?;
+        match receiver.await {
+            Ok(addresses) => Ok(addresses),
+            Err(e) => Err(anyhow!(format!(
+                "GetListenerAddresses NetworkCommand failed {e:?}"
+            ))),
+        }
     }
 }

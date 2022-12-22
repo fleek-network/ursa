@@ -7,12 +7,11 @@ mod tests {
     use fvm_ipld_car::{load_car, CarReader};
     use std::path::Path;
     use std::sync::Arc;
-    use tracing::log::LevelFilter;
     use ursa_store::Dag;
 
     #[tokio::test]
     async fn test_stream() -> anyhow::Result<()> {
-        setup_logger(LevelFilter::Info);
+        setup_logger();
         let store = get_store();
         let store_2 = Arc::clone(&store);
 
