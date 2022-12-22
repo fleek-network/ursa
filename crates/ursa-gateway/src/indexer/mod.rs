@@ -3,11 +3,11 @@ pub mod model;
 use crate::indexer::model::IndexerResponse;
 use libp2p::multiaddr::Protocol;
 use rand::Rng;
-use std::net::IpAddr;
+use std::net::SocketAddrV4;
 use tracing::error;
 
 // Randomly chooses a provider and returns its addresses.
-pub fn get_provider(indexer_response: &IndexerResponse) -> Option<Vec<IpAddr>> {
+pub fn get_provider(indexer_response: &IndexerResponse) -> Option<Vec<SocketAddrV4>> {
     let provider = &indexer_response
         .multihash_results
         .get(0)
@@ -30,7 +30,16 @@ pub fn get_provider(indexer_response: &IndexerResponse) -> Option<Vec<IpAddr>> {
                     return None;
                 }
             };
-            provider_addrs.push(IpAddr::from(*ip));
+
+            let port = match components.get(1) {
+                Some(Protocol::Tcp(port)) => port,
+                _ => {
+                    error!("failed to get port");
+                    return None;
+                }
+            };
+
+            provider_addrs.push(SocketAddrV4::new(*ip, *port));
         }
 
         Some(provider_addrs)

@@ -2,13 +2,10 @@ use std::{str::FromStr, sync::Arc};
 
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
-use hyper::{body, StatusCode, Uri};
-use jsonrpc_v2::Error;
+use hyper::{body, Body, Request, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
-use ursa_rpc_service::api::NetworkGetParams;
-use ursa_rpc_service::client::functions::get_block;
 
 use super::Client;
 use crate::indexer::get_provider;
@@ -90,19 +87,34 @@ pub async fn get_block_handler(
 
     let resp = match get_provider(&indexer_response) {
         Some(addrs) => {
-            let mut addr_iter = addrs.iter();
+            let mut addr_iter = addrs.into_iter();
 
             loop {
                 match addr_iter.next() {
-                    Some(_) => {
-                        let params = NetworkGetParams { cid: cid.clone() };
-                        match get_block(params).await {
+                    Some(addr) => {
+                        let req = Request::builder()
+                            .method("POST")
+                            .uri(format!("http://{}:{}/rpc/v0", addr.ip(), addr.port()))
+                            .header("Content-Type", "application/json")
+                            .body(Body::from(
+                                json!({
+                                    "jsonrpc": "2.0",
+                                    "id": "id",
+                                    "method": "ursa_get_cid",
+                                    "params":{"cid": cid}
+                                })
+                                .to_string(),
+                            ))
+                            .expect("Request to be valid.");
+                        match client.request(req).await {
+                            Ok(resp) if resp.status() == 404 => {
+                                return error_handler(
+                                    StatusCode::NOT_FOUND,
+                                    format!("failed to find content for {cid}"),
+                                )
+                            }
                             Ok(resp) => break resp,
-                            Err(Error::Full { code, .. }) if code == 404 => return error_handler(
-                                StatusCode::NOT_FOUND,
-                                format!("failed to find content for {cid}"),
-                            ),
-                            _ => error!("querying the node provider failed")
+                            Err(e) => error!("querying the node provider failed {e}"),
                         }
                     }
                     None => {
@@ -122,6 +134,17 @@ pub async fn get_block_handler(
         }
     };
 
+    let block = match body::to_bytes(resp.into_body()).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("failed to read data from upstream: {}\n{}", endpoint, e);
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to read data from upstream: {endpoint}"),
+            );
+        }
+    };
+
     // TODO:
     // 1. filter FleekNetwork metadata
     // 2. pick node (round-robin)
@@ -134,7 +157,13 @@ pub async fn get_block_handler(
     // 1. maintain N workers keep track of indexing data
     // 2. cherry-pick closest node
     // 3. cache TTL
-    (StatusCode::OK, Json(json!({ "data": resp })))
+    (
+        StatusCode::OK,
+        Json(json!(HttpResponse {
+            message: None,
+            data: Some(block.to_vec())
+        })),
+    )
 }
 
 fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
