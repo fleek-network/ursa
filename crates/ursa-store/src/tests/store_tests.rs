@@ -7,7 +7,10 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
 
-    use crate::{tests::{setup_logger, get_store}, Dag};
+    use crate::{
+        tests::{get_store, setup_logger},
+        Dag,
+    };
 
     #[tokio::test]
     async fn test_dag_traversal() -> anyhow::Result<()> {
