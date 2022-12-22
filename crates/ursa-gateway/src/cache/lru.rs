@@ -64,7 +64,7 @@ where
 
     pub async fn _insert(&mut self, k: K, v: V) -> Result<()> {
         if self._contains(&k) {
-            bail!("[LRU]: Key {k:?} existed");
+            bail!("[LRU]: Key {k:?} existed while inserting");
         }
         if let Some(cap) = self._cap {
             if cap <= self._store.len() {

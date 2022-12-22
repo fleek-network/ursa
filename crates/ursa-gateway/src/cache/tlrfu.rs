@@ -1,39 +1,24 @@
 use std::{
-    cmp::{Ordering, PartialEq},
     collections::{BTreeMap, HashMap},
-    sync::Arc, // time::{SystemTime, UNIX_EPOCH},
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{bail, Context, Result};
 
 use super::lru::_Lru;
 
-#[derive(PartialEq, Eq)]
-struct MinTTL {
-    key: String,
-    ttl: u128,
-}
-impl PartialOrd for MinTTL {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        other.ttl.partial_cmp(&self.ttl)
-    }
-}
-impl Ord for MinTTL {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.ttl.cmp(&self.ttl)
-    }
-}
-
 struct Data {
     _value: Vec<u8>,
     _freq: usize,
     _key: usize,
+    _tll: u128,
 }
 
 pub struct Tlrfu {
     _store: HashMap<Arc<String>, Data>,
     _freq: BTreeMap<usize, _Lru<usize, Arc<String>>>, // shrinkable
-    // _ttl: BinaryHeap<MinTTL>,
+    _ttl: BTreeMap<u128, Arc<String>>,
     _used_size: u64,
     _max_size: u64,
     _ttl_buf: u128,
@@ -44,7 +29,7 @@ impl Tlrfu {
         Self {
             _store: HashMap::new(),
             _freq: BTreeMap::new(),
-            // _ttl: BinaryHeap::new(),
+            _ttl: BTreeMap::new(),
             _used_size: 0,
             _max_size: max_size,
             _ttl_buf: ttl_buf,
@@ -57,10 +42,6 @@ impl Tlrfu {
 
     pub fn _is_size_exceeded(&self, bytes: u64) -> bool {
         self._used_size + bytes > self._max_size
-    }
-
-    pub fn _is_ttl_elapsed(&self) -> bool {
-        false
     }
 
     pub async fn _get(&mut self, key: &String) -> Result<Option<&Vec<u8>>> {
@@ -106,12 +87,12 @@ impl Tlrfu {
             let key = lru._remove_head().await?.with_context(|| {
                 format!("[LRU]: Failed to get deleted head key at freq: {freq}")
             })?;
-            let data = self
-                ._store
-                .remove(key.as_ref())
-                .with_context(|| format!("[TLRFU]: Key {key} not found at store."))?;
+            let data = self._store.remove(key.as_ref()).with_context(|| {
+                format!("[TLRFU]: Key {key} not found at store while deleting.")
+            })?;
             lru._is_empty().then(|| self._freq.remove(&freq));
             self._used_size -= data._value.len() as u64;
+            self._ttl.remove(&data._tll);
         }
         let key = Arc::new(key);
         let lru = self._freq.entry(1).or_insert(_Lru::_new(None));
@@ -124,24 +105,63 @@ impl Tlrfu {
             .with_context(|| {
                 format!("[LRU]: Failed to insert LRU with key: {lru_key}, value: {key}")
             })?;
-        self._used_size += value.len() as u64; // MAX = 2^64-1 bytes?
+        self._used_size += value.len() as u64; // MAX = 2^64-1 bytes
+        let tll = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("Failed to get system time from unix epoch")?
+            .as_nanos()
+            + self._ttl_buf;
         self._store.insert(
-            key,
+            Arc::clone(&key),
             Data {
                 _value: value,
                 _freq: 1,
                 _key: lru_key,
+                _tll: tll,
             },
         );
+        self._ttl.insert(tll, key);
         Ok(())
     }
 
-    /*
-     * fn _process(&mut self, key: &String) {
-     * }
-     */
+    async fn _process_tll_clean_up(&mut self) -> Result<()> {
+        loop {
+            let (&ttl, key) = self
+                ._ttl
+                .iter_mut()
+                .next()
+                .context("[TLRFU]: Freq is empty while deleting. Maybe size too big?")?;
+            if ttl
+                <= SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .context("Failed to get system time from unix epoch")?
+                    .as_nanos()
+            {
+                let data = self._store.remove(key.as_ref()).with_context(|| {
+                    format!("[TLRFU]: Key {key} not found at store while deleting.")
+                })?;
+                let lru = self._freq.get_mut(&data._freq).with_context(|| {
+                    format!("[TLRFU]: Key: {key} not found at freq {}.", data._freq)
+                })?;
+                lru._remove(&data._key).await.with_context(|| {
+                    format!(
+                        "[TLRFU]: Failed to remove LRU key: {} not found at freq {}.",
+                        data._key, data._freq
+                    )
+                })?;
+                lru._is_empty().then(|| self._freq.remove(&data._freq));
+                self._used_size -= data._value.len() as u64;
+                self._ttl.remove(&data._tll);
+            }
+        }
+    }
 
-    pub fn purge(&mut self) {}
+    pub fn purge(&mut self) {
+        self._store = HashMap::new();
+        self._freq = BTreeMap::new();
+        self._ttl = BTreeMap::new();
+        self._used_size = 0;
+    }
 }
 
 #[cfg(test)]
@@ -153,7 +173,19 @@ mod tests {
         let cache = Tlrfu::new(200_000_000, 0);
         assert_eq!(cache._store.len(), 0);
         assert_eq!(cache._freq.len(), 0);
-        // assert_eq!(cache._ttl.len(), 0);
+        assert_eq!(cache._ttl.len(), 0);
+        assert_eq!(cache._used_size, 0);
+        assert_eq!(cache._max_size, 200_000_000);
+        assert_eq!(cache._ttl_buf, 0);
+    }
+
+    #[tokio::test]
+    async fn purge() {
+        let mut cache = Tlrfu::new(200_000_000, 0);
+        cache.purge();
+        assert_eq!(cache._store.len(), 0);
+        assert_eq!(cache._freq.len(), 0);
+        assert_eq!(cache._ttl.len(), 0);
         assert_eq!(cache._used_size, 0);
         assert_eq!(cache._max_size, 200_000_000);
         assert_eq!(cache._ttl_buf, 0);
@@ -184,7 +216,7 @@ mod tests {
         assert_eq!(lru._len(), 1);
         assert_eq!(lru._get(&0).unwrap().as_ref(), &"a".to_string());
 
-        // assert_eq!(cache._ttl.len(), 1);
+        assert_eq!(cache._ttl.len(), 1);
         assert_eq!(cache._used_size, 1);
     }
 
@@ -207,7 +239,7 @@ mod tests {
         assert_eq!(lru._len(), 2);
         assert_eq!(lru._get(&1).unwrap().as_ref(), &"b".to_string());
 
-        // assert_eq!(cache._ttl.len(), 1);
+        assert_eq!(cache._ttl.len(), 2);
         assert_eq!(cache._used_size, 2);
     }
 
@@ -323,7 +355,7 @@ mod tests {
         assert_eq!(lru._get(&1).unwrap().as_ref(), &"b".to_string());
         assert_eq!(lru._get(&2).unwrap().as_ref(), &"c".to_string());
 
-        // assert_eq!(cache._ttl.len(), 1);
+        assert_eq!(cache._ttl.len(), 2);
         assert_eq!(cache._used_size, 2);
     }
 
@@ -363,7 +395,7 @@ mod tests {
         assert_eq!(lru._len(), 1);
         assert_eq!(lru._get(&0).unwrap().as_ref(), &"a".to_string());
 
-        // assert_eq!(cache._ttl.len(), 1);
+        assert_eq!(cache._ttl.len(), 2);
         assert_eq!(cache._used_size, 2);
     }
 
@@ -391,7 +423,7 @@ mod tests {
         assert_eq!(lru._len(), 1);
         assert_eq!(lru._get(&0).unwrap().as_ref(), &"d".to_string());
 
-        // assert_eq!(cache._ttl.len(), 1);
+        assert_eq!(cache._ttl.len(), 1);
         assert_eq!(cache._used_size, 3);
     }
 }
