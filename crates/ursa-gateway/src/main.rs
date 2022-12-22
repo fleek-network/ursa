@@ -1,12 +1,16 @@
 mod admin;
+mod cache;
 mod cli;
 mod config;
 mod indexer;
 mod server;
+mod util;
+mod worker;
 
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
+use cache::Tlrfu;
 use clap::Parser;
 use cli::{Cli, Commands};
 use tokio::{sync::RwLock, task};
@@ -40,16 +44,22 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
+            let server_cache = Arc::new(RwLock::new(Tlrfu::new(
+                gateway_config.cache.max_size,
+                gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
+            )));
+            let admin_cache = Arc::clone(&server_cache);
+
             let server_config = Arc::new(RwLock::new(gateway_config));
-            let admin_config = server_config.clone();
+            let admin_config = Arc::clone(&server_config);
 
             task::spawn(async {
-                if let Err(e) = admin::start_server(admin_config).await {
+                if let Err(e) = admin::start_server(admin_config, admin_cache).await {
                     error!("[admin server] - {:?}", e);
                 };
             });
 
-            server::start_server(server_config).await?;
+            server::start_server(server_config, server_cache).await?;
         }
     }
 

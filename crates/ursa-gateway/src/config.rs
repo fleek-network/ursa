@@ -19,7 +19,7 @@ pub fn init_config(path: &PathBuf) -> Result<()> {
         .with_max_level(Level::INFO)
         .finish();
     if !path.exists() {
-        tracing::subscriber::with_default(subscriber, || info!("create config at: {:?}", path));
+        tracing::subscriber::with_default(subscriber, || info!("create config at: {path:?}"));
         let parent_dir = path
             .parent()
             .with_context(|| format!("couldn't get parent dir from: {path:?}"))?;
@@ -48,6 +48,7 @@ pub struct GatewayConfig {
     pub server: ServerConfig,
     pub admin_server: ServerConfig,
     pub indexer: IndexerConfig,
+    pub cache: CacheConfig,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -64,6 +65,12 @@ pub struct IndexerConfig {
     /*
      * pub mh_url: String,
      */
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct CacheConfig {
+    pub max_size: u64,
+    pub ttl_buf: u64,
 }
 
 impl Default for GatewayConfig {
@@ -95,6 +102,10 @@ impl Default for GatewayConfig {
                 /*
                  * mh_url: "https://cid.contact/multihash".into(),
                  */
+            },
+            cache: CacheConfig {
+                max_size: 200_000_000,  // 200MB
+                ttl_buf: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -139,5 +150,11 @@ impl GatewayConfig {
          *     self.indexer.mh_url = indexer_mh_url;
          * }
          */
+        if let Some(max_cache_size) = config.max_cache_size {
+            self.cache.max_size = max_cache_size;
+        }
+        if let Some(ttl_buf) = config.ttl_buf {
+            self.cache.ttl_buf = ttl_buf;
+        }
     }
 }
