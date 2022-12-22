@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub(crate) const DEFAULT_PORT: u16 = 4069;
+
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ServerConfig {
     pub port: u16,
@@ -14,7 +16,7 @@ impl ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            port: 4069,
+            port: DEFAULT_PORT,
             addr: "0.0.0.0".to_string(),
         }
     }
