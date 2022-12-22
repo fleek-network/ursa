@@ -33,7 +33,7 @@ pub async fn get_block_handler(
         );
     };
 
-    if let Ok(Some(bytes)) = cache.write().await._get(&cid.to_string()).await {
+    if let Ok(Some(bytes)) = cache.write().await.get(&cid.to_string()).await {
         return (StatusCode::OK, Json(json!(&bytes)));
     }
 
