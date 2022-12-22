@@ -4,6 +4,7 @@ use crate::api::{
     NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkPutFileParams,
     NetworkPutFileResult, NETWORK_GET, NETWORK_GET_FILE, NETWORK_PUT_FILE,
 };
+use crate::config::DEFAULT_PORT;
 use jsonrpc_v2::{Error, RequestObject};
 pub use rpc::*;
 use serde::de::DeserializeOwned;
@@ -19,7 +20,7 @@ pub struct Client {
 
 impl Default for Client {
     fn default() -> Self {
-        Client::new(Ipv4Addr::from([0, 0, 0, 0]), 4069)
+        Client::new(Ipv4Addr::from([0, 0, 0, 0]), DEFAULT_PORT)
     }
 }
 
