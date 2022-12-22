@@ -19,7 +19,7 @@ jobs:
           - name: check-fmt-clippy
             task: "ci"
           - name: test
-            task: "test-network"
+            task: "test"
           - name: doc
             task: "doc"
 

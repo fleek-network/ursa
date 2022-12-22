@@ -79,16 +79,19 @@ mod tests {
         assert_eq!(hash, "s000000");
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_self_ip_info() {
         get_ip_info(token(), "".to_string()).await.unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_remote_ip_info() {
         get_ip_info(token(), "8.8.8.8".to_string()).await.unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_dns_info() {
         get_ip_info(token(), "google.com".into()).await.unwrap();

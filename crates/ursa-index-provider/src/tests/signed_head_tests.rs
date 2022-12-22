@@ -6,7 +6,7 @@ mod tests {
     use libp2p::identity::Keypair;
 
     use crate::signed_head::SignedHead;
-    #[ignore]
+    
     #[test]
     fn test_decode_signed_msg() {
         // From Go implementation
