@@ -11,11 +11,3 @@ pub async fn get_config_handler(
 ) -> Json<Value> {
     Json(json!(&(*config.read().await)))
 }
-
-/*
- * pub async fn get_cache_handler(
- *     Extension(cache): Extension<Arc<RwLock<TLRFUCache>>>,
- * ) -> Json<Value> {
- *     Json(json!(&(*cache.read().await)))
- * }
- */

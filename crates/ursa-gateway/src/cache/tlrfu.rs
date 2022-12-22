@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use ursa_utils::timer::now;
+use util::timer::now;
 
 use super::lru::Lru;
 
@@ -166,7 +166,7 @@ impl Tlrfu {
 
 #[cfg(test)]
 mod tests {
-    use ursa_utils::timer::mock_time::{clear_mock_time, set_mock_time};
+    use util::timer::mock_time::{clear_mock_time, set_mock_time};
 
     use super::*;
 
