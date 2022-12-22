@@ -31,19 +31,15 @@ jobs:
           # terraform_version: 0.13.0:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-
       - name: Terraform Format
         id: fmt
         run: terraform fmt -check
 
-      # @todo: are we using docker image tags like ${{ github.sha }}?
       - name: Setup Terraform variables
         id: vars
         run: |-
           cat > pipeline.auto.tfvars <<EOF
-          k8s_ursa_docker_image = "ghcr.io/psychedelic/ursa:latest"
-          ghcr_registry_username = "${{ secrets.TF_GHCR_USER }}"
-          ghcr_registry_password = "${{ secrets.TF_GHCR_PASS }}"
+          k8s_ursa_docker_image = "ghcr.io/fleek-network/ursa:main"
           EOF
 
       - name: Terraform Init
