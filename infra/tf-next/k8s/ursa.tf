@@ -25,10 +25,6 @@ resource "kubernetes_daemonset" "ursa_node" {
         }
       }
       spec {
-        image_pull_secrets {
-          name = "dockerconfigjson"
-        }
-
         container {
           image = var.k8s_ursa_docker_image
           name  = "ursa"
@@ -106,22 +102,21 @@ resource "kubernetes_daemonset" "ursa_node" {
   }
 }
 
-# we might not need the service as long as the ports are exposed on host?
-# resource "kubernetes_service" "ursa" {
-#   metadata {
-#     name      = "ursa"
-#     namespace = kubernetes_namespace.ursa.metadata.0.name
-#   }
-#   spec {
-#     selector = {
-#       app = kubernetes_daemonset.ursa_node.spec.0.template.0.metadata.0.labels.app
-#     }
-#     type = "NodePort"
+resource "kubernetes_service" "ursa" {
+  metadata {
+    name      = "ursa"
+    namespace = kubernetes_namespace.ursa.metadata.0.name
+  }
+  spec {
+    selector = {
+      app = kubernetes_daemonset.ursa_node.spec.0.template.0.metadata.0.labels.app
+    }
+    type = "NodePort"
 
-#     port {
-#       node_port   = 30201
-#       port        = 80
-#       target_port = 80
-#     }
-#   }
-# }
+    port {
+      node_port   = 30201
+      port        = 80
+      target_port = 80
+    }
+  }
+}

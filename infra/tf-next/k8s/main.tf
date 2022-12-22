@@ -2,41 +2,41 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.0.0"
+      version = "~> 2.0"
     }
 
     digitalocean = {
       source  = "digitalocean/digitalocean"
-      version = "2.21.0"
+      version = "~> 2.0"
+    }
+
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.0"
     }
   }
 }
 
 resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
-  region = var.do_region
-  name   = "ursa-${var.do_region}"
+  name    = var.cluster_name
+  region  = var.region
+  version = var.cluster_version
 
-  version = "1.23.9-do.0"
-
-  #   tags = ["my-tag"]
-
-  # This default node pool is mandatory
   node_pool {
     name       = "ursa-main"
-    size       = var.k8s_droplet_size
+    size       = var.default_droplet_size
     auto_scale = true
     min_nodes  = var.k8s_min_node_count
     max_nodes  = var.k8s_max_node_count
     tags       = ["ursa-main"]
   }
-
 }
 
 resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
   cluster_id = digitalocean_kubernetes_cluster.ursa_cluster.id
   auto_scale = false
   name       = "ursa-bootstrap"
-  size       = var.k8s_droplet_size
+  size       = var.default_droplet_size
   node_count = 2
   tags       = ["ursa-bootstrap"]
 }
@@ -59,7 +59,6 @@ resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
 #     priority = "high"
 #   }
 # }
-
 
 # Kubernetes Provider
 
@@ -85,3 +84,12 @@ provider "kubernetes" {
   )
 }
 
+provider "helm" {
+  kubernetes {
+    host  = digitalocean_kubernetes_cluster.ursa_cluster.endpoint
+    token = digitalocean_kubernetes_cluster.ursa_cluster.kube_config[0].token
+    cluster_ca_certificate = base64decode(
+      digitalocean_kubernetes_cluster.ursa_cluster.kube_config[0].cluster_ca_certificate
+    )
+  }
+}

@@ -16,7 +16,7 @@ variable "project_description" {
 
 variable "project_purpose" {
   type        = string
-  default     = "Nebula"
+  default     = "Major"
   description = "Purpose of the project in DigitalOcean"
 }
 
@@ -26,19 +26,28 @@ variable "project_stage" {
   description = "Stage of the project in DigitalOcean"
 }
 
-###########
-# ghcr.io #
-###########
-variable "ghcr_registry_username" {
-  default = "user"
+variable "top_level_domains" {
+  type        = list(string)
+  default     = ["testnet.ursa.earth"]
+  description = "Top level domains to create records and pods for"
 }
-variable "ghcr_registry_password" {
-  default = "pass"
+
+variable "lets_enrypt_email" {
+  type        = string
+  default     = "major@ursa.earth"
+  description = "Let's Encrypt admin email"
+}
+
+variable "lets_encrypt_env" {
+  type        = string
+  default     = "prod"
+  description = "Lets Encrypt `staging` or `prod`"
 }
 
 ###########
 # Images  #
 ###########
 variable "k8s_ursa_docker_image" {
-  default = "nginx"
+  default     = "nginx"
+  description = "Ursa node docker image"
 }

@@ -1,6 +1,6 @@
 terraform {
   cloud {
-    organization = "fleek"
+    organization = "fleek-network"
 
     workspaces {
       name = "ursa-testnet"

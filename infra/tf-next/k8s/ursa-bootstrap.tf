@@ -25,17 +25,9 @@ resource "kubernetes_daemonset" "ursa_bootstrap_node" {
         }
       }
       spec {
-        image_pull_secrets {
-          name = "dockerconfigjson"
-        }
-
         container {
           image = var.k8s_ursa_docker_image
           name  = "ursa"
-          port {
-            container_port = 4069
-          }
-
           port {
             container_port = 6009
             host_port      = 6009
@@ -106,7 +98,6 @@ resource "kubernetes_daemonset" "ursa_bootstrap_node" {
   }
 }
 
-# we might not need the service as long as the ports are exposed on host?
 # resource "kubernetes_service" "ursa" {
 #   metadata {
 #     name      = "ursa"
