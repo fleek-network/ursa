@@ -51,7 +51,6 @@ pub async fn start_server(
 
     let app = Router::new()
         .route("/config", get(get_config_handler))
-        // .route("/cache", get(get_cache_handler))
         .route("/purge-cache", post(purge_cache_handler))
         .layer(Extension(config))
         .layer(Extension(cache));
