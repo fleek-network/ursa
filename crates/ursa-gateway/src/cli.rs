@@ -65,4 +65,7 @@ pub struct DaemonCmdOpts {
     /// max cache size (bytes)
     #[arg(long)]
     pub max_cache_size: Option<u64>,
+    /// cache ttl (ms)
+    #[arg(long)]
+    pub ttl_buf: Option<u64>,
 }

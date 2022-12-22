@@ -9,7 +9,7 @@ use tracing::{debug, error};
 
 use super::Client;
 use crate::{
-    cache::tlrfu::Tlrfu,
+    cache::Tlrfu,
     config::{GatewayConfig, IndexerConfig},
     indexer::model::IndexerResponse,
     server::model::HttpResponse,

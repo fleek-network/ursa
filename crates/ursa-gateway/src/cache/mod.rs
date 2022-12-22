@@ -1,2 +1,3 @@
 mod lru;
-pub mod tlrfu;
+mod tlrfu;
+pub use tlrfu::*;

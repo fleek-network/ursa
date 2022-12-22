@@ -70,6 +70,7 @@ pub struct IndexerConfig {
 #[derive(Deserialize, Serialize)]
 pub struct CacheConfig {
     pub max_size: u64,
+    pub ttl_buf: u64,
 }
 
 impl Default for GatewayConfig {
@@ -103,7 +104,8 @@ impl Default for GatewayConfig {
                  */
             },
             cache: CacheConfig {
-                max_size: 200_000_000, // 200MB
+                max_size: 200_000_000,  // 200MB
+                ttl_buf: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -150,6 +152,9 @@ impl GatewayConfig {
          */
         if let Some(max_cache_size) = config.max_cache_size {
             self.cache.max_size = max_cache_size;
+        }
+        if let Some(ttl_buf) = config.ttl_buf {
+            self.cache.ttl_buf = ttl_buf;
         }
     }
 }

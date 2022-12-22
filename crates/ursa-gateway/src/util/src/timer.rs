@@ -6,7 +6,7 @@ pub fn now() -> SystemTime {
 }
 
 #[cfg(feature = "mock-time")]
-pub mod mock_time {
+mod mock_time {
     use std::cell::RefCell;
 
     use super::*;
@@ -34,4 +34,4 @@ pub mod mock_time {
 }
 
 #[cfg(feature = "mock-time")]
-pub use mock_time::now;
+pub use mock_time::*;

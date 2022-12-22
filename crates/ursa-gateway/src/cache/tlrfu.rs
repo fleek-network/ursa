@@ -166,7 +166,7 @@ impl Tlrfu {
 
 #[cfg(test)]
 mod tests {
-    use util::timer::mock_time::{clear_mock_time, set_mock_time};
+    use util::timer::{clear_mock_time, set_mock_time};
 
     use super::*;
 

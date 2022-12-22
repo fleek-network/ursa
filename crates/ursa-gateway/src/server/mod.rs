@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    cache::tlrfu::Tlrfu,
+    cache::Tlrfu,
     config::{GatewayConfig, ServerConfig},
 };
 

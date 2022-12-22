@@ -17,7 +17,7 @@ use tracing::info;
 
 use crate::{
     admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
-    cache::tlrfu::Tlrfu,
+    cache::Tlrfu,
     config::{GatewayConfig, ServerConfig},
 };
 
