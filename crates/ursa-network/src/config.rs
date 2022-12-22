@@ -1,4 +1,3 @@
-use dirs::home_dir;
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

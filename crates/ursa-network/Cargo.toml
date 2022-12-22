@@ -14,7 +14,6 @@ async-trait.workspace = true
 bytes.workspace = true
 cid.workspace = true
 db.workspace = true
-dirs.workspace = true
 fnv.workspace = true
 futures.workspace = true
 futures-util.workspace = true
