@@ -13,20 +13,22 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use cid::Cid;
 use libipld::store::StoreParams;
-use libp2p::dcutr;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
+    dcutr::behaviour::Behaviour as Dcutr,
     gossipsub::{
         error::{PublishError, SubscriptionError},
         Gossipsub, IdentTopic as Topic, MessageId, PeerScoreParams, PeerScoreThresholds,
     },
     identify::{Behaviour as Identify, Config as IdentifyConfig},
     identity::Keypair,
-    kad,
+    kad::{store::MemoryStore, Kademlia, KademliaConfig},
+    mdns::tokio::Behaviour as Mdns,
+    multiaddr::Protocol,
     ping::Behaviour as Ping,
     relay::v2::{
         client::Client as RelayClient,
@@ -36,20 +38,22 @@ use libp2p::{
     swarm::NetworkBehaviour,
     Multiaddr, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore, QueryId};
+use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore};
+use std::borrow::Cow;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 use std::{collections::HashSet, iter};
-use tracing::error;
+use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
 
 use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
-    discovery::DiscoveryBehaviour,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
+pub const KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
 fn ursa_agent() -> String {
     format!("ursa/{}", env!("CARGO_PKG_VERSION"))
@@ -68,22 +72,25 @@ pub struct Behaviour<P: StoreParams> {
     autonat: Toggle<Autonat>,
 
     /// Relay client. Used to listen on a relay for incoming connections.
-    relay_client: Toggle<RelayClient>,
+    pub(crate) relay_client: Toggle<RelayClient>,
 
     /// Relay server. Used to allow other peers to route through the node
     relay_server: Toggle<RelayServer>,
 
     /// DCUtR
-    dcutr: Toggle<dcutr::behaviour::Behaviour>,
+    dcutr: Toggle<Dcutr>,
+
+    /// mDNS LAN peer discovery
+    mdns: Toggle<Mdns>,
+
+    /// Kademlia peer discovery
+    pub(crate) kad: Kademlia<MemoryStore>,
 
     /// Bitswap for exchanging data between blocks between peers.
     pub(crate) bitswap: Bitswap<P>,
 
     /// Ursa's gossiping protocol for message propagation.
     pub(crate) gossipsub: Gossipsub,
-
-    /// Kademlia discovery and bootstrap.
-    pub(crate) discovery: DiscoveryBehaviour,
 
     /// request/response protocol implementation for [`UrsaProtocol`]
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
@@ -95,6 +102,7 @@ impl<P: StoreParams> Behaviour<P> {
         config: &NetworkConfig,
         bitswap_store: S,
         relay_client: Option<libp2p::relay::v2::client::Client>,
+        peers: &mut HashSet<PeerId>,
     ) -> Self {
         let local_public_key = keypair.public();
         let local_peer_id = PeerId::from(local_public_key.clone());
@@ -108,15 +116,12 @@ impl<P: StoreParams> Behaviour<P> {
             .with_peer_score(PeerScoreParams::default(), PeerScoreThresholds::default())
             .expect("PeerScoreParams and PeerScoreThresholds");
 
-        // Setup the discovery behaviour
-        let discovery = DiscoveryBehaviour::new(keypair, config);
-
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
             // cargo tests will attempt to register duplicate registries, can ignore safely
-            error!("Failed to register bitswap metrics: {}", e);
+            warn!("Failed to register bitswap metrics: {}", e);
         }
 
         // Setup the identify behaviour
@@ -159,9 +164,39 @@ impl<P: StoreParams> Behaviour<P> {
                 if relay_client.is_none() {
                     panic!("relay client not instantiated");
                 }
-                dcutr::behaviour::Behaviour::new()
+                Dcutr::new()
             })
             .into();
+
+        let mdns = config
+            .mdns
+            .then(|| libp2p::mdns::tokio::Behaviour::new(Default::default()).expect("mDNS start"))
+            .into();
+
+        // setup the kademlia behaviour
+        let mut kad = {
+            let store = MemoryStore::new(local_peer_id);
+            // todo(botch): move replication factor to config
+            let replication_factor = NonZeroUsize::new(8).unwrap();
+            let mut kad_config = KademliaConfig::default();
+            kad_config
+                .set_protocol_names(vec![Cow::from(KAD_PROTOCOL)])
+                .set_replication_factor(replication_factor);
+
+            Kademlia::with_config(local_peer_id, store, kad_config.clone())
+        };
+
+        // init bootstraps
+        for addr in config.bootstrap_nodes.iter() {
+            if let Some(Protocol::P2p(mh)) = addr.to_owned().pop() {
+                let peer_id = PeerId::from_multihash(mh).unwrap();
+                info!("Adding bootstrap node: {peer_id} - {addr}");
+                kad.add_address(&peer_id, addr.clone());
+                peers.insert(peer_id);
+            } else {
+                warn!("Could not parse bootstrap addr {addr}");
+            }
+        }
 
         Behaviour {
             ping,
@@ -172,9 +207,16 @@ impl<P: StoreParams> Behaviour<P> {
             bitswap,
             identify,
             gossipsub,
-            discovery,
+            kad,
+            mdns,
             request_response,
         }
+    }
+
+    pub fn add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
+        self.bitswap.add_address(peer_id, addr.clone());
+        self.kad.add_address(peer_id, addr.clone());
+        self.request_response.add_address(peer_id, addr);
     }
 
     pub fn publish(
@@ -189,20 +231,8 @@ impl<P: StoreParams> Behaviour<P> {
         self.autonat.as_ref().and_then(|a| a.public_address())
     }
 
-    pub fn peers(&self) -> HashSet<PeerId> {
-        self.discovery.peers().clone()
-    }
-
-    pub fn is_relay_client_enabled(&self) -> bool {
-        self.relay_client.is_enabled()
-    }
-
-    pub fn discovery(&mut self) -> &mut DiscoveryBehaviour {
-        &mut self.discovery
-    }
-
-    pub fn bootstrap(&mut self) -> Result<kad::QueryId, Error> {
-        self.discovery.bootstrap()
+    pub fn bootstrap(&mut self) -> Result<libp2p::kad::QueryId> {
+        self.kad.bootstrap().map_err(|e| e.into())
     }
 
     pub fn subscribe(&mut self, topic: &Topic) -> Result<bool, SubscriptionError> {
@@ -217,11 +247,15 @@ impl<P: StoreParams> Behaviour<P> {
         &mut self,
         cid: Cid,
         providers: impl Iterator<Item = PeerId>,
-    ) -> Result<QueryId> {
+    ) -> Result<libp2p_bitswap::QueryId> {
         Ok(self.bitswap.get(cid, providers))
     }
 
-    pub fn sync_block(&mut self, cid: Cid, providers: Vec<PeerId>) -> Result<QueryId> {
+    pub fn sync_block(
+        &mut self,
+        cid: Cid,
+        providers: Vec<PeerId>,
+    ) -> Result<libp2p_bitswap::QueryId> {
         Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
     }
 }

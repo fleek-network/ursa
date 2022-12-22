@@ -27,6 +27,8 @@ use libp2p::{
     },
     identify::Event as IdentifyEvent,
     identity::Keypair,
+    kad::{BootstrapOk, KademliaEvent, QueryResult},
+    mdns::Event as MdnsEvent,
     multiaddr::Protocol,
     ping::Event as PingEvent,
     relay::v2::client::Client as RelayClient,
@@ -53,7 +55,7 @@ use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, UrsaStore};
 
-use crate::discovery::{DiscoveryEvent, URSA_KAD_PROTOCOL};
+use crate::behaviour::KAD_PROTOCOL;
 use crate::transport::build_transport;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
@@ -196,6 +198,10 @@ pub struct UrsaService<S> {
     _pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
     /// Pending responses.
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
+    /// Connected peers.
+    peers: HashSet<PeerId>,
+    /// Bootstrap multiaddrs
+    bootstraps: Vec<Multiaddr>,
 }
 
 impl<S> UrsaService<S>
@@ -232,7 +238,8 @@ where
 
         let bitswap_store = BitswapStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client);
+        let mut peers = HashSet::new();
+        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client, &mut peers);
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(2 << 9))
@@ -249,10 +256,7 @@ where
             .build();
 
         for to_dial in &config.bootstrap_nodes {
-            swarm
-                .dial(to_dial.clone())
-                .map_err(|err| anyhow!("{}", err))
-                .unwrap();
+            swarm.dial(to_dial.clone())?;
         }
 
         for addr in &config.swarm_addrs {
@@ -270,6 +274,12 @@ where
         let (event_sender, _event_receiver) = unbounded_channel();
         let (command_sender, command_receiver) = unbounded_channel();
 
+        if !config.bootstrapper && !config.bootstrap_nodes.is_empty() {
+            if let Err(e) = swarm.behaviour_mut().bootstrap() {
+                warn!("Failed to bootstrap: {}", e);
+            }
+        }
+
         Ok(UrsaService {
             swarm,
             store,
@@ -281,6 +291,8 @@ where
             bitswap_queries: Default::default(),
             _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
+            peers,
+            bootstraps: config.bootstrap_nodes.clone(),
         })
     }
 
@@ -344,7 +356,7 @@ where
                     peer_id
                 );
 
-                if self.swarm.behaviour().peers().contains(&peer_id) {
+                if self.peers.contains(&peer_id) {
                     trace!(
                         "[IdentifyEvent::Received] - peer {} already known!",
                         peer_id
@@ -355,26 +367,14 @@ where
                 if info
                     .protocols
                     .iter()
-                    .any(|name| name.as_bytes() == URSA_KAD_PROTOCOL)
+                    .any(|name| name.as_bytes() == KAD_PROTOCOL)
                 {
-                    self.swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&peer_id);
+                    let behaviour = self.swarm.behaviour_mut();
+
+                    behaviour.gossipsub.add_explicit_peer(&peer_id);
 
                     for address in info.listen_addrs {
-                        self.swarm
-                            .behaviour_mut()
-                            .bitswap
-                            .add_address(&peer_id, address.clone());
-                        self.swarm
-                            .behaviour_mut()
-                            .discovery
-                            .add_address(&peer_id, address.clone());
-                        self.swarm
-                            .behaviour_mut()
-                            .request_response
-                            .add_address(&peer_id, address.clone());
+                        behaviour.add_address(&peer_id, address);
                     }
                 }
             }
@@ -389,20 +389,21 @@ where
         match autonat_event {
             AutonatEvent::StatusChanged { old, new } => match (old, new) {
                 (NatStatus::Unknown, NatStatus::Private) => {
-                    let behaviour = self.swarm.behaviour_mut();
-                    if behaviour.is_relay_client_enabled() {
-                        if let Some((relay_peer, relay_addr)) = behaviour
-                            .discovery()
-                            .bootstrap_addrs()
-                            .choose(&mut rand::thread_rng())
-                        {
-                            let addr = relay_addr
-                                .clone()
-                                .with(Protocol::P2p((*relay_peer).into()))
-                                .with(Protocol::P2pCircuit);
-                            warn!("Private NAT detected. Establishing public relay address on peer {}", addr);
+                    if self.swarm.behaviour().relay_client.is_enabled() {
+                        if let Some(addr) = self.bootstraps.choose(&mut rand::thread_rng()) {
+                            let circuit_addr = addr.clone().with(Protocol::P2pCircuit);
+                            warn!(
+                                "Private NAT detected. Establishing public relay address on peer {}",
+                                circuit_addr
+                                    .clone()
+                                    .with(
+                                        Protocol::P2p(
+                                            self.swarm.local_peer_id().to_owned().into()
+                                        )
+                                    )
+                            );
                             self.swarm
-                                .listen_on(addr)
+                                .listen_on(circuit_addr)
                                 .expect("failed to listen on relay");
                         }
                     }
@@ -491,19 +492,50 @@ where
         Ok(())
     }
 
-    fn handle_discovery(&mut self, discovery_event: DiscoveryEvent) -> Result<()> {
-        match discovery_event {
-            DiscoveryEvent::Connected(peer_id) => {
-                trace!("[DiscoveryEvent::Connected] - Peer connected {:?}", peer_id);
-                self.emit_event(NetworkEvent::PeerConnected(peer_id));
+    pub fn handle_kad(&mut self, event: KademliaEvent) -> Result<()> {
+        match event {
+            KademliaEvent::OutboundQueryProgressed { id, result, .. } => match result {
+                QueryResult::Bootstrap(result) => match result {
+                    Ok(BootstrapOk {
+                        peer,
+                        num_remaining,
+                    }) => {
+                        info!(
+                            "[KademliaEvent::Bootstrap] - Received peer: {peer:?}, {}",
+                            match num_remaining {
+                                0 => "bootstrap complete!".into(),
+                                n => format!("{n} peers remaining."),
+                            }
+                        );
+                    }
+                    Err(e) => {
+                        error!("[KademliaEvent::Bootstrap] - Bootstrap failed: {e:?}");
+                    }
+                },
+                other => debug!("[KademliaEvent::OutboundQueryProgressed] - {id:?}: {other:?}"),
+            },
+            _ => info!("[KademliaEvent] - {event:?}"),
+        }
+        Ok(())
+    }
+
+    pub fn handle_mdns(&mut self, event: MdnsEvent) -> Result<()> {
+        match event {
+            MdnsEvent::Discovered(discovered_peers) => {
+                for (peer_id, address) in discovered_peers {
+                    self.swarm
+                        .behaviour_mut()
+                        .add_address(&peer_id, address.clone());
+
+                    if self.peers.insert(peer_id) {
+                        match self.swarm.dial(address) {
+                            Ok(_) => info!("Dialed new local peer: {peer_id:?}"),
+                            Err(e) => error!("Failed to dial new local peer: {e:?}"),
+                        }
+                    }
+                }
             }
-            DiscoveryEvent::Disconnected(peer_id) => {
-                trace!(
-                    "[DiscoveryEvent::PeerDisconnected] - Peer disconnected {:?}",
-                    peer_id
-                );
-                self.emit_event(NetworkEvent::PeerDisconnected(peer_id));
-            }
+            MdnsEvent::Expired(_) => {}
         }
         Ok(())
     }
@@ -566,8 +598,10 @@ where
                     gossip_event.record();
                     self.handle_gossip(gossip_event)
                 }
-                BehaviourEvent::Discovery(discovery_event) => {
-                    self.handle_discovery(discovery_event)
+                BehaviourEvent::Mdns(mdns_event) => self.handle_mdns(mdns_event),
+                BehaviourEvent::Kad(kad_event) => {
+                    kad_event.record();
+                    self.handle_kad(kad_event)
                 }
                 BehaviourEvent::RequestResponse(req_res_event) => {
                     req_res_event.record();
@@ -578,8 +612,25 @@ where
                     Ok(())
                 }
                 BehaviourEvent::RelayClient(_) => Ok(()),
-                BehaviourEvent::Dcutr(_dcutr_event) => Ok(()),
+                BehaviourEvent::Dcutr(_) => Ok(()),
             },
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                if self.peers.insert(peer_id) {
+                    debug!("Peer connected: {peer_id}");
+                };
+                Ok(())
+            }
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                if num_established == 0 {
+                    self.peers.remove(&peer_id);
+                    debug!("Peer disconnected: {peer_id}");
+                }
+                Ok(())
+            }
             _ => {
                 event.record();
                 debug!("Unhandled swarm event {:?}", event);
@@ -592,7 +643,9 @@ where
     pub fn handle_command(&mut self, command: NetworkCommand) -> Result<()> {
         match command {
             NetworkCommand::GetBitswap { cid, sender } => {
-                let peers = self.swarm.behaviour_mut().peers();
+                info!("Getting cid {cid} via bitswap");
+
+                let peers = self.peers.clone();
 
                 if peers.is_empty() {
                     error!(
@@ -630,9 +683,8 @@ where
             }
             NetworkCommand::Put { cid: _, sender: _ } => (),
             NetworkCommand::GetPeers { sender } => {
-                let peers = self.swarm.behaviour_mut().peers();
                 sender
-                    .send(peers)
+                    .send(self.peers.clone())
                     .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
             }
             NetworkCommand::GetListenerAddresses { sender } => {
@@ -728,7 +780,7 @@ where
             Ok(_) => {
                 self.swarm
                     .behaviour_mut()
-                    .discovery
+                    .kad
                     .add_address(&peer_id, address);
                 response
                     .send(Ok(()))
