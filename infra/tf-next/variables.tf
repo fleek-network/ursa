@@ -26,7 +26,13 @@ variable "project_stage" {
   description = "Stage of the project in DigitalOcean"
 }
 
-variable "top_level_domains" {
+variable "region" {
+  type        = string
+  default     = "ams3"
+  description = "The digital ocean region slug for where to create resources"
+}
+
+variable "k8s_domains" {
   type        = list(string)
   default     = ["testnet.ursa.earth"]
   description = "Top level domains to create records and pods for"
@@ -42,6 +48,11 @@ variable "lets_encrypt_env" {
   type        = string
   default     = "prod"
   description = "Lets Encrypt `staging` or `prod`"
+}
+
+variable "do_token" {
+  description = "The API token from your Digital Ocean control panel"
+  type        = string
 }
 
 ###########

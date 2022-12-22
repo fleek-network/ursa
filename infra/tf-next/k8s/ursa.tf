@@ -58,7 +58,7 @@ resource "kubernetes_daemonset" "ursa_node" {
           liveness_probe {
             http_get {
               path = "/"
-              port = 80
+              port = 4069
 
               http_header {
                 name  = "X-Custom-Header"
@@ -98,25 +98,6 @@ resource "kubernetes_daemonset" "ursa_node" {
           }
         }
       }
-    }
-  }
-}
-
-resource "kubernetes_service" "ursa" {
-  metadata {
-    name      = "ursa"
-    namespace = kubernetes_namespace.ursa.metadata.0.name
-  }
-  spec {
-    selector = {
-      app = kubernetes_daemonset.ursa_node.spec.0.template.0.metadata.0.labels.app
-    }
-    type = "NodePort"
-
-    port {
-      node_port   = 30201
-      port        = 80
-      target_port = 80
     }
   }
 }

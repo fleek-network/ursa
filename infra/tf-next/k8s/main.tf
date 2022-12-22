@@ -41,6 +41,24 @@ resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
   tags       = ["ursa-bootstrap"]
 }
 
+resource "kubernetes_service" "ursa" {
+  metadata {
+    name      = "ursa"
+    namespace = kubernetes_namespace.ursa.metadata.0.name
+  }
+  spec {
+    selector = {
+      app = kubernetes_daemonset.ursa_node.spec.0.template.0.metadata.0.labels.app
+    }
+    type = "NodePort"
+
+    port {
+      node_port   = 30201
+      port        = 4069
+      target_port = 80
+    }
+  }
+}
 
 # Another node pool in case we need node affinity etc
 # resource "digitalocean_kubernetes_node_pool" "app_node_pool" {

@@ -13,7 +13,7 @@ variable "default_droplet_size" {
   description = "Default k8s droplet size identifier"
 }
 
-variable "top_level_domains" {
+variable "k8s_domains" {
   type        = list(string)
   description = "Top level domains to create records and pods for"
 }
