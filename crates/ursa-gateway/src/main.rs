@@ -47,10 +47,10 @@ async fn main() -> Result<()> {
                 gateway_config.cache.max_size,
                 gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
             )));
-            let admin_cache = server_cache.clone();
+            let admin_cache = Arc::clone(&server_cache);
 
             let server_config = Arc::new(RwLock::new(gateway_config));
-            let admin_config = server_config.clone();
+            let admin_config = Arc::clone(&server_config);
 
             task::spawn(async {
                 if let Err(e) = admin::start_server(admin_config, admin_cache).await {

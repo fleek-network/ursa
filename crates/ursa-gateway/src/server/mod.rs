@@ -24,7 +24,7 @@ pub async fn start_server(
     config: Arc<RwLock<GatewayConfig>>,
     cache: Arc<RwLock<Tlrfu>>,
 ) -> Result<()> {
-    let config_reader = config.clone();
+    let config_reader = Arc::clone(&config);
     let GatewayConfig {
         server:
             ServerConfig {
