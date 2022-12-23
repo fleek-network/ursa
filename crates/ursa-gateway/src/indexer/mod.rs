@@ -29,22 +29,25 @@ pub fn get_provider(indexer_response: IndexerResponse) -> Option<Vec<SocketAddrV
             let ip = match components.get(0) {
                 Some(Protocol::Ip4(ip)) => ip,
                 _ => {
-                    error!("failed to get ip");
-                    return None;
+                    error!("skipping address {maddr}");
+                    continue;
                 }
             };
 
             let port = match components.get(1) {
                 Some(Protocol::Tcp(port)) => port,
                 _ => {
-                    error!("failed to get port");
-                    return None;
+                    error!("skipping address {maddr} without port");
+                    continue;
                 }
             };
 
             provider_addrs.push(SocketAddrV4::new(*ip, *port));
         }
-
+        if provider_addrs.is_empty() {
+            error!("failed to get a valid address for provider.");
+            return None;
+        }
         Some(provider_addrs)
     } else {
         error!("multi-hash result did not contain a provider");
