@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{config::ProviderConfig, engine::ProviderEngine};
 use db::MemoryDB;
-use libp2p::{identity::Keypair, PeerId};
+use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use simple_logger::SimpleLogger;
 use tracing::{info, log::LevelFilter};
 use ursa_network::{NetworkConfig, UrsaService};
@@ -46,12 +46,15 @@ pub fn provider_engine_init(
 
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
+    let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
+
     let provider_engine = ProviderEngine::new(
         keypair,
         store,
         index_store,
         config,
         service.command_sender(),
+        server_address,
     );
     Ok((provider_engine, service, peer_id))
 }
