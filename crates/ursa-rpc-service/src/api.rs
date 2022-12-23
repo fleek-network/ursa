@@ -223,9 +223,8 @@ where
         };
         self.network_send.send(request)?;
         if let Err(e) = receiver.await {
-            return Err(anyhow!(format!(
-                "The PUT failed, please check server logs {e:?}"
-            )));
+            bail!("The PUT failed, please check server logs {e:?}");
+
         }
 
         let (sender, receiver) = oneshot::channel();
