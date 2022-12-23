@@ -59,6 +59,6 @@ variable "do_token" {
 # Images  #
 ###########
 variable "k8s_ursa_docker_image" {
-  default     = "nginx"
+  default     = "ghcr.io/fleek-network/ursa:main"
   description = "Ursa node docker image"
 }

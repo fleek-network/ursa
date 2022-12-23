@@ -49,10 +49,10 @@ resource "kubernetes_daemonset" "ursa_node" {
               cpu    = "2048"
               memory = "4096Mi"
             }
-            # requests = {
-            #   cpu    = "250m"
-            #   memory = "50Mi"
-            # }
+            requests = {
+              cpu    = "250m"
+              memory = "50Mi"
+            }
           }
 
           liveness_probe {
