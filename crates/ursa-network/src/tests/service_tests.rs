@@ -61,21 +61,20 @@ mod tests {
         }
     }
 
-    async fn _run_bootstrap(
+    async fn run_bootstrap(
         config: &mut NetworkConfig,
-        port: u16,
-    ) -> Result<(UrsaService<MemoryDB>, String)> {
+    ) -> Result<(UrsaService<MemoryDB>, Multiaddr, PeerId)> {
         let keypair = Keypair::generate_ed25519();
-        let swarm_addr = format!("/ip4/127.0.0.1/tcp/{port}");
-        config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
-        let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(keypair.public()));
-        let (bootstrap, ..) = network_init(config, Some(addr.clone()), Some(keypair)).await?;
-        Ok((bootstrap, addr))
+        config.swarm_addrs = vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()];
+        config.bootstrapper = true;
+        config.bootstrap_nodes = vec![];
+        let (bootstrap, addr, peer_id, ..) = network_init(config, None, Some(keypair)).await?;
+        Ok((bootstrap, addr, peer_id))
     }
 
     async fn network_init(
         config: &mut NetworkConfig,
-        bootstrap_addr: Option<String>,
+        bootstrap_addr: Option<Multiaddr>,
         bootstrap_keypair: Option<Keypair>,
     ) -> Result<(
         UrsaService<MemoryDB>,
@@ -94,7 +93,7 @@ mod tests {
         let store = get_store();
 
         if let Some(addr) = bootstrap_addr {
-            config.bootstrap_nodes = [addr].iter().map(|node| node.parse().unwrap()).collect();
+            config.bootstrap_nodes = vec![addr];
         }
 
         let mut service = UrsaService::new(keypair, config, Arc::clone(&store))?;
@@ -142,8 +141,7 @@ mod tests {
         let mut config = NetworkConfig::default();
 
         let (mut node_1, node_1_addrs, ..) = network_init(&mut config, None, None).await?;
-        let (mut node_2, ..) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+        let (mut node_2, ..) = network_init(&mut config, Some(node_1_addrs), None).await?;
 
         loop {
             select! {
@@ -208,27 +206,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_network_discovery() -> Result<()> {
+    async fn test_network_kad() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig {
-            mdns: true,
-            ..Default::default()
-        };
 
-        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
-        let (mut node_2, ..) = network_init(&mut config, None, None).await?;
+        let (bootstrap, bootstrap_addr, bootstrap_id) =
+            run_bootstrap(&mut NetworkConfig::default()).await?;
 
+        // no need to loop over bootstraps events, we can just start it up
+        tokio::task::spawn(async move { bootstrap.start().await.unwrap() });
+
+        let (mut node_1, _, peer_id_1, ..) = network_init(
+            &mut NetworkConfig::default(),
+            Some(bootstrap_addr.clone()),
+            None,
+        )
+        .await?;
+
+        // wait for node 1 to identify with bootstrap
         loop {
             select! {
-                event_2 = node_2.swarm.select_next_some() => {
-                    if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event_2 {
+                event = node_1.swarm.select_next_some() => match event {
+                    SwarmEvent::Behaviour(BehaviourEvent::Identify(libp2p::identify::Event::Received {peer_id, ..})) => {
+                        info!("Node 1 identified with bootstrap {bootstrap_id:?}");
+                        if peer_id == bootstrap_id {
+                            break
+                        }
+                    }
+                    event => node_1.handle_swarm_event(event)?,
+                },
+            }
+        }
+
+        let (mut node_2, ..) =
+            network_init(&mut NetworkConfig::default(), Some(bootstrap_addr), None).await?;
+
+        // wait for node 2 to connect with node 1 through kad peer discovery
+        loop {
+            select! {
+                event = node_1.swarm.select_next_some() => node_1.handle_swarm_event(event)?,
+                event = node_2.swarm.select_next_some() => match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, ..} => {
+                        node_2.handle_swarm_event(event)?;
                         info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
                         }
-                    }
-                }
-                _ = node_1.swarm.select_next_some() => {}
+                    },
+                    event => node_2.handle_swarm_event(event)?,
+                },
             }
         }
         Ok(())
@@ -242,7 +267,7 @@ mod tests {
         let (mut node_1, node_1_addrs, peer_id_1, ..) =
             network_init(&mut config, None, None).await?;
         let (mut node_2, _, peer_id_2, ..) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+            network_init(&mut config, Some(node_1_addrs), None).await?;
 
         // Wait for at least one connection
         loop {
@@ -292,8 +317,7 @@ mod tests {
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
             network_init(&mut config, None, None).await?;
-        let (node_2, _, _, store_2) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
 
         let bitswap_store_1 = BitswapStorage(store_1.clone());
         let mut bitswap_store_2 = BitswapStorage(store_2.clone());
@@ -359,8 +383,7 @@ mod tests {
 
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
             network_init(&mut config, None, None).await?;
-        let (node_2, _, _, store_2) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
 
         let mut bitswap_store_2 = BitswapStorage(store_2.clone());
 
