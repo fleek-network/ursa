@@ -440,7 +440,7 @@ mod tests {
         let node_1_sender = node_1.command_sender();
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
-        let (sender, receiver) = oneshot::channel();
+        let (sender, _) = oneshot::channel();
         let request = NetworkCommand::Put {
             cid: Cid::default(),
             sender,
