@@ -217,6 +217,18 @@ where
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
+        let request = NetworkCommand::Put {
+            cid: root_cid,
+            sender,
+        };
+        self.network_send.send(request)?;
+        if let Err(e) = receiver.await {
+            return Err(anyhow!(format!(
+                "The PUT failed, please check server logs {e:?}"
+            )));
+        }
+
+        let (sender, receiver) = oneshot::channel();
         let request = ProviderCommand::Put {
             context_id: root_cid.to_bytes(),
             sender,
