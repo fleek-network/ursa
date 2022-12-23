@@ -197,7 +197,6 @@ mod tests {
                     break;
                 }
             };
-            node_2.handle_swarm_event(event)?;
         }
         Ok(())
     }
@@ -221,17 +220,15 @@ mod tests {
 
         // wait for node 1 to identify with bootstrap
         loop {
-            let event = node_1.swarm.select_next_some().await;
             if let SwarmEvent::Behaviour(BehaviourEvent::Identify(
-                libp2p::identify::Event::Received { peer_id, .. },
-            )) = event
+                libp2p::identify::Event::Sent { peer_id, .. },
+            )) = node_1.swarm.select_next_some().await
             {
-                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {bootstrap_id:?}");
+                info!("[SwarmEvent::Identify::Sent]: {peer_id:?}, {bootstrap_id:?}");
                 if peer_id == bootstrap_id {
                     break;
                 }
             }
-            node_1.handle_swarm_event(event)?;
         }
 
         // let node 1 run in the background
@@ -242,14 +239,14 @@ mod tests {
 
         // wait for node 2 to connect with node 1 through kad peer discovery
         loop {
-            let event = node_2.swarm.select_next_some().await;
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_2.swarm.select_next_some().await
+            {
                 info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                 if peer_id == peer_id_1 {
                     break;
                 }
             }
-            node_2.handle_swarm_event(event)?;
         }
         Ok(())
     }
