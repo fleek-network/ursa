@@ -160,7 +160,7 @@ where
 
     fn create_announce_message(&mut self, peer_id: PeerId, mut domain: String) -> Result<Vec<u8>> {
         if domain.is_empty() {
-            domain = "/ip4/127.0.0.1/tcp/4069".to_string();
+            domain = "/ip4/127.0.0.1/tcp/8070".to_string();
         }
         let mut multiaddrs = Multiaddr::from_str(&domain)?;
         multiaddrs = Multiaddr::try_from(format!("{multiaddrs}/http/p2p/{peer_id}"))?;

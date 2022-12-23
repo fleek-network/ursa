@@ -4,7 +4,7 @@ use crate::indexer::model::IndexerResponse;
 use libp2p::multiaddr::Protocol;
 use rand::Rng;
 use std::net::SocketAddrV4;
-use tracing::error;
+use tracing::{error, warn};
 
 // Randomly chooses a provider and returns its addresses.
 pub fn get_provider(indexer_response: IndexerResponse) -> Option<Vec<SocketAddrV4>> {
@@ -29,7 +29,7 @@ pub fn get_provider(indexer_response: IndexerResponse) -> Option<Vec<SocketAddrV
             let ip = match components.get(0) {
                 Some(Protocol::Ip4(ip)) => ip,
                 _ => {
-                    error!("skipping address {maddr}");
+                    warn!("skipping address {maddr}");
                     continue;
                 }
             };
@@ -37,7 +37,7 @@ pub fn get_provider(indexer_response: IndexerResponse) -> Option<Vec<SocketAddrV
             let port = match components.get(1) {
                 Some(Protocol::Tcp(port)) => port,
                 _ => {
-                    error!("skipping address {maddr} without port");
+                    warn!("skipping address {maddr} without port");
                     continue;
                 }
             };

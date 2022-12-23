@@ -94,7 +94,7 @@ pub async fn get_block_handler(
                     Some(addr) => {
                         let req = Request::builder()
                             .method("POST")
-                            .uri(format!("http://{}:{}/rpc/v0", addr.ip(), 4069))
+                            .uri(format!("http://{}:{}/rpc/v0", addr.ip(), addr.port()))
                             .header("Content-Type", "application/json")
                             .body(Body::from(
                                 json!({
