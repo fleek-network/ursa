@@ -8,7 +8,6 @@ module "k8s_apps_ams3" {
   do_project_id         = digitalocean_project.ursa.id
   k8s_ursa_docker_image = var.k8s_ursa_docker_image
   k8s_domains = [
-    "*.ursa.earth",
-    "*.testnet.ursa.earth",
+    "testnet.ursa.earth",
   ]
 }

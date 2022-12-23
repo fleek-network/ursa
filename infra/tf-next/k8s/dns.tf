@@ -12,7 +12,7 @@ resource "digitalocean_record" "a_records" {
   value    = digitalocean_loadbalancer.main.ip
   depends_on = [
     digitalocean_domain.k8s_domains,
-    kubernetes_ingress.default_cluster_ingress
+    kubernetes_ingress_v1.default_cluster_ingress
   ]
 }
 

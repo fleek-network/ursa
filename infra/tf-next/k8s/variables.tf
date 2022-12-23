@@ -70,3 +70,9 @@ variable "registry_server" {
   type        = string
   default     = "ghcr.io"
 }
+
+variable "letsencrypt_email" {
+  type        = string
+  default     = "major@ursa.earth"
+  description = "Let's Encrypt admin email"
+}

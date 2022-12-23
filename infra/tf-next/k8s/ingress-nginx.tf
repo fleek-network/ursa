@@ -1,17 +1,7 @@
-resource "kubernetes_namespace" "nginx_ingress" {
-  metadata {
-    name = "nginx-ingress"
-  }
-}
-
 resource "helm_release" "ingress_nginx" {
   name             = "ingress-nginx"
   chart            = "ingress-nginx"
-  namespace        = kubernetes_namespace.nginx_ingress.metadata[0].name
   repository       = "https://kubernetes.github.io/ingress-nginx"
-  wait             = true
-  atomic           = true
-  create_namespace = false
 
   set {
     name  = "service.type"
@@ -27,13 +17,12 @@ resource "helm_release" "ingress_nginx" {
   ]
 }
 
-resource "kubernetes_ingress" "default_cluster_ingress" {
+resource "kubernetes_ingress_v1" "default_cluster_ingress" {
   depends_on = [
     helm_release.ingress_nginx,
   ]
   metadata {
     name      = "ursa-${var.region}-ingress"
-    namespace = kubernetes_namespace.cert_manager.metadata.0.name
     annotations = {
       "kubernetes.io/ingress.class"          = "nginx"
       "ingress.kubernetes.io/rewrite-target" = "/"
@@ -48,8 +37,12 @@ resource "kubernetes_ingress" "default_cluster_ingress" {
         http {
           path {
             backend {
-              service_name = "ursa-${rule.value}-service"
-              service_port = 4069
+              service {
+                name = "ursa-service"
+                port {
+                  number = 4069
+                }
+              }
             }
             path = "/"
           }
@@ -60,7 +53,7 @@ resource "kubernetes_ingress" "default_cluster_ingress" {
       for_each = toset(var.k8s_domains)
       content {
         hosts       = [tls.value]
-        secret_name = "ursa-${tls.value}-tls"
+        secret_name = "ursa-tls"
       }
     }
   }

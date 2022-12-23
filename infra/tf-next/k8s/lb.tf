@@ -3,20 +3,17 @@ resource "digitalocean_tag" "ursa_node" {
 }
 
 resource "digitalocean_loadbalancer" "main" {
-  name                   = "ursa-${var.region}-lb"
-  region                 = var.region
-  size                   = "lb-small"
-  redirect_http_to_https = true
-  droplet_tag            = digitalocean_tag.ursa_node.id
+  name        = "ursa-${var.region}-lb"
+  region      = var.region
+  size        = "lb-small"
+  droplet_tag = digitalocean_tag.ursa_node.id
 
   forwarding_rule {
-    entry_port     = 443
-    entry_protocol = "https"
+    entry_port     = 80
+    entry_protocol = "http"
 
     target_port     = 4069
-    target_protocol = "https"
-
-    tls_passthrough = true
+    target_protocol = "http"
   }
 
   healthcheck {

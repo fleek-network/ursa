@@ -38,7 +38,7 @@ variable "k8s_domains" {
   description = "Top level domains to create records and pods for"
 }
 
-variable "lets_enrypt_email" {
+variable "letsencrypt_email" {
   type        = string
   default     = "major@ursa.earth"
   description = "Let's Encrypt admin email"
