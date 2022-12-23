@@ -170,31 +170,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::str::FromStr;
-
-    use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
-    use simple_logger::SimpleLogger;
-
-    #[ignore]
-    #[tokio::test]
-    async fn get_missing_blocks() {
-        SimpleLogger::new().with_utc_timestamps().init().unwrap();
-
-        let db1 = Arc::new(
-            RocksDb::open("ursa_db", &RocksDbConfig::default())
-                .expect("Opening RocksDB must succeed"),
-        );
-
-        let store1 = Arc::new(UrsaStore::new(Arc::clone(&db1)));
-        let mut bitswap_store_1 = BitswapStorage(store1);
-
-        let cid =
-            Cid::from_str("bafybeihybv5apjuvkpaw62l34ui7t363pt3hwxbz7rltrpjklvzrbviq5m").unwrap();
-
-        if let Ok(res) = bitswap_store_1.missing_blocks(&cid) {
-            println!("vec of missing blocks: {res:?}");
-        }
-    }
-}
+#[path = "tests/store_tests.rs"]
+mod store_tests;

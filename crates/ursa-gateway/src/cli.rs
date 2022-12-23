@@ -62,4 +62,10 @@ pub struct DaemonCmdOpts {
      * #[arg(long)]
      * pub indexer_mh_url: Option<String>,
      */
+    /// max cache size (bytes)
+    #[arg(long)]
+    pub max_cache_size: Option<u64>,
+    /// cache ttl (ms)
+    #[arg(long)]
+    pub ttl_buf: Option<u64>,
 }

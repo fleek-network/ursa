@@ -37,7 +37,7 @@ use libp2p::{
     swarm::{ConnectionLimits, SwarmBuilder, SwarmEvent},
     Multiaddr, PeerId, Swarm,
 };
-use libp2p_bitswap::{BitswapEvent, BitswapStore, QueryId};
+use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
@@ -421,8 +421,6 @@ where
     }
 
     fn handle_bitswap(&mut self, bitswap_event: BitswapEvent) -> Result<()> {
-        let mut blockstore = BitswapStorage(self.store.clone());
-
         match bitswap_event {
             BitswapEvent::Progress(query_id, _) => {
                 trace!(
@@ -430,34 +428,30 @@ where
                     query_id
                 );
             }
-            BitswapEvent::Complete(query_id, result) => match result {
-                Ok(_) => match self.bitswap_queries.remove(&query_id) {
-                    Some(cid) => {
-                        if let Some(chans) = self.response_channels.remove(&cid) {
-                            for chan in chans.into_iter() {
-                                if blockstore.contains(&cid).unwrap() {
+            BitswapEvent::Complete(query_id, result) => {
+                if let Some(cid) = self.bitswap_queries.remove(&query_id) {
+                    if let Some(chans) = self.response_channels.remove(&cid) {
+                        for chan in chans.into_iter() {
+                            match result {
+                                Ok(()) => {
                                     if chan.send(Ok(())).is_err() {
                                         error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
-                                } else {
-                                    error!("[BitswapEvent::Complete] - block not found.");
+                                }
+                                Err(_) => {
                                     if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
-                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                    error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
                                 }
                             }
-                        } else {
-                            debug!("[BitswapEvent::Complete] - Received Bitswap response, but response channel cannot be found");
                         }
+                    } else {
+                        debug!("[BitswapEvent::Complete] - Received Bitswap response, but response channel cannot be found");
                     }
-                    _ => {
-                        error!(
-                            "[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map"
-                        )
-                    }
-                },
-                Err(_) => todo!(),
-            },
+                } else {
+                    error!("[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map");
+                }
+            }
         }
         Ok(())
     }

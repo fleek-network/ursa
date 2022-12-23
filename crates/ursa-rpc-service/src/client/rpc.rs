@@ -1,6 +1,7 @@
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
+use crate::config::ServerConfig;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
@@ -33,12 +34,7 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-pub async fn call<P, R>(
-    method_name: &str,
-    params: P,
-    method: RpcMethod,
-    rpc_port: Option<u16>,
-) -> Result<R, Error>
+pub(crate) async fn call<P, R>(method_name: &str, params: P, method: RpcMethod) -> Result<R, Error>
 where
     P: Serialize,
     R: DeserializeOwned,
@@ -50,12 +46,7 @@ where
             .with_id(1)
             .finish();
 
-        let port = if let Some(rpc_port) = rpc_port {
-            rpc_port
-        } else {
-            4069
-        };
-        let addr = "0.0.0.0".to_string();
+        let ServerConfig { port, addr } = ServerConfig::default();
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
@@ -113,7 +104,7 @@ where
             Err(Error::Full {
                 data: None,
                 code: 200,
-                message: "There was an while serializing the rpc request".to_string(),
+                message: "There was an error while serializing the rpc request".to_string(),
             })
         }
     } else {
@@ -126,70 +117,5 @@ where
             message: "There was an error while converting the params to serializable value"
                 .to_string(),
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use simple_logger::SimpleLogger;
-    use tracing::log::LevelFilter;
-
-    use crate::client::functions::{get_block, put_file};
-
-    use crate::api::{NetworkGetParams, NetworkPutFileParams};
-    use cid::{multihash::Code, Cid};
-    use libipld::block::Block;
-    use libipld::cbor::DagCborCodec;
-    use libipld::ipld::Ipld;
-    use libipld::store::DefaultParams;
-
-    fn create_block(ipld: Ipld) -> Block<DefaultParams> {
-        Block::<DefaultParams>::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
-    }
-
-    fn setup_logger(level: LevelFilter) {
-        SimpleLogger::new()
-            .with_level(level)
-            .with_utc_timestamps()
-            .init()
-            .unwrap();
-    }
-
-    #[ignore]
-    #[tokio::test]
-    async fn test_rpc_get_cid() {
-        setup_logger(LevelFilter::Info);
-        let block = create_block(Ipld::String("Hello World!".to_string()));
-        let cid = block.cid();
-        let string_cid = Cid::to_string(&cid);
-        let params = NetworkGetParams {
-            cid: string_cid.clone(),
-        };
-        match get_block(params).await {
-            Ok(v) => {
-                info!("Got the bytes ({v:?}) for cid({string_cid:?}) from server.");
-            }
-            Err(_e) => {
-                error!("There was an error while calling the server. Please Check Server Logs")
-            }
-        };
-    }
-
-    #[ignore]
-    #[tokio::test]
-    async fn test_rpc_put_file() {
-        setup_logger(LevelFilter::Info);
-        let params = NetworkPutFileParams {
-            path: "./car_files/ursa_major.car".to_string(),
-        };
-        match put_file(params, None).await {
-            Ok(v) => {
-                println!("Put car file done: {v:?}");
-            }
-            Err(_e) => {
-                println!("There was an error while calling the server. Please Check Server Logs")
-            }
-        };
     }
 }
