@@ -182,6 +182,7 @@ mod tests {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig {
             mdns: true,
+            bootstrap_nodes: vec![],
             ..Default::default()
         };
 
@@ -190,15 +191,17 @@ mod tests {
 
         loop {
             select! {
-                event_2 = node_2.swarm.select_next_some() => {
-                    if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event_2 {
+                event = node_1.swarm.select_next_some() => node_1.handle_swarm_event(event)?,
+                event = node_2.swarm.select_next_some() => match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, ..} => {
+                        node_2.handle_swarm_event(event)?;
                         info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
                         }
-                    }
-                }
-                _ = node_1.swarm.select_next_some() => {}
+                    },
+                    event => node_2.handle_swarm_event(event)?,
+                },
             }
         }
         Ok(())
