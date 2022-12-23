@@ -6,6 +6,8 @@ use hyper::{body, Body, Request, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
+use ursa_rpc_service::api::NetworkGetResult;
+use ursa_rpc_service::client::JsonRpcResponse;
 
 use super::Client;
 use crate::indexer::get_provider;
@@ -85,7 +87,7 @@ pub async fn get_block_handler(
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
-    let resp = match get_provider(indexer_response) {
+    let provider_resp = match get_provider(indexer_response) {
         Some(addrs) => {
             let mut addr_iter = addrs.into_iter();
 
@@ -134,13 +136,37 @@ pub async fn get_block_handler(
         }
     };
 
-    let block = match body::to_bytes(resp.into_body()).await {
+    let block_bytes = match body::to_bytes(provider_resp.into_body()).await {
         Ok(bytes) => bytes,
         Err(e) => {
             error!("failed to read data from upstream: {}\n{}", endpoint, e);
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("failed to read data from upstream: {endpoint}"),
+            );
+        }
+    };
+
+    let block = match from_slice::<JsonRpcResponse<NetworkGetResult>>(&block_bytes) {
+        Ok(JsonRpcResponse::Result { result, .. }) => result,
+        Ok(JsonRpcResponse::Error { error, .. }) => {
+            error!(
+                "server returned error with code {} and message {}",
+                error.code, error.message
+            );
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(
+                    "server returned error with code {} and message {}",
+                    error.code, error.message
+                ),
+            );
+        }
+        Err(e) => {
+            error!("error parsed response from provider: {e}");
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("error parsed response from provider: {e}"),
             );
         }
     };
