@@ -3,7 +3,6 @@ mod tests {
     use crate::behaviour::BehaviourEvent;
     use crate::{
         codec::protocol::{RequestType, UrsaExchangeRequest},
-        discovery::DiscoveryEvent,
         NetworkCommand, NetworkConfig, UrsaService, URSA_GLOBAL,
     };
     use anyhow::Result;
@@ -192,7 +191,7 @@ mod tests {
         loop {
             select! {
                 event_2 = node_2.swarm.select_next_some() => {
-                    if let SwarmEvent::Behaviour(BehaviourEvent::Discovery(DiscoveryEvent::Connected(peer_id))) = event_2 {
+                    if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event_2 {
                         info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
@@ -219,7 +218,7 @@ mod tests {
         loop {
             select! {
                 event_2 = node_2.swarm.select_next_some() => {
-                    if let SwarmEvent::Behaviour(BehaviourEvent::Discovery(DiscoveryEvent::Connected(peer_id))) = event_2 {
+                    if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event_2 {
                         info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
                         if peer_id == peer_id_1 {
                             break
