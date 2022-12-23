@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use async_fs::File;
+use async_fs::{create_dir_all, File};
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs::create_dir_all;
 use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
@@ -175,6 +174,7 @@ where
         create_dir_all(file_path.parent().unwrap()).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(&buffer).await?;
+        file.sync_all().await?;
         Ok(())
     }
 
