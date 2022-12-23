@@ -167,6 +167,7 @@ mod tests {
         .await
     }
 
+    #[ignore]
     #[tokio::test]
     async fn local_node_registration() {
         tracer();
@@ -180,6 +181,7 @@ mod tests {
         db.delete(id.to_string().as_bytes()).unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn remote_node_registration() {
         tracer();
@@ -192,6 +194,7 @@ mod tests {
         db.delete(id.to_string().as_bytes()).unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn dns_node_registration() {
         tracer();
@@ -205,6 +208,7 @@ mod tests {
         db.delete(id.to_string().as_bytes()).unwrap();
     }
 
+    #[ignore]
     #[tokio::test]
     async fn prometheus_http_sd() {
         tracer();
