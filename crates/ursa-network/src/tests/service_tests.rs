@@ -184,7 +184,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
+        let (node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let (mut node_2, ..) = network_init(&mut config, None, None).await?;
@@ -222,7 +222,10 @@ mod tests {
         // wait for node 1 to identify with bootstrap
         loop {
             let event = node_1.swarm.select_next_some().await;
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+            if let SwarmEvent::Behaviour(BehaviourEvent::Identify(
+                libp2p::identify::Event::Received { peer_id, .. },
+            )) = event
+            {
                 info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {bootstrap_id:?}");
                 if peer_id == bootstrap_id {
                     break;
