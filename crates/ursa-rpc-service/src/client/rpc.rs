@@ -1,6 +1,7 @@
 use anyhow::Result;
 use jsonrpc_v2::{Error, Id, RequestObject, V2};
 
+use crate::config::ServerConfig;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
@@ -33,12 +34,7 @@ pub enum RpcMethod {
 }
 
 /// Utility method for sending RPC requests over HTTP
-pub async fn call<P, R>(
-    method_name: &str,
-    params: P,
-    method: RpcMethod,
-    rpc_port: Option<u16>,
-) -> Result<R, Error>
+pub(crate) async fn call<P, R>(method_name: &str, params: P, method: RpcMethod) -> Result<R, Error>
 where
     P: Serialize,
     R: DeserializeOwned,
@@ -50,12 +46,7 @@ where
             .with_id(1)
             .finish();
 
-        let port = if let Some(rpc_port) = rpc_port {
-            rpc_port
-        } else {
-            4069
-        };
-        let addr = "0.0.0.0".to_string();
+        let ServerConfig { port, addr } = ServerConfig::default();
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");
@@ -183,7 +174,7 @@ mod tests {
         let params = NetworkPutFileParams {
             path: "./car_files/ursa_major.car".to_string(),
         };
-        match put_file(params, None).await {
+        match put_file(params).await {
             Ok(v) => {
                 println!("Put car file done: {v:?}");
             }
