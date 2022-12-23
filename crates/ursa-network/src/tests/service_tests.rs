@@ -14,13 +14,14 @@ mod tests {
     use futures::StreamExt;
     use fvm_ipld_car::{load_car, CarReader};
     use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams, Ipld};
-    use libp2p::request_response::RequestResponseEvent;
+    use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
     use libp2p::{
         gossipsub::IdentTopic as Topic, identity::Keypair, multiaddr::Protocol, swarm::SwarmEvent,
         Multiaddr, PeerId,
     };
     use libp2p_bitswap::BitswapStore;
     use simple_logger::SimpleLogger;
+    use std::borrow::BorrowMut;
     use std::path::Path;
     use std::{sync::Arc, time::Duration, vec};
     use tokio::{select, sync::oneshot, time::timeout};
@@ -427,6 +428,65 @@ mod tests {
                 }
             }
             Err(e) => panic!("{e:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_trigger_cache_request_on_put_request() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = NetworkConfig::default();
+
+        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
+            network_init(&mut config, None, None).await?;
+        let (mut node_2, node_2_addrs, peer_id_2, store_2) =
+            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+
+        // Wait for at least one connection
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_1.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
+                break;
+            }
+        }
+
+        let node_1_sender = node_1.command_sender();
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+
+        let (sender, receiver) = oneshot::channel();
+        let request = NetworkCommand::Put {
+            cid: Cid::default(),
+            sender,
+        };
+        assert!(node_1_sender.send(request).is_ok());
+
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
+                RequestResponseEvent::Message { peer, message },
+            )) = timeout(Duration::from_secs(10), node_2.swarm.select_next_some())
+                .await
+                .expect("event to be received")
+            {
+                info!("[RequestResponseEvent::Message]: {peer:?}, {message:?}");
+                if let RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    ..
+                } = message
+                {
+                    match request.0 {
+                        RequestType::CacheRequest(cid) => {
+                            break;
+                        }
+                        _ => {
+                            panic!("Wrong RequestType.");
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())

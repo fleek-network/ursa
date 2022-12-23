@@ -56,6 +56,7 @@ use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
+use crate::codec::protocol::RequestType;
 use crate::transport::build_transport;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
@@ -676,7 +677,15 @@ where
 
                 println!("cosmos");
             }
-            NetworkCommand::Put { cid: _, sender: _ } => (),
+            NetworkCommand::Put { cid, sender } => {
+                let swarm = self.swarm.behaviour_mut();
+                for peer in &self.peers {
+                    swarm
+                        .request_response
+                        .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
+                }
+                sender.send(Ok(())).map_err(|_| anyhow!("PUT failed."))?;
+            }
             NetworkCommand::GetPeers { sender } => {
                 sender
                     .send(self.peers.clone())
