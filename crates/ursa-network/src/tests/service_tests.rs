@@ -185,22 +185,19 @@ mod tests {
         };
 
         let (mut node_1, _, peer_id_1, ..) = network_init(&mut config, None, None).await?;
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+
         let (mut node_2, ..) = network_init(&mut config, None, None).await?;
 
         loop {
-            select! {
-                event = node_1.swarm.select_next_some() => node_1.handle_swarm_event(event)?,
-                event = node_2.swarm.select_next_some() => match event {
-                    SwarmEvent::ConnectionEstablished { peer_id, ..} => {
-                        node_2.handle_swarm_event(event)?;
-                        info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
-                        if peer_id == peer_id_1 {
-                            break
-                        }
-                    },
-                    event => node_2.handle_swarm_event(event)?,
-                },
-            }
+            let event = node_2.swarm.select_next_some().await;
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
+                if peer_id == peer_id_1 {
+                    break;
+                }
+            };
+            node_2.handle_swarm_event(event)?;
         }
         Ok(())
     }
@@ -224,37 +221,32 @@ mod tests {
 
         // wait for node 1 to identify with bootstrap
         loop {
-            select! {
-                event = node_1.swarm.select_next_some() => match event {
-                    SwarmEvent::Behaviour(BehaviourEvent::Identify(libp2p::identify::Event::Received {peer_id, ..})) => {
-                        info!("Node 1 identified with bootstrap {bootstrap_id:?}");
-                        if peer_id == bootstrap_id {
-                            break
-                        }
-                    }
-                    event => node_1.handle_swarm_event(event)?,
-                },
+            let event = node_1.swarm.select_next_some().await;
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {bootstrap_id:?}");
+                if peer_id == bootstrap_id {
+                    break;
+                }
             }
+            node_1.handle_swarm_event(event)?;
         }
+
+        // let node 1 run in the background
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let (mut node_2, ..) =
             network_init(&mut NetworkConfig::default(), Some(bootstrap_addr), None).await?;
 
         // wait for node 2 to connect with node 1 through kad peer discovery
         loop {
-            select! {
-                event = node_1.swarm.select_next_some() => node_1.handle_swarm_event(event)?,
-                event = node_2.swarm.select_next_some() => match event {
-                    SwarmEvent::ConnectionEstablished { peer_id, ..} => {
-                        node_2.handle_swarm_event(event)?;
-                        info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
-                        if peer_id == peer_id_1 {
-                            break
-                        }
-                    },
-                    event => node_2.handle_swarm_event(event)?,
-                },
+            let event = node_2.swarm.select_next_some().await;
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
+                if peer_id == peer_id_1 {
+                    break;
+                }
             }
+            node_2.handle_swarm_event(event)?;
         }
         Ok(())
     }
