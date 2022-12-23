@@ -90,6 +90,8 @@ pub struct ProviderEngine<S> {
     command_receiver: Receiver<ProviderCommand>,
     /// network command sender for communication with libp2p node
     network_command_sender: Sender<NetworkCommand>,
+    /// Server from which advertised content is retrievable.
+    server_address: Multiaddr,
 }
 
 impl<S> ProviderEngine<S>
@@ -102,6 +104,7 @@ where
         provider_store: Arc<UrsaStore<S>>,
         config: ProviderConfig,
         network_command_sender: Sender<NetworkCommand>,
+        server_address: Multiaddr,
     ) -> Self {
         let (command_sender, command_receiver) = unbounded_channel();
         ProviderEngine {
@@ -111,6 +114,7 @@ where
             network_command_sender,
             provider: Provider::new(keypair, provider_store),
             store,
+            server_address,
         }
     }
     pub fn command_sender(&self) -> Sender<ProviderCommand> {
@@ -208,7 +212,7 @@ where
         let peer_id = PeerId::from(self.provider.keypair().public());
 
         let listener_addresses = listener_addresses_receiver.await?;
-        let mut addresses = Vec::new();
+        let mut addresses = vec![self.server_address.to_string()];
         for la in listener_addresses {
             let mut address = Multiaddr::empty();
             for protocol in la.into_iter() {
