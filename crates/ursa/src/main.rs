@@ -3,6 +3,7 @@ use anyhow::Result;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
+use libp2p::Multiaddr;
 use resolve_path::PathResolveExt;
 use std::env;
 use std::str::FromStr;
@@ -96,6 +97,12 @@ async fn main() -> Result<()> {
                 )
                 .expect("Opening provider RocksDB must succeed");
 
+                let server_address = Multiaddr::try_from(format!(
+                    "/ip4/{}/tcp/{}",
+                    server_config.addr, server_config.port
+                ))
+                .expect("Server to have a valid address");
+
                 let index_store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider_engine = ProviderEngine::new(
                     keypair,
@@ -103,6 +110,7 @@ async fn main() -> Result<()> {
                     index_store,
                     provider_config,
                     service.command_sender(),
+                    server_address,
                 );
 
                 // server setup
