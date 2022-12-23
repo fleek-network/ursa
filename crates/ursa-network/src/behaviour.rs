@@ -168,10 +168,12 @@ impl<P: StoreParams> Behaviour<P> {
             })
             .into();
 
-        let mdns = config
-            .mdns
-            .then(|| libp2p::mdns::tokio::Behaviour::new(Default::default()).expect("mDNS start"))
-            .into();
+        let mdns = if config.mdns {
+            Some(Mdns::new(Default::default()).expect("mDNS start"))
+        } else {
+            None
+        }
+        .into();
 
         // setup the kademlia behaviour
         let mut kad = {
