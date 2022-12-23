@@ -124,29 +124,6 @@
         "layers": [
           {
             "config": {
-              "blur": 49,
-              "radius": 16,
-              "weight": {
-                "fixed": 1,
-                "max": 1,
-                "min": 0
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "A"
-            },
-            "location": {
-              "geohash": "geohash",
-              "lookup": "country_code",
-              "mode": "geohash"
-            },
-            "name": "Layer 2",
-            "tooltip": false,
-            "type": "heatmap"
-          },
-          {
-            "config": {
               "showLegend": false,
               "style": {
                 "color": {
@@ -198,9 +175,9 @@
         "view": {
           "allLayers": true,
           "id": "coords",
-          "lat": 39.998812,
-          "lon": -95.603704,
-          "zoom": 4.19
+          "lat": 46.631196,
+          "lon": -2.941962,
+          "zoom": 2.72
         }
       },
       "pluginVersion": "9.3.1",
@@ -548,7 +525,7 @@
         "x": 0,
         "y": 32
       },
-      "id": 8,
+      "id": 44,
       "options": {
         "footer": {
           "fields": "",
@@ -557,28 +534,26 @@
           ],
           "show": false
         },
-        "showHeader": true,
-        "sortBy": []
+        "showHeader": true
       },
       "pluginVersion": "9.3.1",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "LcJ8t4O4z"
+            "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "swarm_connected_peers{}",
+          "expr": "count by(agent) (swarm_connections_established{})",
           "format": "table",
-          "hide": false,
           "instant": true,
-          "legendFormat": "",
+          "legendFormat": "{{agent}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Connected Peers",
+      "title": "Agent Versions",
       "type": "table"
     },
     {
@@ -666,7 +641,7 @@
           "editorMode": "code",
           "exemplar": false,
           "expr": "rate(swarm_connections_established[$__rate_interval])",
-          "format": "table",
+          "format": "time_series",
           "instant": false,
           "legendFormat": "{{id}}",
           "range": true,
@@ -734,7 +709,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 0,
         "y": 40
@@ -765,7 +740,7 @@
           "refId": "A"
         }
       ],
-      "title": "Connected Peers",
+      "title": "Number of Connected Peers",
       "type": "timeseries"
     },
     {
@@ -988,12 +963,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 15,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 48
       },
-      "id": 16,
+      "id": 8,
       "options": {
         "footer": {
           "fields": "",
@@ -1002,7 +977,8 @@
           ],
           "show": false
         },
-        "showHeader": true
+        "showHeader": true,
+        "sortBy": []
       },
       "pluginVersion": "9.3.1",
       "targets": [
@@ -1013,15 +989,16 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "avg by(protocol) (identify_supported_protocols)",
+          "expr": "swarm_connected_peers{}",
           "format": "table",
+          "hide": false,
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Average protocol connections per node",
+      "title": "Connected Peers",
       "type": "table"
     },
     {
@@ -1116,6 +1093,75 @@
       ],
       "title": "Incoming Connection Rate",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 16,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "LcJ8t4O4z"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "avg by(protocol) (identify_supported_protocols)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Average protocol connections per node",
+      "type": "table"
     },
     {
       "datasource": {
