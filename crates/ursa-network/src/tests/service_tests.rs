@@ -208,7 +208,6 @@ mod tests {
         let (bootstrap, bootstrap_addr, bootstrap_id) =
             run_bootstrap(&mut NetworkConfig::default()).await?;
 
-        // no need to loop over bootstraps events, we can just start it up
         tokio::task::spawn(async move { bootstrap.start().await.unwrap() });
 
         let (mut node_1, _, peer_id_1, ..) = network_init(
@@ -231,7 +230,6 @@ mod tests {
             }
         }
 
-        // let node 1 run in the background
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
         let (mut node_2, ..) =
