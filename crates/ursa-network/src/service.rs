@@ -274,12 +274,6 @@ where
         let (event_sender, _event_receiver) = unbounded_channel();
         let (command_sender, command_receiver) = unbounded_channel();
 
-        if !config.bootstrapper && !config.bootstrap_nodes.is_empty() {
-            if let Err(e) = swarm.behaviour_mut().bootstrap() {
-                warn!("Failed to bootstrap: {}", e);
-            }
-        }
-
         Ok(UrsaService {
             swarm,
             store,
