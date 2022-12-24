@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use cid::Cid;
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use libp2p::{
     core::{
@@ -34,6 +35,7 @@ pub struct UrsaExchangeCodec;
 pub enum RequestType {
     // change this to the final cid version
     CarRequest(String),
+    CacheRequest(Cid),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -431,4 +431,36 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_put_command() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = NetworkConfig::default();
+
+        let (mut node_1, _node_1_addrs, peer_id_1, ..) =
+            network_init(&mut config, None, None).await?;
+
+        // Wait for at least one connection
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_1.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
+                break;
+            }
+        }
+
+        let node_1_sender = node_1.command_sender();
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+
+        let (sender, receiver) = oneshot::channel();
+        let request = NetworkCommand::Put {
+            cid: Cid::default(),
+            sender,
+        };
+        assert!(node_1_sender.send(request).is_ok());
+        assert!(receiver.await.is_ok());
+
+        Ok(())
+    }
 }
