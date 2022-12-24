@@ -1,38 +1,44 @@
-FROM rust:latest as builder
+FROM rust:latest AS rust
 
-WORKDIR /usr/src/app
-
+# setup build environment
+WORKDIR /app
+RUN cargo install cargo-chef
+RUN cargo install cargo-strip
 RUN apt-get update && apt-get install -y \
     clang \
     cmake \
     libclang-dev \
     protobuf-compiler
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install cargo-strip
+FROM rust as planner
 
 COPY . .
+RUN cargo chef prepare  \
+    --recipe-path recipe.json
 
+FROM rust as builder
+
+# build dependencies
+COPY --from=planner /app/recipe.json .
+RUN cargo chef cook \
+    --recipe-path recipe.json \
+    --bin ursa --release
+
+# build application
+COPY . .
 ENV RUST_BACKTRACE=1
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/src/app/target \
-    cargo build --release \
-    && cargo strip \
-    && mv /usr/src/app/target/release/ursa /usr/src/app/
+RUN cargo build --bin ursa --release && \
+    cargo strip && \
+    mv ./target/*/ursa .
 
 FROM debian:bullseye-slim
 
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev \
-    && apt-get clean \
-    && apt-get purge -y \
+RUN apt-get update && apt-get install -y libcurl4-openssl-dev \
+    && apt-get clean && apt-get purge -y \
     && rm -rf /var/lib/apt/lists*
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/src/app/ursa /usr/local/bin
+COPY --from=builder /app/ursa /usr/local/bin
 
 # run ursa node
-ENV RUST_LOG=info
-
 ENTRYPOINT ["ursa"]
