@@ -438,10 +438,10 @@ mod tests {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
 
-        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
+        let (mut node_1, node_1_addrs, peer_id_1, _store_1) =
             network_init(&mut config, None, None).await?;
-        let (mut node_2, node_2_addrs, peer_id_2, store_2) =
-            network_init(&mut config, Some(node_1_addrs.to_string()), None).await?;
+        let (mut node_2, _node_2_addrs, _peer_id_2, _store_2) =
+            network_init(&mut config, Some(node_1_addrs), None).await?;
 
         // Wait for at least one connection
         loop {
@@ -465,14 +465,13 @@ mod tests {
 
         loop {
             if let SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
-                RequestResponseEvent::Message { peer, message },
-            )) = timeout(Duration::from_secs(10), node_2.swarm.select_next_some())
+                                             RequestResponseEvent::Message { peer, message },
+                                         )) = timeout(Duration::from_secs(5), node_2.swarm.select_next_some())
                 .await
                 .expect("event to be received")
             {
                 info!("[RequestResponseEvent::Message]: {peer:?}, {message:?}");
                 if let RequestResponseMessage::Request {
-                    request_id,
                     request,
                     ..
                 } = message
