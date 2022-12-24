@@ -1,0 +1,2 @@
+do_token = "<token_here>"
+lets_encrypt_env = "prod"
