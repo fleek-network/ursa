@@ -58,7 +58,7 @@ resource "kubernetes_daemonset" "ursa_bootstrap_node" {
 
           liveness_probe {
             http_get {
-              path = "/"
+              path = "/ping"
               port = 4069
 
               http_header {
