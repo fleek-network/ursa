@@ -21,7 +21,6 @@ mod tests {
     };
     use libp2p_bitswap::BitswapStore;
     use simple_logger::SimpleLogger;
-    use std::borrow::BorrowMut;
     use std::path::Path;
     use std::{sync::Arc, time::Duration, vec};
     use tokio::{select, sync::oneshot, time::timeout};
@@ -465,19 +464,15 @@ mod tests {
 
         loop {
             if let SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
-                                             RequestResponseEvent::Message { peer, message },
-                                         )) = timeout(Duration::from_secs(5), node_2.swarm.select_next_some())
+                RequestResponseEvent::Message { peer, message },
+            )) = timeout(Duration::from_secs(10), node_2.swarm.select_next_some())
                 .await
                 .expect("event to be received")
             {
                 info!("[RequestResponseEvent::Message]: {peer:?}, {message:?}");
-                if let RequestResponseMessage::Request {
-                    request,
-                    ..
-                } = message
-                {
+                if let RequestResponseMessage::Request { request, .. } = message {
                     match request.0 {
-                        RequestType::CacheRequest(cid) => {
+                        RequestType::CacheRequest(_cid) => {
                             break;
                         }
                         _ => {
