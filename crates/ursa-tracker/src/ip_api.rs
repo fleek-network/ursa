@@ -37,7 +37,7 @@ pub async fn get_ip_info(token: String, addr: String) -> Result<IpInfoResponse> 
         addr.clone()
     };
 
-    let url = format!("https://ipinfo.io/{ip}?{token}");
+    let url = format!("https://ipinfo.io/{ip}?token={token}");
     let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new());
 
     let res = client.get(url.parse()?).await?;
