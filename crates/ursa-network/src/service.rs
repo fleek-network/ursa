@@ -573,6 +573,8 @@ where
 
     /// Handle swarm events
     pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
+        // record basic swarm metrics
+        event.record();
         match event {
             SwarmEvent::Behaviour(event) => match event {
                 BehaviourEvent::Identify(identify_event) => {
@@ -627,7 +629,6 @@ where
                 Ok(())
             }
             _ => {
-                event.record();
                 debug!("Unhandled swarm event {:?}", event);
                 Ok(())
             }
