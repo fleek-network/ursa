@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
 license = "MIT"
-repository = "https://github.com/Psychedelic/ursa"
+repository = "https://github.com/fleek-network/ursa"
 description = "Ursa's multiplex server implementation"
 
 [dependencies]

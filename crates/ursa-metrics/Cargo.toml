@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["ossian <oz@fleek.xyz>", "mtavano <marcello@fleek.co>"]
 license = "MIT"
-repository = "https://github.com/Psychedelic/ursa"
+repository = "https://github.com/fleek-network/ursa"
 description = "Ursa metrics"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
