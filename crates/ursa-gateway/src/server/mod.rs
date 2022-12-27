@@ -12,7 +12,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use hyper::Body;
 use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_block_handler;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc::UnboundedSender, RwLock};
 use tracing::info;
 
 use crate::{
@@ -20,9 +20,10 @@ use crate::{
     config::{GatewayConfig, ServerConfig},
 };
 
-pub async fn start_server(
+pub async fn start(
     config: Arc<RwLock<GatewayConfig>>,
     cache: Arc<RwLock<Tlrfu>>,
+    worker_sender: Arc<UnboundedSender<String>>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -54,7 +55,8 @@ pub async fn start_server(
         .route("/:cid", get(get_block_handler))
         .layer(Extension(client))
         .layer(Extension(config))
-        .layer(Extension(cache));
+        .layer(Extension(cache))
+        .layer(Extension(worker_sender));
 
     info!("reverse proxy listening on {addr}");
 

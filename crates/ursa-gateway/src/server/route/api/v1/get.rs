@@ -4,7 +4,7 @@ use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
 use hyper::{body, Body, Request, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc::UnboundedSender, RwLock};
 use tracing::{debug, error};
 use ursa_rpc_service::api::NetworkGetResult;
 use ursa_rpc_service::client::JsonRpcResponse;
@@ -23,6 +23,7 @@ pub async fn get_block_handler(
     Extension(cache): Extension<Arc<RwLock<Tlrfu>>>,
     Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
     Extension(client): Extension<Arc<Client>>,
+    Extension(woker_tx): Extension<Arc<UnboundedSender<String>>>,
 ) -> impl IntoResponse {
     let GatewayConfig {
         indexer: IndexerConfig { cid_url },
@@ -62,7 +63,6 @@ pub async fn get_block_handler(
             );
         }
     };
-
     let bytes = match body::to_bytes(resp.into_body()).await {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -86,6 +86,7 @@ pub async fn get_block_handler(
     };
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
+    woker_tx.send(cid).unwrap();
 
     let provider_resp = match choose_provider(indexer_response) {
         Ok(addrs) => {

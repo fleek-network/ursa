@@ -13,7 +13,10 @@ use anyhow::{Context, Result};
 use cache::Tlrfu;
 use clap::Parser;
 use cli::{Cli, Commands};
-use tokio::{sync::RwLock, task};
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
 use tracing::{error, Level};
 
 use crate::config::{init_config, load_config};
@@ -44,22 +47,32 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let server_cache = Arc::new(RwLock::new(Tlrfu::new(
+            let cache = Arc::new(RwLock::new(Tlrfu::new(
                 gateway_config.cache.max_size,
                 gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
             )));
+            let server_cache = Arc::clone(&cache);
             let admin_cache = Arc::clone(&server_cache);
 
             let server_config = Arc::new(RwLock::new(gateway_config));
             let admin_config = Arc::clone(&server_config);
 
-            task::spawn(async {
-                if let Err(e) = admin::start_server(admin_config, admin_cache).await {
+            let (worker_tx, worker_rx) = mpsc::unbounded_channel();
+            let worker_tx = Arc::new(worker_tx);
+
+            task::spawn(async move {
+                if let Err(e) = server::start(server_config, server_cache, worker_tx).await {
+                    error!("[gateway server] - {:?}", e);
+                };
+            });
+
+            task::spawn(async move {
+                if let Err(e) = admin::start(admin_config, admin_cache).await {
                     error!("[admin server] - {:?}", e);
                 };
             });
 
-            server::start_server(server_config, server_cache).await?;
+            worker::start(worker_rx, cache).await;
         }
     }
 

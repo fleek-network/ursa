@@ -21,10 +21,7 @@ use crate::{
     config::{GatewayConfig, ServerConfig},
 };
 
-pub async fn start_server(
-    config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<Tlrfu>>,
-) -> Result<()> {
+pub async fn start(config: Arc<RwLock<GatewayConfig>>, cache: Arc<RwLock<Tlrfu>>) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         admin_server:
