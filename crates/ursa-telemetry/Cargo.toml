@@ -1,0 +1,29 @@
+[package]
+name = "ursa-telemetry"
+version = "0.1.0"
+edition = "2021"
+authors = ["b0xtch <mahmoud@fleek.co>"]
+license = "MIT"
+repository = "https://github.com/Psychedelic/ursa"
+description = "Ursa's Telemetry crate"
+
+[dependencies]
+anyhow.workspace = true
+color-eyre.workspace = true
+console-subscriber = { workspace = true, optional = true }
+opentelemetry = { workspace = true, features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { workspace = true, features = ["rt-tokio"], optional = true }
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-chrome = { workspace = true, optional = true }
+tracing-error.workspace = true
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-tree = { workspace = true, optional = true }
+
+[features]
+default = ["tracing-tree", "jaeger", "chrome"]
+tokio-console = ["console-subscriber"]
+jaeger = ["tracing-opentelemetry", "opentelemetry", "opentelemetry-jaeger"]
+chrome = ["tracing-chrome"]

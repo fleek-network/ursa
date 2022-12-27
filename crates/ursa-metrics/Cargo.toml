@@ -6,22 +6,19 @@ authors = ["ossian <oz@fleek.xyz>", "mtavano <marcello@fleek.co>"]
 license = "MIT"
 repository = "https://github.com/Psychedelic/ursa"
 description = "Ursa metrics"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 lazy_static.workspace = true
 anyhow.workspace = true
 axum.workspace = true
-tracing-subscriber.workspace = true
-libp2p-swarm .workspace = true
+libp2p-swarm.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 prometheus-client.workspace =true
 serde.workspace = true
 tracing.workspace = true
-
 libp2p-bitswap.workspace = true
-prometheus.workspace = true # used by libp2p_bitswap's internal metrics
+prometheus.workspace = true
 
 [dependencies.libp2p]
 workspace = true
