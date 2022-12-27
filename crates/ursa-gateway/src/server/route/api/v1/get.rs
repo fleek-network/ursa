@@ -10,7 +10,7 @@ use ursa_rpc_service::api::NetworkGetResult;
 use ursa_rpc_service::client::JsonRpcResponse;
 
 use super::Client;
-use crate::indexer::get_provider;
+use crate::indexer::choose_provider;
 use crate::{
     cache::Tlrfu,
     config::{GatewayConfig, IndexerConfig},
@@ -87,8 +87,8 @@ pub async fn get_block_handler(
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
-    let provider_resp = match get_provider(indexer_response) {
-        Some(addrs) => {
+    let provider_resp = match choose_provider(indexer_response) {
+        Ok(addrs) => {
             let mut addr_iter = addrs.into_iter();
 
             loop {
@@ -108,6 +108,7 @@ pub async fn get_block_handler(
                                 .to_string(),
                             ))
                             .expect("Request to be valid.");
+
                         match client.request(req).await {
                             Ok(resp) if resp.status() == 404 => {
                                 return error_handler(
@@ -128,11 +129,12 @@ pub async fn get_block_handler(
                 }
             }
         }
-        None => {
+        Err(e) => {
+            error!("failed to choose provider: {e}");
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("querying failed"),
-            )
+                format!("failed to choose provider"),
+            );
         }
     };
 
