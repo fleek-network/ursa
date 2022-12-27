@@ -7,7 +7,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 
 use super::lru::Lru;
-use crate::util::timer::_now;
+use crate::util::timer::now;
 
 struct Data {
     value: Arc<Vec<u8>>,
@@ -37,7 +37,7 @@ impl Tlrfu {
         }
     }
 
-    fn _contains(&self, k: &String) -> bool {
+    pub fn contains(&self, k: &String) -> bool {
         self.store.contains_key(k)
     }
 
@@ -78,8 +78,8 @@ impl Tlrfu {
         }
     }
 
-    pub async fn _insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
-        if self._contains(&k) {
+    pub async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
+        if self.contains(&k) {
             bail!("[TLRFU]: Key {k:?} existed while inserting.");
         }
         while self._is_size_exceeded(v.len() as u64) {
@@ -108,7 +108,7 @@ impl Tlrfu {
             format!("[LRU]: Failed to insert LRU with key: {lru_k}, value: {key}")
         })?;
         self.used_size += v.len() as u64; // MAX = 2^64-1 bytes
-        let tll = _now()
+        let tll = now()
             .duration_since(UNIX_EPOCH)
             .context("Failed to get system time from unix epoch")?
             .as_nanos()
@@ -134,7 +134,7 @@ impl Tlrfu {
                 return Ok(());
             };
             if ttl
-                > _now()
+                > now()
                     .duration_since(UNIX_EPOCH)
                     .context("Failed to get system time from unix epoch")?
                     .as_nanos()
@@ -199,14 +199,14 @@ mod tests {
     #[tokio::test]
     async fn insert_duplicate() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        assert!(cache._insert("a".into(), Arc::new(vec![0])).await.is_err());
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        assert!(cache.insert("a".into(), Arc::new(vec![0])).await.is_err());
     }
 
     #[tokio::test]
     async fn insert_one() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
 
         assert_eq!(cache.store.len(), 1);
 
@@ -228,8 +228,8 @@ mod tests {
     #[tokio::test]
     async fn insert_two() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
         assert_eq!(cache.store.len(), 2);
 
@@ -251,18 +251,17 @@ mod tests {
     #[tokio::test]
     async fn get_empty() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         assert!(cache.get(&"b".to_string()).await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn get_one_with_one_bucket() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        assert_eq!(
-            cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref(),
-            &[0]
-        );
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+
+        let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[0]);
 
         let data = cache.store.get(&"a".to_string()).unwrap();
         assert_eq!(data.value.as_ref(), &[0]);
@@ -279,12 +278,11 @@ mod tests {
     #[tokio::test]
     async fn get_one_with_two_bucket() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        assert_eq!(
-            cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref(),
-            &[1]
-        );
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+
+        let val = cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[1]);
 
         let data = cache.store.get(&"b".to_string()).unwrap();
         assert_eq!(data.value.as_ref(), &[1]);
@@ -301,15 +299,12 @@ mod tests {
     #[tokio::test]
     async fn get_two_with_one_bucket() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        assert_eq!(
-            cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref(),
-            &[0]
-        );
-        assert_eq!(
-            cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref(),
-            &[0]
-        );
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+
+        let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[0]);
+        let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[0]);
 
         let data = cache.store.get(&"a".to_string()).unwrap();
         assert_eq!(data.value.as_ref(), &[0]);
@@ -326,16 +321,13 @@ mod tests {
     #[tokio::test]
     async fn get_two_with_two_bucket() {
         let mut cache = Tlrfu::new(200_000_000, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        assert_eq!(
-            cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref(),
-            &[1]
-        );
-        assert_eq!(
-            cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref(),
-            &[1]
-        );
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+
+        let val = cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[1]);
+        let val = cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[1]);
 
         let data = cache.store.get(&"b".to_string()).unwrap();
         assert_eq!(data.value.as_ref(), &[1]);
@@ -352,9 +344,9 @@ mod tests {
     #[tokio::test]
     async fn insert_exceed_cap_with_one_bucket() {
         let mut cache = Tlrfu::new(2, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        cache._insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
 
         assert_eq!(cache.store.len(), 2);
 
@@ -385,23 +377,17 @@ mod tests {
     #[tokio::test]
     async fn insert_exceed_cap_with_two_bucket() {
         let mut cache = Tlrfu::new(2, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
-        assert_eq!(
-            cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref(),
-            &[0]
-        );
-        assert_eq!(
-            cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref(),
-            &[0]
-        );
-        assert_eq!(
-            cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref(),
-            &[1]
-        );
+        let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[0]);
+        let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[0]);
+        let val = cache.get(&"b".to_string()).await.unwrap().unwrap().as_ref();
+        assert_eq!(val, &[1]);
 
-        cache._insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
 
         assert_eq!(cache.store.len(), 2);
 
@@ -434,11 +420,11 @@ mod tests {
     #[tokio::test]
     async fn insert_exceed_cap_with_many_buckets_deleted() {
         let mut cache = Tlrfu::new(3, 0);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        cache._insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
         cache
-            ._insert("d".into(), Arc::new(vec![3, 4, 5]))
+            .insert("d".into(), Arc::new(vec![3, 4, 5]))
             .await
             .unwrap();
 
@@ -465,11 +451,11 @@ mod tests {
     #[tokio::test]
     async fn process_tll_clean_up_successfully() {
         let mut cache = Tlrfu::new(3, 1_000_000_000);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        cache._insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
         set_mock_time(
-            _now()
+            now()
                 .checked_add(std::time::Duration::from_nanos(1_000_000_000))
                 .unwrap(),
         );
@@ -484,11 +470,11 @@ mod tests {
     #[tokio::test]
     async fn process_tll_clean_up_skip() {
         let mut cache = Tlrfu::new(3, 1_000_000_000);
-        cache._insert("a".into(), Arc::new(vec![0])).await.unwrap();
-        cache._insert("b".into(), Arc::new(vec![1])).await.unwrap();
-        cache._insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
         set_mock_time(
-            _now()
+            now()
                 .checked_add(std::time::Duration::from_nanos(900_000_000))
                 .unwrap(),
         );

@@ -7,20 +7,59 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::cache::Tlrfu;
+use crate::{
+    cache::{Cache, CacheCmd},
+    indexer::Indexer,
+};
+use serde_json::to_vec;
 
-pub async fn start(mut receiver: UnboundedReceiver<String>, cache: Arc<RwLock<Tlrfu>>) {
+pub async fn start(
+    mut rx: UnboundedReceiver<CacheCmd>,
+    cache: Arc<RwLock<Cache>>,
+    indexer: Indexer,
+) {
+    let indexer = Arc::new(indexer);
     loop {
         let cache = Arc::clone(&cache);
+        let indexer = Arc::clone(&indexer);
         select! {
-            Some(cid) = receiver.recv() => {
-                info!("dispatch: {cid:?}");
-                task::spawn(async move {
-                    cache.write().await._insert(cid, vec![]).await.unwrap();
-                });
+            Some(cmd) = rx.recv() => {
+                match cmd {
+                    CacheCmd::GetSync{key} => {
+                        info!("Dispatch GetSyncAnnounce command with key: {key:?}");
+                        task::spawn(async move {
+                            if let Err(e) = cache.write().await.get(&key).await {
+                                error!("Dispatch GetSyncAnnounce command error with key: {key:?}\n{e}");
+                            }
+                        });
+                    },
+                    CacheCmd::InsertSync{key, value} => {
+                        info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
+                        task::spawn(async move {
+                            if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
+                                error!("Dispatch InsertSyncAnnounce command error with key: {key:?}\n{e}");
+                            };
+                        });
+                    },
+                    CacheCmd::Fetch{cid, sender} => {
+                        info!("Dispatch FetchAnnounce command with cid: {cid:?}");
+                        task::spawn(async move {
+                            let result = match indexer.query(String::from(&cid)).await {
+                                Ok(provider_result) => {
+                                    // TODO: query cache node
+                                    sender.send(Ok(Arc::new(to_vec(&provider_result).unwrap())))
+                                },
+                                Err(message) => sender.send(Err(message))
+                            };
+                            if let Err(e) = result {
+                                error!("Dispatch FetchAnnounce command error with cid: {cid:?}\n{e:?}");
+                            }
+                        });
+                    }
+                }
             }
             else => {
-                error!("gateway stopped: please check error log.");
+                error!("Gateway stopped: please check error log.");
                 break;
             }
         }

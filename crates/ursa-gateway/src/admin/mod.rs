@@ -17,11 +17,11 @@ use tracing::info;
 
 use crate::{
     admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
-    cache::Tlrfu,
+    cache::Cache,
     config::{GatewayConfig, ServerConfig},
 };
 
-pub async fn start(config: Arc<RwLock<GatewayConfig>>, cache: Arc<RwLock<Tlrfu>>) -> Result<()> {
+pub async fn start(config: Arc<RwLock<GatewayConfig>>, cache: Arc<RwLock<Cache>>) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         admin_server:

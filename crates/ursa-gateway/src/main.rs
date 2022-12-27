@@ -10,9 +10,12 @@ mod worker;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
-use cache::Tlrfu;
+use cache::Cache;
 use clap::Parser;
 use cli::{Cli, Commands};
+use hyper::Body;
+use hyper_tls::HttpsConnector;
+use indexer::Indexer;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
@@ -47,9 +50,16 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let cache = Arc::new(RwLock::new(Tlrfu::new(
+            let indexer = Indexer::new(
+                String::from(&gateway_config.indexer.cid_url),
+                hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
+            );
+
+            let (worker_tx, worker_rx) = mpsc::unbounded_channel();
+            let cache = Arc::new(RwLock::new(Cache::new(
                 gateway_config.cache.max_size,
                 gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
+                worker_tx,
             )));
             let server_cache = Arc::clone(&cache);
             let admin_cache = Arc::clone(&server_cache);
@@ -57,11 +67,8 @@ async fn main() -> Result<()> {
             let server_config = Arc::new(RwLock::new(gateway_config));
             let admin_config = Arc::clone(&server_config);
 
-            let (worker_tx, worker_rx) = mpsc::unbounded_channel();
-            let worker_tx = Arc::new(worker_tx);
-
             task::spawn(async move {
-                if let Err(e) = server::start(server_config, server_cache, worker_tx).await {
+                if let Err(e) = server::start(server_config, server_cache).await {
                     error!("[gateway server] - {:?}", e);
                 };
             });
@@ -72,7 +79,7 @@ async fn main() -> Result<()> {
                 };
             });
 
-            worker::start(worker_rx, cache).await;
+            worker::start(worker_rx, cache, indexer).await;
         }
     }
 

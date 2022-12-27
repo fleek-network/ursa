@@ -1,52 +1,75 @@
+use anyhow::{bail, Result};
+use hyper::{body, Uri};
+use hyper::{client::HttpConnector, Body};
+use hyper_tls::HttpsConnector;
+use serde_json::from_slice;
+use tracing::{debug, error};
+
+type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
+
+use self::model::IndexerResponse;
+
 pub mod model;
 
-use crate::indexer::model::IndexerResponse;
-use anyhow::{anyhow, bail, Error};
-use libp2p::multiaddr::Protocol;
-use std::net::SocketAddrV4;
-use tracing::warn;
+pub struct Indexer {
+    cid_url: String,
+    client: Client,
+}
 
-// Chooses a provider and returns its addresses.
-pub fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4>, Error> {
-    // We expect that MultihashResults will have at most 1 element.
-    let providers = &indexer_response
-        .multihash_results
-        // Just choose the first one for now.
-        .get(0)
-        .ok_or_else(|| anyhow!("indexer result did not contain a multi-hash result"))?
-        .provider_results;
-
-    if providers.is_empty() {
-        bail!("multi-hash result did not contain a provider")
+impl Indexer {
+    pub fn new(cid_url: String, client: Client) -> Self {
+        Self { cid_url, client }
     }
 
-    let multiaddrs = providers[0].provider.addrs.iter();
-
-    let mut provider_addrs = Vec::new();
-    for maddr in multiaddrs {
-        let mut components = maddr.iter();
-        let ip = match components.next() {
-            Some(Protocol::Ip4(ip)) => ip,
-            _ => {
-                warn!("skipping address {maddr}");
-                continue;
+    pub async fn query(&self, cid: String) -> Result<IndexerResponse> {
+        let endpoint = format!("{}/{cid}", self.cid_url);
+        let uri = match endpoint.parse::<Uri>() {
+            Ok(uri) => uri,
+            Err(e) => {
+                error!("error parsed uri: {}\n{}", endpoint, e);
+                bail!("error parsed uri: {endpoint}")
             }
         };
 
-        let port = match components.next() {
-            Some(Protocol::Tcp(port)) => port,
-            _ => {
-                warn!("skipping address {maddr} without port");
-                continue;
+        let resp = match self.client.get(uri).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("error requested uri: {}\n{}", endpoint, e);
+                bail!("error requested uri: {endpoint}")
             }
         };
 
-        provider_addrs.push(SocketAddrV4::new(ip, port));
-    }
+        let bytes = match body::to_bytes(resp.into_body()).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!("error read data from upstream: {}\n{}", endpoint, e);
+                bail!("error read data from upstream: {endpoint}")
+            }
+        };
 
-    if provider_addrs.is_empty() {
-        bail!("failed to get a valid address for provider.");
-    }
+        let indexer_response: IndexerResponse = match from_slice(&bytes) {
+            Ok(indexer_response) => indexer_response,
+            Err(e) => {
+                error!("error parsed indexer response from upstream: {endpoint}\n{e}");
+                bail!("error parsed indexer response from upstream: {endpoint}")
+            }
+        };
 
-    Ok(provider_addrs)
+        debug!("received indexer response for {cid}:\n{indexer_response:?}");
+
+        Ok(indexer_response)
+
+        // TODO:
+        // 1. filter FleekNetwork metadata
+        // 2. pick node (round-robin)
+        // 3. call get_block to node
+        // 4.
+        //   4.1 return block?
+        //   4.2 resolve?
+        //
+        // IMPROVEMENTS:
+        // 1. maintain N workers keep track of indexing data
+        // 2. cherry-pick closest node
+        // 3. cache TTL
+    }
 }
