@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{from_slice, json};
 use tracing::{debug, error};
 
-// Base64 encoded.
+// Base64 encoded. See ursa-index-provider::Metadata.
 const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
