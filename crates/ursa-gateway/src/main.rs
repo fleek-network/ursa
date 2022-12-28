@@ -2,7 +2,7 @@ mod admin;
 mod cache;
 mod cli;
 mod config;
-mod indexer;
+mod resolver;
 mod server;
 mod util;
 mod worker;
@@ -15,7 +15,7 @@ use cli::{Cli, Commands};
 use config::{init_config, load_config};
 use hyper::Body;
 use hyper_tls::HttpsConnector;
-use indexer::Indexer;
+use resolver::Resolver;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
@@ -33,9 +33,9 @@ async fn main() -> Result<()> {
 
     let config_path = PathBuf::from(config);
     init_config(&config_path)
-        .with_context(|| format!("failed to init config from: {config_path:?}"))?;
+        .with_context(|| format!("Failed to init config from: {config_path:?}"))?;
     let mut gateway_config = load_config(&config_path)
-        .with_context(|| format!("failed to load config from: {config_path:?}"))?;
+        .with_context(|| format!("Failed to load config from: {config_path:?}"))?;
 
     // sync
     gateway_config.merge_log_level(log);
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
 
             let worker_tll_interval = gateway_config.worker.ttl_interval;
 
-            let indexer = Arc::new(Indexer::new(
+            let resolver = Arc::new(Resolver::new(
                 String::from(&gateway_config.indexer.cid_url),
                 hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
             ));
@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
 
             task::spawn(async move {
                 let duration_ms = Duration::from_millis(worker_tll_interval);
-                info!("[Cache TTL Worker]: interval: {duration_ms:?}");
+                info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                 loop {
                     tokio::time::sleep(duration_ms).await;
                     if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
                 }
             });
 
-            worker::start(worker_rx, cache, indexer).await;
+            worker::start(worker_rx, cache, resolver).await;
         }
     }
 

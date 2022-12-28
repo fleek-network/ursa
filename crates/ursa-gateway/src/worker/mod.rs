@@ -10,16 +10,16 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::indexer::Indexer;
+use crate::resolver::Resolver;
 
 pub async fn start<Cache: WorkerCache>(
     mut rx: UnboundedReceiver<WorkerCacheCommand>,
     cache: Arc<RwLock<Cache>>,
-    indexer: Arc<Indexer>,
+    resolver: Arc<Resolver>,
 ) {
     loop {
         let cache = Arc::clone(&cache);
-        let indexer = Arc::clone(&indexer);
+        let resolver = Arc::clone(&resolver);
         select! {
             Some(cmd) = rx.recv() => {
                 match cmd {
@@ -42,9 +42,9 @@ pub async fn start<Cache: WorkerCache>(
                     WorkerCacheCommand::Fetch{cid, sender} => {
                         info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                         task::spawn(async move {
-                            let result = match indexer.query(&cid).await {
+                            let result = match resolver.provider_address_v4(&cid).await {
                                 Ok(providers) => {
-                                    match indexer.resolve_content(providers, &cid).await {
+                                    match resolver.resolve_content(providers, &cid).await {
                                         Ok(content) => sender.send(Ok(Arc::new(content))),
                                         Err(message) => sender.send(Err(message))
                                     }
@@ -67,7 +67,7 @@ pub async fn start<Cache: WorkerCache>(
                 }
             }
             else => {
-                error!("Worker stopped: please check error log.");
+                error!("Worker stopped: please check error log");
                 break;
             }
         }

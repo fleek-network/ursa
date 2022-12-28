@@ -19,10 +19,10 @@ pub fn init_config(path: &PathBuf) -> Result<()> {
         .with_max_level(Level::INFO)
         .finish();
     if !path.exists() {
-        tracing::subscriber::with_default(subscriber, || info!("create config at: {path:?}"));
+        tracing::subscriber::with_default(subscriber, || info!("Create config at: {path:?}"));
         let parent_dir = path
             .parent()
-            .with_context(|| format!("couldn't get parent dir from: {path:?}"))?;
+            .with_context(|| format!("Couldn't get parent dir from: {path:?}"))?;
         create_dir_all(parent_dir)?;
         let gateway_config = GatewayConfig::default();
         let mut file = File::create(path)?;
@@ -37,9 +37,9 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .finish();
-    tracing::subscriber::with_default(subscriber, || info!("load config at: {:?}", path));
+    tracing::subscriber::with_default(subscriber, || info!("Load config at: {:?}", path));
     let toml = read_to_string(path)?;
-    toml::from_str(&toml).context("failed to deserialize")
+    toml::from_str(&toml).context("Failed to deserialize")
 }
 
 #[derive(Deserialize, Serialize)]

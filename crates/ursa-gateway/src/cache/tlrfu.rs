@@ -54,10 +54,10 @@ impl Tlrfu {
             let lru = self
                 .freq
                 .get_mut(&data.freq)
-                .with_context(|| format!("[TLRFU]: Key: {k} not found at freq {}.", data.freq))?;
+                .with_context(|| format!("[TLRFU]: Key: {k} not found at freq {}", data.freq))?;
             let key = lru.remove(&data.lru_k).await.with_context(|| {
                 format!(
-                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}.",
+                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}",
                     data.lru_k, data.freq
                 )
             })?;
@@ -80,7 +80,7 @@ impl Tlrfu {
 
     pub async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
         if self.contains(&k) {
-            bail!("[TLRFU]: Key {k:?} existed while inserting.");
+            bail!("[TLRFU]: Key {k:?} existed while inserting");
         }
         while self.is_size_exceeded(v.len() as u64) {
             let (&freq, lru) = self
@@ -91,9 +91,10 @@ impl Tlrfu {
             let key = lru.remove_head().await?.with_context(|| {
                 format!("[LRU]: Failed to get deleted head key at freq: {freq}")
             })?;
-            let data = self.store.remove(key.as_ref()).with_context(|| {
-                format!("[TLRFU]: Key {key} not found at store while deleting.")
-            })?;
+            let data = self
+                .store
+                .remove(key.as_ref())
+                .with_context(|| format!("[TLRFU]: Key {key} not found at store while deleting"))?;
             lru.is_empty().then(|| self.freq.remove(&freq));
             self.used_size -= data.value.len() as u64;
             self.ttl.remove(&data.tll);
@@ -141,16 +142,17 @@ impl Tlrfu {
             {
                 return Ok(());
             }
-            let data = self.store.remove(key.as_ref()).with_context(|| {
-                format!("[TLRFU]: Key {key} not found at store while deleting.")
-            })?;
+            let data = self
+                .store
+                .remove(key.as_ref())
+                .with_context(|| format!("[TLRFU]: Key {key} not found at store while deleting"))?;
             let lru = self
                 .freq
                 .get_mut(&data.freq)
-                .with_context(|| format!("[TLRFU]: Key: {key} not found at freq {}.", data.freq))?;
+                .with_context(|| format!("[TLRFU]: Key: {key} not found at freq {}", data.freq))?;
             lru.remove(&data.lru_k).await.with_context(|| {
                 format!(
-                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}.",
+                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}",
                     data.lru_k, data.freq
                 )
             })?;

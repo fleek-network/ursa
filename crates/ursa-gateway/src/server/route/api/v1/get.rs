@@ -15,7 +15,7 @@ pub async fn get_block_handler<Cache: ServerCache>(
     if Cid::from_str(&cid).is_err() {
         return error_handler(
             StatusCode::BAD_REQUEST,
-            format!("invalid cid string, cannot parse {cid} to CID"),
+            format!("Invalid cid string, cannot parse {cid} to CID"),
         );
     };
 

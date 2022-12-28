@@ -20,7 +20,7 @@ pub struct ProviderResult {
     #[serde(rename = "ContextID")]
     context_id: String,
     #[serde(rename = "Metadata")]
-    pub metadata: String,
+    metadata: String,
     #[serde(rename = "Provider")]
     pub provider: AddrInfo,
 }

@@ -37,12 +37,12 @@ pub async fn start<Cache: ServerCache>(
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!("failed to init tls from: cert: {cert_path:?}: path: {key_path:?}")
+            format!("Failed to init tls from: cert: {cert_path:?}: path: {key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
         addr.parse::<Ipv4Addr>()
-            .with_context(|| format!("failed to parse IPv4 with: {addr}"))?,
+            .with_context(|| format!("Failed to parse IPv4 with: {addr}"))?,
         *port,
     ));
 
@@ -51,12 +51,12 @@ pub async fn start<Cache: ServerCache>(
         .layer(Extension(config))
         .layer(Extension(cache));
 
-    info!("reverse proxy listening on {addr}");
+    info!("Reverse proxy listening on {addr}");
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())
         .await
-        .context("server stopped")?;
+        .context("Server stopped")?;
 
     Ok(())
 }

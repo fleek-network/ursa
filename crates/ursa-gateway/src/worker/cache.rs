@@ -55,7 +55,7 @@ impl WorkerCache for Cache {
         if !self.tlrfu.contains(&k) {
             self.tlrfu.insert(k, v).await?;
         } else {
-            warn!("[Cache]: attempt to insert existed key: {k}");
+            warn!("[Cache]: Attempt to insert existed key: {k}");
         }
         Ok(())
     }
