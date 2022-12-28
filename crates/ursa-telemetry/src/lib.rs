@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
-    layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer, Registry,
+    fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 use tracing_tree::HierarchicalLayer;
 
@@ -44,10 +44,13 @@ impl TelemetryConfig {
 
     pub fn init(self) -> anyhow::Result<()> {
         let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new(self.log_level.unwrap_or_else(|| "info".to_string()))
+            EnvFilter::new(self.log_level.unwrap_or_else(|| "INFO".to_string()))
         });
 
         let mut tracing_layers = vec![];
+
+        let log_subscriber = fmt::layer().pretty().with_filter(env_filter);
+        tracing_layers.push(log_subscriber.boxed());
 
         #[cfg(feature = "tokio-console")]
         if self.tokio_console {
