@@ -28,7 +28,7 @@ resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
     auto_scale = true
     min_nodes  = var.k8s_min_node_count
     max_nodes  = var.k8s_max_node_count
-    tags       = [digitalocean_tag.ursa_node.name]
+    tags       = [var.do_tag_ursa_node]
   }
 }
 
@@ -38,7 +38,7 @@ resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
   name       = "ursa-bootstrap"
   size       = var.default_droplet_size
   node_count = 2
-  tags       = ["ursa-bootstrap"]
+  tags       = [var.do_tag_ursa_bs_node]
 }
 
 resource "kubernetes_service" "ursa" {
@@ -53,9 +53,10 @@ resource "kubernetes_service" "ursa" {
     type = "NodePort"
 
     port {
-      node_port   = 30201
+      name = "api"
+      # node_port   = 30201
       port        = 4069
-      target_port = 80
+      target_port = 4069
     }
   }
 }
@@ -79,7 +80,6 @@ resource "kubernetes_service" "ursa" {
 # }
 
 # Kubernetes Provider
-
 resource "digitalocean_project_resources" "project_resources" {
   project = var.do_project_id
 

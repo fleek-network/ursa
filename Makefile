@@ -30,8 +30,7 @@ compose-up:
 compose-down:
 	docker-compose -f infra/ursa/docker-compose.yml down
 
-#	docker run ursa
-
+# docker run ursa
 docker: docker-build docker-run
 
 # Run unit tests
@@ -62,4 +61,5 @@ clean:
 check:
 	cargo check --all --all-targets --all-features
 
+# Trio command for CI/CD
 ci:	check fmt soft-clippy

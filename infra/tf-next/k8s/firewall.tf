@@ -1,7 +1,6 @@
 resource "digitalocean_firewall" "ursa_peering" {
   name = "ursa-peering"
-
-  tags = ["ursa-main", "ursa-bootstrap"]
+  tags = [var.do_tag_ursa_node, var.do_tag_ursa_bs_node]
 
   # Allow SSH
   inbound_rule {

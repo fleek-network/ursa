@@ -23,6 +23,16 @@ variable "lets_encrypt_env" {
   description = "Lets Encrypt `staging` or `prod`"
 }
 
+variable "do_tag_ursa_node" {
+  type        = string
+  description = "Ursa node tag."
+}
+
+variable "do_tag_ursa_bs_node" {
+  type        = string
+  description = "Ursa bootstrap tag."
+}
+
 ################
 #   Cluster    #
 ################
