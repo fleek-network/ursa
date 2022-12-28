@@ -2,12 +2,15 @@ use std::{str::FromStr, sync::Arc};
 
 use axum::{extract::Path, response::IntoResponse, Extension, Json};
 use cid::Cid;
-use hyper::{body, StatusCode, Uri};
+use hyper::{body, Body, Request, StatusCode, Uri};
 use serde_json::{from_slice, json, Value};
 use tokio::sync::RwLock;
 use tracing::{debug, error};
+use ursa_rpc_service::api::NetworkGetResult;
+use ursa_rpc_service::client::JsonRpcResponse;
 
 use super::Client;
+use crate::indexer::choose_provider;
 use crate::{
     cache::Tlrfu,
     config::{GatewayConfig, IndexerConfig},
@@ -84,6 +87,92 @@ pub async fn get_block_handler(
 
     debug!("received indexer response for {cid}:\n{indexer_response:?}");
 
+    let provider_resp = match choose_provider(indexer_response) {
+        Ok(addrs) => {
+            let mut addr_iter = addrs.into_iter();
+
+            loop {
+                match addr_iter.next() {
+                    Some(addr) => {
+                        let req = Request::builder()
+                            .method("POST")
+                            .uri(format!("http://{}:{}/rpc/v0", addr.ip(), addr.port()))
+                            .header("Content-Type", "application/json")
+                            .body(Body::from(
+                                json!({
+                                    "jsonrpc": "2.0",
+                                    "id": "id",
+                                    "method": "ursa_get_cid",
+                                    "params":{"cid": cid}
+                                })
+                                .to_string(),
+                            ))
+                            .expect("Request to be valid.");
+
+                        match client.request(req).await {
+                            Ok(resp) if resp.status() == 404 => {
+                                return error_handler(
+                                    StatusCode::NOT_FOUND,
+                                    format!("failed to find content for {cid}"),
+                                )
+                            }
+                            Ok(resp) => break resp,
+                            Err(e) => error!("querying the node provider failed {e}"),
+                        }
+                    }
+                    None => {
+                        return error_handler(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("failed to get data"),
+                        )
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("failed to choose provider: {e}");
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to choose provider"),
+            );
+        }
+    };
+
+    let block_bytes = match body::to_bytes(provider_resp.into_body()).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("failed to read data from upstream: {endpoint}\n{e}");
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to read data from upstream: {endpoint}"),
+            );
+        }
+    };
+
+    let block = match from_slice::<JsonRpcResponse<NetworkGetResult>>(&block_bytes) {
+        Ok(JsonRpcResponse::Result { result, .. }) => result,
+        Ok(JsonRpcResponse::Error { error, .. }) => {
+            error!(
+                "server returned error with code {} and message {}",
+                error.code, error.message
+            );
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(
+                    "server returned error with code {} and message {}",
+                    error.code, error.message
+                ),
+            );
+        }
+        Err(e) => {
+            error!("error parsed response from provider: {e}");
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("error parsed response from provider: {e}"),
+            );
+        }
+    };
+
     // TODO:
     // 1. filter FleekNetwork metadata
     // 2. pick node (round-robin)
@@ -96,7 +185,13 @@ pub async fn get_block_handler(
     // 1. maintain N workers keep track of indexing data
     // 2. cherry-pick closest node
     // 3. cache TTL
-    (StatusCode::OK, Json(json!(indexer_response)))
+    (
+        StatusCode::OK,
+        Json(json!(HttpResponse {
+            message: None,
+            data: Some(block.to_vec())
+        })),
+    )
 }
 
 fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
