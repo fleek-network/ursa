@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let worker_tll_interval = gateway_config.worker.ttl_interval;
+            let worker_ttl_interval = gateway_config.worker.ttl_interval;
 
             let resolver = Arc::new(Resolver::new(
                 String::from(&gateway_config.indexer.cid_url),
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
             });
 
             task::spawn(async move {
-                let duration_ms = Duration::from_millis(worker_tll_interval);
+                let duration_ms = Duration::from_millis(worker_ttl_interval);
                 info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                 loop {
                     tokio::time::sleep(duration_ms).await;

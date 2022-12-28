@@ -61,7 +61,7 @@ impl WorkerCache for Cache {
     }
 
     async fn ttl_cleanup(&mut self) -> Result<()> {
-        self.tlrfu.process_tll_clean_up().await?;
+        self.tlrfu.process_ttl_clean_up().await?;
         Ok(())
     }
 }
