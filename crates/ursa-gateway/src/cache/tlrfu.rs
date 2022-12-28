@@ -138,7 +138,7 @@ impl Tlrfu {
     }
 
     pub async fn process_ttl_clean_up(&mut self) -> Result<usize> {
-        let mut count: usize = 0;
+        let mut count = 0;
         loop {
             let (&ttl, key) = if let Some(next) = self.ttl.iter_mut().next() {
                 next
