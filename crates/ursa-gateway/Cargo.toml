@@ -23,4 +23,3 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 libp2p.workspace = true
 async-trait.workspace = true
-ursa-rpc-service = { path = "../ursa-rpc-service" }
