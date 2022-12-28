@@ -12,11 +12,11 @@ use axum::{
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
+use route::api::v1::{get::get_config_handler, post::purge_cache_handler};
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
     config::{GatewayConfig, ServerConfig},
     worker::cache::AdminCache,
 };
@@ -40,12 +40,12 @@ pub async fn start<Cache: AdminCache>(
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!("failed to init tls from: cert: {cert_path:?}: path:{key_path:?}")
+            format!("Failed to init tls from: cert: {cert_path:?}: path:{key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
         addr.parse::<Ipv4Addr>()
-            .with_context(|| format!("failed to parse IPv4 with: {addr}"))?,
+            .with_context(|| format!("Failed to parse IPv4 with: {addr}"))?,
         *port,
     ));
 
@@ -55,12 +55,12 @@ pub async fn start<Cache: AdminCache>(
         .layer(Extension(config))
         .layer(Extension(cache));
 
-    info!("admin server listening on {addr}");
+    info!("Admin server listening on {addr}");
 
     axum_server::bind_rustls(addr, rustls_config)
         .serve(app.into_make_service())
         .await
-        .context("server stopped")?;
+        .context("Server stopped")?;
 
     Ok(())
 }

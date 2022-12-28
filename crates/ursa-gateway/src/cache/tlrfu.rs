@@ -13,7 +13,7 @@ struct Data {
     value: Arc<Vec<u8>>,
     freq: usize,
     lru_k: usize,
-    tll: u128,
+    ttl: u128,
 }
 
 pub struct Tlrfu {
@@ -54,10 +54,10 @@ impl Tlrfu {
             let lru = self
                 .freq
                 .get_mut(&data.freq)
-                .with_context(|| format!("[TLRFU]: Key: {k} not found at freq {}.", data.freq))?;
+                .with_context(|| format!("[TLRFU]: Key: {k} not found at freq {}", data.freq))?;
             let key = lru.remove(&data.lru_k).await.with_context(|| {
                 format!(
-                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}.",
+                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}",
                     data.lru_k, data.freq
                 )
             })?;
@@ -80,7 +80,7 @@ impl Tlrfu {
 
     pub async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
         if self.contains(&k) {
-            bail!("[TLRFU]: Key {k:?} existed while inserting.");
+            bail!("[TLRFU]: Key {k:?} existed while inserting");
         }
         while self.is_size_exceeded(v.len() as u64) {
             let (&freq, lru) = self
@@ -91,12 +91,13 @@ impl Tlrfu {
             let key = lru.remove_head().await?.with_context(|| {
                 format!("[LRU]: Failed to get deleted head key at freq: {freq}")
             })?;
-            let data = self.store.remove(key.as_ref()).with_context(|| {
-                format!("[TLRFU]: Key {key} not found at store while deleting.")
-            })?;
+            let data = self
+                .store
+                .remove(key.as_ref())
+                .with_context(|| format!("[TLRFU]: Key {key} not found at store while deleting"))?;
             lru.is_empty().then(|| self.freq.remove(&freq));
             self.used_size -= data.value.len() as u64;
-            self.ttl.remove(&data.tll);
+            self.ttl.remove(&data.ttl);
         }
         let key = Arc::new(k);
         let lru = self.freq.entry(1).or_insert_with(|| Lru::new(None));
@@ -108,7 +109,7 @@ impl Tlrfu {
             format!("[LRU]: Failed to insert LRU with key: {lru_k}, value: {key}")
         })?;
         self.used_size += v.len() as u64; // MAX = 2^64-1 bytes
-        let tll = now()
+        let ttl = now()
             .duration_since(UNIX_EPOCH)
             .context("Failed to get system time from unix epoch")?
             .as_nanos()
@@ -119,14 +120,14 @@ impl Tlrfu {
                 value: v,
                 freq: 1,
                 lru_k,
-                tll,
+                ttl,
             },
         );
-        self.ttl.insert(tll, key);
+        self.ttl.insert(ttl, key);
         Ok(())
     }
 
-    pub async fn process_tll_clean_up(&mut self) -> Result<()> {
+    pub async fn process_ttl_clean_up(&mut self) -> Result<()> {
         loop {
             let (&ttl, key) = if let Some(next) = self.ttl.iter_mut().next() {
                 next
@@ -141,22 +142,23 @@ impl Tlrfu {
             {
                 return Ok(());
             }
-            let data = self.store.remove(key.as_ref()).with_context(|| {
-                format!("[TLRFU]: Key {key} not found at store while deleting.")
-            })?;
+            let data = self
+                .store
+                .remove(key.as_ref())
+                .with_context(|| format!("[TLRFU]: Key {key} not found at store while deleting"))?;
             let lru = self
                 .freq
                 .get_mut(&data.freq)
-                .with_context(|| format!("[TLRFU]: Key: {key} not found at freq {}.", data.freq))?;
+                .with_context(|| format!("[TLRFU]: Key: {key} not found at freq {}", data.freq))?;
             lru.remove(&data.lru_k).await.with_context(|| {
                 format!(
-                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}.",
+                    "[TLRFU]: Failed to remove LRU key: {} not found at freq {}",
                     data.lru_k, data.freq
                 )
             })?;
             lru.is_empty().then(|| self.freq.remove(&data.freq));
             self.used_size -= data.value.len() as u64;
-            self.ttl.remove(&data.tll);
+            self.ttl.remove(&data.ttl);
         }
     }
 
@@ -449,7 +451,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_tll_clean_up_successfully() {
+    async fn process_ttl_clean_up_successfully() {
         let mut cache = Tlrfu::new(3, 1_000_000_000);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
@@ -459,7 +461,7 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(1_000_000_000))
                 .unwrap(),
         );
-        cache.process_tll_clean_up().await.unwrap();
+        cache.process_ttl_clean_up().await.unwrap();
         assert_eq!(cache.store.len(), 0);
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
@@ -468,7 +470,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_tll_clean_up_skip() {
+    async fn process_ttl_clean_up_skip() {
         let mut cache = Tlrfu::new(3, 1_000_000_000);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
@@ -478,7 +480,7 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(900_000_000))
                 .unwrap(),
         );
-        cache.process_tll_clean_up().await.unwrap();
+        cache.process_ttl_clean_up().await.unwrap();
         assert_eq!(cache.store.len(), 3);
         assert_eq!(cache.freq.len(), 1);
         assert_eq!(cache.ttl.len(), 3);

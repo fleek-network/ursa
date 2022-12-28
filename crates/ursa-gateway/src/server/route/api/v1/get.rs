@@ -6,7 +6,8 @@ use hyper::StatusCode;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::{server::model::HttpResponse, worker::cache::ServerCache};
+use super::super::super::super::model::HttpResponse;
+use crate::worker::cache::ServerCache;
 
 pub async fn get_block_handler<Cache: ServerCache>(
     Path(cid): Path<String>,
@@ -15,7 +16,7 @@ pub async fn get_block_handler<Cache: ServerCache>(
     if Cid::from_str(&cid).is_err() {
         return error_handler(
             StatusCode::BAD_REQUEST,
-            format!("invalid cid string, cannot parse {cid} to CID"),
+            format!("Invalid cid string, cannot parse {cid} to CID"),
         );
     };
 
