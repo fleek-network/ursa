@@ -9,7 +9,6 @@ description = "Ursa's Telemetry crate"
 
 [dependencies]
 anyhow.workspace = true
-color-eyre.workspace = true
 console-subscriber = { workspace = true, optional = true }
 opentelemetry = { workspace = true, features = ["rt-tokio"], optional = true }
 opentelemetry-jaeger = { workspace = true, features = ["rt-tokio"], optional = true }

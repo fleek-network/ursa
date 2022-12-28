@@ -23,7 +23,7 @@ debug = 1
 lto = true
 # optimize for binary size, but also turn off loop vectorization.
 opt-level = 'z'
-# speeds up out build time to offset some of the link time optimization.
+# speeds up build time to offset some of the link time optimization.
 codegen-units = 1
 # strip debug info from binary.
 strip = 'debuginfo'
@@ -42,7 +42,6 @@ bytes = "1.3.0"
 cid = "0.8.6"
 clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
-color-eyre = "0.6.2"
 ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
