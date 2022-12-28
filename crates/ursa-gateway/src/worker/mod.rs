@@ -27,7 +27,7 @@ pub async fn start<Cache: WorkerCache>(
                         info!("Dispatch GetSyncAnnounce command with key: {key:?}");
                         task::spawn(async move {
                             if let Err(e) = cache.write().await.get(&key).await {
-                                error!("Dispatch GetSyncAnnounce command error with key: {key:?} {e}");
+                                error!("Dispatch GetSyncAnnounce command error with key: {key:?} {e:?}");
                             }
                         });
                     },
@@ -35,7 +35,7 @@ pub async fn start<Cache: WorkerCache>(
                         info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
                         task::spawn(async move {
                             if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
-                                error!("Dispatch InsertSyncAnnounce command error with key: {key:?} {e}");
+                                error!("Dispatch InsertSyncAnnounce command error with key: {key:?} {e:?}");
                             };
                         });
                     },
@@ -60,7 +60,7 @@ pub async fn start<Cache: WorkerCache>(
                         info!("Dispatch TtlCleanUp command");
                         task::spawn(async move {
                             if let Err(e) = cache.write().await.ttl_cleanup().await {
-                                error!("Dispatch TtlCleanUp command error {e}");
+                                error!("Dispatch TtlCleanUp command error {e:?}");
                             };
                         });
                     }

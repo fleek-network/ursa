@@ -32,7 +32,7 @@ impl Resolver {
         let uri = match endpoint.parse::<Uri>() {
             Ok(uri) => uri,
             Err(e) => {
-                error!("Error parsed uri: {endpoint} {e}");
+                error!("Error parsed uri: {endpoint} {e:?}");
                 bail!("Error parsed uri: {endpoint}")
             }
         };
@@ -40,7 +40,7 @@ impl Resolver {
         let resp = match self.client.get(uri).await {
             Ok(resp) => resp,
             Err(e) => {
-                error!("Error requested uri: {endpoint} {e}");
+                error!("Error requested uri: {endpoint} {e:?}");
                 bail!("Error requested uri: {endpoint}")
             }
         };
@@ -48,7 +48,7 @@ impl Resolver {
         let bytes = match body::to_bytes(resp.into_body()).await {
             Ok(bytes) => bytes,
             Err(e) => {
-                error!("Error read data from upstream: {endpoint} {e}");
+                error!("Error read data from upstream: {endpoint} {e:?}");
                 bail!("Error read data from upstream: {endpoint}")
             }
         };
@@ -56,7 +56,7 @@ impl Resolver {
         let indexer_response: IndexerResponse = match from_slice(&bytes) {
             Ok(indexer_response) => indexer_response,
             Err(e) => {
-                error!("Error parsed indexer response from upstream: {endpoint} {e}");
+                error!("Error parsed indexer response from upstream: {endpoint} {e:?}");
                 bail!("Error parsed indexer response from upstream: {endpoint}")
             }
         };
@@ -114,12 +114,12 @@ impl Resolver {
                             bail!("Server returned error with code {code} and message {message}");
                         }
                         Err(e) => {
-                            error!("Error parsed response from provider: {e}");
+                            error!("Error parsed response from provider: {e:?}");
                             bail!("Error parsed response from provider");
                         }
                     }
                 }
-                Err(e) => error!("Error querying the node provider failed {e}"),
+                Err(e) => error!("Error querying the node provider failed {e:?}"),
             }
         }
         bail!("Failed to get data")
