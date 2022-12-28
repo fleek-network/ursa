@@ -1,7 +1,6 @@
 pub mod model;
 
 use std::net::SocketAddrV4;
-use std::string::ToString;
 
 use anyhow::{bail, Context, Result};
 use hyper::{body, client::HttpConnector, Body, Request, Uri};
@@ -141,7 +140,7 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         .first()
         .context("Multi-hash result did not contain a provider")?;
 
-    if &provider.metadata != ENCODED_METADATA {
+    if provider.metadata != ENCODED_METADATA {
         error!("Invalid metadata received {}", &provider.metadata);
         bail!("Invalid metadata")
     }
