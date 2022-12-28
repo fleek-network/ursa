@@ -49,6 +49,7 @@ pub struct GatewayConfig {
     pub admin_server: ServerConfig,
     pub indexer: IndexerConfig,
     pub cache: CacheConfig,
+    pub worker: WorkerConfig,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -71,6 +72,11 @@ pub struct IndexerConfig {
 pub struct CacheConfig {
     pub max_size: u64,
     pub ttl_buf: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct WorkerConfig {
+    pub ttl_interval: u64,
 }
 
 impl Default for GatewayConfig {
@@ -106,6 +112,9 @@ impl Default for GatewayConfig {
             cache: CacheConfig {
                 max_size: 200_000_000,  // 200MB
                 ttl_buf: 5 * 60 * 1000, // 5 mins
+            },
+            worker: WorkerConfig {
+                ttl_interval: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -155,6 +164,9 @@ impl GatewayConfig {
         }
         if let Some(ttl_buf) = config.ttl_buf {
             self.cache.ttl_buf = ttl_buf;
+        }
+        if let Some(ttl_interval) = config.ttl_interval {
+            self.worker.ttl_interval = ttl_interval;
         }
     }
 }

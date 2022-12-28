@@ -9,20 +9,18 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use hyper::Body;
-use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_block_handler;
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    cache::Tlrfu,
     config::{GatewayConfig, ServerConfig},
+    worker::cache::ServerCache,
 };
 
-pub async fn start_server(
+pub async fn start<Cache: ServerCache>(
     config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<Tlrfu>>,
+    cache: Arc<RwLock<Cache>>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -39,7 +37,7 @@ pub async fn start_server(
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!("failed to init tls from:\ncert: {cert_path:?}:\npath: {key_path:?}")
+            format!("failed to init tls from: cert: {cert_path:?}: path: {key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
@@ -48,11 +46,8 @@ pub async fn start_server(
         *port,
     ));
 
-    let client = Arc::new(hyper::Client::builder().build::<_, Body>(HttpsConnector::new()));
-
     let app = Router::new()
-        .route("/:cid", get(get_block_handler))
-        .layer(Extension(client))
+        .route("/:cid", get(get_block_handler::<Cache>))
         .layer(Extension(config))
         .layer(Extension(cache));
 

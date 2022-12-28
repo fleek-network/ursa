@@ -17,13 +17,13 @@ use tracing::info;
 
 use crate::{
     admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
-    cache::Tlrfu,
     config::{GatewayConfig, ServerConfig},
+    worker::cache::AdminCache,
 };
 
-pub async fn start_server(
+pub async fn start<Cache: AdminCache>(
     config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<Tlrfu>>,
+    cache: Arc<RwLock<Cache>>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -40,7 +40,7 @@ pub async fn start_server(
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!("failed to init tls from:\ncert: {cert_path:?}:\npath:{key_path:?}")
+            format!("failed to init tls from: cert: {cert_path:?}: path:{key_path:?}")
         })?;
 
     let addr = SocketAddr::from((
@@ -51,7 +51,7 @@ pub async fn start_server(
 
     let app = Router::new()
         .route("/config", get(get_config_handler))
-        .route("/purge-cache", post(purge_cache_handler))
+        .route("/purge-cache", post(purge_cache_handler::<Cache>))
         .layer(Extension(config))
         .layer(Extension(cache));
 
