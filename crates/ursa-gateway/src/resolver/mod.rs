@@ -1,8 +1,8 @@
 pub mod model;
 
 use std::net::SocketAddrV4;
+use std::string::ToString;
 
-use crate::resolver::model::Metadata;
 use anyhow::{bail, Context, Result};
 use hyper::{body, client::HttpConnector, Body, Request, Uri};
 use hyper_tls::HttpsConnector;
@@ -12,6 +12,9 @@ use model::IndexerResponse;
 use serde::Deserialize;
 use serde_json::{from_slice, json};
 use tracing::{debug, error};
+
+// Base64 encoded.
+const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -138,15 +141,8 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         .first()
         .context("Multi-hash result did not contain a provider")?;
 
-    let metadata_bytes = base64::decode(&provider.metadata)?;
-
-    let metadata = bincode::deserialize::<Metadata>(&metadata_bytes)?;
-
-    if metadata.data != b"FleekNetwork" {
-        error!(
-            "invalid metadata received {}",
-            String::from_utf8_lossy(&metadata.data)
-        );
+    if &provider.metadata != ENCODED_METADATA {
+        error!("invalid metadata received {}", &provider.metadata);
         bail!("invalid metadata")
     }
 
