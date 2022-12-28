@@ -143,6 +143,10 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
     let metadata = bincode::deserialize::<Metadata>(&metadata_bytes).map_err(|e| anyhow!("{e}"))?;
 
     if metadata.data != b"FleekNetwork" {
+        error!(
+            "invalid metadata received {}",
+            String::from_utf8_lossy(&metadata.data)
+        );
         bail!("invalid metadata")
     }
 
