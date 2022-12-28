@@ -20,7 +20,7 @@ pub struct ProviderResult {
     #[serde(rename = "ContextID")]
     context_id: String,
     #[serde(rename = "Metadata")]
-    metadata: String,
+    pub metadata: String,
     #[serde(rename = "Provider")]
     pub provider: AddrInfo,
 }
@@ -31,4 +31,10 @@ pub struct AddrInfo {
     id: String,
     #[serde(rename = "Addrs")]
     pub addrs: Vec<Multiaddr>,
+}
+
+#[derive(Deserialize)]
+pub struct Metadata {
+    _protocol_id: u128,
+    pub data: Vec<u8>,
 }

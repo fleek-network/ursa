@@ -2,7 +2,8 @@ pub mod model;
 
 use std::net::SocketAddrV4;
 
-use anyhow::{bail, Context, Result};
+use crate::resolver::model::Metadata;
+use anyhow::{anyhow, bail, Context, Result};
 use hyper::{body, client::HttpConnector, Body, Request, Uri};
 use hyper_tls::HttpsConnector;
 use jsonrpc_v2::{Id, V2};
@@ -133,11 +134,19 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         .context("Indexer result did not contain a multi-hash result")?
         .provider_results;
 
-    if providers.is_empty() {
-        bail!("Multi-hash result did not contain a provider")
+    let provider = providers
+        .first()
+        .context("Multi-hash result did not contain a provider")?;
+
+    let metadata_bytes = base64::decode(&provider.metadata).map_err(|e| anyhow!("{e}"))?;
+
+    let metadata = bincode::deserialize::<Metadata>(&metadata_bytes).map_err(|e| anyhow!("{e}"))?;
+
+    if metadata.data != b"FleekNetwork" {
+        bail!("invalid metadata")
     }
 
-    let multi_addresses = providers[0].provider.addrs.iter();
+    let multi_addresses = provider.provider.addrs.iter();
 
     let mut provider_addresses = Vec::new();
     for m_addr in multi_addresses {
