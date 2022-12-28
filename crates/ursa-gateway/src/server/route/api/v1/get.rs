@@ -6,9 +6,9 @@ use hyper::StatusCode;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::{cache::Cache, server::model::HttpResponse};
+use crate::{server::model::HttpResponse, worker::cache::ServerCache};
 
-pub async fn get_block_handler(
+pub async fn get_block_handler<Cache: ServerCache>(
     Path(cid): Path<String>,
     Extension(cache): Extension<Arc<RwLock<Cache>>>,
 ) -> impl IntoResponse {

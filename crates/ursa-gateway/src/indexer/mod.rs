@@ -1,6 +1,5 @@
 use anyhow::{bail, Result};
-use hyper::{body, Uri};
-use hyper::{client::HttpConnector, Body};
+use hyper::{body, client::HttpConnector, Body, Uri};
 use hyper_tls::HttpsConnector;
 use serde_json::from_slice;
 use tracing::{debug, error};

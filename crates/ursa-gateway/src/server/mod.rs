@@ -14,11 +14,14 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    cache::Cache,
     config::{GatewayConfig, ServerConfig},
+    worker::cache::ServerCache,
 };
 
-pub async fn start(config: Arc<RwLock<GatewayConfig>>, cache: Arc<RwLock<Cache>>) -> Result<()> {
+pub async fn start<Cache: ServerCache>(
+    config: Arc<RwLock<GatewayConfig>>,
+    cache: Arc<RwLock<Cache>>,
+) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         server:
@@ -44,7 +47,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, cache: Arc<RwLock<Cache>>
     ));
 
     let app = Router::new()
-        .route("/:cid", get(get_block_handler))
+        .route("/:cid", get(get_block_handler::<Cache>))
         .layer(Extension(config))
         .layer(Extension(cache));
 

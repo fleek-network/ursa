@@ -4,9 +4,11 @@ use axum::Extension;
 use hyper::StatusCode;
 use tokio::sync::RwLock;
 
-use crate::cache::Cache;
+use crate::worker::cache::AdminCache;
 
-pub async fn purge_cache_handler(Extension(cache): Extension<Arc<RwLock<Cache>>>) -> StatusCode {
+pub async fn purge_cache_handler<Cache: AdminCache>(
+    Extension(cache): Extension<Arc<RwLock<Cache>>>,
+) -> StatusCode {
     cache.write().await.purge();
     StatusCode::OK
 }

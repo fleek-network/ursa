@@ -1,5 +1,9 @@
+pub mod cache;
+
 use std::sync::Arc;
 
+use cache::{WorkerCache, WorkerCacheCommand};
+use serde_json::to_vec;
 use tokio::{
     select,
     sync::{mpsc::UnboundedReceiver, RwLock},
@@ -7,25 +11,20 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::{
-    cache::{Cache, CacheCmd},
-    indexer::Indexer,
-};
-use serde_json::to_vec;
+use crate::indexer::Indexer;
 
-pub async fn start(
-    mut rx: UnboundedReceiver<CacheCmd>,
+pub async fn start<Cache: WorkerCache>(
+    mut rx: UnboundedReceiver<WorkerCacheCommand>,
     cache: Arc<RwLock<Cache>>,
-    indexer: Indexer,
+    indexer: Arc<Indexer>,
 ) {
-    let indexer = Arc::new(indexer);
     loop {
         let cache = Arc::clone(&cache);
         let indexer = Arc::clone(&indexer);
         select! {
             Some(cmd) = rx.recv() => {
                 match cmd {
-                    CacheCmd::GetSync{key} => {
+                    WorkerCacheCommand::GetSync{key} => {
                         info!("Dispatch GetSyncAnnounce command with key: {key:?}");
                         task::spawn(async move {
                             if let Err(e) = cache.write().await.get(&key).await {
@@ -33,7 +32,7 @@ pub async fn start(
                             }
                         });
                     },
-                    CacheCmd::InsertSync{key, value} => {
+                    WorkerCacheCommand::InsertSync{key, value} => {
                         info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
                         task::spawn(async move {
                             if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
@@ -41,7 +40,7 @@ pub async fn start(
                             };
                         });
                     },
-                    CacheCmd::Fetch{cid, sender} => {
+                    WorkerCacheCommand::Fetch{cid, sender} => {
                         info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                         task::spawn(async move {
                             let result = match indexer.query(String::from(&cid)).await {
@@ -59,7 +58,7 @@ pub async fn start(
                 }
             }
             else => {
-                error!("Gateway stopped: please check error log.");
+                error!("Worker stopped: please check error log.");
                 break;
             }
         }

@@ -10,7 +10,6 @@ mod worker;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
-use cache::Cache;
 use clap::Parser;
 use cli::{Cli, Commands};
 use hyper::Body;
@@ -21,6 +20,7 @@ use tokio::{
     task,
 };
 use tracing::{error, Level};
+use worker::cache::Cache;
 
 use crate::config::{init_config, load_config};
 
@@ -50,10 +50,10 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let indexer = Indexer::new(
+            let indexer = Arc::new(Indexer::new(
                 String::from(&gateway_config.indexer.cid_url),
                 hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
-            );
+            ));
 
             let (worker_tx, worker_rx) = mpsc::unbounded_channel();
             let cache = Arc::new(RwLock::new(Cache::new(
@@ -69,13 +69,13 @@ async fn main() -> Result<()> {
 
             task::spawn(async move {
                 if let Err(e) = server::start(server_config, server_cache).await {
-                    error!("[gateway server] - {:?}", e);
+                    error!("[Gateway server]: {:?}", e);
                 };
             });
 
             task::spawn(async move {
                 if let Err(e) = admin::start(admin_config, admin_cache).await {
-                    error!("[admin server] - {:?}", e);
+                    error!("[Admin server]: {:?}", e);
                 };
             });
 
