@@ -679,12 +679,15 @@ where
                 println!("cosmos");
             }
             NetworkCommand::Put { cid, sender } => {
+                // replicate content
                 let swarm = self.swarm.behaviour_mut();
                 for peer in &self.peers {
                     swarm
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
+                // update bloom filter
+
                 sender
                     .send(Ok(()))
                     .map_err(|e| anyhow!("PUT failed: {e:?}."))?;
