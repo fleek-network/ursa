@@ -75,7 +75,7 @@ impl TelemetryConfig {
         let mut tracing_layers = vec![];
 
         if self.pretty_log {
-            let log_subscriber = fmt::layer().with_filter(env_filter);
+            let log_subscriber = fmt::layer().pretty().with_filter(env_filter);
             tracing_layers.push(log_subscriber.boxed());
         }
 

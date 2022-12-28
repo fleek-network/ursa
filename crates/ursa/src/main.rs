@@ -29,6 +29,8 @@ async fn main() -> Result<()> {
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
 
     TelemetryConfig::new("ursa-cli")
+        .with_pretty_log()
+        .with_tree_tracer()
         .with_log_level(opts.log.as_ref().unwrap_or_else(|| &log_level))
         .init()?;
 
