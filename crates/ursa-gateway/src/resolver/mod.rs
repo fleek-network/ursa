@@ -142,8 +142,8 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         .context("Multi-hash result did not contain a provider")?;
 
     if &provider.metadata != ENCODED_METADATA {
-        error!("invalid metadata received {}", &provider.metadata);
-        bail!("invalid metadata")
+        error!("Invalid metadata received {}", &provider.metadata);
+        bail!("Invalid metadata")
     }
 
     let multi_addresses = provider.provider.addrs.iter();
