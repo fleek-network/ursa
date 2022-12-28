@@ -6,17 +6,16 @@ use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use resolve_path::PathResolveExt;
 use std::env;
-use std::str::FromStr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::task;
 use tracing::{error, info};
-use tracing_subscriber::filter::LevelFilter;
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
+use ursa_telemetry::TelemetryConfig;
 use ursa_tracker::TrackerRegistration;
 
 pub mod config;
@@ -26,15 +25,14 @@ mod ursa;
 async fn main() -> Result<()> {
     dotenv().ok();
 
-    // Capture Cli inputs
     let Cli { opts, cmd } = Cli::from_args();
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
 
-    tracing_subscriber::fmt()
-        .with_max_level(opts.log.unwrap_or_else(|| {
-            LevelFilter::from_str(&env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
-                .unwrap()
-        }))
-        .init();
+    TelemetryConfig::new("ursa-cli")
+        .with_pretty_log()
+        .with_tree_tracer()
+        .with_log_level(opts.log.as_ref().unwrap_or_else(|| &log_level))
+        .init()?;
 
     match opts.to_config() {
         Ok(config) => {
@@ -167,5 +165,7 @@ async fn main() -> Result<()> {
             cli_error_and_die(&format!("Config error: {e}"), 1);
         }
     };
+
+    TelemetryConfig::teardown();
     Ok(())
 }
