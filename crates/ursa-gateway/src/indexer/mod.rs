@@ -20,7 +20,7 @@ impl Indexer {
         Self { cid_url, client }
     }
 
-    pub async fn query(&self, cid: String) -> Result<IndexerResponse> {
+    pub async fn query(&self, cid: &str) -> Result<IndexerResponse> {
         let endpoint = format!("{}/{cid}", self.cid_url);
         let uri = match endpoint.parse::<Uri>() {
             Ok(uri) => uri,

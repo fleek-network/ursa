@@ -13,7 +13,7 @@ struct Data {
     value: Arc<Vec<u8>>,
     freq: usize,
     lru_k: usize,
-    _tll: u128,
+    tll: u128,
 }
 
 pub struct Tlrfu {
@@ -21,8 +21,8 @@ pub struct Tlrfu {
     freq: BTreeMap<usize, Lru<usize, Arc<String>>>, // shrinkable
     ttl: BTreeMap<u128, Arc<String>>,
     used_size: u64,
-    _max_size: u64,
-    _ttl_buf: u128,
+    max_size: u64,
+    ttl_buf: u128,
 }
 
 impl Tlrfu {
@@ -32,8 +32,8 @@ impl Tlrfu {
             freq: BTreeMap::new(),
             ttl: BTreeMap::new(),
             used_size: 0,
-            _max_size: max_size,
-            _ttl_buf: ttl_buf,
+            max_size,
+            ttl_buf,
         }
     }
 
@@ -41,8 +41,8 @@ impl Tlrfu {
         self.store.contains_key(k)
     }
 
-    fn _is_size_exceeded(&self, bytes: u64) -> bool {
-        self.used_size + bytes > self._max_size
+    fn is_size_exceeded(&self, bytes: u64) -> bool {
+        self.used_size + bytes > self.max_size
     }
 
     pub fn dirty_get(&self, k: &String) -> Option<&Arc<Vec<u8>>> {
@@ -82,7 +82,7 @@ impl Tlrfu {
         if self.contains(&k) {
             bail!("[TLRFU]: Key {k:?} existed while inserting.");
         }
-        while self._is_size_exceeded(v.len() as u64) {
+        while self.is_size_exceeded(v.len() as u64) {
             let (&freq, lru) = self
                 .freq
                 .iter_mut()
@@ -96,7 +96,7 @@ impl Tlrfu {
             })?;
             lru.is_empty().then(|| self.freq.remove(&freq));
             self.used_size -= data.value.len() as u64;
-            self.ttl.remove(&data._tll);
+            self.ttl.remove(&data.tll);
         }
         let key = Arc::new(k);
         let lru = self.freq.entry(1).or_insert_with(|| Lru::new(None));
@@ -112,21 +112,21 @@ impl Tlrfu {
             .duration_since(UNIX_EPOCH)
             .context("Failed to get system time from unix epoch")?
             .as_nanos()
-            + self._ttl_buf;
+            + self.ttl_buf;
         self.store.insert(
             Arc::clone(&key),
             Data {
                 value: v,
                 freq: 1,
                 lru_k,
-                _tll: tll,
+                tll,
             },
         );
         self.ttl.insert(tll, key);
         Ok(())
     }
 
-    async fn _process_tll_clean_up(&mut self) -> Result<()> {
+    pub async fn process_tll_clean_up(&mut self) -> Result<()> {
         loop {
             let (&ttl, key) = if let Some(next) = self.ttl.iter_mut().next() {
                 next
@@ -156,7 +156,7 @@ impl Tlrfu {
             })?;
             lru.is_empty().then(|| self.freq.remove(&data.freq));
             self.used_size -= data.value.len() as u64;
-            self.ttl.remove(&data._tll);
+            self.ttl.remove(&data.tll);
         }
     }
 
@@ -180,8 +180,8 @@ mod tests {
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
         assert_eq!(cache.used_size, 0);
-        assert_eq!(cache._max_size, 200_000_000);
-        assert_eq!(cache._ttl_buf, 0);
+        assert_eq!(cache.max_size, 200_000_000);
+        assert_eq!(cache.ttl_buf, 0);
     }
 
     #[tokio::test]
@@ -192,8 +192,8 @@ mod tests {
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
         assert_eq!(cache.used_size, 0);
-        assert_eq!(cache._max_size, 200_000_000);
-        assert_eq!(cache._ttl_buf, 0);
+        assert_eq!(cache.max_size, 200_000_000);
+        assert_eq!(cache.ttl_buf, 0);
     }
 
     #[tokio::test]
@@ -459,7 +459,7 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(1_000_000_000))
                 .unwrap(),
         );
-        cache._process_tll_clean_up().await.unwrap();
+        cache.process_tll_clean_up().await.unwrap();
         assert_eq!(cache.store.len(), 0);
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
@@ -478,7 +478,7 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(900_000_000))
                 .unwrap(),
         );
-        cache._process_tll_clean_up().await.unwrap();
+        cache.process_tll_clean_up().await.unwrap();
         assert_eq!(cache.store.len(), 3);
         assert_eq!(cache.freq.len(), 1);
         assert_eq!(cache.ttl.len(), 3);

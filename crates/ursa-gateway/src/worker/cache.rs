@@ -34,12 +34,14 @@ pub enum WorkerCacheCommand {
         cid: String,
         sender: oneshot::Sender<Result<Arc<Vec<u8>>>>,
     },
+    TtlCleanUp,
 }
 
 #[async_trait]
 pub trait WorkerCache: Send + Sync + 'static {
     async fn get(&mut self, k: &str) -> Result<()>;
     async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()>;
+    async fn ttl_cleanup(&mut self) -> Result<()>;
 }
 
 #[async_trait]
@@ -55,6 +57,11 @@ impl WorkerCache for Cache {
         } else {
             warn!("[Cache]: attempt to insert existed key: {k}");
         }
+        Ok(())
+    }
+
+    async fn ttl_cleanup(&mut self) -> Result<()> {
+        self.tlrfu.process_tll_clean_up().await?;
         Ok(())
     }
 }
@@ -88,7 +95,6 @@ impl ServerCache for Cache {
     }
 }
 
-#[async_trait]
 pub trait AdminCache: Send + Sync + 'static {
     fn purge(&mut self);
 }

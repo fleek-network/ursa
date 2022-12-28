@@ -30,7 +30,6 @@ fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<
         status_code,
         Json(json!(HttpResponse {
             message: Some(message),
-            data: None
         })),
     )
 }

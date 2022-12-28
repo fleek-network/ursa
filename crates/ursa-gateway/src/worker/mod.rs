@@ -43,7 +43,7 @@ pub async fn start<Cache: WorkerCache>(
                     WorkerCacheCommand::Fetch{cid, sender} => {
                         info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                         task::spawn(async move {
-                            let result = match indexer.query(String::from(&cid)).await {
+                            let result = match indexer.query(&cid).await {
                                 Ok(provider_result) => {
                                     // TODO: query cache node
                                     sender.send(Ok(Arc::new(to_vec(&provider_result).unwrap())))
@@ -53,6 +53,14 @@ pub async fn start<Cache: WorkerCache>(
                             if let Err(e) = result {
                                 error!("Dispatch FetchAnnounce command error with cid: {cid:?}\n{e:?}");
                             }
+                        });
+                    },
+                    WorkerCacheCommand::TtlCleanUp => {
+                        info!("Dispatch TtlCleanUp command");
+                        task::spawn(async move {
+                            if let Err(e) = cache.write().await.ttl_cleanup().await {
+                                error!("Dispatch TtlCleanUp command error\n{e}");
+                            };
                         });
                     }
                 }
