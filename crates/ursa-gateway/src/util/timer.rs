@@ -7,9 +7,7 @@ pub fn now() -> SystemTime {
 
 #[cfg(test)]
 mod mock_time {
-    use std::cell::RefCell;
-
-    use super::*;
+    use {super::*, std::cell::RefCell};
 
     thread_local! {
         static MOCK_TIME: RefCell<Option<SystemTime>> = RefCell::new(None);

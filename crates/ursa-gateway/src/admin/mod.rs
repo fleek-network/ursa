@@ -1,24 +1,24 @@
 mod route;
 
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
-
-use anyhow::{Context, Result};
-use axum::{
-    extract::Extension,
-    routing::{get, post},
-    Router,
-};
-use axum_server::tls_rustls::RustlsConfig;
-use tokio::sync::RwLock;
-use tracing::info;
-
-use crate::{
-    admin::route::api::v1::{get::get_config_handler, post::purge_cache_handler},
-    config::{GatewayConfig, ServerConfig},
-    worker::cache::AdminCache,
+use {
+    crate::{
+        config::{GatewayConfig, ServerConfig},
+        worker::cache::AdminCache,
+    },
+    anyhow::{Context, Result},
+    axum::{
+        extract::Extension,
+        routing::{get, post},
+        Router,
+    },
+    axum_server::tls_rustls::RustlsConfig,
+    route::api::v1::{get::get_config_handler, post::purge_cache_handler},
+    std::{
+        net::{Ipv4Addr, SocketAddr},
+        sync::Arc,
+    },
+    tokio::sync::RwLock,
+    tracing::info,
 };
 
 pub async fn start<Cache: AdminCache>(

@@ -1,17 +1,17 @@
 pub mod model;
 
-use std::net::SocketAddrV4;
-
-use anyhow::{bail, Context, Result};
-use hyper::{body, client::HttpConnector, Body, Request, Uri};
-use hyper_tls::HttpsConnector;
-use jsonrpc_v2::{Id, V2};
-use libp2p::multiaddr::Protocol;
-use serde::Deserialize;
-use serde_json::{from_slice, json};
-use tracing::{debug, error};
-
-use crate::resolver::model::IndexerResponse;
+use {
+    anyhow::{bail, Context, Result},
+    hyper::{body, client::HttpConnector, Body, Request, Uri},
+    hyper_tls::HttpsConnector,
+    jsonrpc_v2::{Id, V2},
+    libp2p::multiaddr::Protocol,
+    model::IndexerResponse,
+    serde::Deserialize,
+    serde_json::{from_slice, json},
+    std::net::SocketAddrV4,
+    tracing::{debug, error},
+};
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 
