@@ -18,7 +18,7 @@ use hyper_tls::HttpsConnector;
 use indexer::Indexer;
 use tokio::{
     sync::{mpsc, RwLock},
-    task, time,
+    task,
 };
 use tracing::{error, info, Level};
 use worker::cache::Cache;
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
                 let duration_ms = Duration::from_millis(worker_tll_interval);
                 info!("[Cache TTL Worker]: interval: {duration_ms:?}");
                 loop {
-                    time::sleep(duration_ms).await;
+                    tokio::time::sleep(duration_ms).await;
                     if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
                         error!("[Cache TTL Worker]: {e}");
                     }
