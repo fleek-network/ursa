@@ -28,7 +28,7 @@ resource "digitalocean_kubernetes_cluster" "ursa_cluster" {
     auto_scale = true
     min_nodes  = var.k8s_min_node_count
     max_nodes  = var.k8s_max_node_count
-    tags       = ["ursa-main"]
+    tags       = [digitalocean_tag.ursa_node.name]
   }
 }
 
