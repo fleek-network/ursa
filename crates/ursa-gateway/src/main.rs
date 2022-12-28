@@ -7,22 +7,21 @@ mod server;
 mod util;
 mod worker;
 
-use {
-    anyhow::{Context, Result},
-    clap::Parser,
-    cli::{Cli, Commands},
-    config::{init_config, load_config},
-    hyper::Body,
-    hyper_tls::HttpsConnector,
-    resolver::Resolver,
-    std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration},
-    tokio::{
-        sync::{mpsc, RwLock},
-        task,
-    },
-    tracing::{error, info, Level},
-    worker::cache::Cache,
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use cli::{Cli, Commands};
+use config::{init_config, load_config};
+use hyper::Body;
+use hyper_tls::HttpsConnector;
+use resolver::Resolver;
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
 };
+use tracing::{error, info, Level};
+use worker::cache::Cache;
 
 #[tokio::main]
 async fn main() -> Result<()> {

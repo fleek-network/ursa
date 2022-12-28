@@ -1,16 +1,16 @@
 pub mod cache;
 
-use {
-    crate::resolver::Resolver,
-    cache::{WorkerCache, WorkerCacheCommand},
-    std::sync::Arc,
-    tokio::{
-        select,
-        sync::{mpsc::UnboundedReceiver, RwLock},
-        task,
-    },
-    tracing::{error, info},
+use std::sync::Arc;
+
+use cache::{WorkerCache, WorkerCacheCommand};
+use tokio::{
+    select,
+    sync::{mpsc::UnboundedReceiver, RwLock},
+    task,
 };
+use tracing::{error, info};
+
+use crate::resolver::Resolver;
 
 pub async fn start<Cache: WorkerCache>(
     mut rx: UnboundedReceiver<WorkerCacheCommand>,

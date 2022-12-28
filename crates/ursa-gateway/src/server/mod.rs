@@ -1,21 +1,21 @@
 mod model;
 mod route;
 
-use {
-    crate::{
-        config::{GatewayConfig, ServerConfig},
-        worker::cache::ServerCache,
-    },
-    anyhow::{Context, Result},
-    axum::{extract::Extension, routing::get, Router},
-    axum_server::tls_rustls::RustlsConfig,
-    route::api::v1::get::get_block_handler,
-    std::{
-        net::{Ipv4Addr, SocketAddr},
-        sync::Arc,
-    },
-    tokio::sync::RwLock,
-    tracing::info,
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
+
+use anyhow::{Context, Result};
+use axum::{extract::Extension, routing::get, Router};
+use axum_server::tls_rustls::RustlsConfig;
+use route::api::v1::get::get_block_handler;
+use tokio::sync::RwLock;
+use tracing::info;
+
+use crate::{
+    config::{GatewayConfig, ServerConfig},
+    worker::cache::ServerCache,
 };
 
 pub async fn start<Cache: ServerCache>(

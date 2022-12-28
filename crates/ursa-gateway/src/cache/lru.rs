@@ -1,8 +1,7 @@
-use {
-    anyhow::{bail, Context, Result},
-    std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc},
-    tokio::sync::RwLock,
-};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
+
+use anyhow::{bail, Context, Result};
+use tokio::sync::RwLock;
 
 struct Node<T> {
     next: RwLock<Arc<Option<Node<T>>>>,

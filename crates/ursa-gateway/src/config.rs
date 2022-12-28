@@ -1,14 +1,14 @@
-use {
-    crate::cli::DaemonCmdOpts,
-    anyhow::{Context, Result},
-    serde::{Deserialize, Serialize},
-    std::{
-        fs::{create_dir_all, read_to_string, File},
-        io::Write,
-        path::PathBuf,
-    },
-    tracing::{info, Level},
+use std::{
+    fs::{create_dir_all, read_to_string, File},
+    io::Write,
+    path::PathBuf,
 };
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use tracing::{info, Level};
+
+use crate::cli::DaemonCmdOpts;
 
 pub const DEFAULT_URSA_GATEWAY_PATH: &str = ".ursa/gateway";
 pub const DEFAULT_URSA_GATEWAY_CONFIG_PATH: &str = ".ursa/gateway/config.toml";

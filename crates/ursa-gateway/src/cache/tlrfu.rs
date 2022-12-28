@@ -1,13 +1,13 @@
-use {
-    super::lru::Lru,
-    crate::util::timer::now,
-    anyhow::{bail, Context, Result},
-    std::{
-        collections::{BTreeMap, HashMap},
-        sync::Arc,
-        time::UNIX_EPOCH,
-    },
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    time::UNIX_EPOCH,
 };
+
+use anyhow::{bail, Context, Result};
+
+use super::lru::Lru;
+use crate::util::timer::now;
 
 struct Data {
     value: Arc<Vec<u8>>,
@@ -172,10 +172,8 @@ impl Tlrfu {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::util::timer::{clear_mock_time, set_mock_time},
-    };
+    use super::*;
+    use crate::util::timer::{clear_mock_time, set_mock_time};
 
     #[tokio::test]
     async fn new() {
