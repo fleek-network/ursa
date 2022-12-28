@@ -119,7 +119,7 @@ impl Resolver {
                         }
                     }
                 }
-                Err(e) => error!("Error querying the node provider failed {e:?}"),
+                Err(e) => error!("Error querying the node provider {addr:?} {e:?}"),
             }
         }
         bail!("Failed to get data")
