@@ -141,7 +141,7 @@ pub async fn get_block_handler(
     let block_bytes = match body::to_bytes(provider_resp.into_body()).await {
         Ok(bytes) => bytes,
         Err(e) => {
-            error!("failed to read data from upstream: {}\n{}", endpoint, e);
+            error!("failed to read data from upstream: {endpoint}\n{e}");
             return error_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("failed to read data from upstream: {endpoint}"),
