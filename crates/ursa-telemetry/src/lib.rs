@@ -6,7 +6,7 @@ use tracing_subscriber::{
 use tracing_tree::HierarchicalLayer;
 
 /// Ursa Telemetry Configuration
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct TelemetryConfig {
     /// Service name.
     pub name: String,
@@ -22,20 +22,6 @@ pub struct TelemetryConfig {
     pub chrome_trace: bool,
     /// Jaeger tracing layer.
     pub jaeger_trace: bool,
-}
-
-impl Default for TelemetryConfig {
-    fn default() -> Self {
-        Self {
-            name: Default::default(),
-            log_level: Default::default(),
-            json_log: Default::default(),
-            tokio_console: Default::default(),
-            tree_trace: Default::default(),
-            chrome_trace: Default::default(),
-            jaeger_trace: Default::default(),
-        }
-    }
 }
 
 impl TelemetryConfig {
