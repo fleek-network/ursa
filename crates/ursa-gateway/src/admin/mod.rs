@@ -40,7 +40,7 @@ pub async fn start<Cache: AdminCache>(
     let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
         .await
         .with_context(|| {
-            format!("failed to init tls from:\ncert: {cert_path:?}:\npath:{key_path:?}")
+            format!("failed to init tls from: cert: {cert_path:?}: path:{key_path:?}")
         })?;
 
     let addr = SocketAddr::from((

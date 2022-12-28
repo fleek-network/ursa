@@ -23,3 +23,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 libp2p.workspace = true
 async-trait.workspace = true
+jsonrpc-v2.workspace = true
