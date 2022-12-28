@@ -12,6 +12,9 @@ use serde::Deserialize;
 use serde_json::{from_slice, json};
 use tracing::{debug, error};
 
+// Base64 encoded. See ursa-index-provider::Metadata.
+const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
+
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 
 pub struct Resolver {
@@ -133,11 +136,16 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         .context("Indexer result did not contain a multi-hash result")?
         .provider_results;
 
-    if providers.is_empty() {
-        bail!("Multi-hash result did not contain a provider")
+    let provider = providers
+        .first()
+        .context("Multi-hash result did not contain a provider")?;
+
+    if provider.metadata != ENCODED_METADATA {
+        error!("Invalid metadata received {}", &provider.metadata);
+        bail!("Invalid metadata")
     }
 
-    let multi_addresses = providers[0].provider.addrs.iter();
+    let multi_addresses = provider.provider.addrs.iter();
 
     let mut provider_addresses = Vec::new();
     for m_addr in multi_addresses {
