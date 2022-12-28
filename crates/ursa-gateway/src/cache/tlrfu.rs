@@ -72,6 +72,16 @@ impl Tlrfu {
                 format!("[LRU]: Failed to insert LRU with key: {lru_k}, value: {k}")
             })?;
             data.lru_k = lru_k;
+            let key = self
+                .ttl
+                .remove(&data.ttl)
+                .with_context(|| format!("[TLRFU]: Key not found when delete ttl: {}", data.ttl))?;
+            data.ttl = now()
+                .duration_since(UNIX_EPOCH)
+                .context("Failed to get system time from unix epoch")?
+                .as_nanos()
+                + self.ttl_buf;
+            self.ttl.insert(data.ttl, key);
             Ok(Some(&data.value))
         } else {
             Ok(None)
@@ -127,12 +137,13 @@ impl Tlrfu {
         Ok(())
     }
 
-    pub async fn process_ttl_clean_up(&mut self) -> Result<()> {
+    pub async fn process_ttl_clean_up(&mut self) -> Result<usize> {
+        let mut count = 0;
         loop {
             let (&ttl, key) = if let Some(next) = self.ttl.iter_mut().next() {
                 next
             } else {
-                return Ok(());
+                return Ok(count);
             };
             if ttl
                 > now()
@@ -140,7 +151,7 @@ impl Tlrfu {
                     .context("Failed to get system time from unix epoch")?
                     .as_nanos()
             {
-                return Ok(());
+                return Ok(count);
             }
             let data = self
                 .store
@@ -159,6 +170,7 @@ impl Tlrfu {
             lru.is_empty().then(|| self.freq.remove(&data.freq));
             self.used_size -= data.value.len() as u64;
             self.ttl.remove(&data.ttl);
+            count += 1;
         }
     }
 
@@ -461,11 +473,30 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(1_000_000_000))
                 .unwrap(),
         );
-        cache.process_ttl_clean_up().await.unwrap();
+        assert_eq!(cache.process_ttl_clean_up().await.unwrap(), 3);
         assert_eq!(cache.store.len(), 0);
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
         assert_eq!(cache.used_size, 0);
+        clear_mock_time();
+    }
+
+    #[tokio::test]
+    async fn process_ttl_clean_up_partial() {
+        let mut cache = Tlrfu::new(3, 1_000_000_000);
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+        cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
+        set_mock_time(
+            now()
+                .checked_add(std::time::Duration::from_nanos(1_000_000_000))
+                .unwrap(),
+        );
+        cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
+        assert_eq!(cache.process_ttl_clean_up().await.unwrap(), 2);
+        assert_eq!(cache.store.len(), 1);
+        assert_eq!(cache.freq.len(), 1);
+        assert_eq!(cache.ttl.len(), 1);
+        assert_eq!(cache.used_size, 1);
         clear_mock_time();
     }
 
@@ -480,11 +511,29 @@ mod tests {
                 .checked_add(std::time::Duration::from_nanos(900_000_000))
                 .unwrap(),
         );
-        cache.process_ttl_clean_up().await.unwrap();
+        assert_eq!(cache.process_ttl_clean_up().await.unwrap(), 0);
         assert_eq!(cache.store.len(), 3);
         assert_eq!(cache.freq.len(), 1);
         assert_eq!(cache.ttl.len(), 3);
         assert_eq!(cache.used_size, 3);
         clear_mock_time();
+    }
+
+    #[tokio::test]
+    async fn ttl_renew_on_get() {
+        let mut cache = Tlrfu::new(3, 0);
+        cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
+
+        let ttl_before = cache.store.get(&"a".to_string()).unwrap().ttl;
+        assert!(cache.ttl.contains_key(&ttl_before));
+
+        cache.get(&"a".into()).await.unwrap().unwrap();
+        assert!(!cache.ttl.contains_key(&ttl_before));
+
+        let ttl_after = cache.store.get(&"a".to_string()).unwrap().ttl;
+        assert!(ttl_after > ttl_before);
+        assert!(cache.ttl.contains_key(&ttl_after));
+
+        assert_eq!(cache.ttl.len(), 1);
     }
 }

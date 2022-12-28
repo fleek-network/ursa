@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
-use tracing::log::warn;
+use tracing::{info, log::warn};
 
 use crate::cache::Tlrfu;
 
@@ -61,7 +61,8 @@ impl WorkerCache for Cache {
     }
 
     async fn ttl_cleanup(&mut self) -> Result<()> {
-        self.tlrfu.process_ttl_clean_up().await?;
+        let count = self.tlrfu.process_ttl_clean_up().await?;
+        info!("[Cache]: TTL cleanup total {count} record(s)");
         Ok(())
     }
 }

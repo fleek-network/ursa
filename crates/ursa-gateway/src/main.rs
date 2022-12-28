@@ -70,13 +70,13 @@ async fn main() -> Result<()> {
 
             task::spawn(async move {
                 if let Err(e) = server::start(server_config, server_cache).await {
-                    error!("[Gateway server]: {e}");
+                    error!("[Gateway server]: {e:?}");
                 };
             });
 
             task::spawn(async move {
                 if let Err(e) = admin::start(admin_config, admin_cache).await {
-                    error!("[Admin server]: {e}");
+                    error!("[Admin server]: {e:?}");
                 };
             });
 
@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
                 loop {
                     tokio::time::sleep(duration_ms).await;
                     if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
-                        error!("[Cache TTL Worker]: {e}");
+                        error!("[Cache TTL Worker]: {e:?}");
                     }
                 }
             });
