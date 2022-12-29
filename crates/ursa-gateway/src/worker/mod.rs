@@ -42,13 +42,8 @@ pub async fn start<Cache: WorkerCache>(
                     WorkerCacheCommand::Fetch{cid, sender} => {
                         info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                         task::spawn(async move {
-                            let result = match resolver.provider_address_v4(&cid).await {
-                                Ok(providers) => {
-                                    match resolver.resolve_content(providers, &cid).await {
-                                        Ok(content) => sender.send(Ok(Arc::new(content))),
-                                        Err(message) => sender.send(Err(message))
-                                    }
-                                }
+                            let result = match resolver.resolve_content(&cid).await {
+                                Ok(content) => sender.send(Ok(content)),
                                 Err(message) => sender.send(Err(message))
                             };
                             if let Err(e) = result {

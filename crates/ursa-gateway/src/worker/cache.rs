@@ -119,7 +119,7 @@ impl ServerCache for Cache {
                     error!("Failed to dispatch Fetch command: {e:?}");
                     anyhow!("Failed to dispatch Fetch command")
                 })?;
-            let mut data = match rx.await??.into_parts() {
+            let mut body = match rx.await??.into_parts() {
                 (
                     Parts {
                         status: StatusCode::OK,
@@ -133,10 +133,10 @@ impl ServerCache for Cache {
                 }
             };
             let key = String::from(k);
-            let tx = self.tx.clone();
+            let tx = self.tx.clone(); // move to  writer - worker
             spawn(async move {
-                let mut bytes = Vec::with_capacity(data.size_hint().lower() as usize);
-                while let Some(buf) = data.data().await {
+                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+                while let Some(buf) = body.data().await {
                     match buf {
                         Ok(buf) => {
                             if let Err(e) = w.write_all(buf.as_ref()).await {
