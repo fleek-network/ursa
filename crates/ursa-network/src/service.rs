@@ -58,6 +58,7 @@ use ursa_store::{BitswapStorage, UrsaStore};
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::RequestType;
 use crate::transport::build_transport;
+use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
@@ -176,6 +177,11 @@ pub enum NetworkCommand {
         peer_id: PeerId,
         message: GossipsubMessage,
     },
+
+    #[cfg(test)]
+    GetPeerContent {
+        sender: oneshot::Sender<HashMap<PeerId, CountingBloomFilter>>,
+    },
 }
 
 pub struct UrsaService<S> {
@@ -201,8 +207,14 @@ pub struct UrsaService<S> {
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
     /// Connected peers.
     peers: HashSet<PeerId>,
-    /// Bootstrap multiaddrs
+    /// Bootstrap multiaddrs.
     bootstraps: Vec<Multiaddr>,
+    /// Summarizes the cached content.
+    cached_content: CountingBloomFilter,
+    /// Content summaries from other nodes.
+    peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
+    /// Blacklisted peers (most interactions will be refused).
+    peer_blacklist: HashSet<PeerId>,
 }
 
 impl<S> UrsaService<S>
@@ -294,6 +306,9 @@ where
             pending_responses: HashMap::default(),
             peers,
             bootstraps: config.bootstrap_nodes.clone(),
+            cached_content: CountingBloomFilter::default(),
+            peer_cached_content: HashMap::default(),
+            peer_blacklist: HashSet::default(),
         })
     }
 
@@ -464,6 +479,21 @@ where
                 message_id,
                 message,
             } => {
+                if !self.peer_blacklist.contains(&propagation_source) {
+                    if let Some(source) = &message.source {
+                        if !self.peer_blacklist.contains(source) {
+                            let message_bytes = &message.data;
+                            if let Ok(cache_summary) =
+                                CountingBloomFilter::deserialize(message_bytes)
+                            {
+                                self.peer_cached_content.insert(*source, cache_summary);
+                            } else {
+                                warn!("[GossipsubEvent::Message] - Failed to deserialize cache summary.");
+                            }
+                        }
+                    }
+                }
+
                 self.emit_event(NetworkEvent::Gossipsub(GossipsubEvent::Message {
                     peer_id: propagation_source,
                     message_id,
@@ -575,6 +605,7 @@ where
     /// Handle swarm events
     pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
         // record basic swarm metrics
+
         event.record();
         match event {
             SwarmEvent::Behaviour(event) => match event {
@@ -675,8 +706,6 @@ where
                         )
                     }
                 }
-
-                println!("cosmos");
             }
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
@@ -686,7 +715,16 @@ where
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
-                // update bloom filter
+                // update bloom filter and share it with the network
+                self.cached_content.insert(&cid.to_bytes());
+                let topic = Topic::new(URSA_GLOBAL);
+                if let Ok(cache_summary) = self.cached_content.serialize() {
+                    if let Err(e) = swarm.publish(topic, Bytes::from(cache_summary)) {
+                        warn!("[NetworkCommand::Put] - Failed to send cached content with error: {e:?}");
+                    };
+                } else {
+                    warn!("[NetworkCommand::Put] - Failed to serialize cached content.");
+                }
 
                 sender
                     .send(Ok(()))
@@ -773,6 +811,12 @@ where
                         .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
             },
+            #[cfg(test)]
+            NetworkCommand::GetPeerContent { sender } => {
+                sender
+                    .send(self.peer_cached_content.clone())
+                    .map_err(|_| anyhow!("Failed to send peer content."))?;
+            }
         }
         Ok(())
     }

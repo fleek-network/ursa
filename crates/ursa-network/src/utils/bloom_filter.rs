@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CountingBloomFilter {
     buckets: Vec<u8>,
-    num_hashes: usize
+    num_hashes: usize,
 }
 
 impl CountingBloomFilter {
@@ -24,7 +24,7 @@ impl CountingBloomFilter {
 
     pub fn insert<T: AsRef<[u8]>>(&mut self, value: &T) {
         for i in 0..self.num_hashes {
-            let hash = fasthash::murmur3::hash32_with_seed(&value, i as u32);
+            let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
             let index = (hash % (self.buckets.len() as u32)) as usize;
             let count = self.buckets.get_mut(index).unwrap();
             *count = count.saturating_add(1);
@@ -47,7 +47,7 @@ impl CountingBloomFilter {
             return Err(anyhow!("Element does not exist."));
         }
         for i in 0..self.num_hashes {
-            let hash = fasthash::murmur3::hash32_with_seed(&value, i as u32);
+            let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
             let index = (hash % (self.buckets.len() as u32)) as usize;
             let count = self.buckets.get_mut(index).unwrap();
             *count = count.saturating_sub(1);
@@ -70,7 +70,6 @@ impl CountingBloomFilter {
     fn calculate_num_hashes(n: usize, m: usize) -> usize {
         (((m as f64) / (n as f64)) * 2.0f64.ln()).ceil() as usize
     }
-
 }
 
 #[cfg(test)]
@@ -137,5 +136,4 @@ mod tests {
         assert!(filter.contains(&"def"));
         assert!(filter.contains(&"ghi"));
     }
-
 }

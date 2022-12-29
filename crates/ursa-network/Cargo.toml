@@ -11,6 +11,7 @@ description = "Ursa's libp2p implementation"
 anyhow.workspace = true
 async-fs.workspace = true
 async-trait.workspace = true
+bincode.workspace = true
 bytes.workspace = true
 cid.workspace = true
 db.workspace = true
