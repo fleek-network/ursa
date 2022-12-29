@@ -1,7 +1,8 @@
 resource "helm_release" "ingress_nginx" {
-  name             = "ingress-nginx"
-  chart            = "ingress-nginx"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
+  name       = "nginx-ingress-controller"
+  repository = "https://charts.bitnami.com/bitnami"
+  chart      = "nginx-ingress-controller"
+  namespace  = kubernetes_namespace_v1.ursa.metadata[0].name
 
   set {
     name  = "service.type"
@@ -23,9 +24,11 @@ resource "kubernetes_ingress_v1" "default_cluster_ingress" {
   ]
   metadata {
     name      = "ursa-${var.region}-ingress"
+    namespace = kubernetes_namespace_v1.ursa.metadata[0].name
     annotations = {
       "kubernetes.io/ingress.class"          = "nginx"
       "ingress.kubernetes.io/rewrite-target" = "/"
+      "ingress.kubernetes.io/ssl-redirect"   = "false"
       "cert-manager.io/cluster-issuer"       = "letsencrypt-${var.lets_encrypt_env}"
     }
   }
@@ -38,13 +41,14 @@ resource "kubernetes_ingress_v1" "default_cluster_ingress" {
           path {
             backend {
               service {
-                name = "ursa-service"
+                name = kubernetes_service_v1.ursa.metadata[0].name
                 port {
                   number = 4069
                 }
               }
             }
-            path = "/"
+            path      = "/"
+            path_type = "Prefix"
           }
         }
       }

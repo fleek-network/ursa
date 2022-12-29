@@ -46,8 +46,8 @@ variable "letsencrypt_email" {
 
 variable "lets_encrypt_env" {
   type        = string
-  default     = "prod"
-  description = "Lets Encrypt `staging` or `prod`"
+  default     = "staging"
+  description = "Lets Encrypt `staging` or `production`"
 }
 
 variable "do_token" {

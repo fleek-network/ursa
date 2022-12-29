@@ -41,22 +41,19 @@ resource "digitalocean_kubernetes_node_pool" "bootstrap_pool" {
   tags       = [var.do_tag_ursa_bs_node]
 }
 
-resource "kubernetes_service" "ursa" {
+resource "kubernetes_service_v1" "ursa" {
   metadata {
-    name      = "ursa"
-    namespace = kubernetes_namespace.ursa.metadata.0.name
+    name      = "ursa-service"
+    namespace = kubernetes_namespace_v1.ursa.metadata.0.name
   }
   spec {
     selector = {
       app = kubernetes_daemonset.ursa_node.spec.0.template.0.metadata.0.labels.app
     }
-    type = "NodePort"
-
     port {
-      name = "api"
-      # node_port   = 30201
-      port        = 4069
-      target_port = 4069
+      port     = 4069
+      name     = "api"
+      protocol = "TCP"
     }
   }
 }
@@ -88,7 +85,7 @@ resource "digitalocean_project_resources" "project_resources" {
   ]
 }
 
-resource "kubernetes_namespace" "ursa" {
+resource "kubernetes_namespace_v1" "ursa" {
   metadata {
     name = "ursa"
   }

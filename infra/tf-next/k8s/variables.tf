@@ -69,7 +69,7 @@ variable "region" {
 # Images  #
 ###########
 variable "k8s_ursa_docker_image" {
-  default     = "ghcr.io/fleek-network/ursa:main"
+  default = "ghcr.io/fleek-network/ursa:main"
 }
 
 ###########
@@ -77,8 +77,8 @@ variable "k8s_ursa_docker_image" {
 ###########
 
 variable "registry_server" {
-  type        = string
-  default     = "ghcr.io"
+  type    = string
+  default = "ghcr.io"
 }
 
 variable "letsencrypt_email" {

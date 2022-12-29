@@ -1,7 +1,7 @@
 resource "kubernetes_daemonset" "ursa_node" {
   metadata {
     name      = "ursa-node"
-    namespace = kubernetes_namespace.ursa.metadata.0.name
+    namespace = kubernetes_namespace_v1.ursa.metadata.0.name
   }
   spec {
     selector {
