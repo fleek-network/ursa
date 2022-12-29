@@ -8,7 +8,7 @@ terraform {
   }
 }
 
-# For local testing with tfvars
+# For local dev with tfvars
 # provider "digitalocean" {
 #   token = var.do_token
 # }

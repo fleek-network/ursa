@@ -14,3 +14,8 @@ apply:
 .PHONY: destroy
 destroy:
 	@cd tf-next && terraform destroy -var-file="production.tfvars"
+
+.PHONY: fmt
+fmt:
+	@cd tf-next && terraform fmt
+	@cd tf-next/k8s && terraform fmt
