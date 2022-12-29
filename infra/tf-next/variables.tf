@@ -16,7 +16,7 @@ variable "project_description" {
 
 variable "project_purpose" {
   type        = string
-  default     = "Nebula"
+  default     = "Major"
   description = "Purpose of the project in DigitalOcean"
 }
 
@@ -26,32 +26,40 @@ variable "project_stage" {
   description = "Stage of the project in DigitalOcean"
 }
 
-################
-# Regions      #
-################
-variable "regions" {
-  type    = list(any)
-  default = ["ams3"]
-}
-
-################
-# k8s Droplet  #
-################
-
-variable "k8s_droplet_size" {
+variable "region" {
   type        = string
-  default     = "s-4vcpu-8gb"
-  description = "Default k8s droplet size identifier"
+  default     = "ams3"
+  description = "The digital ocean region slug for where to create resources"
 }
 
-variable "k8s_min_node_count" {
-  default     = 3
-  type        = number
-  description = "How many testnet nodes to deploy"
+variable "k8s_domains" {
+  type        = list(string)
+  default     = ["testnet.ursa.earth"]
+  description = "Top level domains to create records and pods for"
 }
 
-variable "k8s_max_node_count" {
-  default     = 6
-  type        = number
-  description = "How many testnet nodes to deploy"
+variable "letsencrypt_email" {
+  type        = string
+  default     = "major@ursa.earth"
+  description = "Let's Encrypt admin email"
+}
+
+variable "lets_encrypt_env" {
+  type        = string
+  default     = "staging"
+  description = "Lets Encrypt `staging` or `production`"
+}
+
+# For local dev with tfvars
+# variable "do_token" {
+#   description = "The API token from your Digital Ocean control panel"
+#   type        = string
+# }
+
+###########
+# Images  #
+###########
+variable "k8s_ursa_docker_image" {
+  default     = "ghcr.io/fleek-network/ursa:main"
+  description = "Ursa node docker image"
 }
