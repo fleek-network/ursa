@@ -50,10 +50,11 @@ variable "lets_encrypt_env" {
   description = "Lets Encrypt `staging` or `production`"
 }
 
-variable "do_token" {
-  description = "The API token from your Digital Ocean control panel"
-  type        = string
-}
+# For local dev with tfvars
+# variable "do_token" {
+#   description = "The API token from your Digital Ocean control panel"
+#   type        = string
+# }
 
 ###########
 # Images  #
