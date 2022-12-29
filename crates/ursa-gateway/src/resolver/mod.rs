@@ -3,7 +3,8 @@ pub mod model;
 use std::net::SocketAddrV4;
 
 use anyhow::{bail, Context, Result};
-use hyper::{body, client::HttpConnector, Body, Request, Uri};
+use axum::http::response::Parts;
+use hyper::{body, client::HttpConnector, Body, Request, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
 use jsonrpc_v2::{Id, V2};
 use libp2p::multiaddr::Protocol;
@@ -40,27 +41,43 @@ impl Resolver {
             }
         };
 
-        let resp = match self.client.get(uri).await {
-            Ok(resp) => resp,
-            Err(e) => {
-                error!("Error requested uri: {endpoint} {e:?}");
-                bail!("Error requested uri: {endpoint}")
+        let body = match self.client.get(uri).await?.into_parts() {
+            (
+                Parts {
+                    status: StatusCode::OK,
+                    ..
+                },
+                body,
+            ) => body,
+            (
+                Parts {
+                    status: StatusCode::NOT_FOUND,
+                    ..
+                },
+                ..,
+            ) => {
+                error!("Error requested indexer - Got 404: {endpoint}");
+                bail!("Error requested indexer - Got 404: {endpoint}")
+            }
+            resp => {
+                error!("Error requested indexer: {endpoint} {resp:?}");
+                bail!("Error requested indexer: {endpoint}")
             }
         };
 
-        let bytes = match body::to_bytes(resp.into_body()).await {
+        let bytes = match body::to_bytes(body).await {
             Ok(bytes) => bytes,
             Err(e) => {
-                error!("Error read data from upstream: {endpoint} {e:?}");
-                bail!("Error read data from upstream: {endpoint}")
+                error!("Error read data from indexer: {endpoint} {e:?}");
+                bail!("Error read data from indexer {endpoint}")
             }
         };
 
         let indexer_response: IndexerResponse = match from_slice(&bytes) {
             Ok(indexer_response) => indexer_response,
             Err(e) => {
-                error!("Error parsed indexer response from upstream: {endpoint} {e:?}");
-                bail!("Error parsed indexer response from upstream: {endpoint}")
+                error!("Error parsed indexer response from indexer: {endpoint} {e:?}");
+                bail!("Error parsed indexer response from indexer: {endpoint}")
             }
         };
 
