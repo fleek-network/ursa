@@ -1,16 +1,14 @@
 pub mod model;
 
-use std::net::SocketAddrV4;
-
-use anyhow::{bail, Context, Result};
-use axum::http::response::Parts;
-use hyper::{body, client::HttpConnector, Body, Request, StatusCode, Uri};
+use anyhow::{anyhow, bail, Context, Result};
+use axum::{http::response::Parts, response::Response};
+use hyper::{body, client::HttpConnector, Body, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
 use jsonrpc_v2::{Id, V2};
 use libp2p::multiaddr::Protocol;
 use model::IndexerResponse;
 use serde::Deserialize;
-use serde_json::{from_slice, json};
+use serde_json::from_slice;
 use tracing::{debug, error};
 
 // Base64 encoded. See ursa-index-provider::Metadata.
@@ -31,17 +29,24 @@ impl Resolver {
         }
     }
 
-    pub async fn provider_address_v4(&self, cid: &str) -> Result<Vec<SocketAddrV4>> {
+    pub async fn provider_address_v4(&self, cid: &str) -> Result<Vec<String>> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
-        let uri = match endpoint.parse::<Uri>() {
-            Ok(uri) => uri,
-            Err(e) => {
-                error!("Error parsed uri: {endpoint} {e:?}");
-                bail!("Error parsed uri: {endpoint}")
-            }
-        };
 
-        let body = match self.client.get(uri).await?.into_parts() {
+        let uri = endpoint.parse::<Uri>().map_err(|e| {
+            error!("Error parsed uri: {endpoint} {e:?}");
+            anyhow!("Error parsed uri: {endpoint}")
+        })?;
+
+        let body = match self
+            .client
+            .get(uri)
+            .await
+            .map_err(|e| {
+                error!("Error requested indexer: {endpoint} {e:?}");
+                anyhow!("Error requested indexer: {endpoint}")
+            })?
+            .into_parts()
+        {
             (
                 Parts {
                     status: StatusCode::OK,
@@ -65,21 +70,15 @@ impl Resolver {
             }
         };
 
-        let bytes = match body::to_bytes(body).await {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                error!("Error read data from indexer: {endpoint} {e:?}");
-                bail!("Error read data from indexer {endpoint}")
-            }
-        };
+        let bytes = body::to_bytes(body).await.map_err(|e| {
+            error!("Error read data from indexer: {endpoint} {e:?}");
+            anyhow!("Error read data from indexer {endpoint}")
+        })?;
 
-        let indexer_response: IndexerResponse = match from_slice(&bytes) {
-            Ok(indexer_response) => indexer_response,
-            Err(e) => {
-                error!("Error parsed indexer response from indexer: {endpoint} {e:?}");
-                bail!("Error parsed indexer response from indexer: {endpoint}")
-            }
-        };
+        let indexer_response: IndexerResponse = from_slice(&bytes).map_err(|e| {
+            error!("Error parsed indexer response from indexer: {endpoint} {e:?}");
+            anyhow!("Error parsed indexer response from indexer: {endpoint}")
+        })?;
 
         debug!("Received indexer response for {cid}: {indexer_response:?}");
 
@@ -101,52 +100,27 @@ impl Resolver {
 
     pub async fn resolve_content(
         &self,
-        addresses: Vec<SocketAddrV4>,
+        addresses: Vec<String>,
         cid: &str,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Response<Body>> {
         for addr in addresses.into_iter() {
-            let req = Request::builder()
-                .method("POST")
-                .uri(format!("http://{}:{}/rpc/v0", addr.ip(), addr.port()))
-                .header("Content-Type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "jsonrpc": "2.0",
-                        "id": "id",
-                        "method": "ursa_get_cid",
-                        "params":{"cid": cid}
-                    })
-                    .to_string(),
-                ))
-                .context("Request to be valid")?;
+            let endpoint = format!("{addr}/{cid}");
 
-            match self.client.request(req).await {
-                Ok(resp) if resp.status() == 404 => bail!("Failed to find content for {cid}"),
-                Ok(resp) => {
-                    let bytes = body::to_bytes(resp.into_body()).await?;
-                    match from_slice::<JsonRpcResponse<Vec<u8>>>(&bytes) {
-                        Ok(JsonRpcResponse::Result { result, .. }) => return Ok(result),
-                        Ok(JsonRpcResponse::Error {
-                            error: JsonRpcError { code, message },
-                            ..
-                        }) => {
-                            error!("Server returned error with code {code} and message {message}");
-                            bail!("Server returned error with code {code} and message {message}");
-                        }
-                        Err(e) => {
-                            error!("Error parsed response from provider: {e:?}");
-                            bail!("Error parsed response from provider");
-                        }
-                    }
-                }
+            let uri = match endpoint.parse::<Uri>() {
+                Ok(uri) => uri,
+                Err(e) => error!("Error parsed uri: {endpoint} {e:?}"),
+            };
+
+            match self.client.get(uri).await {
+                Ok(resp) => return Ok(resp),
                 Err(e) => error!("Error querying the node provider {addr:?} {e:?}"),
-            }
+            };
         }
         bail!("Failed to get data")
     }
 }
 
-fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4>> {
+fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<String>> {
     let providers = &indexer_response
         .multihash_results
         .first()
@@ -162,27 +136,36 @@ fn choose_provider(indexer_response: IndexerResponse) -> Result<Vec<SocketAddrV4
         bail!("Invalid metadata")
     }
 
-    let multi_addresses = provider.provider.addrs.iter();
-
-    let mut provider_addresses = Vec::new();
-    for m_addr in multi_addresses {
-        let mut addr_iter = m_addr.iter();
-        let ip = match addr_iter.next() {
-            Some(Protocol::Ip4(ip)) => ip,
-            _ => {
-                debug!("Skipping address {m_addr}");
-                continue;
+    let provider_addresses: Vec<String> = providers[0]
+        .provider
+        .addrs
+        .iter()
+        .map(|m_addr| {
+            let (mut protocol, mut host, mut port) = (String::new(), String::new(), String::new());
+            for addr in m_addr.into_iter() {
+                match addr {
+                    Protocol::Ip6(ip) => {
+                        host = ip.to_string();
+                    }
+                    Protocol::Ip4(ip) => {
+                        host = ip.to_string();
+                    }
+                    Protocol::Tcp(p) => {
+                        port = p.to_string();
+                    }
+                    Protocol::Http => {
+                        protocol = "http".to_string();
+                    }
+                    Protocol::Https => {
+                        protocol = "https".to_string();
+                    }
+                    _ => {}
+                };
             }
-        };
-        let port = match addr_iter.next() {
-            Some(Protocol::Tcp(port)) => port,
-            _ => {
-                debug!("Skipping address {m_addr} without port");
-                continue;
-            }
-        };
-        provider_addresses.push(SocketAddrV4::new(ip, port));
-    }
+            format!("{protocol}://{host}:{port}")
+        })
+        .filter(|addr| addr != "://:")
+        .collect();
 
     if provider_addresses.is_empty() {
         bail!("Failed to get a valid address for provider");

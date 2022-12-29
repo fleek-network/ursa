@@ -9,15 +9,15 @@ use anyhow::{bail, Context, Result};
 use super::lru::Lru;
 use crate::util::timer::now;
 
-struct Data {
-    value: Arc<Vec<u8>>,
+struct Data<T: ByteSize> {
+    value: Arc<T>,
     freq: usize,
     lru_k: usize,
     ttl: u128,
 }
 
-pub struct Tlrfu {
-    store: HashMap<Arc<String>, Data>,
+pub struct Tlrfu<T: ByteSize> {
+    store: HashMap<Arc<String>, Data<T>>,
     freq: BTreeMap<usize, Lru<usize, Arc<String>>>, // shrinkable
     ttl: BTreeMap<u128, Arc<String>>,
     used_size: u64,
@@ -25,7 +25,11 @@ pub struct Tlrfu {
     ttl_buf: u128,
 }
 
-impl Tlrfu {
+pub trait ByteSize {
+    fn len(&self) -> usize;
+}
+
+impl<T: ByteSize> Tlrfu<T> {
     pub fn new(max_size: u64, ttl_buf: u128) -> Self {
         Self {
             store: HashMap::new(),
@@ -45,11 +49,11 @@ impl Tlrfu {
         self.used_size + bytes > self.max_size
     }
 
-    pub fn dirty_get(&self, k: &String) -> Option<&Arc<Vec<u8>>> {
+    pub fn dirty_get(&self, k: &String) -> Option<&Arc<T>> {
         self.store.get(k).map(|data| &data.value)
     }
 
-    pub async fn get(&mut self, k: &String) -> Result<Option<&Arc<Vec<u8>>>> {
+    pub async fn get(&mut self, k: &String) -> Result<Option<&Arc<T>>> {
         if let Some(data) = self.store.get_mut(k) {
             let lru = self
                 .freq
@@ -88,7 +92,7 @@ impl Tlrfu {
         }
     }
 
-    pub async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
+    pub async fn insert(&mut self, k: String, v: Arc<T>) -> Result<()> {
         if self.contains(&k) {
             bail!("[TLRFU]: Key {k:?} existed while inserting");
         }
@@ -187,9 +191,15 @@ mod tests {
     use super::*;
     use crate::util::timer::{clear_mock_time, set_mock_time};
 
+    impl ByteSize for Vec<u8> {
+        fn len(&self) -> usize {
+            self.len()
+        }
+    }
+
     #[tokio::test]
     async fn new() {
-        let cache = Tlrfu::new(200_000_000, 0);
+        let cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         assert_eq!(cache.store.len(), 0);
         assert_eq!(cache.freq.len(), 0);
         assert_eq!(cache.ttl.len(), 0);
@@ -200,7 +210,7 @@ mod tests {
 
     #[tokio::test]
     async fn purge() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.purge();
         assert_eq!(cache.store.len(), 0);
         assert_eq!(cache.freq.len(), 0);
@@ -212,14 +222,14 @@ mod tests {
 
     #[tokio::test]
     async fn insert_duplicate() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         assert!(cache.insert("a".into(), Arc::new(vec![0])).await.is_err());
     }
 
     #[tokio::test]
     async fn insert_one() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
 
         assert_eq!(cache.store.len(), 1);
@@ -241,7 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn insert_two() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
@@ -264,14 +274,14 @@ mod tests {
 
     #[tokio::test]
     async fn get_empty() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         assert!(cache.get(&"b".to_string()).await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn get_one_with_one_bucket() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
 
         let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
@@ -291,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_one_with_two_bucket() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
@@ -312,7 +322,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_two_with_one_bucket() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
 
         let val = cache.get(&"a".to_string()).await.unwrap().unwrap().as_ref();
@@ -334,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_two_with_two_bucket() {
-        let mut cache = Tlrfu::new(200_000_000, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(200_000_000, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
@@ -357,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn insert_exceed_cap_with_one_bucket() {
-        let mut cache = Tlrfu::new(2, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(2, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
         cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
@@ -390,7 +400,7 @@ mod tests {
 
     #[tokio::test]
     async fn insert_exceed_cap_with_two_bucket() {
-        let mut cache = Tlrfu::new(2, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(2, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
 
@@ -433,7 +443,7 @@ mod tests {
 
     #[tokio::test]
     async fn insert_exceed_cap_with_many_buckets_deleted() {
-        let mut cache = Tlrfu::new(3, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(3, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
         cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
@@ -464,7 +474,7 @@ mod tests {
 
     #[tokio::test]
     async fn process_ttl_clean_up_successfully() {
-        let mut cache = Tlrfu::new(3, 1_000_000_000);
+        let mut cache = Tlrfu::<Vec<u8>>::new(3, 1_000_000_000);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
         cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
@@ -483,7 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn process_ttl_clean_up_partial() {
-        let mut cache = Tlrfu::new(3, 1_000_000_000);
+        let mut cache = Tlrfu::<Vec<u8>>::new(3, 1_000_000_000);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
         set_mock_time(
@@ -502,7 +512,7 @@ mod tests {
 
     #[tokio::test]
     async fn process_ttl_clean_up_skip() {
-        let mut cache = Tlrfu::new(3, 1_000_000_000);
+        let mut cache = Tlrfu::<Vec<u8>>::new(3, 1_000_000_000);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
         cache.insert("b".into(), Arc::new(vec![1])).await.unwrap();
         cache.insert("c".into(), Arc::new(vec![2])).await.unwrap();
@@ -521,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn ttl_renew_on_get() {
-        let mut cache = Tlrfu::new(3, 0);
+        let mut cache = Tlrfu::<Vec<u8>>::new(3, 0);
         cache.insert("a".into(), Arc::new(vec![0])).await.unwrap();
 
         let ttl_before = cache.store.get(&"a".to_string()).unwrap().ttl;
