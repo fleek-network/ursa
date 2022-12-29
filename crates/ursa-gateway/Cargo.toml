@@ -24,3 +24,4 @@ tracing-subscriber.workspace = true
 libp2p.workspace = true
 async-trait.workspace = true
 tokio-util.workspace = true
+bytes.workspace = true
