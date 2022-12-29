@@ -9,6 +9,8 @@ use model::IndexerResponse;
 use serde_json::from_slice;
 use tracing::{debug, error};
 
+use crate::resolver::model::ProviderResult;
+
 // Base64 encoded. See ursa-index-provider::Metadata.
 const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
 
@@ -80,24 +82,20 @@ impl Resolver {
 
         debug!("Received indexer response for {cid}: {indexer_response:?}");
 
-        // TODO:
-        // cherry-pick closest node
-        let providers = &indexer_response
+        let providers: Vec<&ProviderResult> = indexer_response
             .multihash_results
             .first()
             .context("Indexer result did not contain a multi-hash result")?
-            .provider_results;
+            .provider_results
+            .iter()
+            .filter(|provider| provider.metadata == ENCODED_METADATA)
+            .collect();
 
-        let provider = providers
-            .first()
-            .context("Multi-hash result did not contain a provider")?;
-
-        if provider.metadata != ENCODED_METADATA {
-            error!("Invalid metadata received {}", &provider.metadata);
-            bail!("Invalid metadata")
-        }
-
-        let provider_addresses: Vec<String> = providers[0]
+        // TODO:
+        // cherry-pick closest node
+        let provider_addresses: Vec<String> = providers
+            .first() // FIXME: temporary
+            .context("Multi-hash result did not contain a provider")?
             .provider
             .addrs
             .iter()
@@ -133,6 +131,8 @@ impl Resolver {
         if provider_addresses.is_empty() {
             bail!("Failed to get a valid address for provider");
         }
+
+        debug!("Provider addresses to query: {provider_addresses:?}");
 
         for addr in provider_addresses.into_iter() {
             let endpoint = format!("{addr}/{cid}");

@@ -132,8 +132,8 @@ impl ServerCache for Cache {
                     bail!("Error requested provider");
                 }
             };
-            let key = String::from(k);
-            let tx = self.tx.clone(); // move to  writer - worker
+            let key = String::from(k); // move to [worker|writer] thread
+            let tx = self.tx.clone(); // move to [worker|writer] thread
             spawn(async move {
                 let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
                 while let Some(buf) = body.data().await {
