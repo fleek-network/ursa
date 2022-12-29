@@ -27,13 +27,20 @@ impl ByteSize for Bytes {
 pub struct Cache {
     tlrfu: Tlrfu<Bytes>,
     tx: UnboundedSender<WorkerCacheCommand>,
+    stream_buf: u64,
 }
 
 impl Cache {
-    pub fn new(max_size: u64, ttl_buf: u128, tx: UnboundedSender<WorkerCacheCommand>) -> Self {
+    pub fn new(
+        max_size: u64,
+        ttl_buf: u128,
+        tx: UnboundedSender<WorkerCacheCommand>,
+        stream_buf: u64,
+    ) -> Self {
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
+            stream_buf,
         }
     }
 }
@@ -92,7 +99,7 @@ pub trait ServerCache: Send + Sync + 'static {
 #[async_trait]
 impl ServerCache for Cache {
     async fn get_announce(&self, k: &str) -> Result<StreamBody<ReaderStream<DuplexStream>>> {
-        let (mut w, r) = duplex(2 * 1024 * 1024); // 2MiB
+        let (mut w, r) = duplex(self.stream_buf as usize);
         if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let data = Arc::clone(data);
             self.tx

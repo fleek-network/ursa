@@ -42,6 +42,9 @@ pub struct DaemonCmdOpts {
     /// server tls key path
     #[arg(long)]
     pub server_tls_key_path: Option<PathBuf>,
+    /// server stream buffer
+    #[arg(long)]
+    pub server_stream_buffer: Option<u64>,
     /// admin port
     #[arg(long)]
     pub admin_port: Option<u16>,

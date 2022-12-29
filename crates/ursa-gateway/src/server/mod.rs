@@ -30,6 +30,7 @@ pub async fn start<Cache: ServerCache>(
                 port,
                 cert_path,
                 key_path,
+                ..
             },
         ..
     } = &(*config_reader.read().await);
