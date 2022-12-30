@@ -349,7 +349,7 @@ mod tests {
 
         match res {
             Ok(_) => {
-                let store_1_block = bitswap_store_2.get(&block.cid()).unwrap();
+                let store_1_block = bitswap_store_2.get(block.cid()).unwrap();
 
                 info!(
                     "inserting block into bitswap store for node 1, {:?}",
