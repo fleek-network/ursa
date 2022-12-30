@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    config::{GatewayConfig, ServerConfig},
+    config::{AdminConfig, GatewayConfig},
     worker::cache::AdminCache,
 };
 
@@ -28,7 +28,7 @@ pub async fn start<Cache: AdminCache>(
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         admin_server:
-            ServerConfig {
+            AdminConfig {
                 addr,
                 port,
                 cert_path,

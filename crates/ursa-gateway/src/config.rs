@@ -46,7 +46,7 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
-    pub admin_server: ServerConfig,
+    pub admin_server: AdminConfig,
     pub indexer: IndexerConfig,
     pub cache: CacheConfig,
     pub worker: WorkerConfig,
@@ -54,6 +54,15 @@ pub struct GatewayConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct ServerConfig {
+    pub port: u16,
+    pub addr: String,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
+    pub stream_buf: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct AdminConfig {
     pub port: u16,
     pub addr: String,
     pub cert_path: PathBuf,
@@ -92,8 +101,9 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("server_key.pem"),
+                stream_buf: 2_000_000, // 2MB
             },
-            admin_server: ServerConfig {
+            admin_server: AdminConfig {
                 addr: "0.0.0.0".into(),
                 port: 5001,
                 cert_path: PathBuf::from(env!("HOME"))
@@ -138,6 +148,9 @@ impl GatewayConfig {
         }
         if let Some(tls_key_path) = config.server_tls_key_path {
             self.server.key_path = tls_key_path;
+        }
+        if let Some(server_stream_buffer) = config.server_stream_buffer {
+            self.server.stream_buf = server_stream_buffer;
         }
         if let Some(port) = config.admin_port {
             self.admin_server.port = port;

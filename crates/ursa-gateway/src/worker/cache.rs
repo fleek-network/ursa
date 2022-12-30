@@ -1,22 +1,46 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
-use tracing::{info, log::warn};
+use axum::{
+    body::{Body, HttpBody, StreamBody},
+    http::{response::Parts, StatusCode},
+    response::Response,
+};
+use bytes::{BufMut, Bytes};
+use tokio::{
+    io::{duplex, AsyncWriteExt, DuplexStream},
+    spawn,
+    sync::{mpsc::UnboundedSender, oneshot},
+};
+use tokio_util::io::ReaderStream;
+use tracing::{error, info, log::warn};
 
-use crate::cache::Tlrfu;
+use crate::cache::{ByteSize, Tlrfu};
+
+impl ByteSize for Bytes {
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
 
 pub struct Cache {
-    tlrfu: Tlrfu,
+    tlrfu: Tlrfu<Bytes>,
     tx: UnboundedSender<WorkerCacheCommand>,
+    stream_buf: u64,
 }
 
 impl Cache {
-    pub fn new(max_size: u64, ttl_buf: u128, tx: UnboundedSender<WorkerCacheCommand>) -> Self {
+    pub fn new(
+        max_size: u64,
+        ttl_buf: u128,
+        tx: UnboundedSender<WorkerCacheCommand>,
+        stream_buf: u64,
+    ) -> Self {
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
+            stream_buf,
         }
     }
 }
@@ -28,11 +52,11 @@ pub enum WorkerCacheCommand {
     },
     InsertSync {
         key: String,
-        value: Arc<Vec<u8>>,
+        value: Arc<Bytes>,
     },
     Fetch {
         cid: String,
-        sender: oneshot::Sender<Result<Arc<Vec<u8>>>>,
+        sender: oneshot::Sender<Result<Response<Body>>>,
     },
     TtlCleanUp,
 }
@@ -40,7 +64,7 @@ pub enum WorkerCacheCommand {
 #[async_trait]
 pub trait WorkerCache: Send + Sync + 'static {
     async fn get(&mut self, k: &str) -> Result<()>;
-    async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()>;
+    async fn insert(&mut self, k: String, v: Arc<Bytes>) -> Result<()>;
     async fn ttl_cleanup(&mut self) -> Result<()>;
 }
 
@@ -51,7 +75,7 @@ impl WorkerCache for Cache {
         Ok(())
     }
 
-    async fn insert(&mut self, k: String, v: Arc<Vec<u8>>) -> Result<()> {
+    async fn insert(&mut self, k: String, v: Arc<Bytes>) -> Result<()> {
         if !self.tlrfu.contains(&k) {
             self.tlrfu.insert(k, v).await?;
         } else {
@@ -69,30 +93,80 @@ impl WorkerCache for Cache {
 
 #[async_trait]
 pub trait ServerCache: Send + Sync + 'static {
-    async fn get_announce(&self, k: &str) -> Result<Arc<Vec<u8>>>;
+    async fn get_announce(&self, k: &str) -> Result<StreamBody<ReaderStream<DuplexStream>>>;
 }
 
 #[async_trait]
 impl ServerCache for Cache {
-    async fn get_announce(&self, k: &str) -> Result<Arc<Vec<u8>>> {
+    async fn get_announce(&self, k: &str) -> Result<StreamBody<ReaderStream<DuplexStream>>> {
+        let (mut w, r) = duplex(self.stream_buf as usize);
         if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
-            self.tx.send(WorkerCacheCommand::GetSync {
-                key: String::from(k),
-            })?;
-            Ok(Arc::clone(data))
+            let data = Arc::clone(data);
+            self.tx
+                .send(WorkerCacheCommand::GetSync {
+                    key: String::from(k),
+                })
+                .map_err(|e| {
+                    error!("Failed to dispatch GetSync command: {e:?}");
+                    anyhow!("Failed to dispatch GetSync command")
+                })?;
+            spawn(async move {
+                if let Err(e) = w.write_all(data.as_ref()).await {
+                    error!("Failed to write to stream: {e:?}");
+                }
+            });
         } else {
             let (tx, rx) = oneshot::channel();
-            self.tx.send(WorkerCacheCommand::Fetch {
-                cid: String::from(k),
-                sender: tx,
-            })?;
-            let data = rx.await??;
-            self.tx.send(WorkerCacheCommand::InsertSync {
-                key: String::from(k),
-                value: Arc::clone(&data),
-            })?;
-            Ok(data)
+            self.tx
+                .send(WorkerCacheCommand::Fetch {
+                    cid: String::from(k),
+                    sender: tx,
+                })
+                .map_err(|e| {
+                    error!("Failed to dispatch Fetch command: {e:?}");
+                    anyhow!("Failed to dispatch Fetch command")
+                })?;
+            let mut body = match rx.await??.into_parts() {
+                (
+                    Parts {
+                        status: StatusCode::OK,
+                        ..
+                    },
+                    body,
+                ) => body,
+                resp => {
+                    error!("Error requested provider: {resp:?}");
+                    bail!("Error requested provider");
+                }
+            };
+            let key = String::from(k); // move to [worker|writer] thread
+            let tx = self.tx.clone(); // move to [worker|writer] thread
+            spawn(async move {
+                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+                while let Some(buf) = body.data().await {
+                    match buf {
+                        Ok(buf) => {
+                            if let Err(e) = w.write_all(buf.as_ref()).await {
+                                error!("Failed to write to stream for {e:?}");
+                                return;
+                            };
+                            bytes.put(buf);
+                        }
+                        Err(e) => {
+                            error!("Failed to read stream for {e:?}");
+                            return;
+                        }
+                    }
+                }
+                if let Err(e) = tx.send(WorkerCacheCommand::InsertSync {
+                    key,
+                    value: Arc::new(bytes.into()),
+                }) {
+                    error!("Failed to dispatch InsertSync command: {e:?}");
+                };
+            });
         }
+        Ok(StreamBody::new(ReaderStream::new(r)))
     }
 }
 
