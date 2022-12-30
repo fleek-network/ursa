@@ -124,9 +124,9 @@ impl Resolver {
             .collect();
 
         if provider_addresses.is_empty() {
-            return Err(Error::Internal(format!(
-                "Failed to get a valid address for provider"
-            )));
+            return Err(Error::Internal(
+                "Failed to get a valid address for provider".to_string(),
+            ));
         }
 
         debug!("Provider addresses to query: {provider_addresses:?}");
@@ -146,6 +146,6 @@ impl Resolver {
             };
         }
 
-        Err(Error::Internal(format!("Failed to get data")))
+        Err(Error::Internal("Failed to get data".to_string()))
     }
 }
