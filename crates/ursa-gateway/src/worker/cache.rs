@@ -135,7 +135,10 @@ impl ServerCache for Cache {
                 })?;
             let mut body = match rx
                 .await
-                .map_err(|e| Error::Internal(e.to_string()))??
+                .map_err(|e| {
+                    error!("Failed to receive receive response from resolver: {e:?}");
+                    anyhow!("Failed to receive receive response from resolver")
+                })??
                 .into_parts()
             {
                 (
@@ -145,9 +148,8 @@ impl ServerCache for Cache {
                     },
                     body,
                 ) => body,
-                resp => {
-                    error!("Error requested provider: {resp:?}");
-                    let (parts, _) = resp;
+                (parts, body) => {
+                    error!("Error requested provider with parts :{parts:?} and body: {body:?}");
                     return Err(Error::Upstream(
                         parts.status,
                         "Error requested provider".to_string(),
