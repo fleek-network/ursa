@@ -213,8 +213,6 @@ pub struct UrsaService<S> {
     cached_content: CountingBloomFilter,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
-    /// Blacklisted peers (most interactions will be refused).
-    peer_blacklist: HashSet<PeerId>,
 }
 
 impl<S> UrsaService<S>
@@ -308,7 +306,6 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
-            peer_blacklist: HashSet::default(),
         })
     }
 
@@ -479,18 +476,12 @@ where
                 message_id,
                 message,
             } => {
-                if !self.peer_blacklist.contains(&propagation_source) {
-                    if let Some(source) = &message.source {
-                        if !self.peer_blacklist.contains(source) {
-                            let message_bytes = &message.data;
-                            if let Ok(cache_summary) =
-                                CountingBloomFilter::deserialize(message_bytes)
-                            {
-                                self.peer_cached_content.insert(*source, cache_summary);
-                            } else {
-                                warn!("[GossipsubEvent::Message] - Failed to deserialize cache summary.");
-                            }
-                        }
+                if let Some(source) = &message.source {
+                    let message_bytes = &message.data;
+                    if let Ok(cache_summary) = CountingBloomFilter::deserialize(message_bytes) {
+                        self.peer_cached_content.insert(*source, cache_summary);
+                    } else {
+                        warn!("[GossipsubEvent::Message] - Failed to deserialize cache summary.");
                     }
                 }
 
