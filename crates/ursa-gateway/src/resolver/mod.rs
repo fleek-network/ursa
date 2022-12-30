@@ -55,9 +55,8 @@ impl Resolver {
                 },
                 body,
             ) => body,
-            resp => {
-                error!("Error requested indexer: {endpoint} {resp:?}");
-                let (parts, _) = resp;
+            (parts, _) => {
+                error!("Error requested indexer {endpoint} with parts {parts:?}");
                 return Err(Error::Upstream(
                     parts.status,
                     format!("Error requested indexer: {endpoint}"),
