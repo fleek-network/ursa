@@ -1,5 +1,8 @@
 name: rust-ci
 
+env:
+  RUST_BACKTRACE: 1
+
 on:
   push:
     branches: [ "main" ]
@@ -13,34 +16,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [nightly]
-        make:
-          - name: check-fmt-clippy
-            task: "ci"
-          - name: test
-            task: "test"
-          - name: doc
-            task: "doc"
-
-    # env:
-    #   CARGO_INCREMENTAL: '0'
-    #   RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-    #   RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-
+        include:
+          - { rust: stable,           os: ubuntu-latest }
+          - { rust: nightly,          os: macos-latest }
+          - { rust: stable,           os: windows-latest }
+          - { rust: nightly,          os: ubuntu-latest }
     steps:
+      - uses: actions/checkout@master
+
       - name: Install Dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
-
-      - name: Checkout repository
-        uses: actions/checkout@master
-
-      # - name: Install protoc (ubuntu-latest)
-      #   if: matrix.os == 'ubuntu-latest'
-      #   run: |
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
@@ -48,7 +36,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install protoc (macos-latest)
-        if: matrix.os == 'macos-latest'
+        if: ${{ matrix.os == 'macos-latest' }}
         run: |
           brew update
           brew install protobuf
@@ -60,30 +48,164 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
           profile: minimal
-          components: clippy, rustc-dev, llvm-tools-preview, rustfmt
+          components: rustc-dev, llvm-tools-preview
 
-      - name: Cache Cargo
+      - name: Set up cargo cache
         uses: actions/cache@v3
+        continue-on-error: false
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+            target/            
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - run: cargo test --verbose --workspace --all-features
+      - run: cargo test --verbose --workspace --no-default-features
+
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [nightly]
+    env:
+      CARGO_INCREMENTAL: '0'
+      RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+      RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+          profile: minimal
+          components: clippy
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/            
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
           
-      - name: ${{ matrix.make.name }}
-        run: make ${{ matrix.make.task }}
+      - run: cargo test --verbose --workspace --all-features
+      - run: cargo test --verbose --workspace --no-default-features
 
       - name: Setup grcov
-        if: ${{ matrix.make.name == 'test' }}
         id: coverage
         uses: actions-rs/grcov@v0.1
 
       - name: grcov upload to codecov.io
-        if: ${{ matrix.make.name == 'test' }}
         uses: codecov/codecov-action@v3
         with:
           file: ${{ steps.coverage.outputs.report }}
+
+  clippy:
+    name: Lint with clippy
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    env:
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+          profile: minimal
+          components: clippy
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/            
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - run: cargo clippy --workspace --all-targets --verbose
+      - run: cargo clippy --workspace --all-targets --verbose --no-default-features
+      - run: cargo clippy --workspace --all-targets --verbose --all-features
+
+  rustfmt:
+    name: Verify code formatting
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@master
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ocl-icd-opencl-dev
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+          profile: minimal
+          components: rustfmt
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/            
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - run: cargo fmt --all -- --check
