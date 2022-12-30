@@ -21,6 +21,7 @@ use tokio::{
     task,
 };
 use tracing::{error, info, Level};
+use util::wait_until_ctrlc;
 use worker::cache::Cache;
 
 #[tokio::main]
@@ -69,19 +70,19 @@ async fn main() -> Result<()> {
             let server_config = Arc::new(RwLock::new(gateway_config));
             let admin_config = Arc::clone(&server_config);
 
-            task::spawn(async move {
+            let server_task = task::spawn(async move {
                 if let Err(e) = server::start(server_config, server_cache).await {
                     error!("[Gateway server]: {e:?}");
                 };
             });
 
-            task::spawn(async move {
+            let admin_task = task::spawn(async move {
                 if let Err(e) = admin::start(admin_config, admin_cache).await {
                     error!("[Admin server]: {e:?}");
                 };
             });
 
-            task::spawn(async move {
+            let worker_task = task::spawn(async move {
                 let duration_ms = Duration::from_millis(worker_ttl_interval);
                 info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                 loop {
@@ -93,6 +94,12 @@ async fn main() -> Result<()> {
             });
 
             worker::start(worker_rx, cache, resolver).await;
+
+            wait_until_ctrlc();
+
+            server_task.abort();
+            admin_task.abort();
+            worker_task.abort();
         }
     }
 
