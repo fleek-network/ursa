@@ -102,17 +102,18 @@ async fn main() -> Result<()> {
                 info!("Admin server stopped");
             });
 
-            let (ttl_cache_worker_signal_tx, mut ttl_cache_worker_signal_rx) = mpsc::channel::<()>(1);
+            let (ttl_cache_worker_signal_tx, mut ttl_cache_worker_signal_rx) =
+                mpsc::channel::<()>(1);
             let ttl_cache_worker = spawn(async move {
                 let duration_ms = Duration::from_millis(ttl_cache_interval);
                 info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                 loop {
-                    let ttl_worker_signal_tx = ttl_worker_signal_tx.clone();
+                    let ttl_cache_worker_signal_tx = ttl_cache_worker_signal_tx.clone();
                     select! {
                         _ = tokio::time::sleep(duration_ms) => {
                             if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
                                 error!("[Cache TTL Worker]: {e:?}");
-                                ttl_worker_signal_tx
+                                ttl_cache_worker_signal_tx
                                     .send(())
                                     .await
                                     .expect("Send signal successfully");
