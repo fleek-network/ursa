@@ -31,6 +31,7 @@ impl CountingBloomFilter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn contains<T: AsRef<[u8]>>(&self, value: &T) -> bool {
         for i in 0..self.num_hashes {
             let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
@@ -42,6 +43,7 @@ impl CountingBloomFilter {
         true
     }
 
+    #[allow(dead_code)]
     pub fn remove<T: AsRef<[u8]>>(&mut self, value: &T) -> Result<()> {
         if !self.contains(value) {
             return Err(anyhow!("Element does not exist."));

@@ -466,73 +466,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_send_cache_summary_not_working() -> Result<()> {
-        setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig::default();
-
-        let (mut node_1, node_1_addrs, peer_id_1, ..) =
-            network_init(&mut config, None, None).await?;
-        let (mut node_2, _, peer_id_2, ..) =
-            network_init(&mut config, Some(node_1_addrs), None).await?;
-
-        let node_1_sender = node_1.command_sender();
-
-        loop {
-            if node_2.peers.contains(&peer_id_1) {
-                break;
-            }
-        }
-
-        loop {
-            if let SwarmEvent::ConnectionEstablished { .. } = node_1.swarm.select_next_some().await
-            {
-                break;
-            }
-        }
-
-        tokio::task::spawn(async move { node_1.start().await.unwrap() });
-
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
-                node_2.swarm.select_next_some().await
-            {
-                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
-                let topic = Topic::new(URSA_GLOBAL);
-                let mut cached_content = CountingBloomFilter::default();
-                cached_content.insert(&Cid::default().to_bytes());
-                let bytes = cached_content
-                    .serialize()
-                    .expect("Failed to serialize cache summary.");
-
-                if let Err(e) = node_2
-                    .swarm
-                    .behaviour_mut()
-                    .publish(topic, Bytes::from(bytes))
-                {
-                    warn!("Failed to send with error: {e:?}");
-                } else {
-                    break;
-                }
-            }
-        }
-
-        // query node 1
-        let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::GetPeerContent { sender };
-        assert!(node_1_sender.send(request).is_ok());
-
-        // check if cid exists
-        let peer_content = receiver.await.expect("Unable to receive peer content.");
-
-        let cached_content = peer_content
-            .get(&peer_id_2)
-            .expect("Peer id not contained in peer content.");
-        assert!(cached_content.contains(&Cid::default().to_bytes()));
-
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_send_cache_summary() -> Result<()> {
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig::default();
@@ -583,7 +516,10 @@ mod tests {
             .peer_cached_content
             .get(&peer_id_1)
             .expect("Peer id not contained in peer content.");
-        assert!(cached_content.contains(&Cid::default().to_bytes()));
+        assert!(
+            cached_content.contains(&Cid::default().to_bytes()),
+            "CID not contained in cache summary."
+        );
 
         Ok(())
     }

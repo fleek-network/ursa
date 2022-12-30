@@ -715,7 +715,7 @@ where
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
-                // update bloom filter and share it with the network
+                // update cache summary and share it with the network
                 self.cached_content.insert(&cid.to_bytes());
                 let topic = Topic::new(URSA_GLOBAL);
                 if let Ok(cache_summary) = self.cached_content.serialize() {
