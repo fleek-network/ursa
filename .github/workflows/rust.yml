@@ -68,7 +68,7 @@ jobs:
       - run: cargo test --workspace --no-default-features
 
   coverage:
-    name: Tests coverage (${{ matrix.os }})
+    name: Tests coverage
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -124,7 +124,7 @@ jobs:
           file: ${{ steps.coverage.outputs.report }}
 
   clippy:
-    name: Lint with clippy (${{ matrix.os }})
+    name: Lint with clippy
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -170,7 +170,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features
 
   rustfmt:
-    name: Code formatting (${{ matrix.os }})
+    name: Code formatting
     runs-on: ubuntu-latest
     strategy:
       matrix:
