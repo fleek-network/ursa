@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::behaviour::BehaviourEvent;
+    use crate::utils::bloom_filter::CountingBloomFilter;
     use crate::{
         codec::protocol::{RequestType, UrsaExchangeRequest},
         NetworkCommand, NetworkConfig, UrsaService, URSA_GLOBAL,
@@ -460,6 +461,65 @@ mod tests {
         };
         assert!(node_1_sender.send(request).is_ok());
         assert!(receiver.await.is_ok());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_send_cache_summary() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = NetworkConfig::default();
+
+        let (mut node_1, node_1_addrs, peer_id_1, ..) =
+            network_init(&mut config, None, None).await?;
+        let (mut node_2, ..) = network_init(&mut config, Some(node_1_addrs), None).await?;
+
+        loop {
+            select! {
+                event_1 = node_1.swarm.select_next_some() => {
+                    if let SwarmEvent::ConnectionEstablished { .. } = event_1 {
+                        let topic = Topic::new(URSA_GLOBAL);
+                        let mut cached_content = CountingBloomFilter::default();
+                        cached_content.insert(&Cid::default().to_bytes());
+                        let bytes = cached_content.serialize().expect("Failed to serialize cache summary.");
+
+                        if let Err(e) = node_1.swarm.behaviour_mut().publish(topic, Bytes::from(bytes)) {
+                            warn!("Failed to send with error: {e:?}");
+                        }
+                    }
+                }
+                event_2 = node_2.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(
+                        libp2p::gossipsub::GossipsubEvent::Message {
+                            propagation_source,
+                            message_id,
+                            message,
+                        },
+                    )) = event_2
+                    {
+                        let event = SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(
+                            libp2p::gossipsub::GossipsubEvent::Message {
+                                propagation_source,
+                                message_id,
+                                message,
+                            },
+                        ));
+                        node_2.handle_swarm_event(event).unwrap();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // check if cid exists
+        let cached_content = node_2
+            .peer_cached_content
+            .get(&peer_id_1)
+            .expect("Peer id not contained in peer content.");
+        assert!(
+            cached_content.contains(&Cid::default().to_bytes()),
+            "CID not contained in cache summary."
+        );
 
         Ok(())
     }

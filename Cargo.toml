@@ -46,6 +46,7 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
+fasthash = "0.4.0"
 fnv = "1.0.7"
 futures = "0.3.25"
 futures-util = "0.3.25"
