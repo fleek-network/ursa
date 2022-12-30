@@ -71,7 +71,7 @@ pub struct DaemonCmdOpts {
     /// cache ttl (ms)
     #[arg(long)]
     pub ttl_buf: Option<u64>,
-    /// worker ttl interval (ms)
+    /// ttl cache interval (ms)
     #[arg(long)]
-    pub ttl_interval: Option<u64>,
+    pub ttl_cache_interval: Option<u64>,
 }

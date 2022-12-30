@@ -3,6 +3,7 @@ mod route;
 use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -11,9 +12,12 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use axum_server::tls_rustls::RustlsConfig;
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use route::api::v1::{get::get_config_handler, post::purge_cache_handler};
-use tokio::sync::RwLock;
+use tokio::{
+    select, spawn,
+    sync::{broadcast::Receiver, RwLock},
+};
 use tracing::info;
 
 use crate::{
@@ -24,6 +28,7 @@ use crate::{
 pub async fn start<Cache: AdminCache>(
     config: Arc<RwLock<GatewayConfig>>,
     cache: Arc<RwLock<Cache>>,
+    admin_shutdown_rx: Receiver<()>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -57,10 +62,29 @@ pub async fn start<Cache: AdminCache>(
 
     info!("Admin server listening on {addr}");
 
+    let handle = Handle::new();
+    spawn(graceful_shutdown(handle.clone(), admin_shutdown_rx));
+
     axum_server::bind_rustls(addr, rustls_config)
+        .handle(handle)
         .serve(app.into_make_service())
         .await
-        .context("Server stopped")?;
+        .context("Failed to start admin server")?;
 
     Ok(())
+}
+
+async fn graceful_shutdown(handle: Handle, mut admin_shutdown_rx: Receiver<()>) {
+    select! {
+        _ = admin_shutdown_rx.recv() => {
+            loop {
+                if handle.connection_count() == 0 {
+                    handle.shutdown();
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                info!("Admin server alive connections: {}", handle.connection_count());
+            }
+        }
+    }
 }
