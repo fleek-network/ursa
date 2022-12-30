@@ -12,8 +12,10 @@ use fvm_ipld_car::{load_car, CarHeader};
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
@@ -75,7 +77,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     ) -> Result<StreamBody<ReaderStream<tokio::io::DuplexStream>>>;
 
     /// Put a car file and start providing to the network
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>>;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, file: Car<R>) -> Result<Vec<Cid>>;
 
     // Put a file using a local path
     async fn put_file(&self, path: String) -> Result<Vec<Cid>>;
@@ -210,8 +212,8 @@ where
         Ok(body)
     }
 
-    async fn put_car<R: AsyncRead + Send + Unpin>(&self, reader: R) -> Result<Vec<Cid>> {
-        let cids = load_car(self.store.blockstore(), reader).await?;
+    async fn put_car<R: AsyncRead + Send + Unpin>(&self, car: Car<R>) -> Result<Vec<Cid>> {
+        let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
 
         info!("The inserted cids are: {cids:?}");
@@ -250,9 +252,7 @@ where
     /// Used through CLI
     async fn put_file(&self, path: String) -> Result<Vec<Cid>> {
         info!("Putting the file on network: {path}");
-        let file = File::open(path.clone()).await?;
-        let reader = BufReader::new(file);
-        self.put_car(reader).await
+        self.put_car(Car::from_file(path).await?).await
     }
 
     async fn get_peers(&self) -> Result<HashSet<PeerId>> {
@@ -277,5 +277,41 @@ where
                 "GetListenerAddresses NetworkCommand failed {e:?}"
             ))),
         }
+    }
+}
+
+pub struct Car<R> {
+    size: u64,
+    reader: R,
+}
+
+impl<R> Car<R>
+where
+    R: AsyncRead + Send + Unpin,
+{
+    pub fn new(size: u64, reader: R) -> Self {
+        Self { size, reader }
+    }
+}
+
+impl Car<BufReader<File>> {
+    pub async fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let file = File::open(path).await?;
+        let size = file.metadata().await?.len();
+        let reader = BufReader::new(file);
+        Ok(Self::new(size, reader))
+    }
+}
+
+impl<R> AsyncRead for Car<R>
+where
+    R: AsyncRead + Send + Unpin,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.reader).poll_read(cx, buf)
     }
 }
