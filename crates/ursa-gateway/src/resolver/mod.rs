@@ -10,7 +10,7 @@ use serde_json::from_slice;
 use tracing::{debug, error};
 
 use crate::resolver::model::ProviderResult;
-use crate::util::Error;
+use crate::util::error::Error;
 
 // Base64 encoded. See ursa-index-provider::Metadata.
 const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";

@@ -10,7 +10,7 @@ use cid::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::util::Error;
+use crate::util::error::Error;
 use crate::{server::model::HttpResponse, worker::cache::ServerCache};
 
 pub async fn get_car_handler<Cache: ServerCache>(

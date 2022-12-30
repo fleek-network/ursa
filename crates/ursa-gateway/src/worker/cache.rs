@@ -17,7 +17,7 @@ use tokio_util::io::ReaderStream;
 use tracing::{error, info, log::warn};
 
 use crate::cache::{ByteSize, Tlrfu};
-use crate::util::Error;
+use crate::util::error::Error;
 
 impl ByteSize for Bytes {
     fn len(&self) -> usize {
