@@ -52,7 +52,7 @@ mod tests {
             let signed_head: SignedHead = surf::get("http://0.0.0.0:8070/head")
                 .recv_json()
                 .await
-                .map_err(|e| SurfError::into_inner(e))?;
+                .map_err(SurfError::into_inner)?;
             let head_cid = signed_head.open()?.1.to_string();
             assert_eq!(head_cid, provider_interface.head().unwrap().to_string());
             debug!(
@@ -65,7 +65,7 @@ mod tests {
             let data: Vec<u8> = surf::get(format!("http://0.0.0.0:8070/{head_cid}"))
                 .recv_bytes()
                 .await
-                .map_err(|e| SurfError::into_inner(e))?;
+                .map_err(SurfError::into_inner)?;
             let ad: Advertisement = fvm_ipld_encoding::from_slice(&data)?;
             debug!("{ad:?} \n {published_ad:?}");
             assert_eq!(ad, published_ad);

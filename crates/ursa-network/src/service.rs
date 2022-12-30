@@ -180,7 +180,7 @@ pub enum NetworkCommand {
 
 pub struct UrsaService<S> {
     /// Store.
-    store: Arc<UrsaStore<S>>,
+    pub store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<DefaultParams>>,
     /// Handles outbound messages to peers.
