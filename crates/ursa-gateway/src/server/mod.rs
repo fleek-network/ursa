@@ -9,7 +9,7 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
-use route::api::v1::get::get_block_handler;
+use route::api::v1::get::get_car_handler;
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -48,7 +48,7 @@ pub async fn start<Cache: ServerCache>(
     ));
 
     let app = Router::new()
-        .route("/:cid", get(get_block_handler::<Cache>))
+        .route("/:cid", get(get_car_handler::<Cache>))
         .layer(Extension(config))
         .layer(Extension(cache));
 
