@@ -10,6 +10,7 @@ use cid::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
+use crate::util::Error;
 use crate::{server::model::HttpResponse, worker::cache::ServerCache};
 
 pub async fn get_car_handler<Cache: ServerCache>(
@@ -39,8 +40,9 @@ pub async fn get_car_handler<Cache: ServerCache>(
             stream,
         )
             .into_response(),
-        Err(message) => {
-            error_handler(StatusCode::INTERNAL_SERVER_ERROR, message.to_string()).into_response()
+        Err(Error::Upstream(status, message)) => error_handler(status, message).into_response(),
+        Err(Error::Internal(message)) => {
+            error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
         }
     }
 }
