@@ -10,7 +10,9 @@ mod tests {
     use tokio::{sync::oneshot, task};
     use tracing::{error, info};
 
-    use crate::{engine::ProviderCommand, signed_head::SignedHead, tests::provider_engine_init};
+    use crate::{
+        engine::ProviderCommand, signed_head::SignedHead, tests::provider_engine_init, Car,
+    };
 
     #[tokio::test]
     async fn test_events() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,13 +22,16 @@ mod tests {
 
         let file = File::open("../../test_files/test.car".to_string()).await?;
         let reader = BufReader::new(file);
-        let cids = load_car(provider_engine.store().blockstore(), reader).await?;
+        let car = Car::from_file("../../test_files/test.car").await?;
+        let size = car.size;
+        let cids = load_car(provider_engine.store().blockstore(), car).await?;
 
         info!("The inserted cids are: {cids:?}");
 
         let (sender, receiver) = oneshot::channel();
         let message = ProviderCommand::Put {
             context_id: cids[0].to_bytes(),
+            size,
             sender,
         };
 

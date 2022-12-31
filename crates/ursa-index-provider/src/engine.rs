@@ -62,6 +62,7 @@ pub enum ProviderCommand {
     /// put multihashes when node start caching new contenct
     Put {
         context_id: Vec<u8>,
+        size: u64,
         sender: CommandOneShotSender<()>,
     },
     /// remove multihashes from advertisment when evicted by a node
@@ -146,14 +147,18 @@ where
         loop {
             if let Some(command) = self.command_receiver.recv().await {
                 match command {
-                    ProviderCommand::Put { context_id, sender } => {
+                    ProviderCommand::Put {
+                        context_id,
+                        sender,
+                        size,
+                    } => {
                         let cid = Cid::try_from(context_id).unwrap();
                         if let Err(e) = sender.send(Ok(())) {
                             error!("Provider Engine: {:?}", e);
                         }
                         let peer_id = PeerId::from(self.provider.keypair().public());
 
-                        if let Err(e) = self.publish_local(cid).await {
+                        if let Err(e) = self.publish_local(cid, size).await {
                             error!("Error while publishing the advertisement locally: {:?}", e)
                         } else {
                             match self
@@ -183,7 +188,7 @@ where
         }
     }
 
-    pub async fn publish_local(&mut self, root_cid: Cid) -> Result<()> {
+    pub async fn publish_local(&mut self, root_cid: Cid, file_size: u64) -> Result<()> {
         let (listener_addresses_sender, listener_addresses_receiver) = oneshot::channel();
         self.network_command_sender
             .send(NetworkCommand::GetListenerAddresses {
@@ -211,8 +216,13 @@ where
             }
             addresses.push(address.to_string())
         }
-        let advertisement =
-            Advertisement::new(context_id.clone(), peer_id, addresses.clone(), false);
+        let advertisement = Advertisement::new(
+            context_id.clone(),
+            peer_id,
+            addresses.clone(),
+            false,
+            file_size,
+        );
         let provider_id = self.provider.create(advertisement)?;
 
         let dag = self.store.dag_traversal(&(root_cid))?;

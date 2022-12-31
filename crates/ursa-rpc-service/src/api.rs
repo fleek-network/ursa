@@ -213,6 +213,7 @@ where
     }
 
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, car: Car<R>) -> Result<Vec<Cid>> {
+        let size = car.size;
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
 
@@ -234,6 +235,7 @@ where
         let (sender, receiver) = oneshot::channel();
         let request = ProviderCommand::Put {
             context_id: root_cid.to_bytes(),
+            size,
             sender,
         };
         if let Err(e) = self.provider_send.send(request) {
@@ -281,7 +283,7 @@ where
 }
 
 pub struct Car<R> {
-    size: u64,
+    pub size: u64,
     reader: R,
 }
 
