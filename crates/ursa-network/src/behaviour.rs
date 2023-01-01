@@ -15,8 +15,8 @@
 
 use anyhow::Result;
 use cid::Cid;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use graphsync::{GraphSync, Request};
+use ipld_traversal::blockstore::MemoryBlockstore;
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -45,6 +45,7 @@ use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use std::{collections::HashSet, iter};
+
 use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
 
@@ -194,7 +195,7 @@ impl<P: StoreParams> Behaviour<P> {
         };
 
         // Setup the Graphsync behaviour.
-        let graphsync = GraphSync::new(MemoryBlockstore::new());
+        let graphsync = GraphSync::new(MemoryBlockstore::default());
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {

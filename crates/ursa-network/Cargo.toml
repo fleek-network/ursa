@@ -23,6 +23,7 @@ futures-util.workspace = true
 fvm_ipld_blockstore.workspace = true
 fvm_ipld_car.workspace = true
 graphsync.workspace = true
+ipld_traversal.workspace = true
 jsonrpc-v2.workspace = true
 libipld.workspace = true
 libp2p-bitswap.workspace = true

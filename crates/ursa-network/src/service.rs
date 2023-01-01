@@ -18,6 +18,7 @@ use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
+use graphsync::GraphSyncEvent;
 use libipld::DefaultParams;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
@@ -591,6 +592,47 @@ where
         Ok(())
     }
 
+    fn handle_graphsync(&mut self, event: GraphSyncEvent) -> Result<()> {
+        match event {
+            GraphSyncEvent::Completed {
+                id,
+                peer_id,
+                received,
+            } => {
+                // Indicate whether the transfer (or requet?) has been completed.
+                info!("[GraphSyncEvent::Completed] {id} {peer_id} {received}");
+                Ok(())
+            }
+            GraphSyncEvent::Accepted { peer_id, request } => {
+                // We can include our own "protocol" using extensions.
+                info!("[GraphSyncEvent::Accepted] {peer_id} {request:?}");
+                Ok(())
+            }
+            GraphSyncEvent::Block { id, data } => {
+                // Here I think we need to read the block data and process it
+                // Research what this returns and if we need to handle it.
+                // Does the data that we pull get store somewhere for us or do we have to manually store it here?
+                info!("[GraphSyncEvent::Block] {id} {data:?}");
+                Ok(())
+            }
+            GraphSyncEvent::SentAllBlocks { id, peer_id, sent } => {
+                // This could be a push or pull request.
+                info!("[GraphSyncEvent::SentAllBlocks] {id} {peer_id} {sent}");
+                Ok(())
+            }
+            GraphSyncEvent::Error { peer_id, error } => {
+                // I think we want to log here the error for now.
+                info!("[GraphSyncEvent::Error] {peer_id} {error}");
+                Ok(())
+            }
+            event => {
+                // SentRequest
+                info!("Other: [{event:?}]");
+                Ok(())
+            }
+        }
+    }
+
     /// Handle swarm events
     pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
         // record basic swarm metrics
@@ -630,6 +672,10 @@ where
                 }
                 BehaviourEvent::RelayClient(_) => Ok(()),
                 BehaviourEvent::Dcutr(_) => Ok(()),
+                BehaviourEvent::Graphsync(event) => {
+                    // SentRequest
+                    self.handle_graphsync(event)
+                }
             },
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 if self.peers.insert(peer_id) {
