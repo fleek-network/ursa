@@ -15,6 +15,8 @@
 
 use anyhow::Result;
 use cid::Cid;
+use fvm_ipld_blockstore::MemoryBlockstore;
+use graphsync::{GraphSync, Request};
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -94,6 +96,9 @@ pub struct Behaviour<P: StoreParams> {
 
     /// request/response protocol implementation for [`UrsaProtocol`]
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
+
+    /// Graphsync for efficiently exchanging data between blocks between peers.
+    graphsync: GraphSync<MemoryBlockstore>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -188,6 +193,9 @@ impl<P: StoreParams> Behaviour<P> {
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
 
+        // Setup the Graphsync behaviour.
+        let graphsync = GraphSync::new(MemoryBlockstore::new());
+
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {
             if let Some(Protocol::P2p(mh)) = addr.to_owned().pop() {
@@ -222,13 +230,15 @@ impl<P: StoreParams> Behaviour<P> {
             kad,
             mdns,
             request_response,
+            graphsync,
         }
     }
 
     pub fn add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
         self.bitswap.add_address(peer_id, addr.clone());
         self.kad.add_address(peer_id, addr.clone());
-        self.request_response.add_address(peer_id, addr);
+        self.request_response.add_address(peer_id, addr.clone());
+        self.graphsync.add_address(peer_id, addr);
     }
 
     pub fn publish(
@@ -265,5 +275,9 @@ impl<P: StoreParams> Behaviour<P> {
         providers: Vec<PeerId>,
     ) -> Result<libp2p_bitswap::QueryId> {
         Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
+    }
+
+    pub fn graphsync_request(&mut self, peer: PeerId, request: Request) {
+        self.graphsync.request(peer, request);
     }
 }
