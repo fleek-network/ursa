@@ -1,4 +1,10 @@
-## Deployment notes
+# Ursa Full Node
+
+> Deploy and run an ursa node, with nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
+
+## Prerequisites
+
+- Install [Docker](https://docs.docker.com/get-docker/)
 
 ### Requirements
 - `Ubuntu 22.04 or later.`

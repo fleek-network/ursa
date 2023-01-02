@@ -1,7 +1,6 @@
 version: '3'
 
-services: 
-  # Proxy to ipfs
+services:
   nginx:
     image: nginx:latest
     restart: unless-stopped
@@ -71,7 +70,8 @@ services:
 
   ursa:
     build:
-      context: ../../.
+      # todo(botch): replace with official image
+      context: ../cache-node/.
       dockerfile: Dockerfile
     restart: on-failure
     ports:

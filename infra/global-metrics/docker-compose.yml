@@ -1,7 +1,6 @@
 version: '3'
 
 services: 
-  # Proxy to ipfs
   nginx:
     image: nginx:latest
     restart: unless-stopped
