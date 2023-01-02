@@ -18,7 +18,9 @@ use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
-use graphsync::GraphSyncEvent;
+use graphsync::{GraphSyncEvent, Request};
+use ipld_traversal::selector::RecursionLimit;
+use ipld_traversal::Selector;
 use libipld::DefaultParams;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
@@ -183,6 +185,11 @@ pub enum NetworkCommand {
     GetPeerContent {
         sender: oneshot::Sender<HashMap<PeerId, CountingBloomFilter>>,
     },
+
+    GetGraphSync {
+        cid: Cid,
+        sender: BlockOneShotSender<()>,
+    },
 }
 
 pub struct UrsaService<S> {
@@ -214,6 +221,8 @@ pub struct UrsaService<S> {
     cached_content: CountingBloomFilter,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
+    /// Graphsync hashmap for keeping track of rpc response channels.
+    gs_response_channels: FnvHashMap<graphsync::RequestId, BlockOneShotSender<()>>,
 }
 
 impl<S> UrsaService<S>
@@ -301,6 +310,7 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
+            gs_response_channels: Default::default(),
         })
     }
 
@@ -599,8 +609,11 @@ where
                 peer_id,
                 received,
             } => {
-                // Indicate whether the transfer (or requet?) has been completed.
                 info!("[GraphSyncEvent::Completed] {id} {peer_id} {received}");
+                let sender = self.gs_response_channels.remove(&id).unwrap();
+                if sender.send(Ok(())).is_err() {
+                    error!("[GraphSyncEvent] failed to send response")
+                }
                 Ok(())
             }
             GraphSyncEvent::Accepted { peer_id, request } => {
@@ -609,9 +622,8 @@ where
                 Ok(())
             }
             GraphSyncEvent::Block { id, data } => {
-                // Here I think we need to read the block data and process it
-                // Research what this returns and if we need to handle it.
-                // Does the data that we pull get store somewhere for us or do we have to manually store it here?
+                // Research what this returns and if we need to handle it since
+                // data should be stored directly to blockstore.
                 info!("[GraphSyncEvent::Block] {id} {data:?}");
                 Ok(())
             }
@@ -621,12 +633,10 @@ where
                 Ok(())
             }
             GraphSyncEvent::Error { peer_id, error } => {
-                // I think we want to log here the error for now.
                 info!("[GraphSyncEvent::Error] {peer_id} {error}");
                 Ok(())
             }
             event => {
-                // SentRequest
                 info!("Other: [{event:?}]");
                 Ok(())
             }
@@ -846,6 +856,37 @@ where
                         .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
             },
+            NetworkCommand::GetGraphSync { cid, sender } => {
+                // Construct the request.
+                if self.peers.is_empty() {
+                    error!("[GetGraphSync]: empty peers");
+                    sender
+                        .send(Err(anyhow!("there are no peers to pull from")))
+                        .unwrap();
+                } else {
+                    info!("[GetGraphSync]: building a request for {cid}");
+                    let peer = self.peers.iter().next().expect("At least 1 peer");
+                    let selector = Selector::ExploreRecursive {
+                        limit: RecursionLimit::None,
+                        sequence: Box::new(Selector::ExploreAll {
+                            next: Box::new(Selector::ExploreRecursiveEdge),
+                        }),
+                        current: None,
+                    };
+                    let req = Request::builder()
+                        .root(cid.to_bytes())
+                        .selector(selector)
+                        .build()
+                        .unwrap();
+                    info!("[GetGraphSync]: enqueue pending response");
+                    self.gs_response_channels.insert(*req.id(), sender);
+
+                    self.swarm
+                        .behaviour_mut()
+                        .graphsync
+                        .request(peer.clone(), req);
+                }
+            }
             #[cfg(test)]
             NetworkCommand::GetPeerContent { sender } => {
                 sender

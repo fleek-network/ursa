@@ -15,7 +15,7 @@
 
 use anyhow::Result;
 use cid::Cid;
-use graphsync::{GraphSync, Request};
+use graphsync::GraphSync;
 use ipld_traversal::blockstore::MemoryBlockstore;
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
@@ -99,7 +99,7 @@ pub struct Behaviour<P: StoreParams> {
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
-    graphsync: GraphSync<MemoryBlockstore>,
+    pub(crate) graphsync: GraphSync<MemoryBlockstore>,
 }
 
 impl<P: StoreParams> Behaviour<P> {
@@ -276,9 +276,5 @@ impl<P: StoreParams> Behaviour<P> {
         providers: Vec<PeerId>,
     ) -> Result<libp2p_bitswap::QueryId> {
         Ok(self.bitswap.sync(cid, providers, iter::once(cid)))
-    }
-
-    pub fn graphsync_request(&mut self, peer: PeerId, request: Request) {
-        self.graphsync.request(peer, request);
     }
 }
