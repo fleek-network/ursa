@@ -16,8 +16,10 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, log::warn};
 
-use crate::cache::{ByteSize, Tlrfu};
-use crate::util::error::Error;
+use crate::{
+    cache::{ByteSize, Tlrfu},
+    util::error::Error,
+};
 
 impl ByteSize for Bytes {
     fn len(&self) -> usize {
@@ -136,8 +138,8 @@ impl ServerCache for Cache {
             let mut body = match rx
                 .await
                 .map_err(|e| {
-                    error!("Failed to receive receive response from resolver: {e:?}");
-                    anyhow!("Failed to receive receive response from resolver")
+                    error!("Failed to receive response from resolver: {e:?}");
+                    anyhow!("Failed to receive response from resolver")
                 })??
                 .into_parts()
             {

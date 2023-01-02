@@ -9,8 +9,7 @@ use model::IndexerResponse;
 use serde_json::from_slice;
 use tracing::{debug, error};
 
-use crate::resolver::model::ProviderResult;
-use crate::util::error::Error;
+use crate::{resolver::model::ProviderResult, util::error::Error};
 
 // Base64 encoded. See ursa-index-provider::Metadata.
 const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
@@ -55,8 +54,8 @@ impl Resolver {
                 },
                 body,
             ) => body,
-            (parts, _) => {
-                error!("Error requested indexer {endpoint} with parts {parts:?}");
+            (parts, body) => {
+                error!("Error requested indexer {endpoint} with parts {parts:?} and body {body:?}");
                 return Err(Error::Upstream(
                     parts.status,
                     format!("Error requested indexer: {endpoint}"),
