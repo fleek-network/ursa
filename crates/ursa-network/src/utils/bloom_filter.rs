@@ -24,8 +24,8 @@ impl CountingBloomFilter {
 
     pub fn insert<T: AsRef<[u8]>>(&mut self, value: &T) {
         for i in 0..self.num_hashes {
-            let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
-            let index = (hash % (self.buckets.len() as u32)) as usize;
+            let hash = fastmurmur3::murmur3_x64_128(value.as_ref(), i as u32);
+            let index = (hash % (self.buckets.len() as u128)) as usize;
             let count = self.buckets.get_mut(index).unwrap();
             *count = count.saturating_add(1);
         }
@@ -34,8 +34,8 @@ impl CountingBloomFilter {
     #[allow(dead_code)]
     pub fn contains<T: AsRef<[u8]>>(&self, value: &T) -> bool {
         for i in 0..self.num_hashes {
-            let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
-            let index = (hash % (self.buckets.len() as u32)) as usize;
+            let hash = fastmurmur3::murmur3_x64_128(value.as_ref(), i as u32);
+            let index = (hash % (self.buckets.len() as u128)) as usize;
             if self.buckets.get(index).unwrap() == &0u8 {
                 return false;
             }
@@ -49,8 +49,8 @@ impl CountingBloomFilter {
             return Err(anyhow!("Element does not exist."));
         }
         for i in 0..self.num_hashes {
-            let hash = fasthash::murmur3::hash32_with_seed(value, i as u32);
-            let index = (hash % (self.buckets.len() as u32)) as usize;
+            let hash = fastmurmur3::murmur3_x64_128(value.as_ref(), i as u32);
+            let index = (hash % (self.buckets.len() as u128)) as usize;
             let count = self.buckets.get_mut(index).unwrap();
             *count = count.saturating_sub(1);
         }
