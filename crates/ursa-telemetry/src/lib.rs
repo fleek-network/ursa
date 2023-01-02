@@ -11,7 +11,7 @@ pub struct TelemetryConfig {
     /// Service name.
     pub name: String,
     /// Service log level.
-    pub log_level: Option<String>,
+    pub log_level: String,
     /// Service json log output.
     pub pretty_log: bool,
     /// Tokio console support.
@@ -28,7 +28,7 @@ impl TelemetryConfig {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            log_level: None,
+            log_level: "INFO".to_string(),
             pretty_log: false,
             tokio_console: false,
             tree_tracer: false,
@@ -38,7 +38,7 @@ impl TelemetryConfig {
     }
 
     pub fn with_log_level(mut self, log_level: &str) -> Self {
-        self.log_level = Some(log_level.to_owned());
+        self.log_level = log_level.to_string();
         self
     }
 
@@ -68,14 +68,12 @@ impl TelemetryConfig {
     }
 
     pub fn init(self) -> anyhow::Result<()> {
-        let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new(self.log_level.unwrap_or_else(|| "INFO".to_string()))
-        });
-
         let mut tracing_layers = vec![];
 
         if self.pretty_log {
-            let log_subscriber = fmt::layer().pretty().with_filter(env_filter);
+            let log_subscriber = fmt::layer()
+                .pretty()
+                .with_filter(EnvFilter::new(&self.log_level));
             tracing_layers.push(log_subscriber.boxed());
         }
 
