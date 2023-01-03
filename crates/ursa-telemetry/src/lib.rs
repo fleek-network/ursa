@@ -71,7 +71,7 @@ impl TelemetryConfig {
     pub fn init(self) -> anyhow::Result<()> {
         let log_level = self
             .log_level
-            .unwrap_or(env::var("RUST_LOG").unwrap_or("INFO".to_string()));
+            .unwrap_or_else(|| env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string()));
 
         let mut tracing_layers = vec![];
 
