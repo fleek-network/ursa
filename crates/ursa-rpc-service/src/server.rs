@@ -32,7 +32,12 @@ where
         }
     }
 
-    pub async fn start(&self, config: &ServerConfig, index_provider: Router, metrics: Option<Router>) -> Result<()> {
+    pub async fn start(
+        &self,
+        config: &ServerConfig,
+        index_provider: Router,
+        metrics: Option<Router>,
+    ) -> Result<()> {
         info!(
             "Server (rpc, http{}) starting up",
             if metrics.is_some() { " + metrics" } else { "" }

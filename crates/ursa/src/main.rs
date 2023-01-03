@@ -133,11 +133,7 @@ async fn main() -> Result<()> {
                 // Start multiplex server service (rpc, http, and metrics)
                 let rpc_task = task::spawn(async move {
                     if let Err(err) = server
-                        .start(
-                            &server_config,
-                            index_provider_router,
-                            Some(metrics),
-                        )
+                        .start(&server_config, index_provider_router, Some(metrics))
                         .await
                     {
                         error!("[rpc_task] - {:?}", err);
