@@ -27,7 +27,7 @@ mod tests {
         });
         let server = Server::new(interface);
         let metrics = ursa_metrics::routes::init();
-        let http_app = server.http_app(Some(metrics));
+        let http_app = server.http_app(provider_engine.router(), Some(metrics));
 
         let response = http_app
             .oneshot(Request::builder().uri("/ping").body(Body::empty()).unwrap())
@@ -52,7 +52,7 @@ mod tests {
             provider_send: provider_engine.command_sender(),
         });
         let server = Server::new(interface);
-        let rpc_app = server.rpc_app(provider_engine.router());
+        let rpc_app = server.rpc_app();
 
         let req = serde_json::to_vec(&json!({
             "jsonrpc": "2.0",
