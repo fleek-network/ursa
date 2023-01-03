@@ -121,7 +121,7 @@ where
         self.command_sender.clone()
     }
 
-    pub fn command_receiever(&mut self) -> &mut Receiver<ProviderCommand> {
+    pub fn command_receiver(&mut self) -> &mut Receiver<ProviderCommand> {
         &mut self.command_receiver
     }
 
@@ -133,30 +133,16 @@ where
         Arc::clone(&self.store)
     }
 
+    pub fn router(&self) -> Router {
+        Router::new()
+            .route("/head", get(head::<S>))
+            .route("/:cid", get(get_block::<S>))
+            .layer(Extension(self.provider()))
+    }
+
     pub async fn start(mut self) -> Result<()> {
         info!("Index provider engine starting up!");
 
-        let app_router = Router::new()
-            .route("/head", get(head::<S>))
-            .route("/:cid", get(get_block::<S>))
-            .layer(Extension(self.provider()));
-
-        let app_address = format!("{}:{}", self.config.local_address, self.config.port)
-            .parse()
-            .unwrap();
-
-        info!("index provider listening on: {:?}", &app_address);
-
-        let (server, engine) = tokio::join!(
-            axum::Server::bind(&app_address).serve(app_router.into_make_service()),
-            self.handle_command_receiver()
-        );
-        engine.expect("failed to start the engine");
-        server.expect("failed to start the server");
-        Ok(())
-    }
-
-    pub async fn handle_command_receiver(&mut self) -> Result<()> {
         loop {
             if let Some(command) = self.command_receiver.recv().await {
                 match command {

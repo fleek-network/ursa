@@ -32,7 +32,7 @@ where
         }
     }
 
-    pub async fn start(&self, config: &ServerConfig, metrics: Option<Router>) -> Result<()> {
+    pub async fn start(&self, config: &ServerConfig, index_provider: Router, metrics: Option<Router>) -> Result<()> {
         info!(
             "Server (rpc, http{}) starting up",
             if metrics.is_some() { " + metrics" } else { "" }
@@ -40,7 +40,7 @@ where
 
         let http_address = SocketAddr::from(([0, 0, 0, 0], config.port));
 
-        let service = MultiplexService::new(self.http_app(metrics), self.rpc_app());
+        let service = MultiplexService::new(self.http_app(metrics), self.rpc_app(index_provider));
 
         info!("listening on {}", http_address);
         axum::Server::bind(&http_address)
@@ -50,9 +50,10 @@ where
         Ok(())
     }
 
-    pub fn rpc_app(&self) -> Router {
+    pub fn rpc_app(&self, index_provider: Router) -> Router {
         Router::new()
             .merge(routes::network::init())
+            .merge(index_provider)
             .layer(Extension(self.rpc_server.clone()))
     }
 

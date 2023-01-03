@@ -52,7 +52,7 @@ mod tests {
             provider_send: provider_engine.command_sender(),
         });
         let server = Server::new(interface);
-        let rpc_app = server.rpc_app();
+        let rpc_app = server.rpc_app(provider_engine.router());
 
         let req = serde_json::to_vec(&json!({
             "jsonrpc": "2.0",
