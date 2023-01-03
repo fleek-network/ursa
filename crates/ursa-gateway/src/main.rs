@@ -25,7 +25,8 @@ use tokio::{
     spawn,
     sync::{
         broadcast::{self, Sender},
-        mpsc, RwLock,
+        mpsc::{self},
+        RwLock,
     },
     task::JoinHandle,
 };
@@ -79,53 +80,66 @@ async fn main() -> Result<()> {
             let admin_config = Arc::clone(&server_config);
 
             let (shutdown_tx, shutdown_rx) = broadcast::channel(4);
-            let (signal_tx, mut server_worker_signal_rx) = mpsc::channel(1);
-            let server_worker = spawn(async move {
-                if let Err(e) = server::start(server_config, server_cache, shutdown_rx).await {
-                    error!("[Gateway server]: {e:?}");
-                    signal_tx.send(()).await.expect("Send signal successfully");
-                };
-                info!("Server stopped");
-            });
 
-            let shutdown_rx = shutdown_tx.subscribe();
-            let (signal_tx, mut admin_worker_signal_rx) = mpsc::channel(1);
-            let admin_worker = spawn(async move {
-                if let Err(e) = admin::start(admin_config, admin_cache, shutdown_rx).await {
-                    error!("[Admin server]: {e:?}");
-                    signal_tx.send(()).await.expect("Send signal successfully");
-                };
-                info!("Admin server stopped");
-            });
+            let (server_worker, mut server_worker_signal_rx) = {
+                let (signal_tx, signal_rx) = mpsc::channel(1);
+                let worker = spawn(async move {
+                    if let Err(e) = server::start(server_config, server_cache, shutdown_rx).await {
+                        error!("[Gateway server]: {e:?}");
+                        signal_tx.send(()).await.expect("Send signal successfully");
+                    };
+                    info!("Server stopped");
+                });
+                (worker, signal_rx)
+            };
 
-            let mut shutdown_rx = shutdown_tx.subscribe();
-            let (signal_tx, mut ttl_cache_worker_signal_rx) = mpsc::channel(1);
-            let ttl_cache_worker = spawn(async move {
-                let duration_ms = Duration::from_millis(ttl_cache_interval);
-                info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
-                loop {
-                    let signal_tx = signal_tx.clone();
-                    select! {
-                        _ = tokio::time::sleep(duration_ms) => {
-                            if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
-                                error!("[Cache TTL Worker]: {e:?}");
-                                signal_tx
-                                    .send(())
-                                    .await
-                                    .expect("Send signal successfully");
+            let (admin_worker, mut admin_worker_signal_rx) = {
+                let shutdown_rx = shutdown_tx.subscribe();
+                let (signal_tx, signal_rx) = mpsc::channel(1);
+                let worker = spawn(async move {
+                    if let Err(e) = admin::start(admin_config, admin_cache, shutdown_rx).await {
+                        error!("[Admin server]: {e:?}");
+                        signal_tx.send(()).await.expect("Send signal successfully");
+                    };
+                    info!("Admin server stopped");
+                });
+                (worker, signal_rx)
+            };
+
+            let (ttl_cache_worker, mut ttl_cache_worker_signal_rx) = {
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                let (signal_tx, signal_rx) = mpsc::channel(1);
+                let worker = spawn(async move {
+                    let duration_ms = Duration::from_millis(ttl_cache_interval);
+                    info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
+                    loop {
+                        let signal_tx = signal_tx.clone();
+                        select! {
+                            _ = tokio::time::sleep(duration_ms) => {
+                                if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
+                                    error!("[Cache TTL Worker]: {e:?}");
+                                    signal_tx
+                                        .send(())
+                                        .await
+                                        .expect("Send signal successfully");
+                                }
+                            },
+                            _ = shutdown_rx.recv() => {
+                                break;
                             }
-                        },
-                        _ = shutdown_rx.recv() => {
-                            break;
                         }
                     }
-                }
-                info!("TTL cache worker stopped");
-            });
+                    info!("TTL cache worker stopped");
+                });
+                (worker, signal_rx)
+            };
 
-            let shutdown_rx = shutdown_tx.subscribe();
-            let (signal_tx, mut worker_signal_rx) = mpsc::channel(1);
-            let worker = worker::start(worker_rx, cache, resolver, signal_tx, shutdown_rx);
+            let (worker, mut worker_signal_rx) = {
+                let shutdown_rx = shutdown_tx.subscribe();
+                let (signal_tx, signal_rx) = mpsc::channel(1);
+                let worker = worker::start(worker_rx, cache, resolver, signal_tx, shutdown_rx);
+                (worker, signal_rx)
+            };
 
             let workers = vec![server_worker, admin_worker, ttl_cache_worker, worker];
 

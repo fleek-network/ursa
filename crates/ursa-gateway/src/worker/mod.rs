@@ -20,12 +20,12 @@ pub fn start<Cache: WorkerCache>(
     mut cache_worker_rx: UnboundedReceiver<WorkerCacheCommand>,
     cache: Arc<RwLock<Cache>>,
     resolver: Arc<Resolver>,
-    worker_signal_tx: Sender<()>,
+    signal_tx: Sender<()>,
     mut shutdown_rx: Receiver<()>,
 ) -> JoinHandle<()> {
     spawn(async move {
         loop {
-            let worker_signal_tx = worker_signal_tx.clone(); // move to cache worker thread
+            let signal_tx = signal_tx.clone(); // move to cache worker thread
             select! {
                 Some(cmd) = cache_worker_rx.recv() => {
                     let cache = Arc::clone(&cache);
@@ -36,7 +36,7 @@ pub fn start<Cache: WorkerCache>(
                             spawn(async move {
                                 if let Err(e) = cache.write().await.get(&key).await {
                                     error!("Dispatch GetSyncAnnounce command error with key: {key:?} {e:?}");
-                                    worker_signal_tx.send(()).await.expect("Send signal successfully");
+                                    signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             });
                         },
@@ -45,7 +45,7 @@ pub fn start<Cache: WorkerCache>(
                             spawn(async move {
                                 if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
                                     error!("Dispatch InsertSyncAnnounce command error with key: {key:?} {e:?}");
-                                    worker_signal_tx.send(()).await.expect("Send signal successfully");
+                                    signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             });
                         },
@@ -58,7 +58,7 @@ pub fn start<Cache: WorkerCache>(
                                 };
                                 if let Err(e) = result {
                                     error!("Dispatch FetchAnnounce command error with cid: {cid:?} {e:?}");
-                                    worker_signal_tx.send(()).await.expect("Send signal successfully");
+                                    signal_tx.send(()).await.expect("Send signal successfully");
                                 }
                             });
                         },
@@ -67,7 +67,7 @@ pub fn start<Cache: WorkerCache>(
                             spawn(async move {
                                 if let Err(e) = cache.write().await.ttl_cleanup().await {
                                     error!("Dispatch TtlCleanUp command error {e:?}");
-                                    worker_signal_tx.send(()).await.expect("Send signal successfully");
+                                    signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             });
                         }
