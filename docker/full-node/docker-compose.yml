@@ -69,6 +69,8 @@ services:
     user: "$UID:$GID"
 
   ursa:
+    # default image name which matches suggested docker run version for cache
+    image: ursa
     build:
       # todo(botch): replace with official image
       context: ../cache-node/.
