@@ -43,10 +43,9 @@ where
             if metrics.is_some() { " + metrics" } else { "" }
         );
 
+        let service = MultiplexService::new(self.http_app(index_provider, metrics), self.rpc_app());
+
         let http_address = SocketAddr::from(([0, 0, 0, 0], config.port));
-
-        let service = MultiplexService::new(self.http_app(metrics), self.rpc_app(index_provider));
-
         info!("listening on {}", http_address);
         axum::Server::bind(&http_address)
             .serve(tower::make::Shared::new(service))
@@ -55,16 +54,16 @@ where
         Ok(())
     }
 
-    pub fn rpc_app(&self, index_provider: Router) -> Router {
+    pub fn rpc_app(&self) -> Router {
         Router::new()
             .merge(routes::network::init())
-            .merge(index_provider)
             .layer(Extension(self.rpc_server.clone()))
     }
 
-    pub fn http_app(&self, metrics: Option<Router>) -> Router {
+    pub fn http_app(&self, index_provider: Router, metrics: Option<Router>) -> Router {
         Router::new()
             .merge(http::routes::network::init::<S>())
+            .merge(index_provider)
             .merge(metrics.unwrap_or_else(Router::new))
             .layer(Extension(self.interface.clone()))
     }
