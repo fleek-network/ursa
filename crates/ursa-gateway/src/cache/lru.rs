@@ -84,7 +84,7 @@ where
     pub async fn remove_head(&mut self) -> Result<Option<V>> {
         let first_key = self
             .get_first_key()
-            .context("[LRU]: Failed to get the first key while deleting.")?;
+            .context("[LRU]: Failed to get the first key while deleting")?;
         Ok(self.remove(first_key.as_ref()).await)
     }
 

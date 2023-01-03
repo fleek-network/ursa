@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["theBeardA <arslan@fleek.co>"]
 license = "MIT"
-repository = "https://github.com/Psychedelic/ursa"
+repository = "https://github.com/fleek-network/ursa"
 description = "Ursa's cli"
 
 [dependencies]
@@ -28,4 +28,5 @@ ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-rpc-service = { path = "../ursa-rpc-service" }
 ursa-store = { path = "../ursa-store" }
+ursa-telemetry = { path = "../ursa-telemetry" }
 ursa-tracker = { path = "../ursa-tracker" }

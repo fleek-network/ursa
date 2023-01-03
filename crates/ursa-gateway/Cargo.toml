@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
 license = "MIT"
-repository = "https://github.com/Psychedelic/ursa"
+repository = "https://github.com/fleek-network/ursa"
 description = "Ursa's proxy gateway"
 
 [dependencies]
@@ -22,3 +22,6 @@ toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 libp2p.workspace = true
+async-trait.workspace = true
+tokio-util.workspace = true
+bytes.workspace = true

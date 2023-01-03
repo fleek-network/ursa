@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 #[cfg(not(test))]
-pub fn _now() -> SystemTime {
+pub fn now() -> SystemTime {
     SystemTime::now()
 }
 
@@ -15,7 +15,7 @@ mod mock_time {
         static MOCK_TIME: RefCell<Option<SystemTime>> = RefCell::new(None);
     }
 
-    pub fn _now() -> SystemTime {
+    pub fn now() -> SystemTime {
         MOCK_TIME.with(|cell| {
             cell.borrow()
                 .as_ref()

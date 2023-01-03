@@ -1,0 +1,3 @@
+# For local dev with tfvars
+# do_token = "<token_here>"
+lets_encrypt_env = "prod"

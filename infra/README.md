@@ -14,20 +14,22 @@ cd ursa
 docker build -t ursa -f ./Dockerfile .
 ```
 
-## Deploy
+## Deploy with Terraform
+
+For local development set `do_token` in files `.tfvars`, `variables.tf`, and `main.tf`, or, set `DIGITALOCEAN_TOKEN=<token_here>`.
 
 ```sh
 # Format your plans
-terraform fmt
+make fmt
 
-# Download your providers
-terraform init
+# Download your providers, copy your tfvars
+make init
 
 # Layout the plan of which resources will be deployed
-terraform plan
+make plan
 
 # Create the resources in the plan
-terraform apply
+make apply
 ```
 
 ## Contributing

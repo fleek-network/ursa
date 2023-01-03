@@ -17,7 +17,7 @@ ENV RUST_BACKTRACE=1
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/src/app/target \
-    cargo build --release \
+    cargo build --release --bin ursa \
     && cargo strip \
     && mv /usr/src/app/target/release/ursa /usr/src/app/
 

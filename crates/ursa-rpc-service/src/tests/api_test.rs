@@ -32,7 +32,7 @@ mod tests {
             .get_file("../../test_files".to_string(), root_cid)
             .await?;
 
-        let path = format!("../../test_files/{}.car", root_cid.to_string());
+        let path = format!("../../test_files/{root_cid}.car");
         let path = Path::new(&path);
         let file = File::open(path).await?;
         let reader = BufReader::new(file);

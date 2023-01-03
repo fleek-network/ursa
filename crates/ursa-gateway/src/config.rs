@@ -19,10 +19,10 @@ pub fn init_config(path: &PathBuf) -> Result<()> {
         .with_max_level(Level::INFO)
         .finish();
     if !path.exists() {
-        tracing::subscriber::with_default(subscriber, || info!("create config at: {path:?}"));
+        tracing::subscriber::with_default(subscriber, || info!("Create config at: {path:?}"));
         let parent_dir = path
             .parent()
-            .with_context(|| format!("couldn't get parent dir from: {path:?}"))?;
+            .with_context(|| format!("Couldn't get parent dir from: {path:?}"))?;
         create_dir_all(parent_dir)?;
         let gateway_config = GatewayConfig::default();
         let mut file = File::create(path)?;
@@ -37,22 +37,32 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .finish();
-    tracing::subscriber::with_default(subscriber, || info!("load config at: {:?}", path));
+    tracing::subscriber::with_default(subscriber, || info!("Load config at: {:?}", path));
     let toml = read_to_string(path)?;
-    toml::from_str(&toml).context("failed to deserialize")
+    toml::from_str(&toml).context("Failed to deserialize")
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
-    pub admin_server: ServerConfig,
+    pub admin_server: AdminConfig,
     pub indexer: IndexerConfig,
     pub cache: CacheConfig,
+    pub worker: WorkerConfig,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct ServerConfig {
+    pub port: u16,
+    pub addr: String,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
+    pub stream_buf: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct AdminConfig {
     pub port: u16,
     pub addr: String,
     pub cert_path: PathBuf,
@@ -73,6 +83,11 @@ pub struct CacheConfig {
     pub ttl_buf: u64,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct WorkerConfig {
+    pub ttl_interval: u64,
+}
+
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
@@ -86,8 +101,9 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("server_key.pem"),
+                stream_buf: 2_000_000, // 2MB
             },
-            admin_server: ServerConfig {
+            admin_server: AdminConfig {
                 addr: "0.0.0.0".into(),
                 port: 5001,
                 cert_path: PathBuf::from(env!("HOME"))
@@ -106,6 +122,9 @@ impl Default for GatewayConfig {
             cache: CacheConfig {
                 max_size: 200_000_000,  // 200MB
                 ttl_buf: 5 * 60 * 1000, // 5 mins
+            },
+            worker: WorkerConfig {
+                ttl_interval: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -129,6 +148,9 @@ impl GatewayConfig {
         }
         if let Some(tls_key_path) = config.server_tls_key_path {
             self.server.key_path = tls_key_path;
+        }
+        if let Some(server_stream_buffer) = config.server_stream_buffer {
+            self.server.stream_buf = server_stream_buffer;
         }
         if let Some(port) = config.admin_port {
             self.admin_server.port = port;
@@ -155,6 +177,9 @@ impl GatewayConfig {
         }
         if let Some(ttl_buf) = config.ttl_buf {
             self.cache.ttl_buf = ttl_buf;
+        }
+        if let Some(ttl_interval) = config.ttl_interval {
+            self.worker.ttl_interval = ttl_interval;
         }
     }
 }

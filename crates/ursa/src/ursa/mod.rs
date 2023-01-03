@@ -16,7 +16,6 @@ use std::{
 };
 use structopt::StructOpt;
 use tracing::{error, warn};
-use tracing_subscriber::filter::LevelFilter;
 
 pub mod identity;
 mod rpc_commands;
@@ -56,7 +55,7 @@ pub struct CliOpts {
         long,
         help = "Set logging level: info (default), error, warn, debug, trace"
     )]
-    pub log: Option<LevelFilter>,
+    pub log: Option<String>,
 }
 
 impl CliOpts {

@@ -35,8 +35,10 @@ type InitResult = anyhow::Result<(
 
 pub fn init() -> InitResult {
     let store = get_store();
-    let mut network_config = NetworkConfig::default();
-    network_config.swarm_addrs = vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()];
+    let network_config = NetworkConfig {
+        swarm_addrs: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        ..Default::default()
+    };
     let keypair = Keypair::generate_ed25519();
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
     let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();

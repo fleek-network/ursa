@@ -21,14 +21,16 @@ docker-build:
 docker-run:
 	docker run -p 4069:4069 -p 4070:4070 -p 6009:6009 -p 8070:8070 --name ursa-cli -it ursa
 
+compose-build:
+	docker-compose -f infra/ursa/docker-compose.yml build
+
 compose-up:
 	docker-compose -f infra/ursa/docker-compose.yml up
 
 compose-down:
 	docker-compose -f infra/ursa/docker-compose.yml down
 
-#	docker run ursa
-
+# docker run ursa
 docker: docker-build docker-run
 
 # Run unit tests
@@ -59,4 +61,5 @@ clean:
 check:
 	cargo check --all --all-targets --all-features
 
+# Trio command for CI/CD
 ci:	check fmt soft-clippy

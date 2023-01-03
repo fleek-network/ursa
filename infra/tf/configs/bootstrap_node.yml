@@ -33,6 +33,6 @@ runcmd:
   - apt-get install -y build-essential clang ocl-icd-opencl-dev 
   # for docker build kit missing in version 20.04
   - apt-get install docker-ce docker-ce-cli containerd.io -y
-  # - git clone https://github.com/Psychedelic/ursa
+  # - git clone https://github.com/fleek-network/ursa
   # - cd ursa/ 
   # - docker build -t ursa -f ./Dockerfile .
