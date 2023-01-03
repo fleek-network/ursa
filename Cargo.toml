@@ -46,7 +46,7 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
-ipld_traversal = { git = "https://github.com/retrieval-markets-lab/rs-graphsync.git", rev = "0a53cf5" }
+ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
 fastmurmur3 = "0.1.2"
 fnv = "1.0.7"
 futures = "0.3.25"
