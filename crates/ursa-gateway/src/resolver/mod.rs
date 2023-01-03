@@ -1,6 +1,6 @@
 pub mod model;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context};
 use axum::{body::Body, http::response::Parts, response::Response};
 use hyper::{body::to_bytes, client::HttpConnector, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
@@ -9,7 +9,7 @@ use model::IndexerResponse;
 use serde_json::from_slice;
 use tracing::{debug, error};
 
-use crate::resolver::model::ProviderResult;
+use crate::{resolver::model::ProviderResult, util::error::Error};
 
 // Base64 encoded. See ursa-index-provider::Metadata.
 const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
@@ -29,7 +29,7 @@ impl Resolver {
         }
     }
 
-    pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>> {
+    pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
 
         let uri = endpoint.parse::<Uri>().map_err(|e| {
@@ -54,19 +54,12 @@ impl Resolver {
                 },
                 body,
             ) => body,
-            (
-                Parts {
-                    status: StatusCode::NOT_FOUND,
-                    ..
-                },
-                ..,
-            ) => {
-                error!("Error requested indexer - Got 404: {endpoint}");
-                bail!("Error requested indexer - Got 404: {endpoint}")
-            }
-            resp => {
-                error!("Error requested indexer: {endpoint} {resp:?}");
-                bail!("Error requested indexer: {endpoint}")
+            (parts, body) => {
+                error!("Error requested indexer {endpoint} with parts {parts:?} and body {body:?}");
+                return Err(Error::Upstream(
+                    parts.status,
+                    format!("Error requested indexer: {endpoint}"),
+                ));
             }
         };
 
@@ -129,7 +122,9 @@ impl Resolver {
             .collect();
 
         if provider_addresses.is_empty() {
-            bail!("Failed to get a valid address for provider");
+            return Err(Error::Internal(
+                "Failed to get a valid address for provider".to_string(),
+            ));
         }
 
         debug!("Provider addresses to query: {provider_addresses:?}");
@@ -149,6 +144,6 @@ impl Resolver {
             };
         }
 
-        bail!("Failed to get data")
+        Err(Error::Internal("Failed to get data".to_string()))
     }
 }

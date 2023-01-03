@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axum::{
     body::{Body, HttpBody, StreamBody},
@@ -16,7 +16,10 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, log::warn};
 
-use crate::cache::{ByteSize, Tlrfu};
+use crate::{
+    cache::{ByteSize, Tlrfu},
+    util::error::Error,
+};
 
 impl ByteSize for Bytes {
     fn len(&self) -> usize {
@@ -56,7 +59,7 @@ pub enum WorkerCacheCommand {
     },
     Fetch {
         cid: String,
-        sender: oneshot::Sender<Result<Response<Body>>>,
+        sender: oneshot::Sender<std::result::Result<Response<Body>, Error>>,
     },
     TtlCleanUp,
 }
@@ -93,12 +96,18 @@ impl WorkerCache for Cache {
 
 #[async_trait]
 pub trait ServerCache: Send + Sync + 'static {
-    async fn get_announce(&self, k: &str) -> Result<StreamBody<ReaderStream<DuplexStream>>>;
+    async fn get_announce(
+        &self,
+        k: &str,
+    ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error>;
 }
 
 #[async_trait]
 impl ServerCache for Cache {
-    async fn get_announce(&self, k: &str) -> Result<StreamBody<ReaderStream<DuplexStream>>> {
+    async fn get_announce(
+        &self,
+        k: &str,
+    ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let data = Arc::clone(data);
@@ -126,7 +135,14 @@ impl ServerCache for Cache {
                     error!("Failed to dispatch Fetch command: {e:?}");
                     anyhow!("Failed to dispatch Fetch command")
                 })?;
-            let mut body = match rx.await??.into_parts() {
+            let mut body = match rx
+                .await
+                .map_err(|e| {
+                    error!("Failed to receive response from resolver: {e:?}");
+                    anyhow!("Failed to receive response from resolver")
+                })??
+                .into_parts()
+            {
                 (
                     Parts {
                         status: StatusCode::OK,
@@ -134,9 +150,12 @@ impl ServerCache for Cache {
                     },
                     body,
                 ) => body,
-                resp => {
-                    error!("Error requested provider: {resp:?}");
-                    bail!("Error requested provider");
+                (parts, body) => {
+                    error!("Error requested provider with parts :{parts:?} and body: {body:?}");
+                    return Err(Error::Upstream(
+                        parts.status,
+                        "Error requested provider".to_string(),
+                    ));
                 }
             };
             let key = String::from(k); // move to [worker|writer] thread
