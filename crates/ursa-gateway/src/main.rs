@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
                 _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
                 _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await
             }
-            info!("Gateway shutdown successfully")
+            info!("Gateway shut down successfully")
         }
     }
     Ok(())
