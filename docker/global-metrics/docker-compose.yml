@@ -54,8 +54,8 @@ services:
     image: grafana/grafana
     volumes:
       - ./data/grafana:/var/lib/grafana
-      - ../ursa/data/grafana/provisioning:/etc/grafana/provisioning
-      - ../ursa/data/grafana/dashboards:/etc/dashboards
+      - ./data/grafana/provisioning:/etc/grafana/provisioning
+      - ./data/grafana/dashboards:/etc/dashboards
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -74,7 +74,7 @@ services:
       - IPINFO_TOKEN=${IPINFO_TOKEN}
     build:
       context: ../..
-      dockerfile: infra/global-metrics/Dockerfile
+      dockerfile: docker/global-metrics/Dockerfile
     restart: on-failure
     ports:
       - "4000:4000"
