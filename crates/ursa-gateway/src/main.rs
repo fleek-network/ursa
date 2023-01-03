@@ -25,7 +25,7 @@ use tokio::{
     spawn,
     sync::{
         broadcast::{self, Sender},
-        mpsc, oneshot, RwLock,
+        mpsc, RwLock,
     },
     task::JoinHandle,
 };
@@ -78,48 +78,44 @@ async fn main() -> Result<()> {
             let server_config = Arc::new(RwLock::new(gateway_config));
             let admin_config = Arc::clone(&server_config);
 
-            let (shutdown_tx, server_shutdown_rx) = broadcast::channel(4);
-            let admin_shutdown_rx = shutdown_tx.subscribe();
-            let mut ttl_cache_worker_shutdown_rx = shutdown_tx.subscribe();
-            let worker_shutdown_rx = shutdown_tx.subscribe();
-
-            let (server_signal_tx, server_signal_rx) = oneshot::channel();
+            let (shutdown_tx, shutdown_rx) = broadcast::channel(4);
+            let (signal_tx, mut server_worker_signal_rx) = mpsc::channel(1);
             let server_worker = spawn(async move {
-                if let Err(e) = server::start(server_config, server_cache, server_shutdown_rx).await
-                {
+                if let Err(e) = server::start(server_config, server_cache, shutdown_rx).await {
                     error!("[Gateway server]: {e:?}");
-                    server_signal_tx.send(()).expect("Send signal successfully");
+                    signal_tx.send(()).await.expect("Send signal successfully");
                 };
                 info!("Server stopped");
             });
 
-            let (admin_signal_tx, admin_signal_rx) = oneshot::channel();
+            let shutdown_rx = shutdown_tx.subscribe();
+            let (signal_tx, mut admin_worker_signal_rx) = mpsc::channel(1);
             let admin_worker = spawn(async move {
-                if let Err(e) = admin::start(admin_config, admin_cache, admin_shutdown_rx).await {
+                if let Err(e) = admin::start(admin_config, admin_cache, shutdown_rx).await {
                     error!("[Admin server]: {e:?}");
-                    admin_signal_tx.send(()).expect("Send signal successfully");
+                    signal_tx.send(()).await.expect("Send signal successfully");
                 };
                 info!("Admin server stopped");
             });
 
-            let (ttl_cache_worker_signal_tx, mut ttl_cache_worker_signal_rx) =
-                mpsc::channel::<()>(1);
+            let mut shutdown_rx = shutdown_tx.subscribe();
+            let (signal_tx, mut ttl_cache_worker_signal_rx) = mpsc::channel(1);
             let ttl_cache_worker = spawn(async move {
                 let duration_ms = Duration::from_millis(ttl_cache_interval);
                 info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                 loop {
-                    let ttl_cache_worker_signal_tx = ttl_cache_worker_signal_tx.clone();
+                    let signal_tx = signal_tx.clone();
                     select! {
                         _ = tokio::time::sleep(duration_ms) => {
                             if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
                                 error!("[Cache TTL Worker]: {e:?}");
-                                ttl_cache_worker_signal_tx
+                                signal_tx
                                     .send(())
                                     .await
                                     .expect("Send signal successfully");
                             }
                         },
-                        _ = ttl_cache_worker_shutdown_rx.recv() => {
+                        _ = shutdown_rx.recv() => {
                             break;
                         }
                     }
@@ -127,14 +123,9 @@ async fn main() -> Result<()> {
                 info!("TTL cache worker stopped");
             });
 
-            let (worker_signal_tx, mut worker_signal_rx) = mpsc::channel(1);
-            let worker = worker::start(
-                worker_rx,
-                cache,
-                resolver,
-                worker_signal_tx,
-                worker_shutdown_rx,
-            );
+            let shutdown_rx = shutdown_tx.subscribe();
+            let (signal_tx, mut worker_signal_rx) = mpsc::channel(1);
+            let worker = worker::start(worker_rx, cache, resolver, signal_tx, shutdown_rx);
 
             let workers = vec![server_worker, admin_worker, ttl_cache_worker, worker];
 
@@ -152,8 +143,8 @@ async fn main() -> Result<()> {
             select! {
                 _ = ctrl_c() => graceful_shutdown(shutdown_tx, workers).await,
                 _ = terminate => graceful_shutdown(shutdown_tx, workers).await,
-                _ = server_signal_rx => graceful_shutdown(shutdown_tx, workers).await,
-                _ = admin_signal_rx => graceful_shutdown(shutdown_tx, workers).await,
+                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
+                _ = admin_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
                 _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
                 _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await
             }

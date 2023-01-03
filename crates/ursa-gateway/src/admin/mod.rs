@@ -28,7 +28,7 @@ use crate::{
 pub async fn start<Cache: AdminCache>(
     config: Arc<RwLock<GatewayConfig>>,
     cache: Arc<RwLock<Cache>>,
-    admin_shutdown_rx: Receiver<()>,
+    shutdown_rx: Receiver<()>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -63,7 +63,7 @@ pub async fn start<Cache: AdminCache>(
     info!("Admin server listening on {addr}");
 
     let handle = Handle::new();
-    spawn(graceful_shutdown(handle.clone(), admin_shutdown_rx));
+    spawn(graceful_shutdown(handle.clone(), shutdown_rx));
 
     axum_server::bind_rustls(addr, rustls_config)
         .handle(handle)
@@ -74,9 +74,9 @@ pub async fn start<Cache: AdminCache>(
     Ok(())
 }
 
-async fn graceful_shutdown(handle: Handle, mut admin_shutdown_rx: Receiver<()>) {
+async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
     select! {
-        _ = admin_shutdown_rx.recv() => {
+        _ = shutdown_rx.recv() => {
             loop {
                 if handle.connection_count() == 0 {
                     handle.shutdown();

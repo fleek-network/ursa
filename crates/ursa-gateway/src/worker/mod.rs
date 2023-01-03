@@ -21,7 +21,7 @@ pub fn start<Cache: WorkerCache>(
     cache: Arc<RwLock<Cache>>,
     resolver: Arc<Resolver>,
     worker_signal_tx: Sender<()>,
-    mut worker_shutdown_rx: Receiver<()>,
+    mut shutdown_rx: Receiver<()>,
 ) -> JoinHandle<()> {
     spawn(async move {
         loop {
@@ -73,7 +73,7 @@ pub fn start<Cache: WorkerCache>(
                         }
                     }
                 }
-                _ = worker_shutdown_rx.recv() => {
+                _ = shutdown_rx.recv() => {
                     info!("Worker stopped");
                     break;
                 }
