@@ -14,20 +14,14 @@ use axum::{
     Router,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle};
-use bytes::Bytes;
 use route::api::v1::get::get_car_handler;
 use tokio::{
     select, spawn,
     sync::{broadcast::Receiver, RwLock},
 };
 use tower::limit::concurrency::ConcurrencyLimitLayer;
-use tower_http::{
-    compression::CompressionLayer,
-    timeout::TimeoutLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
-};
-use tracing::{info, trace};
+use tower_http::{compression::CompressionLayer, timeout::TimeoutLayer, trace::TraceLayer};
+use tracing::info;
 
 use crate::{
     config::{GatewayConfig, ServerConfig},
@@ -70,14 +64,7 @@ pub async fn start<Cache: ServerCache>(
     let app = Router::new()
         .route("/ping", get(|| async { "pong" }))
         .route("/:cid", get(get_car_handler::<Cache>))
-        .layer(
-            TraceLayer::new_for_http()
-                .on_body_chunk(|chunk: &Bytes, latency: Duration, _: &tracing::Span| {
-                    trace!(size_bytes = chunk.len(), latency = ?latency, "sending body chunk")
-                })
-                .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                .on_response(DefaultOnResponse::new().include_headers(true).latency_unit(LatencyUnit::Micros)),
-        )
+        .layer(TraceLayer::new_for_http())
         .layer(Extension(config))
         .layer(Extension(cache))
         .layer(CompressionLayer::new())
