@@ -20,8 +20,8 @@ use tracing::{error, info};
 
 pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
     Router::new()
-        .route("/", post(upload_handler::<S>))
-        .route("/:cid", get(get_handler::<S>))
+        .route("/ursa/v0/", post(upload_handler::<S>))
+        .route("/ursa/v0/:cid", get(get_handler::<S>))
         .route("/ping", get(|| async { "pong" })) // to be used for TLS verification
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(250 * 1024 * 1024)) // 250mb
