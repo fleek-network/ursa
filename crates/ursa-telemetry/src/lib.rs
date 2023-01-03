@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::env;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
     fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer, Registry,
@@ -11,7 +12,7 @@ pub struct TelemetryConfig {
     /// Service name.
     pub name: String,
     /// Service log level.
-    pub log_level: String,
+    pub log_level: Option<String>,
     /// Service json log output.
     pub pretty_log: bool,
     /// Tokio console support.
@@ -28,7 +29,7 @@ impl TelemetryConfig {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            log_level: "INFO".to_string(),
+            log_level: None,
             pretty_log: false,
             tokio_console: false,
             tree_tracer: false,
@@ -38,7 +39,7 @@ impl TelemetryConfig {
     }
 
     pub fn with_log_level(mut self, log_level: &str) -> Self {
-        self.log_level = log_level.to_string();
+        self.log_level = Some(log_level.to_string());
         self
     }
 
@@ -68,12 +69,16 @@ impl TelemetryConfig {
     }
 
     pub fn init(self) -> anyhow::Result<()> {
+        let log_level = self
+            .log_level
+            .unwrap_or(env::var("RUST_LOG").unwrap_or("INFO".to_string()));
+
         let mut tracing_layers = vec![];
 
         if self.pretty_log {
             let log_subscriber = fmt::layer()
                 .pretty()
-                .with_filter(EnvFilter::new(&self.log_level));
+                .with_filter(EnvFilter::new(&log_level));
             tracing_layers.push(log_subscriber.boxed());
         }
 
@@ -87,7 +92,7 @@ impl TelemetryConfig {
             let hierarchical_layer = HierarchicalLayer::new(2)
                 .with_targets(true)
                 .with_bracketed_fields(true)
-                .with_filter(EnvFilter::new(&self.log_level))
+                .with_filter(EnvFilter::new(&log_level))
                 .boxed();
             tracing_layers.push(hierarchical_layer.boxed());
         }
