@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
                     let duration_ms = Duration::from_millis(ttl_cache_interval);
                     info!("[Cache TTL Worker]: Interval: {duration_ms:?}");
                     loop {
-                        let signal_tx = signal_tx.clone();
+                        let signal_tx = signal_tx.clone(); // move to ttl worker thread
                         select! {
                             _ = tokio::time::sleep(duration_ms) => {
                                 if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
