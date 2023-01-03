@@ -3,7 +3,6 @@ mod route;
 use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
-    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -77,11 +76,7 @@ pub async fn start<Cache: AdminCache>(
 async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
     select! {
         _ = shutdown_rx.recv() => {
-            handle.graceful_shutdown(Some(Duration::from_secs(30)));
-            loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                info!("Admin server alive connections: {}", handle.connection_count());
-            }
+            handle.shutdown();
         }
     }
 }
