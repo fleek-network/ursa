@@ -6,8 +6,7 @@ use cache::{WorkerCache, WorkerCacheCommand};
 use tokio::{
     select, spawn,
     sync::{
-        broadcast::Receiver,
-        mpsc::{Sender, UnboundedReceiver},
+        mpsc::{Receiver, Sender, UnboundedReceiver},
         RwLock,
     },
     task::JoinHandle,

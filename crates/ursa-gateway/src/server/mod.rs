@@ -74,11 +74,8 @@ pub async fn start<Cache: ServerCache>(
 async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
     select! {
         _ = shutdown_rx.recv() => {
+            handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
-                if handle.connection_count() == 0 {
-                    handle.shutdown();
-                    break;
-                }
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 info!("Server alive connections: {}", handle.connection_count());
             }

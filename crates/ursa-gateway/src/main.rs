@@ -79,13 +79,13 @@ async fn main() -> Result<()> {
             let server_config = Arc::new(RwLock::new(gateway_config));
             let admin_config = Arc::clone(&server_config);
 
-            let (shutdown_tx, shutdown_rx) = broadcast::channel(4);
+            let (shutdown_tx, shutdown_rx) = broadcast::channel(3);
 
             let (server_worker, mut server_worker_signal_rx) = {
                 let (signal_tx, signal_rx) = mpsc::channel(1);
                 let worker = spawn(async move {
                     if let Err(e) = server::start(server_config, server_cache, shutdown_rx).await {
-                        error!("[Gateway server]: {e:?}");
+                        error!("[Server]: {e:?}");
                         signal_tx.send(()).await.expect("Send signal successfully");
                     };
                     info!("Server stopped");
@@ -134,14 +134,15 @@ async fn main() -> Result<()> {
                 (worker, signal_rx)
             };
 
-            let (worker, mut worker_signal_rx) = {
-                let shutdown_rx = shutdown_tx.subscribe();
+            // main worker to stop last
+            let (main_worker, main_shutdown_tx, mut worker_signal_rx) = {
                 let (signal_tx, signal_rx) = mpsc::channel(1);
+                let (main_shutdown_tx, shutdown_rx) = mpsc::channel(1);
                 let worker = worker::start(worker_rx, cache, resolver, signal_tx, shutdown_rx);
-                (worker, signal_rx)
+                (worker, main_shutdown_tx, signal_rx)
             };
 
-            let workers = vec![server_worker, admin_worker, ttl_cache_worker, worker];
+            let sub_workers = vec![server_worker, admin_worker, ttl_cache_worker];
 
             #[cfg(unix)]
             let terminate = async {
@@ -155,12 +156,12 @@ async fn main() -> Result<()> {
             let terminate = std::future::pending::<()>();
 
             select! {
-                _ = ctrl_c() => graceful_shutdown(shutdown_tx, workers).await,
-                _ = terminate => graceful_shutdown(shutdown_tx, workers).await,
-                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
-                _ = admin_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
-                _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await,
-                _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers).await
+                _ = ctrl_c() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
+                _ = terminate => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
+                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
+                _ = admin_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
+                _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
+                _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await
             }
             info!("Gateway shutdown successfully")
         }
@@ -168,12 +169,22 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn graceful_shutdown(shutdown_tx: Sender<()>, workers: Vec<JoinHandle<()>>) {
+async fn graceful_shutdown(
+    sub_shutdown_tx: Sender<()>,
+    sub_workers: Vec<JoinHandle<()>>,
+    main_shutdown_tx: mpsc::Sender<()>,
+    main_worker: JoinHandle<()>,
+) {
     info!("Gateway shutting down...");
-    shutdown_tx
+    sub_shutdown_tx
         .send(())
         .expect("Send shutdown signal successfully");
-    for worker in workers {
+    for worker in sub_workers {
         worker.await.expect("Worker to shutdown successfully");
     }
+    main_shutdown_tx
+        .send(())
+        .await
+        .expect("Send shutdown signal successfully");
+    main_worker.await.expect("Worker to shutdown successfully");
 }
