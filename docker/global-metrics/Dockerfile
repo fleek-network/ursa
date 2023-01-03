@@ -1,5 +1,5 @@
 FROM rust:latest as builder
-ARG PROFILE=release
+
 WORKDIR /ursa
 
 RUN apt-get update && apt-get install -y \
@@ -8,19 +8,18 @@ RUN apt-get update && apt-get install -y \
     libclang-dev \
     protobuf-compiler
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install cargo-strip
-
 COPY . .
+
 ENV RUST_BACKTRACE=1
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/ursa/target \
-    cargo build --profile $PROFILE --bin ursa \
-    && cargo strip \
-    && mv /ursa/target/release/ursa /ursa/
+    cargo build -r --bin ursa-tracker && \
+    mv /ursa/target/release/ursa-tracker /ursa/
 
 FROM debian:bullseye-slim
+
+WORKDIR /root
 
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
@@ -29,6 +28,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists*
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /ursa/ursa /usr/local/bin
+COPY --from=builder /ursa/ .
 
-ENTRYPOINT ["ursa"]
+ENTRYPOINT ["./ursa-tracker"]

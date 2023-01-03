@@ -1,18 +1,10 @@
 # Ursa Infra
 
-> Deploy and run an ursa node, with nginx proxy infront. Setup with cerbot and letencrypt. Certs are auto renewed. 
+> Deploy a cluster of Ursa nodes using Terraform and k8s.
 
 ## Prerequisites
 
-- Install [Docker](https://docs.docker.com/get-docker/)
-
-## Usage
-
-```sh
-cd ursa
-
-docker build -t ursa -f ./Dockerfile .
-```
+- Install [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 
 ## Deploy with Terraform
 

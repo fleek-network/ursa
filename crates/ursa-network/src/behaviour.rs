@@ -200,6 +200,16 @@ impl<P: StoreParams> Behaviour<P> {
             }
         }
 
+        if !config.bootstrapper && !config.bootstrap_nodes.is_empty() {
+            if let Err(e) = kad.bootstrap() {
+                warn!("Failed to bootstrap: {}", e);
+            } else {
+                info!("Bootstrapping into the network...");
+            }
+        } else {
+            warn!("Skipping bootstrap");
+        }
+
         Behaviour {
             ping,
             autonat,
@@ -231,10 +241,6 @@ impl<P: StoreParams> Behaviour<P> {
 
     pub fn public_address(&self) -> Option<&Multiaddr> {
         self.autonat.as_ref().and_then(|a| a.public_address())
-    }
-
-    pub fn bootstrap(&mut self) -> Result<libp2p::kad::QueryId> {
-        self.kad.bootstrap().map_err(|e| e.into())
     }
 
     pub fn subscribe(&mut self, topic: &Topic) -> Result<bool, SubscriptionError> {

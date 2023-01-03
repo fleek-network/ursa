@@ -1,7 +1,6 @@
 version: '3'
 
 services: 
-  # Proxy to ipfs
   nginx:
     image: nginx:latest
     restart: unless-stopped
@@ -16,8 +15,10 @@ services:
       - "443:443"
     expose:
       - 80
+      - 443
     depends_on:
       - certbot
+    network_mode: host
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -27,7 +28,6 @@ services:
       - 9113
     depends_on:
       - nginx
-
 
   certbot:
     image: certbot/certbot
@@ -48,18 +48,18 @@ services:
       - ./data/prom:/etc/prometheus
     command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
     depends_on:
-      - ursa
+      - ursa-tracker
 
   grafana:
     image: grafana/grafana
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./data/grafana/provisioning:/etc/grafana/provisioning
-      - ./data/grafana/dashboards:/etc/grafana/dashboards
+      - ./data/grafana/dashboards:/etc/dashboards
     environment:
-      - GF_SECURITY_ADMIN_USER=${ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
+    command: --config=/var/lib/grafana/grafana.ini
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -69,17 +69,16 @@ services:
       - prometheus
     user: "$UID:$GID"
 
-  ursa:
+  ursa-tracker:
+    environment:
+      - IPINFO_TOKEN=${IPINFO_TOKEN}
     build:
-      context: ../../.
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: docker/global-metrics/Dockerfile
     restart: on-failure
     ports:
-      - "6009:6009"
+      - "4000:4000"
     expose:
-      # 4069 TCP, used for HTTP RPC, REST, and metrics
-      - "4069"
-      # 6009 TCP and UDP, used by the P2P protocol running the network
-      - "6009"
+      - "4000"
     volumes:
-      - ${HOME}/.ursa/:/root/.ursa/:rw
+      - ./data/tracker_db/:/root/tracker_db/:rw
