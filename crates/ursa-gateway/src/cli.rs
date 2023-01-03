@@ -36,6 +36,15 @@ pub struct DaemonCmdOpts {
     /// server address
     #[arg(long)]
     pub server_addr: Option<String>,
+    /// request body limit (bytes)
+    #[arg(long)]
+    pub request_body_limit: Option<u64>,
+    /// request time out (ms)
+    #[arg(long)]
+    pub request_timeout: Option<u64>,
+    /// concurrency limit (ms)
+    #[arg(long)]
+    pub concurrency_limit: Option<u32>,
     /// server tls cert path
     #[arg(long)]
     pub server_tls_cert_path: Option<PathBuf>,

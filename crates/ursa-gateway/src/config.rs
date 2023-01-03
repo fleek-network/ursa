@@ -56,6 +56,9 @@ pub struct GatewayConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
+    pub request_body_limit: u64,
+    pub request_timeout: u64,
+    pub concurrency_limit: u32,
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
     pub stream_buf: u64,
@@ -95,6 +98,9 @@ impl Default for GatewayConfig {
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 80,
+                request_body_limit: 128,
+                request_timeout: 5_000,
+                concurrency_limit: 100_000,
                 cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("server_cert.pem"),
@@ -136,12 +142,22 @@ impl GatewayConfig {
             self.log_level = log_level.to_string();
         }
     }
+
     pub fn merge_daemon_opts(&mut self, config: DaemonCmdOpts) {
         if let Some(port) = config.server_port {
             self.server.port = port;
         }
         if let Some(addr) = config.server_addr {
             self.server.addr = addr;
+        }
+        if let Some(request_body_limit) = config.request_body_limit {
+            self.server.request_body_limit = request_body_limit;
+        }
+        if let Some(request_timeout) = config.request_timeout {
+            self.server.request_timeout = request_timeout;
+        }
+        if let Some(concurrency_limit) = config.concurrency_limit {
+            self.server.concurrency_limit = concurrency_limit;
         }
         if let Some(tls_cert_path) = config.server_tls_cert_path {
             self.server.cert_path = tls_cert_path;

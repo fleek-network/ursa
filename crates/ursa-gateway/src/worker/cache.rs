@@ -108,6 +108,7 @@ impl ServerCache for Cache {
         &self,
         k: &str,
     ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
+        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
         let (mut w, r) = duplex(self.stream_buf as usize);
         if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let data = Arc::clone(data);
