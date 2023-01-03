@@ -180,7 +180,7 @@ async fn graceful_shutdown(
         .send(())
         .expect("Send shutdown signal successfully");
     for worker in sub_workers {
-        worker.await.expect("Worker to shutdown successfully");
+        worker.await.expect("Worker to shut down successfully");
     }
     main_shutdown_tx
         .send(())
