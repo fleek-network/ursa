@@ -2,9 +2,10 @@ use std::{str::FromStr, sync::Arc};
 
 use axum::{
     extract::Path,
+    headers::CacheControl,
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Extension, Json,
+    Extension, Json, TypedHeader,
 };
 use cid::Cid;
 use serde_json::{json, Value};
@@ -14,6 +15,7 @@ use crate::{server::model::HttpResponse, util::error::Error, worker::cache::Serv
 
 pub async fn get_car_handler<Cache: ServerCache>(
     Path(cid): Path<String>,
+    TypedHeader(cache_control): TypedHeader<CacheControl>,
     Extension(cache): Extension<Arc<RwLock<Cache>>>,
 ) -> Response {
     if Cid::from_str(&cid).is_err() {
@@ -24,7 +26,12 @@ pub async fn get_car_handler<Cache: ServerCache>(
         .into_response();
     };
 
-    match cache.read().await.get_announce(&cid).await {
+    match cache
+        .read()
+        .await
+        .get_announce(&cid, cache_control.no_cache())
+        .await
+    {
         Ok(stream) => (
             [
                 (
