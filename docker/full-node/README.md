@@ -30,12 +30,14 @@
 
   # if build kit isn't installed
   COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose up -d
+  
+  # helper to rebuild the image
+  make compose-build
   ```
 
 4. Setup TLS.
 
 - Find and Replace all domain instances in `data/nginx/app.conf` with your domain.
-
 - Generate Certificates for your domain and restart nginx
 
   ```sh
@@ -49,11 +51,11 @@
 You can test locally by replacing `<HOSTNAME>` by `localhost` and `<PORT>` as `4069`. Replace The `<VALID-CID-HERE>` with a valid [CID](https://docs.ipfs.tech/concepts/content-addressing/) (content identifier). The flag `-o` refers to `output` to a custom filename.
 
 ```
-curl -X GET http://<HOSTNAME>:<PORT>/<VALID-CID-HERE> -o <FILENAME>
+curl -X GET http://<HOSTNAME>:<PORT>/ursa/v0/<VALID-CID-HERE> -o <FILENAME>
 ```
 
 Here is an example
 
 ```
-curl -X GET http://localhost:4069/bafybeifyjj2bjhtxmp235vlfeeiy7sz6rzyx3lervfk3ap2nyn4rggqgei  -o my_file.car
+curl -X GET http://localhost:4069/ursa/v0/bafybeifyjj2bjhtxmp235vlfeeiy7sz6rzyx3lervfk3ap2nyn4rggqgei -o my_file.car
 ```
