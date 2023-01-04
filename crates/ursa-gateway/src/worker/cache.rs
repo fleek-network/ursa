@@ -151,7 +151,7 @@ impl ServerCache for Cache {
                     body,
                 ) => body,
                 (parts, body) => {
-                    error!("Error requested provider with parts :{parts:?} and body: {body:?}");
+                    error!("Error requested provider with parts: {parts:?} and body: {body:?}");
                     return Err(Error::Upstream(
                         parts.status,
                         "Error requested provider".to_string(),
