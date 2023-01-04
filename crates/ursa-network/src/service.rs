@@ -224,8 +224,10 @@ where
     cached_content: CountingBloomFilter,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
-    /// Graphsync hashmap for keeping track of rpc response channels.
-    gs_response_channels: FnvHashMap<graphsync::RequestId, BlockOneShotSender<()>>,
+    /// Graphsync hashmap for keeping track of who requested a block.
+    gs_response_channels: FnvHashMap<Cid, BlockOneShotSender<()>>,
+    /// Graphsync hashmap for associating requests with CIDs.
+    gs_ongoing_requests: FnvHashMap<graphsync::RequestId, Cid>,
 }
 
 impl<S> UrsaService<S>
@@ -322,6 +324,7 @@ where
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
             gs_response_channels: Default::default(),
+            gs_ongoing_requests: Default::default(),
         })
     }
 
@@ -621,30 +624,19 @@ where
                 received,
             } => {
                 info!("[GraphSyncEvent::Completed] {id} {peer_id} {received}");
-                let sender = self.gs_response_channels.remove(&id).unwrap();
+
+                if !self.gs_ongoing_requests.contains_key(&id) {
+                    error!(
+                        "[GraphSyncEvent::Completed] did not find corresponding pending request"
+                    );
+                    return Ok(());
+                }
+
+                let cid = self.gs_ongoing_requests.remove(&id).expect("Key to exist");
+                let sender = self.gs_response_channels.remove(&cid).unwrap();
                 if sender.send(Ok(())).is_err() {
                     error!("[GraphSyncEvent] failed to send response")
                 }
-                Ok(())
-            }
-            GraphSyncEvent::Accepted { peer_id, request } => {
-                // We can include our own "protocol" using extensions.
-                info!("[GraphSyncEvent::Accepted] {peer_id} {request:?}");
-                Ok(())
-            }
-            GraphSyncEvent::Block { id, data } => {
-                // Research what this returns and if we need to handle it since
-                // data should be stored directly to blockstore.
-                info!("[GraphSyncEvent::Block] {id} {data:?}");
-                Ok(())
-            }
-            GraphSyncEvent::SentAllBlocks { id, peer_id, sent } => {
-                // This could be a push or pull request.
-                info!("[GraphSyncEvent::SentAllBlocks] {id} {peer_id} {sent}");
-                Ok(())
-            }
-            GraphSyncEvent::Error { peer_id, error } => {
-                info!("[GraphSyncEvent::Error] {peer_id} {error}");
                 Ok(())
             }
             event => {
@@ -873,10 +865,10 @@ where
                     error!("[GetGraphSync]: empty peers");
                     sender
                         .send(Err(anyhow!("there are no peers to pull from")))
-                        .unwrap();
+                        .expect("Sending to succeed");
                 } else {
                     info!("[GetGraphSync]: building a request for {cid}");
-                    let peer = self.peers.iter().next().expect("At least 1 peer");
+
                     let selector = Selector::ExploreRecursive {
                         limit: RecursionLimit::None,
                         sequence: Box::new(Selector::ExploreAll {
@@ -884,15 +876,18 @@ where
                         }),
                         current: None,
                     };
-                    let req = Request::builder()
-                        .root(cid.to_bytes())
-                        .selector(selector)
-                        .build()
-                        .unwrap();
-                    info!("[GetGraphSync]: enqueue pending response");
-                    self.gs_response_channels.insert(*req.id(), sender);
 
-                    self.swarm.behaviour_mut().graphsync.request(*peer, req);
+                    self.gs_response_channels.insert(cid, sender);
+
+                    for peer in self.peers.iter() {
+                        let req = Request::builder()
+                            .root(cid.to_bytes())
+                            .selector(selector.clone())
+                            .build()
+                            .unwrap();
+                        self.gs_ongoing_requests.insert(*req.id(), cid);
+                        self.swarm.behaviour_mut().graphsync.request(*peer, req);
+                    }
                 }
             }
             #[cfg(test)]
