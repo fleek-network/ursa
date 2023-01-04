@@ -86,9 +86,9 @@ make compose-up
 make compose-down
 ```
 
-### RPC
+### RPC & HTTP
 
-To access the rpc you can do through the http JSON-RPC api. The endpoint to request is **`/rpc/v0`**. The server can be accessible in port `4060` for local development and in port `80/443` through the gateway (nginx by the moment).
+To access the rpc you can do through the http JSON-RPC api. The endpoint to request is **`/rpc/v0`**. The server can be accessible in port `4069` for local development and in port `80/443` through the reverse proxy (nginx at the moment).
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
