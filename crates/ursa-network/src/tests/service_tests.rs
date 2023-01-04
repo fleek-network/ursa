@@ -541,7 +541,7 @@ mod tests {
         let graphsync_store_2 = GraphSyncStorage(store_2.clone());
 
         let block = get_block(&b"hello world"[..]);
-        info!("inserting block into bitswap store for node 1");
+        info!("inserting block into Graphsync store for node 1");
         graphsync_store_1.insert(&block).unwrap();
 
         assert!(graphsync_store_1.has(block.cid()).unwrap());
@@ -576,14 +576,14 @@ mod tests {
 
         let res = receiver
             .await
-            .expect("Unable to receive from bitswap channel");
+            .expect("Unable to receive from Graphsync channel");
 
         match res {
             Ok(_) => {
                 let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
 
                 info!(
-                    "inserting block into bitswap store for node 1, {:?}",
+                    "inserting block into Graphsync store for node 1, {:?}",
                     store_1_block
                 );
                 assert_eq!(store_1_block, Some(block.data().to_vec()));
@@ -649,7 +649,7 @@ mod tests {
 
         let res = receiver
             .await
-            .expect("Unable to receive from bitswap channel");
+            .expect("Unable to receive from Graphsync channel");
 
         match res {
             Ok(_) => {
