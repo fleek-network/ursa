@@ -895,7 +895,7 @@ where
                     self.swarm
                         .behaviour_mut()
                         .graphsync
-                        .request(peer.clone(), req);
+                        .request(*peer, req);
                 }
             }
             #[cfg(test)]
