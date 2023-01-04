@@ -70,7 +70,7 @@ impl NetworkConfig {
     fn default_swarm_addrs() -> Vec<Multiaddr> {
         vec![
             "/ip4/0.0.0.0/tcp/6009".parse().unwrap(),
-            "/ip4/0.0.0.0/udp/4890/quic-v1".parse().unwrap()
+            "/ip4/0.0.0.0/udp/4890/quic-v1".parse().unwrap(),
         ]
     }
     fn default_database_path() -> PathBuf {
