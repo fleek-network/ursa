@@ -176,6 +176,21 @@ pub struct GraphSyncStorage<P>(pub Arc<UrsaStore<P>>)
 where
     P: Blockstore + Store + Send + Sync + 'static;
 
+impl<S> GraphSyncStorage<S>
+where
+    S: Blockstore + Store + Send + Sync + 'static,
+{
+    pub fn insert(&mut self, block: &Block<DefaultParams>) -> Result<()> {
+        self.0.db.put_keyed(block.cid(), block.data()).unwrap();
+
+        Ok(())
+    }
+
+    pub fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
+        Ok(self.0.db.get(cid).unwrap())
+    }
+}
+
 impl<S> GSBlockstore for GraphSyncStorage<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,

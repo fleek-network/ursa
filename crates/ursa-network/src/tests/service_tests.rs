@@ -14,6 +14,7 @@ mod tests {
     use futures::io::BufReader;
     use futures::StreamExt;
     use fvm_ipld_car::{load_car, CarReader};
+    use ipld_traversal::blockstore::Blockstore;
     use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams, Ipld};
     use libp2p::request_response::RequestResponseEvent;
     use libp2p::{
@@ -27,7 +28,7 @@ mod tests {
     use tokio::{select, sync::oneshot, time::timeout};
     use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
-    use ursa_store::{BitswapStorage, UrsaStore};
+    use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -520,6 +521,155 @@ mod tests {
             cached_content.contains(&Cid::default().to_bytes()),
             "CID not contained in cache summary."
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_graphsync_get() -> Result<()> {
+        fn insert_gs_block(mut s: GraphSyncStorage<MemoryDB>, b: &Block<DefaultParams>) {
+            match s.insert(b) {
+                Err(err) => error!(
+                    "there was an error while inserting into the blockstore {:?}",
+                    err
+                ),
+                Ok(()) => info!("block inserted successfully"),
+            }
+        }
+
+        setup_logger(LevelFilter::Info);
+        let mut config = NetworkConfig {
+            mdns: true,
+            ..Default::default()
+        };
+
+        println!("Hey");
+        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
+            network_init(&mut config, None, None).await?;
+        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
+
+        let graphsync_store_1 = GraphSyncStorage(store_1.clone());
+        let mut graphsync_store_2 = GraphSyncStorage(store_2.clone());
+
+        let block = get_block(&b"hello world"[..]);
+        info!("inserting block into bitswap store for node 1");
+        insert_gs_block(graphsync_store_1.clone(), &block);
+
+        assert!(graphsync_store_1.has(block.cid()).unwrap());
+        assert!(!graphsync_store_2.has(block.cid()).unwrap());
+
+        // Wait for at least one connection
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_1.swarm.select_next_some().await
+            {
+                info!(
+                    "[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ",
+                    peer_id, peer_id_1
+                );
+                break;
+            }
+        }
+
+        let node_2_sender = node_2.command_sender();
+
+        // Start nodes
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
+
+        let (sender, receiver) = oneshot::channel();
+        let msg = NetworkCommand::GetGraphSync {
+            cid: *block.cid(),
+            sender,
+        };
+
+        assert!(node_2_sender.send(msg).is_ok());
+
+        let res = receiver
+            .await
+            .expect("Unable to receive from bitswap channel");
+
+        match res {
+            Ok(_) => {
+                let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
+
+                info!(
+                    "inserting block into bitswap store for node 1, {:?}",
+                    store_1_block
+                );
+                assert_eq!(store_1_block, Some(block.data().to_vec()));
+            }
+            Err(e) => panic!("{e:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_graphsync_sync() -> Result<()> {
+        setup_logger(LevelFilter::Info);
+        let mut config = NetworkConfig {
+            mdns: true,
+            ..Default::default()
+        };
+
+        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
+            network_init(&mut config, None, None).await?;
+        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
+
+        let mut bitswap_store_2 = BitswapStorage(store_2.clone());
+
+        // Wait for at least one connection
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_1.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
+                break;
+            }
+        }
+
+        let node_2_sender = node_2.command_sender();
+
+        // Start nodes
+        tokio::task::spawn(async move { node_1.start().await.unwrap() });
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
+
+        // put the car file in store 1
+        let path = Path::new("../../test_files/test.car");
+        let file = File::open(path).await?;
+        let reader = BufReader::new(file);
+        let cids = load_car(store_1.blockstore(), reader).await?;
+
+        let file_h = File::open(path).await?;
+        let reader_h = BufReader::new(file_h);
+        let mut car_reader = CarReader::new(reader_h).await?;
+
+        let mut cids_vec = Vec::<Cid>::new();
+        while let Some(block) = car_reader.next_block().await? {
+            cids_vec.push(block.cid);
+        }
+
+        let (sender, receiver) = oneshot::channel();
+        let msg = NetworkCommand::GetGraphSync {
+            cid: cids[0],
+            sender,
+        };
+
+        assert!(node_2_sender.send(msg).is_ok());
+
+        let res = receiver
+            .await
+            .expect("Unable to receive from bitswap channel");
+
+        match res {
+            Ok(_) => {
+                for cid in cids_vec {
+                    assert!(bitswap_store_2.contains(&cid).is_ok());
+                }
+            }
+            Err(e) => panic!("{e:?}"),
+        }
 
         Ok(())
     }
