@@ -56,7 +56,6 @@ pub struct GatewayConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
-    pub request_body_limit: u64,
     pub request_timeout: u64,
     pub concurrency_limit: u32,
     pub cert_path: PathBuf,
@@ -75,9 +74,6 @@ pub struct AdminConfig {
 #[derive(Deserialize, Serialize)]
 pub struct IndexerConfig {
     pub cid_url: String,
-    /*
-     * pub mh_url: String,
-     */
 }
 
 #[derive(Deserialize, Serialize)]
@@ -98,8 +94,7 @@ impl Default for GatewayConfig {
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 80,
-                request_body_limit: 128,
-                request_timeout: 5_000,
+                request_timeout: 5_000, // 5s
                 concurrency_limit: 100_000,
                 cert_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
@@ -121,9 +116,6 @@ impl Default for GatewayConfig {
             },
             indexer: IndexerConfig {
                 cid_url: "https://cid.contact/cid".into(),
-                /*
-                 * mh_url: "https://cid.contact/multihash".into(),
-                 */
             },
             cache: CacheConfig {
                 max_size: 200_000_000,  // 200MB
@@ -149,9 +141,6 @@ impl GatewayConfig {
         }
         if let Some(addr) = config.server_addr {
             self.server.addr = addr;
-        }
-        if let Some(request_body_limit) = config.request_body_limit {
-            self.server.request_body_limit = request_body_limit;
         }
         if let Some(request_timeout) = config.request_timeout {
             self.server.request_timeout = request_timeout;
@@ -183,11 +172,6 @@ impl GatewayConfig {
         if let Some(indexer_cid_url) = config.indexer_cid_url {
             self.indexer.cid_url = indexer_cid_url;
         }
-        /*
-         * if let Some(indexer_mh_url) = config.indexer_mh_url {
-         *     self.indexer.mh_url = indexer_mh_url;
-         * }
-         */
         if let Some(max_cache_size) = config.max_cache_size {
             self.cache.max_size = max_cache_size;
         }

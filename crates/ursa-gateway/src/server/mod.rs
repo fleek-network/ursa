@@ -8,11 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use axum::{
-    extract::{DefaultBodyLimit, Extension},
-    routing::get,
-    Router,
-};
+use axum::{extract::Extension, routing::get, Router};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use bytes::Bytes;
 use route::api::v1::get::get_car_handler;
@@ -46,7 +42,6 @@ pub async fn start<Cache: ServerCache>(
                 port,
                 cert_path,
                 key_path,
-                request_body_limit,
                 concurrency_limit,
                 request_timeout,
                 ..
@@ -83,7 +78,6 @@ pub async fn start<Cache: ServerCache>(
         )
         .layer(CompressionLayer::new())
         .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
-        .layer(DefaultBodyLimit::max(*request_body_limit as usize))
         .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize));
 
     info!("Server listening on {addr}");
