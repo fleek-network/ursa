@@ -43,7 +43,7 @@ cid = "0.8.6"
 clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
 ctrlc = "3.2.4"
-db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/kckeiks/forest-rocksdb", branch = "chore/derive-debug-rocksdb", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
