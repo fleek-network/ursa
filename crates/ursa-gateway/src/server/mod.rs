@@ -8,24 +8,35 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use axum::{extract::Extension, routing::get, Router};
+use axum::{
+    extract::Extension,
+    http::{Method, StatusCode},
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router, ServiceExt,
+};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use bytes::Bytes;
 use route::api::v1::get::get_car_handler;
+use serde_json::json;
 use tokio::{
     select, spawn,
     sync::{broadcast::Receiver, RwLock},
 };
 use tower::limit::concurrency::ConcurrencyLimitLayer;
 use tower_http::{
+    catch_panic::CatchPanicLayer,
     compression::CompressionLayer,
+    cors::{Any, CorsLayer},
+    normalize_path::NormalizePath,
     timeout::TimeoutLayer,
     trace::{DefaultMakeSpan, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, TraceLayer},
 };
-use tracing::{debug, info, Level};
+use tracing::{error, info, trace, Level};
 
 use crate::{
     config::{GatewayConfig, ServerConfig},
+    server::model::HttpResponse,
     worker::cache::ServerCache,
 };
 
@@ -61,24 +72,41 @@ pub async fn start<Cache: ServerCache>(
         *port,
     ));
 
-    let app = Router::new()
-        .route("/ping", get(|| async { "pong" }))
-        .route("/:cid", get(get_car_handler::<Cache>))
-        .layer(Extension(config))
-        .layer(Extension(cache))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                .on_body_chunk(|chunk: &Bytes, latency: Duration, _: &tracing::Span| {
-                    debug!(size_bytes = chunk.len(), latency = ?latency, "sending body chunk")
-                })
-                .on_eos(DefaultOnEos::new().level(Level::INFO))
-                .on_failure(DefaultOnFailure::new().level(Level::ERROR))
-                .on_response(DefaultOnResponse::new().level(Level::INFO).include_headers(true)),
-        )
-        .layer(CompressionLayer::new())
-        .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
-        .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize));
+    let app = NormalizePath::trim_trailing_slash(
+        Router::new()
+            .route("/ping", get(|| async { "pong" }))
+            .route("/:cid", get(get_car_handler::<Cache>))
+            .layer(Extension(config))
+            .layer(Extension(cache))
+            .layer(CatchPanicLayer::custom(recover))
+            .layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                    .on_eos(DefaultOnEos::new().level(Level::INFO))
+                    .on_failure(DefaultOnFailure::new().level(Level::ERROR))
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(Level::INFO)
+                            .include_headers(true)
+                            .latency_unit(tower_http::LatencyUnit::Micros),
+                    )
+                    .on_body_chunk(|chunk: &Bytes, latency: Duration, _: &tracing::Span| {
+                        trace!(
+                            "sending body chunk size_bytes={} latency={:?}",
+                            chunk.len(),
+                            latency
+                        )
+                    }),
+            )
+            .layer(CompressionLayer::new())
+            .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
+            .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize))
+            .layer(
+                CorsLayer::new()
+                    .allow_methods([Method::GET])
+                    .allow_origin(Any),
+            ),
+    );
 
     info!("Server listening on {addr}");
 
@@ -104,4 +132,22 @@ async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
             }
         }
     }
+}
+
+fn recover(e: Box<dyn std::any::Any + Send + 'static>) -> Response {
+    let e = if let Some(e) = e.downcast_ref::<String>() {
+        e.to_string()
+    } else if let Some(e) = e.downcast_ref::<&str>() {
+        e.to_string()
+    } else {
+        "Unknown panic message".to_string()
+    };
+    error!("Unhandled error: {e:?}");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!(HttpResponse {
+            message: Some("Internal Server Error".into()),
+        })),
+    )
+        .into_response()
 }

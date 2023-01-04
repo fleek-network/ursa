@@ -39,7 +39,7 @@ pub struct DaemonCmdOpts {
     /// request time out (ms)
     #[arg(long)]
     pub request_timeout: Option<u64>,
-    /// concurrency limit (ms)
+    /// concurrency limit
     #[arg(long)]
     pub concurrency_limit: Option<u32>,
     /// server tls cert path
