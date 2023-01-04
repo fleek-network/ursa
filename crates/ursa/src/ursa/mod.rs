@@ -1,4 +1,4 @@
-use crate::config::{load_config, UrsaConfig, DEFAULT_CONFIG_PATH_STR};
+use crate::config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR};
 use anyhow::Result;
 use dirs::home_dir;
 use resolve_path::PathResolveExt;
@@ -45,7 +45,7 @@ pub enum Subcommand {
 #[derive(StructOpt, Debug)]
 pub struct CliOpts {
     #[structopt(short, long, help = "A toml file containing relevant configurations")]
-    pub config: Option<String>,
+    pub config: Option<PathBuf>,
     #[structopt(short, long, help = "Allow rpc to be active or not (default = true)")]
     pub rpc: bool,
     #[structopt(short = "p", long, help = "Port used for JSON-RPC communication")]
@@ -60,11 +60,11 @@ pub struct CliOpts {
 
 impl CliOpts {
     pub fn to_config(&self) -> Result<UrsaConfig> {
-        let mut config = load_config(
+        let mut config = UrsaConfig::load_or_default(
             &self
                 .config
                 .as_ref()
-                .map(|p| PathBuf::from(p).resolve().to_path_buf())
+                .map(|p| p.resolve().to_path_buf())
                 .unwrap_or_else(|| home_dir().unwrap_or_default().join(DEFAULT_CONFIG_PATH_STR)),
         )?;
 
