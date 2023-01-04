@@ -30,7 +30,6 @@ async fn main() -> Result<()> {
 
     TelemetryConfig::new("ursa-cli")
         .with_pretty_log()
-        .with_tree_tracer()
         .with_log_level(opts.log.as_ref().unwrap_or(&log_level))
         .init()?;
 
