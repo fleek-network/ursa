@@ -4,13 +4,17 @@ mod route;
 use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
 use axum::{extract::Extension, routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use route::api::v1::get::get_car_handler;
-use tokio::sync::RwLock;
+use tokio::{
+    select, spawn,
+    sync::{broadcast::Receiver, RwLock},
+};
 use tracing::info;
 
 use crate::{
@@ -21,6 +25,7 @@ use crate::{
 pub async fn start<Cache: ServerCache>(
     config: Arc<RwLock<GatewayConfig>>,
     cache: Arc<RwLock<Cache>>,
+    shutdown_rx: Receiver<()>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
@@ -54,10 +59,26 @@ pub async fn start<Cache: ServerCache>(
 
     info!("Reverse proxy listening on {addr}");
 
+    let handle = Handle::new();
+    spawn(graceful_shutdown(handle.clone(), shutdown_rx));
+
     axum_server::bind_rustls(addr, rustls_config)
+        .handle(handle)
         .serve(app.into_make_service())
         .await
-        .context("Server stopped")?;
+        .context("Failed to start server")?;
 
     Ok(())
+}
+
+async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
+    select! {
+        _ = shutdown_rx.recv() => {
+            handle.graceful_shutdown(Some(Duration::from_secs(30)));
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                info!("Server alive connections: {}", handle.connection_count());
+            }
+        }
+    }
 }

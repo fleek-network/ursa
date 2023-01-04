@@ -85,7 +85,7 @@ pub struct CacheConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct WorkerConfig {
-    pub ttl_interval: u64,
+    pub ttl_cache_interval: u64,
 }
 
 impl Default for GatewayConfig {
@@ -124,7 +124,7 @@ impl Default for GatewayConfig {
                 ttl_buf: 5 * 60 * 1000, // 5 mins
             },
             worker: WorkerConfig {
-                ttl_interval: 5 * 60 * 1000, // 5 mins
+                ttl_cache_interval: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -178,8 +178,8 @@ impl GatewayConfig {
         if let Some(ttl_buf) = config.ttl_buf {
             self.cache.ttl_buf = ttl_buf;
         }
-        if let Some(ttl_interval) = config.ttl_interval {
-            self.worker.ttl_interval = ttl_interval;
+        if let Some(ttl_cache_interval) = config.ttl_cache_interval {
+            self.worker.ttl_cache_interval = ttl_cache_interval;
         }
     }
 }
