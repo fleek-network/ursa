@@ -27,7 +27,7 @@ mod tests {
         });
         let server = Server::new(interface);
         let metrics = ursa_metrics::routes::init();
-        let http_app = server.http_app(Some(metrics));
+        let http_app = server.http_app(provider_engine.router(), Some(metrics));
 
         let response = http_app
             .oneshot(Request::builder().uri("/ping").body(Body::empty()).unwrap())

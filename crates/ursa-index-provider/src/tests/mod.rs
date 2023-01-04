@@ -1,10 +1,13 @@
 use anyhow::Result;
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::{config::ProviderConfig, engine::ProviderEngine};
 use db::MemoryDB;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use simple_logger::SimpleLogger;
+use tokio::task;
 use tracing::{info, log::LevelFilter};
 use ursa_network::{NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
@@ -29,10 +32,6 @@ pub fn provider_engine_init(
     port: u16,
 ) -> Result<(ProviderEngine<MemoryDB>, UrsaService<MemoryDB>, PeerId)> {
     setup_logger(LevelFilter::Info);
-    let config = ProviderConfig {
-        port,
-        ..Default::default()
-    };
 
     let network_config = NetworkConfig {
         swarm_addrs: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
@@ -52,9 +51,19 @@ pub fn provider_engine_init(
         keypair,
         store,
         index_store,
-        config,
+        ProviderConfig::default(),
         service.command_sender(),
         server_address,
     );
+
+    let router = provider_engine.router();
+    task::spawn(async move {
+        // startup standalone http server for index provider
+        axum::Server::bind(&SocketAddr::from_str(&format!("0.0.0.0:{}", port)).unwrap())
+            .serve(router.into_make_service())
+            .await
+            .expect("Failed to start provider server");
+    });
+
     Ok((provider_engine, service, peer_id))
 }

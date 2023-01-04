@@ -130,7 +130,7 @@ impl Resolver {
         debug!("Provider addresses to query: {provider_addresses:?}");
 
         for addr in provider_addresses.into_iter() {
-            let endpoint = format!("{addr}/{cid}");
+            let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
                 Err(e) => {

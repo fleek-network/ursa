@@ -55,8 +55,6 @@ identity = "default"
 keystore_path = "~/.ursa/keystore"
 
 [provider_config]
-local_address = "0.0.0.0"
-port = 8070
 domain = "provider.ursa.earth"
 indexer_url = "https://dev.cid.contact"
 database_path = "~/.ursa/data/index_provider_db"

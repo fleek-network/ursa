@@ -21,7 +21,7 @@ mod tests {
 
         // the test case does not start the provider engine, so the best way
         // for put_file to not call provider engine is to close the channel
-        provider_engine.command_receiever().close();
+        provider_engine.command_receiver().close();
 
         let put_file = interface
             .put_file("../../test_files/test.car".to_string())

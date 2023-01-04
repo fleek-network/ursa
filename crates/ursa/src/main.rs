@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
                     service.command_sender(),
                     server_address,
                 );
+                let index_provider_router = index_provider_engine.router();
 
                 // server setup
                 let interface = Arc::new(NodeNetworkInterface {
@@ -131,7 +132,10 @@ async fn main() -> Result<()> {
 
                 // Start multiplex server service (rpc, http, and metrics)
                 let rpc_task = task::spawn(async move {
-                    if let Err(err) = server.start(&server_config, Some(metrics)).await {
+                    if let Err(err) = server
+                        .start(&server_config, index_provider_router, Some(metrics))
+                        .await
+                    {
                         error!("[rpc_task] - {:?}", err);
                     }
                 });
