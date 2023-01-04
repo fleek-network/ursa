@@ -623,11 +623,11 @@ where
                 peer_id,
                 received,
             } => {
-                info!("[GraphSyncEvent::Completed] {id} {peer_id} {received}");
+                info!("[GraphSyncEvent::Completed]: {id} {peer_id} {received}");
 
                 if !self.gs_ongoing_requests.contains_key(&id) {
                     error!(
-                        "[GraphSyncEvent::Completed] did not find corresponding pending request"
+                        "[GraphSyncEvent::Completed]: did not find corresponding pending request"
                     );
                     return Ok(());
                 }
@@ -635,12 +635,12 @@ where
                 let cid = self.gs_ongoing_requests.remove(&id).expect("Key to exist");
                 let sender = self.gs_response_channels.remove(&cid).unwrap();
                 if sender.send(Ok(())).is_err() {
-                    error!("[GraphSyncEvent] failed to send response")
+                    error!("[GraphSyncEvent]: failed to send response")
                 }
                 Ok(())
             }
             event => {
-                info!("Other: [{event:?}]");
+                info!("[GraphSyncEvent]: {event:?}");
                 Ok(())
             }
         }
@@ -685,10 +685,7 @@ where
                 }
                 BehaviourEvent::RelayClient(_) => Ok(()),
                 BehaviourEvent::Dcutr(_) => Ok(()),
-                BehaviourEvent::Graphsync(event) => {
-                    // SentRequest
-                    self.handle_graphsync(event)
-                }
+                BehaviourEvent::Graphsync(event) => self.handle_graphsync(event),
             },
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 if self.peers.insert(peer_id) {
@@ -860,7 +857,6 @@ where
                 }
             },
             NetworkCommand::GetGraphSync { cid, sender } => {
-                // Construct the request.
                 if self.peers.is_empty() {
                     error!("[GetGraphSync]: empty peers");
                     sender
