@@ -19,8 +19,7 @@ use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
-use ipld_traversal::selector::RecursionLimit;
-use ipld_traversal::Selector;
+use ipld_traversal::{selector::RecursionLimit, Selector};
 use libipld::DefaultParams;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
@@ -42,6 +41,7 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
+use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     num::{NonZeroU8, NonZeroUsize},
@@ -56,7 +56,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, UrsaStore};
+use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::RequestType;
@@ -72,12 +72,12 @@ pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
-type SwarmEventType = SwarmEvent<
-<Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
+type SwarmEventType<S> = SwarmEvent<
+<Behaviour<DefaultParams, GraphSyncStorage<S>> as NetworkBehaviour>::OutEvent,
 <
     <
         <
-            Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+            Behaviour<DefaultParams, GraphSyncStorage<S>> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
         >::Handler as ConnectionHandler
     >::Error
 >;
@@ -192,11 +192,14 @@ pub enum NetworkCommand {
     },
 }
 
-pub struct UrsaService<S> {
+pub struct UrsaService<S>
+where
+    S: Blockstore + Store + Clone + Send + Sync + 'static,
+{
     /// Store.
     pub store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
-    swarm: Swarm<Behaviour<DefaultParams>>,
+    swarm: Swarm<Behaviour<DefaultParams, GraphSyncStorage<S>>>,
     /// Handles outbound messages to peers.
     command_sender: Sender<NetworkCommand>,
     /// Handles inbound messages from peers.
@@ -227,7 +230,7 @@ pub struct UrsaService<S> {
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Store + Send + Sync + 'static,
+    S: Blockstore + Store + Clone + Debug + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
@@ -258,9 +261,17 @@ where
         };
 
         let bitswap_store = BitswapStorage(store.clone());
+        let graphsync_store = GraphSyncStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
         let mut peers = HashSet::new();
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client, &mut peers);
+        let behaviour = Behaviour::new(
+            &keypair,
+            config,
+            bitswap_store,
+            graphsync_store,
+            relay_client,
+            &mut peers,
+        );
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(2 << 9))
@@ -644,7 +655,7 @@ where
     }
 
     /// Handle swarm events
-    pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
+    pub fn handle_swarm_event(&mut self, event: SwarmEventType<S>) -> Result<()> {
         // record basic swarm metrics
 
         event.record();

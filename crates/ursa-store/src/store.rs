@@ -12,6 +12,7 @@ use libipld::{store::DefaultParams, Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct UrsaStore<S> {
     pub db: Arc<S>,
 }
@@ -170,6 +171,7 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct GraphSyncStorage<P>(pub Arc<UrsaStore<P>>)
 where
     P: Blockstore + Store + Send + Sync + 'static;

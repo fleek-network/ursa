@@ -16,7 +16,7 @@
 use anyhow::Result;
 use cid::Cid;
 use graphsync::GraphSync;
-use ipld_traversal::blockstore::MemoryBlockstore;
+use ipld_traversal::blockstore::Blockstore as GSBlockstore;
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -64,7 +64,11 @@ fn ursa_agent() -> String {
 
 /// Composes protocols for the behaviour of the node in the network.
 #[derive(NetworkBehaviour)]
-pub struct Behaviour<P: StoreParams> {
+pub struct Behaviour<P, G>
+where
+    P: StoreParams,
+    G: GSBlockstore + Send + Clone + 'static,
+{
     /// Alive checks.
     ping: Ping,
 
@@ -99,14 +103,19 @@ pub struct Behaviour<P: StoreParams> {
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
-    pub(crate) graphsync: GraphSync<MemoryBlockstore>,
+    pub(crate) graphsync: GraphSync<G>,
 }
 
-impl<P: StoreParams> Behaviour<P> {
+impl<P, G> Behaviour<P, G>
+where
+    P: StoreParams,
+    G: GSBlockstore + Send + Clone + 'static,
+{
     pub fn new<S: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
         bitswap_store: S,
+        graphsync_store: G,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
     ) -> Self {
@@ -195,7 +204,7 @@ impl<P: StoreParams> Behaviour<P> {
         };
 
         // Setup the Graphsync behaviour.
-        let graphsync = GraphSync::new(MemoryBlockstore::default());
+        let graphsync = GraphSync::new(graphsync_store);
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {
