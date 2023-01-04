@@ -631,9 +631,17 @@ where
                     );
                     return Ok(());
                 }
-
                 let cid = self.gs_ongoing_requests.remove(&id).expect("Key to exist");
-                let sender = self.gs_response_channels.remove(&cid).unwrap();
+                if !self.gs_response_channels.contains_key(&cid) {
+                    info!(
+                        "[GraphSyncEvent::Completed]: did not find sender... it's possible that sender has already been notified"
+                    );
+                    return Ok(());
+                }
+                let sender = self
+                    .gs_response_channels
+                    .remove(&cid)
+                    .expect("Key to exist");
                 if sender.send(Ok(())).is_err() {
                     error!("[GraphSyncEvent]: failed to send response")
                 }
