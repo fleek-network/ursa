@@ -29,6 +29,7 @@ use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
     normalize_path::NormalizePath,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     timeout::TimeoutLayer,
     trace::{DefaultMakeSpan, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, TraceLayer},
 };
@@ -98,14 +99,16 @@ pub async fn start<Cache: ServerCache>(
                         )
                     }),
             )
-            .layer(CompressionLayer::new())
-            .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
-            .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize))
+            .layer(PropagateRequestIdLayer::x_request_id())
+            .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid {}))
             .layer(
                 CorsLayer::new()
                     .allow_methods([Method::GET])
                     .allow_origin(Any),
-            ),
+            )
+            .layer(CompressionLayer::new())
+            .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
+            .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize)),
     );
 
     info!("Server listening on {addr}");
