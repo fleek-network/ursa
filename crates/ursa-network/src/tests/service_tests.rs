@@ -527,33 +527,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_graphsync_get() -> Result<()> {
-        fn insert_gs_block(mut s: GraphSyncStorage<MemoryDB>, b: &Block<DefaultParams>) {
-            match s.insert(b) {
-                Err(err) => error!(
-                    "there was an error while inserting into the blockstore {:?}",
-                    err
-                ),
-                Ok(()) => info!("block inserted successfully"),
-            }
-        }
-
         setup_logger(LevelFilter::Info);
         let mut config = NetworkConfig {
             mdns: true,
             ..Default::default()
         };
 
-        println!("Hey");
         let (mut node_1, node_1_addrs, peer_id_1, store_1) =
             network_init(&mut config, None, None).await?;
         let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
 
-        let graphsync_store_1 = GraphSyncStorage(store_1.clone());
-        let mut graphsync_store_2 = GraphSyncStorage(store_2.clone());
+        let mut graphsync_store_1 = GraphSyncStorage(store_1.clone());
+        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
 
         let block = get_block(&b"hello world"[..]);
         info!("inserting block into bitswap store for node 1");
-        insert_gs_block(graphsync_store_1.clone(), &block);
+        graphsync_store_1.insert(&block).unwrap();
 
         assert!(graphsync_store_1.has(block.cid()).unwrap());
         assert!(!graphsync_store_2.has(block.cid()).unwrap());
@@ -617,7 +606,7 @@ mod tests {
             network_init(&mut config, None, None).await?;
         let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
 
-        let mut bitswap_store_2 = BitswapStorage(store_2.clone());
+        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
 
         // Wait for at least one connection
         loop {
@@ -665,7 +654,7 @@ mod tests {
         match res {
             Ok(_) => {
                 for cid in cids_vec {
-                    assert!(bitswap_store_2.contains(&cid).is_ok());
+                    assert!(graphsync_store_2.has(&cid).is_ok());
                 }
             }
             Err(e) => panic!("{e:?}"),

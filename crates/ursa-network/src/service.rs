@@ -892,10 +892,7 @@ where
                     info!("[GetGraphSync]: enqueue pending response");
                     self.gs_response_channels.insert(*req.id(), sender);
 
-                    self.swarm
-                        .behaviour_mut()
-                        .graphsync
-                        .request(*peer, req);
+                    self.swarm.behaviour_mut().graphsync.request(*peer, req);
                 }
             }
             #[cfg(test)]
