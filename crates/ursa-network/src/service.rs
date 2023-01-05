@@ -303,6 +303,10 @@ where
         })
     }
 
+    pub fn close_command_receiver(&mut self) {
+        self.command_receiver.close();
+    }
+
     pub fn command_sender(&self) -> Sender<NetworkCommand> {
         self.command_sender.clone()
     }
