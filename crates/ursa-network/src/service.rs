@@ -154,6 +154,7 @@ pub enum NetworkCommand {
         sender: BlockOneShotSender<()>,
     },
 
+    RunBootstrap,
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
@@ -796,6 +797,11 @@ where
                         .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
             },
+            NetworkCommand::RunBootstrap => {
+                if self.swarm.behaviour_mut().kad.bootstrap().is_err() {
+                    error!("Error bootstrapping")
+                }
+            }
             #[cfg(test)]
             NetworkCommand::GetPeerContent { sender } => {
                 sender
