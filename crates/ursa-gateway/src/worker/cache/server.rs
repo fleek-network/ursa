@@ -15,7 +15,7 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tracing::error;
 
-use super::{Cache, WorkerCacheCommand};
+use super::{Cache, CacheCommand};
 use crate::util::error::Error;
 
 #[async_trait]
@@ -40,7 +40,7 @@ impl ServerCache for Cache {
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let data = Arc::clone(data);
             self.tx
-                .send(WorkerCacheCommand::GetSync {
+                .send(CacheCommand::GetSync {
                     key: String::from(k),
                 })
                 .map_err(|e| {
@@ -61,12 +61,12 @@ impl ServerCache for Cache {
 
 async fn fetch_and_insert(
     k: &str,
-    cmd_sender: &UnboundedSender<WorkerCacheCommand>,
+    cmd_sender: &UnboundedSender<CacheCommand>,
     mut stream_writer: DuplexStream,
 ) -> Result<(), Error> {
     let (tx, rx) = oneshot::channel();
     cmd_sender
-        .send(WorkerCacheCommand::Fetch {
+        .send(CacheCommand::Fetch {
             cid: String::from(k),
             sender: tx,
         })
@@ -116,7 +116,7 @@ async fn fetch_and_insert(
                 }
             }
         }
-        if let Err(e) = tx.send(WorkerCacheCommand::InsertSync {
+        if let Err(e) = tx.send(CacheCommand::InsertSync {
             key,
             value: Arc::new(bytes.into()),
         }) {

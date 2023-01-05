@@ -22,7 +22,7 @@ impl ByteSize for Bytes {
 
 pub struct Cache {
     tlrfu: Tlrfu<Bytes>,
-    tx: UnboundedSender<WorkerCacheCommand>,
+    tx: UnboundedSender<CacheCommand>,
     stream_buf: u64,
 }
 
@@ -30,7 +30,7 @@ impl Cache {
     pub fn new(
         max_size: u64,
         ttl_buf: u128,
-        tx: UnboundedSender<WorkerCacheCommand>,
+        tx: UnboundedSender<CacheCommand>,
         stream_buf: u64,
     ) -> Self {
         Self {
@@ -42,7 +42,7 @@ impl Cache {
 }
 
 #[derive(Debug)]
-pub enum WorkerCacheCommand {
+pub enum CacheCommand {
     GetSync {
         key: String,
     },

@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
                         let signal_tx = signal_tx.clone(); // move to ttl worker thread
                         select! {
                             _ = tokio::time::sleep(duration_ms) => {
-                                if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
+                                if let Err(e) = worker_tx.send(worker::cache::CacheCommand::TtlCleanUp) {
                                     error!("[Cache TTL Worker]: {e:?}");
                                     signal_tx
                                         .send(())
