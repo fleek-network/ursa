@@ -38,7 +38,7 @@ use tracing::{error, info, trace, Level};
 use crate::{
     config::{GatewayConfig, ServerConfig},
     server::model::HttpResponse,
-    worker::cache::ServerCache,
+    worker::cache::server::ServerCache,
 };
 
 pub async fn start<Cache: ServerCache>(

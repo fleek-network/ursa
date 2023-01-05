@@ -11,7 +11,7 @@ use cid::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::{server::model::HttpResponse, util::error::Error, worker::cache::ServerCache};
+use crate::{server::model::HttpResponse, util::error::Error, worker::cache::server::ServerCache};
 
 pub async fn get_car_handler<Cache: ServerCache>(
     Path(cid): Path<String>,

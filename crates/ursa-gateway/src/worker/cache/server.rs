@@ -1,98 +1,22 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use axum::{
-    body::{Body, HttpBody, StreamBody},
+    body::{HttpBody, StreamBody},
     http::{response::Parts, StatusCode},
-    response::Response,
 };
-use bytes::{BufMut, Bytes};
+use bytes::BufMut;
 use tokio::{
     io::{duplex, AsyncWriteExt, DuplexStream},
     spawn,
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::{error, info, log::warn};
+use tracing::error;
 
-use crate::{
-    cache::{ByteSize, Tlrfu},
-    util::error::Error,
-};
-
-impl ByteSize for Bytes {
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
-pub struct Cache {
-    tlrfu: Tlrfu<Bytes>,
-    tx: UnboundedSender<WorkerCacheCommand>,
-    stream_buf: u64,
-}
-
-impl Cache {
-    pub fn new(
-        max_size: u64,
-        ttl_buf: u128,
-        tx: UnboundedSender<WorkerCacheCommand>,
-        stream_buf: u64,
-    ) -> Self {
-        Self {
-            tlrfu: Tlrfu::new(max_size, ttl_buf),
-            tx,
-            stream_buf,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum WorkerCacheCommand {
-    GetSync {
-        key: String,
-    },
-    InsertSync {
-        key: String,
-        value: Arc<Bytes>,
-    },
-    Fetch {
-        cid: String,
-        sender: oneshot::Sender<std::result::Result<Response<Body>, Error>>,
-    },
-    TtlCleanUp,
-}
-
-#[async_trait]
-pub trait WorkerCache: Send + Sync + 'static {
-    async fn get(&mut self, k: &str) -> Result<()>;
-    async fn insert(&mut self, k: String, v: Arc<Bytes>) -> Result<()>;
-    async fn ttl_cleanup(&mut self) -> Result<()>;
-}
-
-#[async_trait]
-impl WorkerCache for Cache {
-    async fn get(&mut self, k: &str) -> Result<()> {
-        self.tlrfu.get(&String::from(k)).await?;
-        Ok(())
-    }
-
-    async fn insert(&mut self, k: String, v: Arc<Bytes>) -> Result<()> {
-        if !self.tlrfu.contains(&k) {
-            self.tlrfu.insert(k, v).await?;
-        } else {
-            warn!("[Cache]: Attempt to insert existed key: {k}");
-        }
-        Ok(())
-    }
-
-    async fn ttl_cleanup(&mut self) -> Result<()> {
-        let count = self.tlrfu.process_ttl_clean_up().await?;
-        info!("[Cache]: TTL cleanup total {count} record(s)");
-        Ok(())
-    }
-}
+use super::{Cache, WorkerCacheCommand};
+use crate::util::error::Error;
 
 #[async_trait]
 pub trait ServerCache: Send + Sync + 'static {
@@ -100,7 +24,7 @@ pub trait ServerCache: Send + Sync + 'static {
         &self,
         k: &str,
         no_cache: bool,
-    ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error>;
+    ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error>;
 }
 
 #[async_trait]
@@ -109,7 +33,7 @@ impl ServerCache for Cache {
         &self,
         k: &str,
         no_cache: bool,
-    ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
+    ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
             fetch_and_insert(k, &self.tx, w).await?;
@@ -139,7 +63,7 @@ async fn fetch_and_insert(
     k: &str,
     cmd_sender: &UnboundedSender<WorkerCacheCommand>,
     mut stream_writer: DuplexStream,
-) -> std::result::Result<(), Error> {
+) -> Result<(), Error> {
     let (tx, rx) = oneshot::channel();
     cmd_sender
         .send(WorkerCacheCommand::Fetch {
@@ -200,14 +124,4 @@ async fn fetch_and_insert(
         };
     });
     Ok(())
-}
-
-pub trait AdminCache: Send + Sync + 'static {
-    fn purge(&mut self);
-}
-
-impl AdminCache for Cache {
-    fn purge(&mut self) {
-        self.tlrfu.purge();
-    }
 }

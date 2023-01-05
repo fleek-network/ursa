@@ -21,7 +21,7 @@ use tracing::info;
 
 use crate::{
     config::{AdminConfig, GatewayConfig},
-    worker::cache::AdminCache,
+    worker::cache::admin::AdminCache,
 };
 
 pub async fn start<Cache: AdminCache>(

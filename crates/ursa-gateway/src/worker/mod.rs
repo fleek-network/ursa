@@ -2,7 +2,7 @@ pub mod cache;
 
 use std::sync::Arc;
 
-use cache::{WorkerCache, WorkerCacheCommand};
+use cache::{worker::WorkerCache, WorkerCacheCommand};
 use tokio::{
     select, spawn,
     sync::{
