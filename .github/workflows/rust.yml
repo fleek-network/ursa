@@ -6,8 +6,12 @@ env:
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'crates/**'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'crates/**'
 
 jobs:
   tests:
