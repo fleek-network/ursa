@@ -10,10 +10,12 @@ Ursa, a decentralized content delivery network.
 
 ## Run a node
 
-### Build Dependencies
+### Run with cli
 
-> If docker is used, no dependencies are required other than `make`
-- (optional) docker
+> Note: Nodes are intended to run behind a reverse proxy providing ssl and listening on 80/443. See [# Run with Docker Compose](#run-with-docker-compose) for a preconfigured setup.
+
+#### Dependencies
+
 - make
 - rust (`^1.65.0`)
 - build-essential
@@ -21,7 +23,7 @@ Ursa, a decentralized content delivery network.
 - cmake
 - protoc
 
-### Run with cli
+#### Instructions
 
 Build and install the latest *HEAD* version:
 ```sh
@@ -30,7 +32,7 @@ make install
 
 You can run the node with `ursa` command. This will run the node with default parameters.
 
-##### CLI Commands
+#### CLI Flags
 - `--config` A toml file containing relevant configurations.
 	- Default value: *empty*. 
 - `--rpc` Allow rpc to be active or not.
@@ -38,8 +40,14 @@ You can run the node with `ursa` command. This will run the node with default pa
 - `--rpc-port` Port used for JSON-RPC communication.
 	- Default value: *4069*.
 
+#### CLI Subcommands
 
-##### Config file
+- `rpc put` Put a CAR file into the local node
+- `rpc get` Get content for a cid from the local node, and save to path
+
+#### Configuration
+
+The default ursa config is loaded from `~/.ursa/config.toml`, but can be overridden using the `--config` flag.
 
 ```toml
 [network_config]
@@ -51,11 +59,11 @@ bootstrapper = false
 bootstrap_nodes = ["/ip4/127.0.0.1/tcp/6009"]
 swarm_addrs = ["/ip4/0.0.0.0/tcp/6009", "/ip4/0.0.0.0/udp/4890/quic-v1"]
 database_path = "~/.ursa/data/ursa_db"
-identity = "default"
 keystore_path = "~/.ursa/keystore"
+identity = "default"
 
 [provider_config]
-domain = "provider.ursa.earth"
+domain = "example.domain"
 indexer_url = "https://dev.cid.contact"
 database_path = "~/.ursa/data/index_provider_db"
 
@@ -64,27 +72,43 @@ port = 4069
 addr = "0.0.0.0"
 ```
 
-### Run with Docker
+### Run with Docker Compose
 
-You can run the docker image as a simple container or with docker compose. 
+#### Dependencies
 
-Build the image to create **ursa** docker images: 
+- Docker (with Buildkit)
+- Docker Compose
 
+#### Instructions
+
+You can run the full node with some supporting infrastructure through docker-compose. This includes:
+
+- Ursa Node
+- Nginx reverse proxy
+- Let's Encrypt ssl
+- Prometheus Metrics
+- Grafana Dashboard
+
+> ⚠️ Running the docker image directly is not suggested as it requires careful setup to preserve the `.ursa/` directory and your node's private keys.
+
+Build the node and fetch infra images: 
 ```sh
-make docker-build
+make compose-build
 ```
 
-Run a node container:
-```sh
-make docker-run
-```
-
-Run or shut down all the infra. This means node + gateway:
+Start up node and infra:
 ```sh
 make compose-up
-# or
+```
+
+Shut down node and infra:
+```sh
 make compose-down
 ```
+
+#### Configuration
+
+By default, the compose will bind-mount the host folder `~/.ursa/` to the node. Any configuration/keys/database files can be located and edited on the host machine at that path. Any changes requires the node to be restarted to take effect
 
 ### RPC & HTTP
 
