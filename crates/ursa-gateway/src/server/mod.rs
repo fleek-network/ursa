@@ -131,7 +131,7 @@ async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
             handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                info!("Server remains alive connections: {}", handle.connection_count());
+                info!("Server maintains alive connections: {}", handle.connection_count());
             }
         }
     }
