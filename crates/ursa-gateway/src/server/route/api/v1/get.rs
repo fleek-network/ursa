@@ -15,7 +15,7 @@ use crate::{server::model::HttpResponse, util::error::Error, worker::cache::Serv
 
 pub async fn get_car_handler<Cache: ServerCache>(
     Path(cid): Path<String>,
-    TypedHeader(cache_control): TypedHeader<CacheControl>,
+    cache_control: Option<TypedHeader<CacheControl>>,
     Extension(cache): Extension<Arc<RwLock<Cache>>>,
 ) -> Response {
     if Cid::from_str(&cid).is_err() {
@@ -29,7 +29,7 @@ pub async fn get_car_handler<Cache: ServerCache>(
     match cache
         .read()
         .await
-        .get_announce(&cid, cache_control.no_cache())
+        .get_announce(&cid, cache_control.map_or(false, |c| c.no_cache()))
         .await
     {
         Ok(stream) => (

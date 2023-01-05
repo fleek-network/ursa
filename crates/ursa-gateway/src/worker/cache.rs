@@ -112,65 +112,7 @@ impl ServerCache for Cache {
     ) -> std::result::Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
-            let (tx, rx) = oneshot::channel();
-            self.tx
-                .send(WorkerCacheCommand::Fetch {
-                    cid: String::from(k),
-                    sender: tx,
-                })
-                .map_err(|e| {
-                    error!("Failed to dispatch Fetch command: {e:?}");
-                    anyhow!("Failed to dispatch Fetch command")
-                })?;
-            let mut body = match rx
-                .await
-                .map_err(|e| {
-                    error!("Failed to receive response from resolver: {e:?}");
-                    anyhow!("Failed to receive response from resolver")
-                })??
-                .into_parts()
-            {
-                (
-                    Parts {
-                        status: StatusCode::OK,
-                        ..
-                    },
-                    body,
-                ) => body,
-                (parts, body) => {
-                    error!("Error requested provider with parts: {parts:?} and body: {body:?}");
-                    return Err(Error::Upstream(
-                        parts.status,
-                        "Error requested provider".to_string(),
-                    ));
-                }
-            };
-            let key = String::from(k); // move to [worker|writer] thread
-            let tx = self.tx.clone(); // move to [worker|writer] thread
-            spawn(async move {
-                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-                while let Some(buf) = body.data().await {
-                    match buf {
-                        Ok(buf) => {
-                            if let Err(e) = w.write_all(buf.as_ref()).await {
-                                error!("Failed to write to stream for {e:?}");
-                                return;
-                            };
-                            bytes.put(buf);
-                        }
-                        Err(e) => {
-                            error!("Failed to read stream for {e:?}");
-                            return;
-                        }
-                    }
-                }
-                if let Err(e) = tx.send(WorkerCacheCommand::InsertSync {
-                    key,
-                    value: Arc::new(bytes.into()),
-                }) {
-                    error!("Failed to dispatch InsertSync command: {e:?}");
-                };
-            });
+            fetch_and_insert(k, &self.tx, w).await?;
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let data = Arc::clone(data);
             self.tx
@@ -187,68 +129,77 @@ impl ServerCache for Cache {
                 }
             });
         } else {
-            let (tx, rx) = oneshot::channel();
-            self.tx
-                .send(WorkerCacheCommand::Fetch {
-                    cid: String::from(k),
-                    sender: tx,
-                })
-                .map_err(|e| {
-                    error!("Failed to dispatch Fetch command: {e:?}");
-                    anyhow!("Failed to dispatch Fetch command")
-                })?;
-            let mut body = match rx
-                .await
-                .map_err(|e| {
-                    error!("Failed to receive response from resolver: {e:?}");
-                    anyhow!("Failed to receive response from resolver")
-                })??
-                .into_parts()
-            {
-                (
-                    Parts {
-                        status: StatusCode::OK,
-                        ..
-                    },
-                    body,
-                ) => body,
-                (parts, body) => {
-                    error!("Error requested provider with parts: {parts:?} and body: {body:?}");
-                    return Err(Error::Upstream(
-                        parts.status,
-                        "Error requested provider".to_string(),
-                    ));
-                }
-            };
-            let key = String::from(k); // move to [worker|writer] thread
-            let tx = self.tx.clone(); // move to [worker|writer] thread
-            spawn(async move {
-                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-                while let Some(buf) = body.data().await {
-                    match buf {
-                        Ok(buf) => {
-                            if let Err(e) = w.write_all(buf.as_ref()).await {
-                                error!("Failed to write to stream for {e:?}");
-                                return;
-                            };
-                            bytes.put(buf);
-                        }
-                        Err(e) => {
-                            error!("Failed to read stream for {e:?}");
-                            return;
-                        }
-                    }
-                }
-                if let Err(e) = tx.send(WorkerCacheCommand::InsertSync {
-                    key,
-                    value: Arc::new(bytes.into()),
-                }) {
-                    error!("Failed to dispatch InsertSync command: {e:?}");
-                };
-            });
+            fetch_and_insert(k, &self.tx, w).await?;
         }
         Ok(StreamBody::new(ReaderStream::new(r)))
     }
+}
+
+async fn fetch_and_insert(
+    k: &str,
+    cmd_sender: &UnboundedSender<WorkerCacheCommand>,
+    mut stream_writer: DuplexStream,
+) -> std::result::Result<(), Error> {
+    let (tx, rx) = oneshot::channel();
+    cmd_sender
+        .send(WorkerCacheCommand::Fetch {
+            cid: String::from(k),
+            sender: tx,
+        })
+        .map_err(|e| {
+            error!("Failed to dispatch Fetch command: {e:?}");
+            anyhow!("Failed to dispatch Fetch command")
+        })?;
+    let mut body = match rx
+        .await
+        .map_err(|e| {
+            error!("Failed to receive response from resolver: {e:?}");
+            anyhow!("Failed to receive response from resolver")
+        })??
+        .into_parts()
+    {
+        (
+            Parts {
+                status: StatusCode::OK,
+                ..
+            },
+            body,
+        ) => body,
+        (parts, body) => {
+            error!("Error requested provider with parts: {parts:?} and body: {body:?}");
+            return Err(Error::Upstream(
+                parts.status,
+                "Error requested provider".to_string(),
+            ));
+        }
+    };
+    let key = String::from(k); // move to [worker|writer] thread
+    let tx = cmd_sender.clone(); // move to [worker|writer] thread
+    spawn(async move {
+        let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+        while let Some(buf) = body.data().await {
+            match buf {
+                Ok(buf) => {
+                    if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
+                        error!("Failed to write to stream for {e:?}");
+                        return;
+                    };
+                    bytes.put(buf);
+                }
+                Err(e) => {
+                    error!("Failed to read stream for {e:?}");
+                    return;
+                }
+            }
+        }
+        if let Err(e) = tx.send(WorkerCacheCommand::InsertSync {
+            key,
+            value: Arc::new(bytes.into()),
+        }) {
+            error!("Failed to dispatch InsertSync command: {e:?}");
+        };
+    });
+    Ok(())
 }
 
 pub trait AdminCache: Send + Sync + 'static {
