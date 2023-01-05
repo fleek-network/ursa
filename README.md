@@ -12,7 +12,7 @@ Ursa, a decentralized content delivery network.
 
 ### Run with cli
 
-> Note: Nodes are intended to run behind a reverse proxy providing ssl and listening on 80/443. See [# Run with Docker Compose](#run-with-docker-compose) for a preconfigured setup.
+> Note: Full nodes are intended to run behind a reverse proxy providing ssl and listening on 80/443. See [# Run with Docker Compose](#run-with-docker-compose) for a preconfigured setup.
 
 #### Dependencies
 
@@ -74,13 +74,6 @@ addr = "0.0.0.0"
 
 ### Run with Docker Compose
 
-#### Dependencies
-
-- Docker (with Buildkit)
-- Docker Compose
-
-#### Instructions
-
 You can run the full node with some supporting infrastructure through docker-compose. This includes:
 
 - Ursa Node
@@ -89,14 +82,23 @@ You can run the full node with some supporting infrastructure through docker-com
 - Prometheus Metrics
 - Grafana Dashboard
 
-> ⚠️ Running the docker image directly is not suggested as it requires careful setup to preserve the `.ursa/` directory and your node's private keys.
+#### Dependencies
+
+- Docker (with Buildkit)
+- Docker Compose
+
+#### Instructions
+
+> Make sure to edit [nginx/app.conf](/docker/full-node/data/nginx/app.conf) with your node's domain name, and run [init-letsencrypt.sh](/docker/full-node/init-letsencrypt.sh). Detailed instructions [here](/docker/full-node/README.md)
 
 Build the node and fetch infra images: 
+
 ```sh
 make compose-build
 ```
 
 Start up node and infra:
+
 ```sh
 make compose-up
 ```
