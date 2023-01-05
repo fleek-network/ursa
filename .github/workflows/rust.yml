@@ -6,8 +6,18 @@ env:
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/workflows/docker-publish.yml"
   pull_request:
     branches: [ "main" ]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/workflows/docker-publish.yml"
 
 jobs:
   tests:
