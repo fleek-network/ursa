@@ -5,8 +5,19 @@ on:
     - cron: '43 2 * * *'
   push:
     branches: [ "main" ]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/workflows/docker-publish.yml"
     tags: [ 'v*.*.*' ]
+    
   pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/workflows/docker-publish.yml"
 
 env:
   REGISTRY: ghcr.io
