@@ -61,6 +61,7 @@ pub struct ServerConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
     pub stream_buf: u64,
+    pub cache_control_max_age: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -102,7 +103,8 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("server_key.pem"),
-                stream_buf: 2_000_000, // 2MB
+                stream_buf: 2_000_000,          // 2MB
+                cache_control_max_age: 604_800, // one week
             },
             admin_server: AdminConfig {
                 addr: "0.0.0.0".into(),
@@ -156,6 +158,9 @@ impl GatewayConfig {
         }
         if let Some(server_stream_buffer) = config.server_stream_buffer {
             self.server.stream_buf = server_stream_buffer;
+        }
+        if let Some(cache_control_max_age) = config.cache_control_max_age {
+            self.server.cache_control_max_age = cache_control_max_age;
         }
         if let Some(port) = config.admin_port {
             self.admin_server.port = port;
