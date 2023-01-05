@@ -1,0 +1,13 @@
+name: rust
+on:
+  pull_request:
+    paths-ignore:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/workflows/docker-publish.yml"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'

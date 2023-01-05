@@ -11,8 +11,8 @@ on:
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
     tags: [ 'v*.*.*' ]
-    
   pull_request:
+    branches: [ "main" ]
     paths:
       - "crates/**"
       - "Cargo.toml"
