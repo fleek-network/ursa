@@ -4,6 +4,7 @@ use futures::StreamExt;
 use libp2p::{Multiaddr, PeerId};
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::collections::HashSet;
 use ursa_index_provider::config::ProviderConfig;
 use ursa_index_provider::provider::Provider;
 use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
