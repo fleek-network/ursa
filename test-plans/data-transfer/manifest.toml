@@ -1,4 +1,4 @@
-name = "bootstrap"
+name = "data-transfer"
 
 [defaults]
 builder = "docker:generic"
@@ -11,5 +11,5 @@ enabled = true
 enabled = true
 
 [[testcases]]
-name = "bootstrap"
+name = "data-transfer"
 instances = { min = 2, max = 10, default = 5 }

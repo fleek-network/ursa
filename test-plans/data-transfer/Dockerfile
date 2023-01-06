@@ -16,7 +16,7 @@ COPY . .
 
 RUN cd ./plan/  \
     && cargo build --release \
-    && mv /usr/src/testplan/plan/target/release/bootstrap /usr/local/bin/testplan
+    && mv /usr/src/testplan/plan/target/release/data-transfer /usr/local/bin/testplan
 
 FROM debian:bullseye
 RUN apt-get update && apt-get install -y libcurl4-openssl-dev
