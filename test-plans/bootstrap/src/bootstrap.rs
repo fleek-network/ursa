@@ -32,7 +32,6 @@ pub async fn run_bootstrap(client: testground::client::Client) {
         std::net::IpAddr::V4(addr) => format!("/ip4/{addr}/tcp/6009"),
         std::net::IpAddr::V6(_) => unimplemented!(),
     };
-
     config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
 
     // Publish its address so other nodes know who is the bootstrapper.
@@ -48,9 +47,7 @@ pub async fn run_bootstrap(client: testground::client::Client) {
 
     // Start service.
     let service = node_init(local_key, config);
-
     tokio::task::spawn(async move { service.start().await.unwrap() });
-
     client.record_message(format!("[Bootstrap]: listening at {peer_id:?}"));
 
     // Let others know that bootstrap is up and running.
@@ -68,6 +65,7 @@ pub async fn run_bootstrap(client: testground::client::Client) {
 pub async fn network_init(client: &mut Client) -> Result<(), String> {
     let seq = client.global_seq();
     let test_instance_count = client.run_parameters().test_instance_count as usize;
+
     let bootstrap_addr = client
         .subscribe("bootstrap-addr", test_instance_count)
         .await
@@ -79,7 +77,6 @@ pub async fn network_init(client: &mut Client) -> Result<(), String> {
         .next()
         .await
         .unwrap();
-
     let local_addr = match if_addrs::get_if_addrs()
         .unwrap()
         .into_iter()
