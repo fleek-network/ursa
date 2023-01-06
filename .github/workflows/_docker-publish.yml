@@ -1,3 +1,4 @@
+# Ghost action to avoid pr requirements when there are no source file modifications
 name: docker-build-push
 on:
   pull_request:
@@ -8,6 +9,11 @@ on:
       - ".github/workflows/docker-publish.yml"
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Docker build and publish ${{ matrix.make.name }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        rust: [ stable ]
     steps:
-      - run: 'echo "No build required"'
+      run: echo "No rust or workflow modifications, skipped!"
