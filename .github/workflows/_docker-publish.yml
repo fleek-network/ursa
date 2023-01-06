@@ -16,4 +16,4 @@ jobs:
         os: [ ubuntu-latest ]
         rust: [ stable ]
     steps:
-      run: echo "No rust or workflow modifications, skipped!"
+      - run: echo "No rust or workflow modifications, skipped!"
