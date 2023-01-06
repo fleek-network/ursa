@@ -23,37 +23,57 @@ async fn main() {
     }
 
     let test_instance_count = client.run_parameters().test_instance_count as usize;
-
-    let mut bootstrap_peer_id = client
+    let mut bootstrap_addr = client
         .subscribe("bootstrap-addr", test_instance_count)
         .await
         .take(test_instance_count)
         .map(|a| {
             let value = a.unwrap();
             value["Addrs"].as_str().unwrap().to_string()
-        });
+        })
+        .next()
+        .await
+        .unwrap();
 
-    let bootstrap_addr = bootstrap_peer_id.next().await.unwrap();
-
-    client.record_message(format!("Node: Bootstrapping to address {}", bootstrap_addr));
+    let local_addr = match if_addrs::get_if_addrs()
+        .unwrap()
+        .into_iter()
+        .find(|iface| iface.name == "eth1")
+        .unwrap()
+        .addr
+        .ip()
+    {
+        std::net::IpAddr::V4(addr) => format!("/ip4/{addr}/tcp/0"),
+        std::net::IpAddr::V6(_) => unimplemented!(),
+    };
 
     let mut config = NetworkConfig::default();
     config.bootstrap_nodes = vec![bootstrap_addr.parse().unwrap()];
-    config.swarm_addrs = vec![format!("/ip4/0.0.0.0/tcp/600{}", seq).parse().unwrap()];
+    config.swarm_addrs = vec![local_addr.parse().unwrap()];
 
     // Wait until bootstrapping is done.
     client.barrier("bootstrap-ready", 1).await.unwrap();
 
-    // Start service.
+    // Each peer should wait before attempting to bootstrap.
+    // If all peers attempt to bootstrap at the same time, DHT won't
+    // be updated in time for peers to discover each other.
+    // We have no way to trigger bootstrapping later.
+    tokio::time::sleep(tokio::time::Duration::from_secs(seq*4)).await;
+    client.record_message(format!("[Node]: Bootstrapping to address {}", bootstrap_addr));
+
+    // Init service.
     let local_key = libp2p::identity::Keypair::generate_ed25519();
     let service = node_init(local_key.clone(), config);
-
     let cmd_sender = service.command_sender();
+
+    // Start service.
     tokio::task::spawn(async move { service.start().await.unwrap() });
+
+    let peer_count = test_instance_count - 1;
 
     // Send a command to get the service's peers.
     let mut peers = HashSet::new();
-    while peers.len() < 1 {
+    while peers.len() < peer_count {
         // Give discovery some time.
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
@@ -89,11 +109,23 @@ async fn run_bootstrap(client: testground::client::Client) {
     config.bootstrapper = true;
     config.bootstrap_nodes = vec![];
 
-    let swarm_addr = "/ip4/0.0.0.0/tcp/6009";
+    let swarm_addr = match if_addrs::get_if_addrs()
+        .unwrap()
+        .into_iter()
+        .find(|iface| iface.name == "eth1")
+        .unwrap()
+        .addr
+        .ip()
+    {
+        std::net::IpAddr::V4(addr) => format!("/ip4/{addr}/tcp/6009"),
+        std::net::IpAddr::V6(_) => unimplemented!(),
+    };
+
     config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
 
-    let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(local_key.public()));
     // Publish its address so other nodes know who is the bootstrapper.
+    let peer_id = PeerId::from(local_key.public()).to_string();
+    let addr = format!("{}/p2p/{}", swarm_addr, peer_id);
     let payload = serde_json::json!({
         "Addrs": addr,
     });
@@ -107,7 +139,7 @@ async fn run_bootstrap(client: testground::client::Client) {
 
     tokio::task::spawn(async move { service.start().await.unwrap() });
 
-    client.record_message(format!("Bootstrap: listening at {}", addr));
+    client.record_message(format!("Bootstrap: listening at {:?}", peer_id));
 
     // Let others know that bootstrap is up and running.
     client.signal("bootstrap-ready").await.unwrap();
@@ -120,3 +152,4 @@ async fn run_bootstrap(client: testground::client::Client) {
 
     client.record_success().await.expect("Success");
 }
+
