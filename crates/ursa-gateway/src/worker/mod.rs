@@ -2,7 +2,7 @@ pub mod cache;
 
 use std::sync::Arc;
 
-use cache::{WorkerCache, WorkerCacheCommand};
+use cache::{worker::WorkerCache, CacheCommand};
 use tokio::{
     select, spawn,
     sync::{
@@ -16,7 +16,7 @@ use tracing::{error, info};
 use crate::resolver::Resolver;
 
 pub fn start<Cache: WorkerCache>(
-    mut cache_worker_rx: UnboundedReceiver<WorkerCacheCommand>,
+    mut cache_worker_rx: UnboundedReceiver<CacheCommand>,
     cache: Arc<RwLock<Cache>>,
     resolver: Arc<Resolver>,
     signal_tx: Sender<()>,
@@ -30,7 +30,7 @@ pub fn start<Cache: WorkerCache>(
                     let cache = Arc::clone(&cache);
                     let resolver = Arc::clone(&resolver);
                     match cmd {
-                        WorkerCacheCommand::GetSync{key} => {
+                        CacheCommand::GetSync{key} => {
                             info!("Dispatch GetSyncAnnounce command with key: {key:?}");
                             spawn(async move {
                                 if let Err(e) = cache.write().await.get(&key).await {
@@ -39,7 +39,7 @@ pub fn start<Cache: WorkerCache>(
                                 };
                             });
                         },
-                        WorkerCacheCommand::InsertSync{key, value} => {
+                        CacheCommand::InsertSync{key, value} => {
                             info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
                             spawn(async move {
                                 if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
@@ -48,7 +48,7 @@ pub fn start<Cache: WorkerCache>(
                                 };
                             });
                         },
-                        WorkerCacheCommand::Fetch{cid, sender} => {
+                        CacheCommand::Fetch{cid, sender} => {
                             info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                             spawn(async move {
                                 let result = match resolver.resolve_content(&cid).await {
@@ -61,7 +61,7 @@ pub fn start<Cache: WorkerCache>(
                                 }
                             });
                         },
-                        WorkerCacheCommand::TtlCleanUp => {
+                        CacheCommand::TtlCleanUp => {
                             info!("Dispatch TtlCleanUp command");
                             spawn(async move {
                                 if let Err(e) = cache.write().await.ttl_cleanup().await {

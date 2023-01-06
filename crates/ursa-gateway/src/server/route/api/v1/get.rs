@@ -2,19 +2,25 @@ use std::{str::FromStr, sync::Arc};
 
 use axum::{
     extract::Path,
+    headers::CacheControl,
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Extension, Json,
+    Extension, Json, TypedHeader,
 };
 use cid::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use crate::{server::model::HttpResponse, util::error::Error, worker::cache::ServerCache};
+use crate::{
+    config::GatewayConfig, server::model::HttpResponse, util::error::Error,
+    worker::cache::server::ServerCache,
+};
 
 pub async fn get_car_handler<Cache: ServerCache>(
     Path(cid): Path<String>,
+    cache_control: Option<TypedHeader<CacheControl>>,
     Extension(cache): Extension<Arc<RwLock<Cache>>>,
+    Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
 ) -> Response {
     if Cid::from_str(&cid).is_err() {
         return error_handler(
@@ -24,7 +30,8 @@ pub async fn get_car_handler<Cache: ServerCache>(
         .into_response();
     };
 
-    match cache.read().await.get_announce(&cid).await {
+    let no_cache = cache_control.map_or(false, |c| c.no_cache());
+    match cache.read().await.get_announce(&cid, no_cache).await {
         Ok(stream) => (
             [
                 (
@@ -34,6 +41,17 @@ pub async fn get_car_handler<Cache: ServerCache>(
                 (
                     header::CONTENT_DISPOSITION,
                     &format!("attachment; filename=\"{cid}.car\""),
+                ),
+                (
+                    header::CACHE_CONTROL,
+                    &(if no_cache {
+                        "no-cache".into()
+                    } else {
+                        format!(
+                            "public, max-age={}, immutable",
+                            config.read().await.server.cache_control_max_age
+                        )
+                    }),
                 ),
             ],
             stream,

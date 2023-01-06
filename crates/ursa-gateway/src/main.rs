@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
                         let signal_tx = signal_tx.clone(); // move to ttl worker thread
                         select! {
                             _ = tokio::time::sleep(duration_ms) => {
-                                if let Err(e) = worker_tx.send(worker::cache::WorkerCacheCommand::TtlCleanUp) {
+                                if let Err(e) = worker_tx.send(worker::cache::CacheCommand::TtlCleanUp) {
                                     error!("[Cache TTL Worker]: {e:?}");
                                     signal_tx
                                         .send(())
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
                 (worker, main_shutdown_tx, signal_rx)
             };
 
-            let sub_workers = vec![server_worker, admin_worker, ttl_cache_worker];
+            let workers = vec![server_worker, admin_worker, ttl_cache_worker];
 
             #[cfg(unix)]
             let terminate = async {
@@ -156,12 +156,12 @@ async fn main() -> Result<()> {
             let terminate = std::future::pending::<()>();
 
             select! {
-                _ = ctrl_c() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
-                _ = terminate => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
-                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
-                _ = admin_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
-                _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await,
-                _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, sub_workers, main_shutdown_tx, main_worker).await
+                _ = ctrl_c() => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await,
+                _ = terminate => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await,
+                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await,
+                _ = admin_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await,
+                _ = ttl_cache_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await,
+                _ = worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, workers, main_shutdown_tx, main_worker).await
             }
             info!("Gateway shut down successfully")
         }
@@ -170,16 +170,16 @@ async fn main() -> Result<()> {
 }
 
 async fn graceful_shutdown(
-    sub_shutdown_tx: Sender<()>,
-    sub_workers: Vec<JoinHandle<()>>,
+    shutdown_tx: Sender<()>,
+    workers: Vec<JoinHandle<()>>,
     main_shutdown_tx: mpsc::Sender<()>,
     main_worker: JoinHandle<()>,
 ) {
     info!("Gateway shutting down...");
-    sub_shutdown_tx
+    shutdown_tx
         .send(())
         .expect("Send shutdown signal successfully");
-    for worker in sub_workers {
+    for worker in workers {
         worker.await.expect("Worker to shut down successfully");
     }
     main_shutdown_tx
