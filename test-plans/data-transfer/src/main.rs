@@ -12,10 +12,10 @@ async fn main() {
     // The first instance that arrives will be the bootstrapper.
     let seq = client.global_seq();
     if seq == 1 {
-        return bootstrap::run_bootstrap(client).await;
+        return bootstrap::start_bootstrap(client).await;
     }
 
-    if let Err(e) = bootstrap::network_init(&mut client).await {
+    if let Err(e) = bootstrap::start_node(&mut client).await {
         client.record_failure(e).await.expect("Success");
     } else {
         client.record_success().await.expect("Success");

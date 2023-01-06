@@ -14,7 +14,7 @@ fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaS
     UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
 }
 
-pub async fn run_bootstrap(client: testground::client::Client) {
+pub async fn start_bootstrap(client: testground::client::Client) {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
 
     let mut config = NetworkConfig::default();
@@ -62,7 +62,7 @@ pub async fn run_bootstrap(client: testground::client::Client) {
     client.record_success().await.expect("Success");
 }
 
-pub async fn network_init(client: &mut Client) -> Result<(), String> {
+pub async fn start_node(client: &mut Client) -> Result<(), String> {
     let seq = client.global_seq();
     let test_instance_count = client.run_parameters().test_instance_count as usize;
 
