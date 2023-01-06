@@ -73,11 +73,11 @@ pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type SwarmEventType<S> = SwarmEvent<
-<Behaviour<DefaultParams, GraphSyncStorage<S>> as NetworkBehaviour>::OutEvent,
+<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
 <
     <
         <
-            Behaviour<DefaultParams, GraphSyncStorage<S>> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
         >::Handler as ConnectionHandler
     >::Error
 >;
@@ -194,12 +194,12 @@ pub enum NetworkCommand {
 
 pub struct UrsaService<S>
 where
-    S: Blockstore + Store + Clone + Send + Sync + 'static,
+    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
 {
     /// Store.
     pub store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
-    swarm: Swarm<Behaviour<DefaultParams, GraphSyncStorage<S>>>,
+    swarm: Swarm<Behaviour<DefaultParams, S>>,
     /// Handles outbound messages to peers.
     command_sender: Sender<NetworkCommand>,
     /// Handles inbound messages from peers.
@@ -232,7 +232,7 @@ where
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Store + Clone + Debug + Send + Sync + 'static,
+    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
