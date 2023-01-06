@@ -11,7 +11,7 @@ mod tests {
     #[tokio::test]
     async fn test_put_and_get() -> anyhow::Result<()> {
         setup_logger();
-        let (ursa_service, mut provider_engine, store) = init()?;
+        let (mut ursa_service, mut provider_engine, store) = init()?;
 
         let interface = Arc::new(NodeNetworkInterface {
             store: Arc::clone(&store),
@@ -22,6 +22,7 @@ mod tests {
         // the test case does not start the provider engine, so the best way
         // for put_file to not call provider engine is to close the channel
         provider_engine.command_receiver().close();
+        ursa_service.close_command_receiver();
 
         let put_file = interface
             .put_file("../../test_files/test.car".to_string())

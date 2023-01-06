@@ -38,7 +38,7 @@ use tracing::{error, info, trace, Level};
 use crate::{
     config::{GatewayConfig, ServerConfig},
     server::model::HttpResponse,
-    worker::cache::ServerCache,
+    worker::cache::server::ServerCache,
 };
 
 pub async fn start<Cache: ServerCache>(
@@ -131,7 +131,7 @@ async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
             handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                info!("Server remains alive connections: {}", handle.connection_count());
+                info!("Server maintains alive connections: {}", handle.connection_count());
             }
         }
     }

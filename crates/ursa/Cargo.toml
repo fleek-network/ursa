@@ -30,3 +30,4 @@ ursa-rpc-service = { path = "../ursa-rpc-service" }
 ursa-store = { path = "../ursa-store" }
 ursa-telemetry = { path = "../ursa-telemetry" }
 ursa-tracker = { path = "../ursa-tracker" }
+imara-diff.workspace = true
