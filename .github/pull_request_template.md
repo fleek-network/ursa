@@ -1,12 +1,14 @@
-# Why
+## Why
 
-> Please include a summary of why the pull request is needed, including motivation and context.
+<!-- Please include a summary of why the pull request is needed, including motivation and context --->
 
 
 
 Fixes # (issue)
 
-# What
+## What
+
+<!-- Please include a bulleted list of what the pull request is changing --->
 
 - Change 1
 - Change 2
@@ -14,17 +16,17 @@ Fixes # (issue)
 
 ## Demo
 
-> (optional) Include screenshots or links to showcase the changes made. 
+<!-- (optional) Include screenshots or links to showcase the changes made ---> 
 
 
 
-# Notes
+## Notes
 
-> (optional) open questions, notable changes, or requirements to consider for reviewers.
+<!-- (optional) open questions, notable changes, or requirements to consider for reviewers -->
 
 
 
-# Checklist
+## Checklist
 
 - [ ] I have performed a self-review and commented my code, particularly in complex areas
 - [ ] I have made corresponding changes to the tests
