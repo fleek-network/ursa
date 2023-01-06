@@ -14,3 +14,9 @@ Please include a summary of the issue, including motivation, context, and the be
 
 - Notable changes or requirements to consider
 - Open questions or concerns to address
+
+# Checklist
+
+- [ ] I have ensured that my version of the code is up-to-date
+- [ ] I have ensured that the issue is reproducible
+- [ ] I have ensured that the issue is not a duplicate
