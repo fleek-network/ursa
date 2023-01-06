@@ -27,4 +27,4 @@ testground run composition --plan ursa --file ./bootstrap/_compositions/rust.tom
 ## Test cases
 
 The following test cases are available:
-- Bootstrap
+- Replication
