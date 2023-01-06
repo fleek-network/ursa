@@ -135,13 +135,16 @@ async fn network_init(client: &mut Client) -> Result<(), String> {
 
     // Start service.
     tokio::task::spawn(async move { service.start().await.unwrap() });
-
     let peer_count = test_instance_count - 1;
 
     // Send a command to get the service's peers.
     let mut peers = HashSet::new();
-    while peers.len() < peer_count {
+    for _ in 0..3 {
+        if peers.len() == peer_count {
+            return Ok(())
+        }
         // Give discovery some time.
+        client.record_message("[Node]: Wait for discovery");
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
         let (peers_sender, peers_receiver) = tokio::sync::oneshot::channel();
@@ -149,18 +152,16 @@ async fn network_init(client: &mut Client) -> Result<(), String> {
             sender: peers_sender,
         };
         cmd_sender.send(msg).unwrap();
-
         peers = peers_receiver.await.expect("Success");
 
         client.record_message(format!("Node: Peers: {:?}", peers));
     }
 
-    if peers.contains(
-        &PeerId::try_from_multiaddr(&Multiaddr::try_from(bootstrap_addr).unwrap()).unwrap(),
-    ) {
-        client.signal("done").await.unwrap();
-        // client.record_success().await.expect("Success");
-    }
+    client.signal("done").await.unwrap();
 
-    Ok(())
+    if peers.len() == peer_count {
+        Ok(())
+    } else {
+        Err("failed to bootstrap".to_string())
+    }
 }
