@@ -35,7 +35,7 @@ jobs:
 
       - name: Skipper
         run: |
-          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!" && exit 1; fi
 
       - name: Install Dependencies
         if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -152,7 +152,7 @@ jobs:
 
       - name: Skipper
         run: |
-          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!" && exit 1; fi
 
       - name: Install Dependencies
         run: |
@@ -200,7 +200,7 @@ jobs:
 
       - name: Skipper
         run: |
-          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!" && exit 1; fi
 
       - name: Install Dependencies
         run: |
