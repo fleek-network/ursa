@@ -70,8 +70,7 @@ services:
 
   ursa:
     build:
-      # todo(botch): replace with official image
-      context: ../cache-node/.
+      context: ../../.
       dockerfile: Dockerfile
     restart: on-failure
     ports:

@@ -25,13 +25,13 @@ docker-run:
 	docker run --name ursa-cli -it ursa
 
 compose-build:
-	docker-compose -f infra/ursa/docker-compose.yml build
+	docker-compose -f docker/full-node/docker-compose.yml build
 
 compose-up:
-	docker-compose -f infra/ursa/docker-compose.yml up
+	docker-compose -f docker/full-node/docker-compose.yml up
 
 compose-down:
-	docker-compose -f infra/ursa/docker-compose.yml down
+	docker-compose -f docker/full-node/docker-compose.yml down
 
 # docker run ursa
 docker: docker-build docker-run
