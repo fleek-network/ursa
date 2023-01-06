@@ -1,5 +1,5 @@
 # Ghost rust action to avoid pr requirements when there are no source file modifications
-name: rust
+name: rust-ci
 on:
   pull_request:
     paths-ignore:
@@ -21,7 +21,7 @@ jobs:
           - { rust: beta,             os: ubuntu-latest }
           - { rust: nightly,          os: ubuntu-latest }
     steps:
-      run: echo "No rust or workflow modifications, skipped!"
+      - run: echo "No rust or workflow modifications, skipped!"
 
   clippy:
     name: Lint with clippy
@@ -30,7 +30,7 @@ jobs:
       matrix:
         rust: [ stable ]
     steps:
-      run: echo "No rust or workflow modifications, skipped!"
+      - run: echo "No rust or workflow modifications, skipped!"
 
   coverage:
     name: Tests coverage
@@ -39,7 +39,7 @@ jobs:
       matrix:
         rust: [ nightly ]
     steps:
-      run: echo "No rust or workflow modifications, skipped!"
+      - run: echo "No rust or workflow modifications, skipped!"
 
   rustfmt:
     name: Code formatting
@@ -48,4 +48,4 @@ jobs:
       matrix:
         rust: [ stable ]
     steps:
-      run: echo "No rust or workflow modifications, skipped!"
+      - run: echo "No rust or workflow modifications, skipped!"
