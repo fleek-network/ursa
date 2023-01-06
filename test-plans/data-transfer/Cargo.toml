@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "replication"
+name = "data-transfer"
 version = "0.1.0"
 
 [dependencies]
