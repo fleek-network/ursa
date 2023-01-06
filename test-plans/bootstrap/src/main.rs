@@ -1,15 +1,13 @@
 use db::MemoryDB;
 use env_logger::Env;
 use futures::StreamExt;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::PeerId;
 use std::borrow::Cow;
-use std::sync::Arc;
 use std::collections::HashSet;
-use ursa_index_provider::config::ProviderConfig;
-use ursa_index_provider::provider::Provider;
+use std::sync::Arc;
+use testground::client::Client;
 use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
-use testground::client::Client;
 
 #[tokio::main]
 async fn main() {
@@ -73,7 +71,7 @@ async fn run_bootstrap(client: testground::client::Client) {
 
     tokio::task::spawn(async move { service.start().await.unwrap() });
 
-    client.record_message(format!("Bootstrap: listening at {:?}", peer_id));
+    client.record_message(format!("[Bootstrap]: listening at {peer_id:?}"));
 
     // Let others know that bootstrap is up and running.
     client.signal("bootstrap-ready").await.unwrap();
@@ -90,7 +88,7 @@ async fn run_bootstrap(client: testground::client::Client) {
 async fn network_init(client: &mut Client) -> Result<(), String> {
     let seq = client.global_seq();
     let test_instance_count = client.run_parameters().test_instance_count as usize;
-    let mut bootstrap_addr = client
+    let bootstrap_addr = client
         .subscribe("bootstrap-addr", test_instance_count)
         .await
         .take(test_instance_count)
@@ -125,8 +123,11 @@ async fn network_init(client: &mut Client) -> Result<(), String> {
     // If all peers attempt to bootstrap at the same time, DHT won't
     // be updated in time for peers to discover each other.
     // We have no way to trigger bootstrapping later.
-    tokio::time::sleep(tokio::time::Duration::from_secs(seq*4)).await;
-    client.record_message(format!("[Node]: Bootstrapping to address {}", bootstrap_addr));
+    tokio::time::sleep(tokio::time::Duration::from_secs(seq * 4)).await;
+    client.record_message(format!(
+        "[Node]: Bootstrapping to address {}",
+        bootstrap_addr
+    ));
 
     // Init service.
     let local_key = libp2p::identity::Keypair::generate_ed25519();
@@ -141,7 +142,7 @@ async fn network_init(client: &mut Client) -> Result<(), String> {
     let mut peers = HashSet::new();
     for _ in 0..3 {
         if peers.len() == peer_count {
-            return Ok(())
+            break;
         }
         // Give discovery some time.
         client.record_message("[Node]: Wait for discovery");
@@ -154,7 +155,7 @@ async fn network_init(client: &mut Client) -> Result<(), String> {
         cmd_sender.send(msg).unwrap();
         peers = peers_receiver.await.expect("Success");
 
-        client.record_message(format!("Node: Peers: {:?}", peers));
+        client.record_message(format!("[Node]: Peers: {peers:?}"));
     }
 
     client.signal("done").await.unwrap();
