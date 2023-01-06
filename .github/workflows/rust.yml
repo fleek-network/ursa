@@ -5,14 +5,12 @@ env:
 
 on:
   push:
-    branches: [ "main" ]
     paths:
       - "crates/**"
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
   pull_request:
-    branches: [ "main" ]
     paths:
       - "crates/**"
       - "Cargo.toml"
@@ -34,6 +32,10 @@ jobs:
           - { rust: nightly,          os: ubuntu-latest }
     steps:
       - uses: actions/checkout@master
+
+      - name: Skipper
+        run: |
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
 
       - name: Install Dependencies
         if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -90,6 +92,10 @@ jobs:
     steps:
       - uses: actions/checkout@master
 
+      - name: Skipper
+        run: |
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
+
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -144,6 +150,10 @@ jobs:
     steps:
       - uses: actions/checkout@master
 
+      - name: Skipper
+        run: |
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
+
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -187,6 +197,10 @@ jobs:
         rust: [stable]
     steps:
       - uses: actions/checkout@master
+
+      - name: Skipper
+        run: |
+          if ! git diff --quiet main -- crates Cargo.toml; then echo "🤖 skipping!"; fi
 
       - name: Install Dependencies
         run: |
