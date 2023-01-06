@@ -4,6 +4,7 @@ use futures::StreamExt;
 use libp2p::{Multiaddr, PeerId};
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::collections::HashSet;
 use ursa_index_provider::config::ProviderConfig;
 use ursa_index_provider::provider::Provider;
 use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
@@ -38,7 +39,7 @@ async fn main() {
 
     let mut config = NetworkConfig::default();
     config.bootstrap_nodes = vec![bootstrap_addr.parse().unwrap()];
-    config.swarm_addrs = vec![format!("/ip4/0.0.0.0/tcp/600{}", seq).parse().unwrap()];
+    config.swarm_addrs = vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()];
 
     // Wait until bootstrapping is done.
     client.barrier("bootstrap-ready", 1).await.unwrap();
@@ -52,9 +53,12 @@ async fn main() {
 
     // Send a command to get the service's peers.
     let mut peers = HashSet::new();
-    while peers.len() < 1 {
+    while peers.len() < 2 {
+        let msg = NetworkCommand::RunBootstrap;
+        cmd_sender.send(msg).unwrap();
+
         // Give discovery some time.
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
 
         let (peers_sender, peers_receiver) = tokio::sync::oneshot::channel();
         let msg = NetworkCommand::GetPeers {
@@ -88,7 +92,7 @@ async fn run_bootstrap(client: testground::client::Client) {
     config.bootstrapper = true;
     config.bootstrap_nodes = vec![];
 
-    let swarm_addr = "/ip4/0.0.0.0/tcp/6009";
+    let swarm_addr = "/ip4/127.0.0.1/tcp/6009";
     config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
 
     let addr = format!("{}/p2p/{}", swarm_addr, PeerId::from(local_key.public()));
