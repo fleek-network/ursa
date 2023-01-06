@@ -9,10 +9,11 @@ use ursa_index_provider::config::ProviderConfig;
 use ursa_index_provider::provider::Provider;
 use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
+use testground::client::Client;
 
 #[tokio::main]
 async fn main() {
-    let client = testground::client::Client::new_and_init().await.unwrap();
+    let mut client = Client::new_and_init().await.unwrap();
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
@@ -22,6 +23,72 @@ async fn main() {
         return run_bootstrap(client).await;
     }
 
+    if let Err(e) = network_init(&mut client).await {
+        client.record_failure(e).await.expect("Success");
+    } else {
+        client.record_success().await.expect("Success");
+    }
+}
+
+fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaService<MemoryDB> {
+    let db = Arc::new(MemoryDB::default());
+    let store = Arc::new(UrsaStore::new(Arc::clone(&db)));
+    UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
+}
+
+async fn run_bootstrap(client: testground::client::Client) {
+    let local_key = libp2p::identity::Keypair::generate_ed25519();
+
+    let mut config = NetworkConfig::default();
+    config.bootstrapper = true;
+    config.bootstrap_nodes = vec![];
+
+    let swarm_addr = match if_addrs::get_if_addrs()
+        .unwrap()
+        .into_iter()
+        .find(|iface| iface.name == "eth1")
+        .unwrap()
+        .addr
+        .ip()
+    {
+        std::net::IpAddr::V4(addr) => format!("/ip4/{addr}/tcp/6009"),
+        std::net::IpAddr::V6(_) => unimplemented!(),
+    };
+
+    config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
+
+    // Publish its address so other nodes know who is the bootstrapper.
+    let peer_id = PeerId::from(local_key.public()).to_string();
+    let addr = format!("{}/p2p/{}", swarm_addr, peer_id);
+    let payload = serde_json::json!({
+        "Addrs": addr,
+    });
+    client
+        .publish("bootstrap-addr", Cow::Owned(payload))
+        .await
+        .unwrap();
+
+    // Start service.
+    let service = node_init(local_key, config);
+
+    tokio::task::spawn(async move { service.start().await.unwrap() });
+
+    client.record_message(format!("Bootstrap: listening at {:?}", peer_id));
+
+    // Let others know that bootstrap is up and running.
+    client.signal("bootstrap-ready").await.unwrap();
+
+    // Wait for others to finish before exiting.
+    client
+        .barrier("done", client.run_parameters().test_instance_count - 1)
+        .await
+        .unwrap();
+
+    client.record_success().await.expect("Success");
+}
+
+async fn network_init(client: &mut Client) -> Result<(), String> {
+    let seq = client.global_seq();
     let test_instance_count = client.run_parameters().test_instance_count as usize;
     let mut bootstrap_addr = client
         .subscribe("bootstrap-addr", test_instance_count)
@@ -92,64 +159,8 @@ async fn main() {
         &PeerId::try_from_multiaddr(&Multiaddr::try_from(bootstrap_addr).unwrap()).unwrap(),
     ) {
         client.signal("done").await.unwrap();
-        client.record_success().await.expect("Success");
+        // client.record_success().await.expect("Success");
     }
+
+    Ok(())
 }
-
-fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaService<MemoryDB> {
-    let db = Arc::new(MemoryDB::default());
-    let store = Arc::new(UrsaStore::new(Arc::clone(&db)));
-    UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
-}
-
-async fn run_bootstrap(client: testground::client::Client) {
-    let local_key = libp2p::identity::Keypair::generate_ed25519();
-
-    let mut config = NetworkConfig::default();
-    config.bootstrapper = true;
-    config.bootstrap_nodes = vec![];
-
-    let swarm_addr = match if_addrs::get_if_addrs()
-        .unwrap()
-        .into_iter()
-        .find(|iface| iface.name == "eth1")
-        .unwrap()
-        .addr
-        .ip()
-    {
-        std::net::IpAddr::V4(addr) => format!("/ip4/{addr}/tcp/6009"),
-        std::net::IpAddr::V6(_) => unimplemented!(),
-    };
-
-    config.swarm_addrs = vec![swarm_addr.clone().parse().unwrap()];
-
-    // Publish its address so other nodes know who is the bootstrapper.
-    let peer_id = PeerId::from(local_key.public()).to_string();
-    let addr = format!("{}/p2p/{}", swarm_addr, peer_id);
-    let payload = serde_json::json!({
-        "Addrs": addr,
-    });
-    client
-        .publish("bootstrap-addr", Cow::Owned(payload))
-        .await
-        .unwrap();
-
-    // Start service.
-    let service = node_init(local_key, config);
-
-    tokio::task::spawn(async move { service.start().await.unwrap() });
-
-    client.record_message(format!("Bootstrap: listening at {:?}", peer_id));
-
-    // Let others know that bootstrap is up and running.
-    client.signal("bootstrap-ready").await.unwrap();
-
-    // Wait for others to finish before exiting.
-    client
-        .barrier("done", client.run_parameters().test_instance_count - 1)
-        .await
-        .unwrap();
-
-    client.record_success().await.expect("Success");
-}
-
