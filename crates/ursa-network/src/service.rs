@@ -852,10 +852,12 @@ where
             select! {
                 event = self.swarm.next() => {
                     let event = event.ok_or_else(|| anyhow!("Swarm Event invalid!"))?;
+                    info!("being polled event.... {event:?}");
                     self.handle_swarm_event(event).expect("Handle swarm event.");
                 },
                 command = self.command_receiver.recv() => {
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
+                    info!("being polled command.... {command:?}");
                     self.handle_command(command).expect("Handle rpc command.");
                 },
             }
