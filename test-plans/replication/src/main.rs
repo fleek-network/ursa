@@ -15,6 +15,8 @@ async fn main() {
         return bootstrap::run_bootstrap(client).await;
     }
 
+
+
     if let Err(e) = bootstrap::network_init(&mut client).await {
         client.record_failure(e).await.expect("Success");
     } else {
