@@ -1,22 +1,28 @@
 # Why
 
-> Please include a summary of the issue the PR addresses, including motivation and context.
+> Please include a summary of why the pull request is needed, including motivation and context.
+
+
 
 Fixes # (issue)
 
 # What
 
-- Change 1 made to solve the issue
-- Change 2 made to solve the issue
+- Change 1
+- Change 2
+- Change 3
 
 ## Demo
 
-(optional) Include screenshots or links to showcase the changes made.
+> (optional) Include screenshots or links to showcase the changes made. 
+
+
 
 # Notes
 
-- (optional) Notable changes or requirements to consider for reviewers
-- (optional) Open questions or concerns to address before merging
+> (optional) open questions, notable changes, or requirements to consider for reviewers.
+
+
 
 # Checklist
 
