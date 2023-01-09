@@ -599,10 +599,12 @@ where
                                     )
                                     .is_err()
                                 {
-                                    error!("[BehaviourEvent::RequestMessage] failed to send response")
+                                    error!(
+                                        "[BehaviourEvent::RequestMessage] failed to send response"
+                                    )
                                 }
                             }
-                        },
+                        }
                         RequestType::StoreSummary(cache_summary) => {
                             self.peer_cached_content.insert(peer, cache_summary);
                         }
