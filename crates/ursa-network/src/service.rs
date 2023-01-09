@@ -594,7 +594,7 @@ where
 
                         let req = Request::builder()
                             .root(cid.to_bytes())
-                            .selector(selector.clone())
+                            .selector(selector)
                             .build()
                             .unwrap();
                         let swarm = self.swarm.behaviour_mut();
