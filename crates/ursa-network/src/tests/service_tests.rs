@@ -497,14 +497,10 @@ mod tests {
         // Wait for node 2 to finish bootstrapping.
         loop {
             if let SwarmEvent::Behaviour(BehaviourEvent::Kad(
-                KademliaEvent::OutboundQueryProgressed { id, result, .. },
+                KademliaEvent::OutboundQueryProgressed { result, .. },
             )) = node_2.swarm.select_next_some().await
             {
-                if let QueryResult::Bootstrap(Ok(BootstrapOk {
-                    peer,
-                    num_remaining,
-                })) = result
-                {
+                if let QueryResult::Bootstrap(Ok(BootstrapOk { num_remaining, .. })) = result {
                     if num_remaining == 0 {
                         info!("[KademliaEvent::Bootstrap]: Node 2 is done bootstrapping");
                         break;
