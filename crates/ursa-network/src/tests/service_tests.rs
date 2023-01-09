@@ -472,37 +472,28 @@ mod tests {
 
         let (mut node_1, node_1_addrs, peer_id_1, ..) =
             network_init(&mut config, None, None).await?;
-        let (mut node_2, ..) = network_init(&mut config, Some(node_1_addrs), None).await?;
+        let (mut node_2, _, peer_id_2, ..) =
+            network_init(&mut config, Some(node_1_addrs), None).await?;
 
         loop {
             select! {
                 event_1 = node_1.swarm.select_next_some() => {
                     if let SwarmEvent::ConnectionEstablished { .. } = event_1 {
-                        let topic = Topic::new(URSA_GLOBAL);
                         let mut cached_content = CountingBloomFilter::default();
                         cached_content.insert(&Cid::default().to_bytes());
-                        let bytes = cached_content.serialize().expect("Failed to serialize cache summary.");
-
-                        if let Err(e) = node_1.swarm.behaviour_mut().publish(topic, Bytes::from(bytes)) {
-                            warn!("Failed to send with error: {e:?}");
-                        }
+                        let request = UrsaExchangeRequest(RequestType::StoreSummary(
+                            cached_content,
+                        ));
+                        node_1.swarm.behaviour_mut().request_response.send_request(&peer_id_2, request);
                     }
                 }
                 event_2 = node_2.swarm.select_next_some() => {
-                    if let SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(
-                        libp2p::gossipsub::GossipsubEvent::Message {
-                            propagation_source,
-                            message_id,
-                            message,
-                        },
+                    if let SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
+                                             RequestResponseEvent::Message { peer, message },
                     )) = event_2
                     {
-                        let event = SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(
-                            libp2p::gossipsub::GossipsubEvent::Message {
-                                propagation_source,
-                                message_id,
-                                message,
-                            },
+                        let event = SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(
+                            RequestResponseEvent::Message { peer, message }
                         ));
                         node_2.handle_swarm_event(event).unwrap();
                         break;

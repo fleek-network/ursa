@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use std::cmp::{Eq, PartialEq};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CountingBloomFilter {
@@ -73,6 +74,14 @@ impl CountingBloomFilter {
         (((m as f64) / (n as f64)) * 2.0f64.ln()).ceil() as usize
     }
 }
+
+impl PartialEq for CountingBloomFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.num_hashes == other.num_hashes && self.buckets.eq(&other.buckets)
+    }
+}
+
+impl Eq for CountingBloomFilter {}
 
 #[cfg(test)]
 mod tests {

@@ -474,15 +474,6 @@ where
                 message_id,
                 message,
             } => {
-                if let Some(source) = &message.source {
-                    let message_bytes = &message.data;
-                    if let Ok(cache_summary) = CountingBloomFilter::deserialize(message_bytes) {
-                        self.peer_cached_content.insert(*source, cache_summary);
-                    } else {
-                        warn!("[GossipsubEvent::Message] - Failed to deserialize cache summary.");
-                    }
-                }
-
                 self.emit_event(NetworkEvent::Gossipsub(GossipsubEvent::Message {
                     peer_id: propagation_source,
                     message_id,
@@ -560,7 +551,19 @@ where
     ) -> Result<()> {
         match req_res_event {
             RequestResponseEvent::Message { peer, message } => match message {
-                RequestResponseMessage::Request { request_id, .. } => {
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    ..
+                } => {
+                    match request.0 {
+                        RequestType::CarRequest(_) => (),
+                        RequestType::CacheRequest(_) => (),
+                        RequestType::StoreSummary(cache_summary) => {
+                            self.peer_cached_content.insert(peer, cache_summary);
+                        }
+                    }
+
                     trace!("[BehaviourEvent::RequestMessage] {} ", peer);
                     self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }
@@ -644,6 +647,7 @@ where
                 ..
             } => {
                 if num_established == 0 && self.peers.remove(&peer_id) {
+                    self.peer_cached_content.remove(&peer_id);
                     debug!("Peer disconnected: {peer_id}");
                     self.emit_event(NetworkEvent::PeerDisconnected(peer_id));
                 }
@@ -704,15 +708,13 @@ where
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
-                // update cache summary and share it with the network
+                // update cache summary and share it with the connected peers
                 self.cached_content.insert(&cid.to_bytes());
-                let topic = Topic::new(URSA_GLOBAL);
-                if let Ok(cache_summary) = self.cached_content.serialize() {
-                    if let Err(e) = swarm.publish(topic, Bytes::from(cache_summary)) {
-                        warn!("[NetworkCommand::Put] - Failed to send cached content with error: {e:?}");
-                    };
-                } else {
-                    warn!("[NetworkCommand::Put] - Failed to serialize cached content.");
+                let swarm = self.swarm.behaviour_mut();
+                for peer in &self.peers {
+                    let request =
+                        UrsaExchangeRequest(RequestType::StoreSummary(self.cached_content.clone()));
+                    swarm.request_response.send_request(peer, request);
                 }
 
                 sender
