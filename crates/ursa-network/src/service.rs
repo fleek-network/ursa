@@ -572,37 +572,33 @@ where
                 } => {
                     match request.0 {
                         RequestType::CarRequest(_) => (),
-                        RequestType::CacheRequest(_) => {
-                            if let UrsaExchangeRequest(RequestType::CacheRequest(cid)) = request {
-                                info!("[BehaviourEvent::RequestMessage] cache request from {peer} for {cid}");
+                        RequestType::CacheRequest(cid) => {
+                            info!("[BehaviourEvent::RequestMessage] cache request from {peer} for {cid}");
 
-                                let selector = Selector::ExploreRecursive {
-                                    limit: RecursionLimit::None,
-                                    sequence: Box::new(Selector::ExploreAll {
-                                        next: Box::new(Selector::ExploreRecursiveEdge),
-                                    }),
-                                    current: None,
-                                };
+                            let selector = Selector::ExploreRecursive {
+                                limit: RecursionLimit::None,
+                                sequence: Box::new(Selector::ExploreAll {
+                                    next: Box::new(Selector::ExploreRecursiveEdge),
+                                }),
+                                current: None,
+                            };
 
-                                let req = Request::builder()
-                                    .root(cid.to_bytes())
-                                    .selector(selector)
-                                    .build()
-                                    .unwrap();
-                                let swarm = self.swarm.behaviour_mut();
-                                swarm.graphsync.request(peer, req);
-                                if swarm
-                                    .request_response
-                                    .send_response(
-                                        channel,
-                                        UrsaExchangeResponse(ResponseType::CacheResponse),
-                                    )
-                                    .is_err()
-                                {
-                                    error!(
-                                        "[BehaviourEvent::RequestMessage] failed to send response"
-                                    )
-                                }
+                            let req = Request::builder()
+                                .root(cid.to_bytes())
+                                .selector(selector)
+                                .build()
+                                .unwrap();
+                            let swarm = self.swarm.behaviour_mut();
+                            swarm.graphsync.request(peer, req);
+                            if swarm
+                                .request_response
+                                .send_response(
+                                    channel,
+                                    UrsaExchangeResponse(ResponseType::CacheResponse),
+                                )
+                                .is_err()
+                            {
+                                error!("[BehaviourEvent::RequestMessage] failed to send response")
                             }
                         }
                         RequestType::StoreSummary(cache_summary) => {
