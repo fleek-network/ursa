@@ -16,6 +16,7 @@ mod tests {
     use fvm_ipld_car::{load_car, CarReader};
     use ipld_traversal::blockstore::Blockstore;
     use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams, Ipld};
+    use libp2p::kad::{BootstrapOk, KademliaEvent, QueryResult};
     use libp2p::request_response::RequestResponseEvent;
     use libp2p::{
         gossipsub::IdentTopic as Topic, identity::Keypair, multiaddr::Protocol, swarm::SwarmEvent,
@@ -493,6 +494,24 @@ mod tests {
                 }
             }
         }
+        // Wait for node 2 to finish bootstrapping.
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::Kad(
+                KademliaEvent::OutboundQueryProgressed { id, result, .. },
+            )) = node_2.swarm.select_next_some().await
+            {
+                if let QueryResult::Bootstrap(Ok(BootstrapOk {
+                    peer,
+                    num_remaining,
+                })) = result
+                {
+                    if num_remaining == 0 {
+                        info!("[KademliaEvent::Bootstrap]: Node 2 is done bootstrapping");
+                        break;
+                    }
+                }
+            }
+        }
         tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
         // Send node 1 a PUT command.
@@ -507,14 +526,14 @@ mod tests {
         // Wait for node 1 to send cache request to node 2.
         // Wait for node 2 to pull content from node 1.
         for _ in 0..3 {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
             let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
             info!("Block received {store_1_block:?}");
 
             if store_1_block.is_some() {
                 assert_eq!(store_1_block, Some(block.data().to_vec()));
                 return Ok(());
-            } else {
-                tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
 

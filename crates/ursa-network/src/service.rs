@@ -766,7 +766,7 @@ where
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
                 for peer in &self.peers {
-                    info!("Sending to peer {peer}");
+                    info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
