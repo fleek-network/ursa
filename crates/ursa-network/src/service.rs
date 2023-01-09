@@ -59,7 +59,7 @@ use ursa_metrics::Recorder;
 use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
-use crate::codec::protocol::RequestType;
+use crate::codec::protocol::{RequestType, ResponseType};
 use crate::transport::build_transport;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
@@ -185,11 +185,6 @@ pub enum NetworkCommand {
     GetPeerContent {
         sender: oneshot::Sender<HashMap<PeerId, CountingBloomFilter>>,
     },
-
-    GetGraphSync {
-        cid: Cid,
-        sender: BlockOneShotSender<()>,
-    },
 }
 
 pub struct UrsaService<S>
@@ -224,10 +219,6 @@ where
     cached_content: CountingBloomFilter,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
-    /// Graphsync hashmap for keeping track of who requested a block.
-    gs_response_channels: FnvHashMap<Cid, BlockOneShotSender<()>>,
-    /// Graphsync hashmap for associating requests with CIDs.
-    gs_ongoing_requests: FnvHashMap<graphsync::RequestId, Cid>,
 }
 
 impl<S> UrsaService<S>
@@ -323,8 +314,6 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
-            gs_response_channels: Default::default(),
-            gs_ongoing_requests: Default::default(),
         })
     }
 
@@ -585,8 +574,42 @@ where
     ) -> Result<()> {
         match req_res_event {
             RequestResponseEvent::Message { peer, message } => match message {
-                RequestResponseMessage::Request { request_id, .. } => {
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    channel,
+                } => {
                     trace!("[BehaviourEvent::RequestMessage] {} ", peer);
+
+                    if let UrsaExchangeRequest(RequestType::CacheRequest(cid)) = request {
+                        info!("[BehaviourEvent::RequestMessage] cache request for {cid}");
+
+                        let selector = Selector::ExploreRecursive {
+                            limit: RecursionLimit::None,
+                            sequence: Box::new(Selector::ExploreAll {
+                                next: Box::new(Selector::ExploreRecursiveEdge),
+                            }),
+                            current: None,
+                        };
+
+                        let req = Request::builder()
+                            .root(cid.to_bytes())
+                            .selector(selector.clone())
+                            .build()
+                            .unwrap();
+                        let swarm = self.swarm.behaviour_mut();
+                        swarm.graphsync.request(peer, req);
+                        if swarm
+                            .request_response
+                            .send_response(
+                                channel,
+                                UrsaExchangeResponse(ResponseType::CacheResponse),
+                            )
+                            .is_err()
+                        {
+                            error!("[BehaviourEvent::RequestMessage] failed to send response")
+                        }
+                    }
                     self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }
                 RequestResponseMessage::Response {
@@ -624,27 +647,6 @@ where
                 received,
             } => {
                 info!("[GraphSyncEvent::Completed]: {id} {peer_id} {received}");
-
-                if !self.gs_ongoing_requests.contains_key(&id) {
-                    error!(
-                        "[GraphSyncEvent::Completed]: did not find corresponding pending request"
-                    );
-                    return Ok(());
-                }
-                let cid = self.gs_ongoing_requests.remove(&id).expect("Key to exist");
-                if !self.gs_response_channels.contains_key(&cid) {
-                    info!(
-                        "[GraphSyncEvent::Completed]: did not find sender... it's possible that sender has already been notified"
-                    );
-                    return Ok(());
-                }
-                let sender = self
-                    .gs_response_channels
-                    .remove(&cid)
-                    .expect("Key to exist");
-                if sender.send(Ok(())).is_err() {
-                    error!("[GraphSyncEvent]: failed to send response")
-                }
                 Ok(())
             }
             event => {
@@ -764,6 +766,7 @@ where
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
                 for peer in &self.peers {
+                    info!("Sending to peer {peer}");
                     swarm
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
@@ -864,36 +867,6 @@ where
                         .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
             },
-            NetworkCommand::GetGraphSync { cid, sender } => {
-                if self.peers.is_empty() {
-                    error!("[GetGraphSync]: empty peers");
-                    sender
-                        .send(Err(anyhow!("there are no peers to pull from")))
-                        .expect("Sending to succeed");
-                } else {
-                    info!("[GetGraphSync]: building a request for {cid}");
-
-                    let selector = Selector::ExploreRecursive {
-                        limit: RecursionLimit::None,
-                        sequence: Box::new(Selector::ExploreAll {
-                            next: Box::new(Selector::ExploreRecursiveEdge),
-                        }),
-                        current: None,
-                    };
-
-                    self.gs_response_channels.insert(cid, sender);
-
-                    for peer in self.peers.iter() {
-                        let req = Request::builder()
-                            .root(cid.to_bytes())
-                            .selector(selector.clone())
-                            .build()
-                            .unwrap();
-                        self.gs_ongoing_requests.insert(*req.id(), cid);
-                        self.swarm.behaviour_mut().graphsync.request(*peer, req);
-                    }
-                }
-            }
             #[cfg(test)]
             NetworkCommand::GetPeerContent { sender } => {
                 sender

@@ -437,33 +437,88 @@ mod tests {
     #[tokio::test]
     async fn test_put_command() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig::default();
 
-        let (mut node_1, _node_1_addrs, peer_id_1, ..) =
-            network_init(&mut config, None, None).await?;
+        // Set up bootstrap.
+        let (bootstrap, bootstrap_addr, bootstrap_id) =
+            run_bootstrap(&mut NetworkConfig::default()).await?;
+        tokio::task::spawn(async move { bootstrap.start().await.unwrap() });
 
-        // Wait for at least one connection
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
-                node_1.swarm.select_next_some().await
-            {
-                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
-                break;
-            }
-        }
+        // Set up node 1.
+        let (mut node_1, _, peer_id_1, .., store_1) = network_init(
+            &mut NetworkConfig::default(),
+            Some(bootstrap_addr.clone()),
+            None,
+        )
+        .await?;
+
+        // Store some data in node 1's store.
+        let mut graphsync_store_1 = GraphSyncStorage(store_1.clone());
+        let block = get_block(&b"hello world"[..]);
+        info!("inserting block into Graphsync store for node 1");
+        graphsync_store_1.insert(&block).unwrap();
+        assert!(graphsync_store_1.has(block.cid()).unwrap());
 
         let node_1_sender = node_1.command_sender();
+
+        // Wait for node 1 to identify with bootstrap then start it up.
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::Identify(
+                libp2p::identify::Event::Sent { peer_id, .. },
+            )) = node_1.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::Identify::Sent]: {peer_id:?}, {bootstrap_id:?}");
+                if peer_id == bootstrap_id {
+                    break;
+                }
+            }
+        }
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
+        // Set up node 2.
+        let (mut node_2, .., store_2) =
+            network_init(&mut NetworkConfig::default(), Some(bootstrap_addr), None).await?;
+
+        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
+        // Node 2 does not have blocks in its store.
+        assert!(!graphsync_store_2.has(block.cid()).unwrap());
+
+        // Wait for node 2 to connect with node 1 through kad peer discovery then start it up.
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_2.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
+                if peer_id == peer_id_1 {
+                    break;
+                }
+            }
+        }
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
+
+        // Send node 1 a PUT command.
         let (sender, receiver) = oneshot::channel();
         let request = NetworkCommand::Put {
-            cid: Cid::default(),
+            cid: *block.cid(),
             sender,
         };
         assert!(node_1_sender.send(request).is_ok());
         assert!(receiver.await.is_ok());
 
-        Ok(())
+        // Wait for node 1 to send cache request to node 2.
+        // Wait for node 2 to pull content from node 1.
+        for _ in 0..3 {
+            let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
+            info!("Block received {store_1_block:?}");
+
+            if store_1_block.is_some() {
+                assert_eq!(store_1_block, Some(block.data().to_vec()));
+                return Ok(());
+            } else {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        }
+
+        panic!("Failed to replicate content")
     }
 
     #[tokio::test]
@@ -521,144 +576,6 @@ mod tests {
             cached_content.contains(&Cid::default().to_bytes()),
             "CID not contained in cache summary."
         );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_graphsync_get() -> Result<()> {
-        setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig {
-            mdns: true,
-            ..Default::default()
-        };
-
-        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
-            network_init(&mut config, None, None).await?;
-        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
-
-        let mut graphsync_store_1 = GraphSyncStorage(store_1.clone());
-        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
-
-        let block = get_block(&b"hello world"[..]);
-        info!("inserting block into Graphsync store for node 1");
-        graphsync_store_1.insert(&block).unwrap();
-
-        assert!(graphsync_store_1.has(block.cid()).unwrap());
-        assert!(!graphsync_store_2.has(block.cid()).unwrap());
-
-        // Wait for at least one connection
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
-                node_1.swarm.select_next_some().await
-            {
-                info!(
-                    "[SwarmEvent::ConnectionEstablished]: {:?}, {:?}: ",
-                    peer_id, peer_id_1
-                );
-                break;
-            }
-        }
-
-        let node_2_sender = node_2.command_sender();
-
-        // Start nodes
-        tokio::task::spawn(async move { node_1.start().await.unwrap() });
-        tokio::task::spawn(async move { node_2.start().await.unwrap() });
-
-        let (sender, receiver) = oneshot::channel();
-        let msg = NetworkCommand::GetGraphSync {
-            cid: *block.cid(),
-            sender,
-        };
-
-        assert!(node_2_sender.send(msg).is_ok());
-
-        let res = receiver
-            .await
-            .expect("Unable to receive from Graphsync channel");
-
-        match res {
-            Ok(_) => {
-                let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
-
-                info!(
-                    "inserting block into Graphsync store for node 1, {:?}",
-                    store_1_block
-                );
-                assert_eq!(store_1_block, Some(block.data().to_vec()));
-            }
-            Err(e) => panic!("{e:?}"),
-        }
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_graphsync_sync() -> Result<()> {
-        setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig {
-            mdns: true,
-            ..Default::default()
-        };
-
-        let (mut node_1, node_1_addrs, peer_id_1, store_1) =
-            network_init(&mut config, None, None).await?;
-        let (node_2, _, _, store_2) = network_init(&mut config, Some(node_1_addrs), None).await?;
-
-        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
-
-        // Wait for at least one connection
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
-                node_1.swarm.select_next_some().await
-            {
-                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
-                break;
-            }
-        }
-
-        let node_2_sender = node_2.command_sender();
-
-        // Start nodes
-        tokio::task::spawn(async move { node_1.start().await.unwrap() });
-        tokio::task::spawn(async move { node_2.start().await.unwrap() });
-
-        // put the car file in store 1
-        let path = Path::new("../../test_files/test.car");
-        let file = File::open(path).await?;
-        let reader = BufReader::new(file);
-        let cids = load_car(store_1.blockstore(), reader).await?;
-
-        let file_h = File::open(path).await?;
-        let reader_h = BufReader::new(file_h);
-        let mut car_reader = CarReader::new(reader_h).await?;
-
-        let mut cids_vec = Vec::<Cid>::new();
-        while let Some(block) = car_reader.next_block().await? {
-            cids_vec.push(block.cid);
-        }
-
-        let (sender, receiver) = oneshot::channel();
-        let msg = NetworkCommand::GetGraphSync {
-            cid: cids[0],
-            sender,
-        };
-
-        assert!(node_2_sender.send(msg).is_ok());
-
-        let res = receiver
-            .await
-            .expect("Unable to receive from Graphsync channel");
-
-        match res {
-            Ok(_) => {
-                for cid in cids_vec {
-                    assert!(graphsync_store_2.has(&cid).is_ok());
-                }
-            }
-            Err(e) => panic!("{e:?}"),
-        }
 
         Ok(())
     }
