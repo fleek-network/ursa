@@ -1,3 +1,4 @@
+use crate::utils::bloom_filter::CountingBloomFilter;
 use async_trait::async_trait;
 use cid::Cid;
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -36,6 +37,7 @@ pub enum RequestType {
     // change this to the final cid version
     CarRequest(String),
     CacheRequest(Cid),
+    StoreSummary(CountingBloomFilter),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +54,7 @@ pub struct CarResponse {
 pub enum ResponseType {
     CarResponse(CarResponse),
     CacheResponse,
+    StoreSummaryRequest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
