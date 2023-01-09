@@ -521,8 +521,8 @@ mod tests {
 
         // Wait for node 1 to send cache request to node 2.
         // Wait for node 2 to pull content from node 1.
-        for _ in 0..3 {
-            tokio::time::sleep(Duration::from_secs(2)).await;
+        for s in (3..6).rev() {
+            tokio::time::sleep(Duration::from_secs(s)).await;
 
             let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
             info!("Block received {store_1_block:?}");

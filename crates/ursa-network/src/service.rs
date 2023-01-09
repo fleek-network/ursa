@@ -607,6 +607,20 @@ where
                         }
                         RequestType::StoreSummary(cache_summary) => {
                             self.peer_cached_content.insert(peer, cache_summary);
+                            if self
+                                .swarm
+                                .behaviour_mut()
+                                .request_response
+                                .send_response(
+                                    channel,
+                                    UrsaExchangeResponse(ResponseType::StoreSummaryRequest),
+                                )
+                                .is_err()
+                            {
+                                error!(
+                                        "[BehaviourEvent::RequestMessage] failed to send StoreSummaryRequest response"
+                                    )
+                            }
                         }
                     }
                     trace!("[BehaviourEvent::RequestMessage] {} ", peer);
