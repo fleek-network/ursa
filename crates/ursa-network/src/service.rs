@@ -18,6 +18,8 @@ use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
+use graphsync::{GraphSyncEvent, Request};
+use ipld_traversal::{selector::RecursionLimit, Selector};
 use libipld::DefaultParams;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
@@ -39,6 +41,7 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
+use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     num::{NonZeroU8, NonZeroUsize},
@@ -53,10 +56,10 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, UrsaStore};
+use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
-use crate::codec::protocol::RequestType;
+use crate::codec::protocol::{RequestType, ResponseType};
 use crate::transport::build_transport;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
@@ -69,12 +72,12 @@ pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
-type SwarmEventType = SwarmEvent<
-<Behaviour<DefaultParams> as NetworkBehaviour>::OutEvent,
+type SwarmEventType<S> = SwarmEvent<
+<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
 <
     <
         <
-            Behaviour<DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
         >::Handler as ConnectionHandler
     >::Error
 >;
@@ -184,11 +187,14 @@ pub enum NetworkCommand {
     },
 }
 
-pub struct UrsaService<S> {
+pub struct UrsaService<S>
+where
+    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
+{
     /// Store.
     pub store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
-    swarm: Swarm<Behaviour<DefaultParams>>,
+    swarm: Swarm<Behaviour<DefaultParams, S>>,
     /// Handles outbound messages to peers.
     command_sender: Sender<NetworkCommand>,
     /// Handles inbound messages from peers.
@@ -217,7 +223,7 @@ pub struct UrsaService<S> {
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Store + Send + Sync + 'static,
+    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
@@ -248,9 +254,17 @@ where
         };
 
         let bitswap_store = BitswapStorage(store.clone());
+        let graphsync_store = GraphSyncStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
         let mut peers = HashSet::new();
-        let behaviour = Behaviour::new(&keypair, config, bitswap_store, relay_client, &mut peers);
+        let behaviour = Behaviour::new(
+            &keypair,
+            config,
+            bitswap_store,
+            graphsync_store,
+            relay_client,
+            &mut peers,
+        );
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(2 << 9))
@@ -554,16 +568,57 @@ where
                 RequestResponseMessage::Request {
                     request_id,
                     request,
-                    ..
+                    channel,
                 } => {
                     match request.0 {
                         RequestType::CarRequest(_) => (),
-                        RequestType::CacheRequest(_) => (),
+                        RequestType::CacheRequest(cid) => {
+                            info!("[BehaviourEvent::RequestMessage] cache request from {peer} for {cid}");
+
+                            let selector = Selector::ExploreRecursive {
+                                limit: RecursionLimit::None,
+                                sequence: Box::new(Selector::ExploreAll {
+                                    next: Box::new(Selector::ExploreRecursiveEdge),
+                                }),
+                                current: None,
+                            };
+
+                            let req = Request::builder()
+                                .root(cid.to_bytes())
+                                .selector(selector)
+                                .build()
+                                .unwrap();
+                            let swarm = self.swarm.behaviour_mut();
+                            swarm.graphsync.request(peer, req);
+                            if swarm
+                                .request_response
+                                .send_response(
+                                    channel,
+                                    UrsaExchangeResponse(ResponseType::CacheResponse),
+                                )
+                                .is_err()
+                            {
+                                error!("[BehaviourEvent::RequestMessage] failed to send response")
+                            }
+                        }
                         RequestType::StoreSummary(cache_summary) => {
                             self.peer_cached_content.insert(peer, cache_summary);
+                            if self
+                                .swarm
+                                .behaviour_mut()
+                                .request_response
+                                .send_response(
+                                    channel,
+                                    UrsaExchangeResponse(ResponseType::StoreSummaryRequest),
+                                )
+                                .is_err()
+                            {
+                                error!(
+                                        "[BehaviourEvent::RequestMessage] failed to send StoreSummaryRequest response"
+                                    )
+                            }
                         }
                     }
-
                     trace!("[BehaviourEvent::RequestMessage] {} ", peer);
                     self.emit_event(NetworkEvent::RequestMessage { request_id });
                 }
@@ -594,8 +649,25 @@ where
         Ok(())
     }
 
+    fn handle_graphsync(&mut self, event: GraphSyncEvent) -> Result<()> {
+        match event {
+            GraphSyncEvent::Completed {
+                id,
+                peer_id,
+                received,
+            } => {
+                info!("[GraphSyncEvent::Completed]: {id} {peer_id} {received}");
+                Ok(())
+            }
+            event => {
+                info!("[GraphSyncEvent]: {event:?}");
+                Ok(())
+            }
+        }
+    }
+
     /// Handle swarm events
-    pub fn handle_swarm_event(&mut self, event: SwarmEventType) -> Result<()> {
+    pub fn handle_swarm_event(&mut self, event: SwarmEventType<S>) -> Result<()> {
         // record basic swarm metrics
 
         event.record();
@@ -633,6 +705,7 @@ where
                 }
                 BehaviourEvent::RelayClient(_) => Ok(()),
                 BehaviourEvent::Dcutr(_) => Ok(()),
+                BehaviourEvent::Graphsync(event) => self.handle_graphsync(event),
             },
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 if self.peers.insert(peer_id) {
@@ -704,6 +777,7 @@ where
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
                 for peer in &self.peers {
+                    info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
                         .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));

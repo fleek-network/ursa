@@ -15,6 +15,9 @@
 
 use anyhow::Result;
 use cid::Cid;
+use db::Store;
+use fvm_ipld_blockstore::Blockstore;
+use graphsync::GraphSync;
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -43,8 +46,10 @@ use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use std::{collections::HashSet, iter};
+
 use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
+use ursa_store::GraphSyncStorage;
 
 use crate::gossipsub::build_gossipsub;
 use crate::{
@@ -61,7 +66,11 @@ fn ursa_agent() -> String {
 
 /// Composes protocols for the behaviour of the node in the network.
 #[derive(NetworkBehaviour)]
-pub struct Behaviour<P: StoreParams> {
+pub struct Behaviour<P, S>
+where
+    P: StoreParams,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
+{
     /// Alive checks.
     ping: Ping,
 
@@ -94,13 +103,21 @@ pub struct Behaviour<P: StoreParams> {
 
     /// request/response protocol implementation for [`UrsaProtocol`]
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
+
+    /// Graphsync for efficiently exchanging data between blocks between peers.
+    pub(crate) graphsync: GraphSync<GraphSyncStorage<S>>,
 }
 
-impl<P: StoreParams> Behaviour<P> {
-    pub fn new<S: BitswapStore<Params = P>>(
+impl<P, S> Behaviour<P, S>
+where
+    P: StoreParams,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
+{
+    pub fn new<B: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
-        bitswap_store: S,
+        bitswap_store: B,
+        graphsync_store: GraphSyncStorage<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
     ) -> Self {
@@ -188,6 +205,9 @@ impl<P: StoreParams> Behaviour<P> {
             Kademlia::with_config(local_peer_id, store, kad_config.clone())
         };
 
+        // Set up the Graphsync behaviour.
+        let graphsync = GraphSync::new(graphsync_store);
+
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {
             if let Some(Protocol::P2p(mh)) = addr.to_owned().pop() {
@@ -222,13 +242,15 @@ impl<P: StoreParams> Behaviour<P> {
             kad,
             mdns,
             request_response,
+            graphsync,
         }
     }
 
     pub fn add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
         self.bitswap.add_address(peer_id, addr.clone());
         self.kad.add_address(peer_id, addr.clone());
-        self.request_response.add_address(peer_id, addr);
+        self.request_response.add_address(peer_id, addr.clone());
+        self.graphsync.add_address(peer_id, addr);
     }
 
     pub fn publish(

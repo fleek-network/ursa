@@ -14,7 +14,9 @@ mod tests {
     use futures::io::BufReader;
     use futures::StreamExt;
     use fvm_ipld_car::{load_car, CarReader};
+    use ipld_traversal::blockstore::Blockstore;
     use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams, Ipld};
+    use libp2p::kad::{BootstrapOk, KademliaEvent, QueryResult};
     use libp2p::request_response::RequestResponseEvent;
     use libp2p::{
         gossipsub::IdentTopic as Topic, identity::Keypair, multiaddr::Protocol, swarm::SwarmEvent,
@@ -27,7 +29,7 @@ mod tests {
     use tokio::{select, sync::oneshot, time::timeout};
     use tracing::warn;
     use tracing::{error, info, log::LevelFilter};
-    use ursa_store::{BitswapStorage, UrsaStore};
+    use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
     fn create_block(ipld: Ipld) -> Block<DefaultParams> {
         Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -436,33 +438,103 @@ mod tests {
     #[tokio::test]
     async fn test_put_command() -> Result<()> {
         setup_logger(LevelFilter::Info);
-        let mut config = NetworkConfig::default();
 
-        let (mut node_1, _node_1_addrs, peer_id_1, ..) =
-            network_init(&mut config, None, None).await?;
+        // Set up bootstrap.
+        let (bootstrap, bootstrap_addr, bootstrap_id) =
+            run_bootstrap(&mut NetworkConfig::default()).await?;
+        tokio::task::spawn(async move { bootstrap.start().await.unwrap() });
 
-        // Wait for at least one connection
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
-                node_1.swarm.select_next_some().await
-            {
-                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}: ");
-                break;
-            }
-        }
+        // Set up node 1.
+        let (mut node_1, _, peer_id_1, .., store_1) = network_init(
+            &mut NetworkConfig::default(),
+            Some(bootstrap_addr.clone()),
+            None,
+        )
+        .await?;
+
+        // Store some data in node 1's store.
+        let mut graphsync_store_1 = GraphSyncStorage(store_1.clone());
+        let block = get_block(&b"hello world"[..]);
+        info!("inserting block into Graphsync store for node 1");
+        graphsync_store_1.insert(&block).unwrap();
+        assert!(graphsync_store_1.has(block.cid()).unwrap());
 
         let node_1_sender = node_1.command_sender();
+
+        // Wait for node 1 to identify with bootstrap then start it up.
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::Identify(
+                libp2p::identify::Event::Sent { peer_id, .. },
+            )) = node_1.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::Identify::Sent]: {peer_id:?}, {bootstrap_id:?}");
+                if peer_id == bootstrap_id {
+                    break;
+                }
+            }
+        }
         tokio::task::spawn(async move { node_1.start().await.unwrap() });
 
+        // Set up node 2.
+        let (mut node_2, .., store_2) =
+            network_init(&mut NetworkConfig::default(), Some(bootstrap_addr), None).await?;
+
+        let graphsync_store_2 = GraphSyncStorage(store_2.clone());
+        // Node 2 does not have blocks in its store.
+        assert!(!graphsync_store_2.has(block.cid()).unwrap());
+
+        // Wait for node 2 to connect with node 1 through kad peer discovery then start it up.
+        loop {
+            if let SwarmEvent::ConnectionEstablished { peer_id, .. } =
+                node_2.swarm.select_next_some().await
+            {
+                info!("[SwarmEvent::ConnectionEstablished]: {peer_id:?}, {peer_id_1:?}");
+                if peer_id == peer_id_1 {
+                    break;
+                }
+            }
+        }
+        // Wait for node 2 to finish bootstrapping.
+        loop {
+            if let SwarmEvent::Behaviour(BehaviourEvent::Kad(
+                KademliaEvent::OutboundQueryProgressed {
+                    result: QueryResult::Bootstrap(Ok(BootstrapOk { num_remaining, .. })),
+                    ..
+                },
+            )) = node_2.swarm.select_next_some().await
+            {
+                if num_remaining == 0 {
+                    info!("[KademliaEvent::Bootstrap]: Node 2 is done bootstrapping");
+                    break;
+                }
+            }
+        }
+        tokio::task::spawn(async move { node_2.start().await.unwrap() });
+
+        // Send node 1 a PUT command.
         let (sender, receiver) = oneshot::channel();
         let request = NetworkCommand::Put {
-            cid: Cid::default(),
+            cid: *block.cid(),
             sender,
         };
         assert!(node_1_sender.send(request).is_ok());
         assert!(receiver.await.is_ok());
 
-        Ok(())
+        // Wait for node 1 to send cache request to node 2.
+        // Wait for node 2 to pull content from node 1.
+        for s in (3..5).rev() {
+            tokio::time::sleep(Duration::from_secs(s)).await;
+
+            let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
+            info!("Block received {store_1_block:?}");
+
+            if store_1_block.is_some() {
+                assert_eq!(store_1_block, Some(block.data().to_vec()));
+                return Ok(());
+            }
+        }
+
+        panic!("Failed to replicate content")
     }
 
     #[tokio::test]

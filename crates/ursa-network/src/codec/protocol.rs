@@ -53,6 +53,7 @@ pub struct CarResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResponseType {
     CarResponse(CarResponse),
+    CacheResponse,
     StoreSummaryRequest,
 }
 
