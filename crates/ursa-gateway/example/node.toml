@@ -1,0 +1,27 @@
+log_level = "INFO"
+
+[server]
+port = 80
+addr = "0.0.0.0"
+request_timeout = 5000 # 5s
+concurrency_limit = 100000
+cert_path = ".ursa/gateway/server_cert.pem"
+key_path = ".ursa/gateway/server_key.pem"
+stream_buf = 2000000 # 2mb
+cache_control_max_age = 604800 # one week in second
+
+[admin_server]
+port = 5001
+addr = "0.0.0.0"
+cert_path = ".ursa/gateway/admin_cert.pem"
+key_path = ".ursa/gateway/admin_key.pem"
+
+[indexer]
+cid_url = "https://cid.contact/cid"
+
+[cache]
+max_size = 10000000000 # 10gb
+ttl_buf = 3600000 # 1 hour
+
+[worker]
+ttl_cache_interval = 300000 # 5mins

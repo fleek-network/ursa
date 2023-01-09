@@ -1,0 +1,27 @@
+log_level = "DEBUG"
+
+[server]
+port = 80
+addr = "0.0.0.0"
+request_timeout = 5000 # 5s
+concurrency_limit = 100000
+cert_path = ".ursa/gateway/server_cert.pem"
+key_path = ".ursa/gateway/server_key.pem"
+stream_buf = 2000000 # 2mb
+cache_control_max_age = 604800 # one week in second
+
+[admin_server]
+port = 5001
+addr = "0.0.0.0"
+cert_path = ".ursa/gateway/admin_cert.pem"
+key_path = ".ursa/gateway/admin_key.pem"
+
+[indexer]
+cid_url = "http://0.0.0.0:3000/cid"
+
+[cache]
+max_size = 200000000 # 200mb
+ttl_buf = 300000 # 5mins
+
+[worker]
+ttl_cache_interval = 300000 # 5mins
