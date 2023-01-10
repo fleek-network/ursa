@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::MetadataExt;
     use std::{thread, time::Duration};
 
     use anyhow::Error;
@@ -20,7 +19,7 @@ mod tests {
         let provider_interface = provider_engine.provider();
 
         let file = File::open("../../test_files/test.car".to_string()).await?;
-        let size = file.metadata().await?.size();
+        let size = file.metadata().await?.len();
         let reader = BufReader::new(file);
         let cids = load_car(provider_engine.store().blockstore(), reader).await?;
 
