@@ -17,7 +17,6 @@ use anyhow::Result;
 use cid::Cid;
 use db::Store;
 use fvm_ipld_blockstore::Blockstore;
-use graphsync::GraphSync;
 use libipld::store::StoreParams;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
@@ -55,6 +54,7 @@ use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
+    graphsync::GraphSync,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
