@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::MetadataExt;
     use std::{thread, time::Duration};
 
     use anyhow::Error;
@@ -10,9 +11,7 @@ mod tests {
     use tokio::{sync::oneshot, task};
     use tracing::{error, info};
 
-    use crate::{
-        engine::ProviderCommand, signed_head::SignedHead, tests::provider_engine_init, Car,
-    };
+    use crate::{engine::ProviderCommand, signed_head::SignedHead, tests::provider_engine_init};
 
     #[tokio::test]
     async fn test_events() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,10 +20,9 @@ mod tests {
         let provider_interface = provider_engine.provider();
 
         let file = File::open("../../test_files/test.car".to_string()).await?;
+        let size = file.metadata().await?.size();
         let reader = BufReader::new(file);
-        let car = Car::from_file("../../test_files/test.car").await?;
-        let size = car.size;
-        let cids = load_car(provider_engine.store().blockstore(), car).await?;
+        let cids = load_car(provider_engine.store().blockstore(), reader).await?;
 
         info!("The inserted cids are: {cids:?}");
 
