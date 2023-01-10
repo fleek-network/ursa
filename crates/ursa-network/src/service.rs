@@ -757,10 +757,17 @@ where
                         self.response_channels.insert(cid, vec![sender]);
                     }
 
-                    let query = self
-                        .swarm
-                        .behaviour_mut()
-                        .get_block(cid, peers.iter().copied());
+                    let peers = peers
+                        .iter()
+                        .filter(|peer| {
+                            if let Some(cache_summary) = self.peer_cached_content.get(*peer) {
+                                return cache_summary.contains(&cid.to_bytes());
+                            }
+                            true
+                        })
+                        .copied();
+
+                    let query = self.swarm.behaviour_mut().get_block(cid, peers);
 
                     if let Ok(query_id) = query {
                         self.bitswap_queries.insert(query_id, cid);
