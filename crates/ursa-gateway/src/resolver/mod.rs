@@ -12,7 +12,6 @@ use tracing::{debug, error, info, warn};
 use crate::resolver::model::Metadata;
 use crate::{resolver::model::ProviderResult, util::error::Error};
 
-// Base64 encoded. See ursa-index-provider::Metadata.
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
