@@ -19,6 +19,7 @@ mod tests {
         let provider_interface = provider_engine.provider();
 
         let file = File::open("../../test_files/test.car".to_string()).await?;
+        let size = file.metadata().await?.len();
         let reader = BufReader::new(file);
         let cids = load_car(provider_engine.store().blockstore(), reader).await?;
 
@@ -27,6 +28,7 @@ mod tests {
         let (sender, receiver) = oneshot::channel();
         let message = ProviderCommand::Put {
             context_id: cids[0].to_bytes(),
+            size,
             sender,
         };
 

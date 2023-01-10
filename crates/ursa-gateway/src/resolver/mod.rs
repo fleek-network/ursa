@@ -7,12 +7,12 @@ use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
 use model::IndexerResponse;
 use serde_json::from_slice;
-use tracing::{debug, error};
+use tracing::{debug, error, info, warn};
 
+use crate::resolver::model::Metadata;
 use crate::{resolver::model::ProviderResult, util::error::Error};
 
-// Base64 encoded. See ursa-index-provider::Metadata.
-const ENCODED_METADATA: &str = "AAkAAAAAAAAAAAAAAAAAAAwAAAAAAAAARmxlZWtOZXR3b3Jr";
+const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
 type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -75,20 +75,44 @@ impl Resolver {
 
         debug!("Received indexer response for {cid}: {indexer_response:?}");
 
-        let providers: Vec<&ProviderResult> = indexer_response
+        let providers: Vec<(&ProviderResult, Metadata)> = indexer_response
             .multihash_results
             .first()
             .context("Indexer result did not contain a multi-hash result")?
             .provider_results
             .iter()
-            .filter(|provider| provider.metadata == ENCODED_METADATA)
+            .filter_map(|provider| {
+                let metadata_bytes = match base64::decode(&provider.metadata) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        error!("Failed to decode metadata {e:?}");
+                        return None;
+                    }
+                };
+                let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        error!("Failed to deserialize metadata {e:?}");
+                        return None;
+                    }
+                };
+                if metadata.data == FLEEK_NETWORK_FILTER {
+                    return Some((provider, metadata));
+                }
+                warn!("Invalid data in metadata {:?}", metadata.data);
+                None
+            })
             .collect();
 
         // TODO:
         // cherry-pick closest node
-        let provider_addresses: Vec<String> = providers
+        let (provider, metadata) = providers
             .first() // FIXME: temporary
-            .context("Multi-hash result did not contain a provider")?
+            .context("Multi-hash result did not contain a provider")?;
+
+        info!("File size received {}", metadata.size);
+
+        let provider_addresses: Vec<String> = provider
             .provider
             .addrs
             .iter()

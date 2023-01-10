@@ -19,6 +19,8 @@ const AD_SIGNATURE_DOMAIN: &str = "indexer";
 struct Metadata {
     // ProtocolID defines the protocol used for data retrieval.
     ProtocolID: u128,
+    // Size of the content.
+    Size: u64,
     // Data is specific to the identified protocol, and provides data, or a
     // link to data, necessary for retrieval.
     Data: Vec<u8>,
@@ -47,11 +49,18 @@ pub struct Advertisement {
     pub IsRm: bool,
 }
 impl Advertisement {
-    pub fn new(context_id: Vec<u8>, provider: PeerId, addresses: Vec<String>, is_rm: bool) -> Self {
+    pub fn new(
+        context_id: Vec<u8>,
+        provider: PeerId,
+        addresses: Vec<String>,
+        is_rm: bool,
+        content_size: u64,
+    ) -> Self {
         // prtocolid for bitswap
         let raw_metadata = Metadata {
             ProtocolID: 0x0900,
             Data: b"FleekNetwork".to_vec(),
+            Size: content_size,
         };
         let metadata = bincode::serialize(&raw_metadata).unwrap();
 

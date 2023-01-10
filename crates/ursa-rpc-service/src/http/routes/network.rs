@@ -1,6 +1,6 @@
 pub const BASE_PATH: &str = "./car_files";
 
-use crate::api::{NetworkInterface, NodeNetworkInterface};
+use crate::api::{Car, NetworkInterface, NodeNetworkInterface};
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path},
     http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
@@ -67,7 +67,10 @@ where
                 let vec_data = data.to_vec();
                 let reader = Cursor::new(&vec_data);
 
-                match interface.put_car(reader).await {
+                match interface
+                    .put_car(Car::new(vec_data.len() as u64, reader))
+                    .await
+                {
                     Err(err) => {
                         error!("{:?}", err);
                         Err(NetworkError::InternalError(err.to_string()))

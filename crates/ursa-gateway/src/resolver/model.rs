@@ -32,3 +32,10 @@ pub struct AddrInfo {
     #[serde(rename = "Addrs")]
     pub addrs: Vec<Multiaddr>,
 }
+
+#[derive(Deserialize)]
+pub struct Metadata {
+    _protocol_id: u128,
+    pub size: u64,
+    pub data: Vec<u8>,
+}
