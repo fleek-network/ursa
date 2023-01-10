@@ -19,11 +19,11 @@ const AD_SIGNATURE_DOMAIN: &str = "indexer";
 struct Metadata {
     // ProtocolID defines the protocol used for data retrieval.
     ProtocolID: u128,
+    // Size of the content.
+    Size: u64,
     // Data is specific to the identified protocol, and provides data, or a
     // link to data, necessary for retrieval.
     Data: Vec<u8>,
-    // Size of the content.
-    Size: u64,
 }
 
 #[allow(non_snake_case)]
