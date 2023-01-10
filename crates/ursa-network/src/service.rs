@@ -589,7 +589,7 @@ where
                                 .build()
                                 .unwrap();
                             let swarm = self.swarm.behaviour_mut();
-                            swarm.graphsync.request(peer, req);
+                            swarm.graphsync.enqueue_pull_request(peer, req);
                             if swarm
                                 .request_response
                                 .send_response(

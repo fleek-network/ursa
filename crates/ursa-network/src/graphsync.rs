@@ -1,4 +1,4 @@
-use graphsync::{HandlerProto, Request};
+use graphsync::{GraphSyncEvent, HandlerProto, Request, RequestId};
 use ipld_traversal::blockstore::Blockstore;
 use libp2p::core::connection::ConnectionId;
 use libp2p::core::transport::ListenerId;
@@ -8,15 +8,22 @@ use libp2p::swarm::{
     PollParameters,
 };
 use libp2p::{Multiaddr, PeerId};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::task::{Context, Poll};
+use tracing::error;
 
 pub struct GraphSync<S>
 where
     S: Blockstore + Send + Clone + 'static,
 {
     graphsync: graphsync::GraphSync<S>,
-    _tasks: Vec<Request>,
-    _inflight: Vec<Request>,
+    queue: VecDeque<Task>,
+    inflight: HashMap<PeerId, HashSet<RequestId>>,
+}
+
+struct Task {
+    request: Request,
+    peer: PeerId,
 }
 
 impl<S> GraphSync<S>
@@ -26,8 +33,8 @@ where
     pub fn new(store: S) -> Self {
         Self {
             graphsync: graphsync::GraphSync::new(store),
-            _tasks: Vec::new(),
-            _inflight: Vec::new(),
+            queue: VecDeque::new(),
+            inflight: HashMap::new(),
         }
     }
 
@@ -35,8 +42,8 @@ where
         self.graphsync.add_address(peer, addr)
     }
 
-    pub fn request(&mut self, peer: PeerId, request: Request) {
-        self.graphsync.request(peer, request)
+    pub fn enqueue_pull_request(&mut self, peer: PeerId, request: Request) {
+        self.queue.push_back(Task { request, peer });
     }
 }
 
@@ -118,6 +125,38 @@ where
         cx: &mut Context<'_>,
         params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
-        self.graphsync.poll(cx, params)
+        if let Some(task) = self.queue.pop_front() {
+            let requests = self.inflight.entry(task.peer).or_default();
+            // TODO: make this value configurable?
+            // Choose a better default value.
+            if requests.len() <= 69 {
+                requests.insert(*task.request.id());
+                self.graphsync.request(task.peer, task.request);
+            } else {
+                self.queue.push_back(task)
+            }
+        }
+
+        match self.graphsync.poll(cx, params) {
+            Poll::Ready(NetworkBehaviourAction::GenerateEvent(GraphSyncEvent::Completed {
+                id,
+                peer_id,
+                received,
+            })) => {
+                if let Some(requests) = self.inflight.get_mut(&peer_id) {
+                    requests.remove(&id);
+                } else {
+                    error!("[GraphSync]: request id {id} was not in our queue");
+                }
+                Poll::Ready(NetworkBehaviourAction::GenerateEvent(
+                    GraphSyncEvent::Completed {
+                        id,
+                        peer_id,
+                        received,
+                    },
+                ))
+            }
+            result => result,
+        }
     }
 }
