@@ -2,6 +2,7 @@ use crate::behaviour::BehaviourEvent;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
     codec::protocol::{RequestType, UrsaExchangeRequest},
+    origin::Origin,
     NetworkCommand, NetworkConfig, UrsaService, URSA_GLOBAL,
 };
 use anyhow::Result;
@@ -571,7 +572,7 @@ async fn test_send_cache_summary() -> Result<()> {
             }
         }
     }
-  
+
     // check if cid exists
     let cached_content = node_2
         .peer_cached_content
