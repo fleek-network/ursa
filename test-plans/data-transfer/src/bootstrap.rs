@@ -99,7 +99,6 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
     config.swarm_addrs = vec![local_addr.parse().unwrap()];
 
     let mut batch_index = 0;
-    //let mut batch_size = NODES_PER_BATCH;
     // Divide the nodes in batches of size `NODES_PER_BATCH`.
     // The last batch may have less than `NODES_PER_BATCH` nodes.
     let num_batches = ((num_nodes as f64) / (NODES_PER_BATCH as f64)).ceil() as u64;
