@@ -212,8 +212,8 @@ where
     _event_receiver: Receiver<NetworkEvent>,
     /// Bitswap pending queries.
     bitswap_queries: FnvHashMap<QueryId, Cid>,
-    /// hashmap for keeping track of rpc response channels.
-    response_channels: FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>,
+    /// Structure to keep track of rpc response channels for cids.
+    response_channels: ResponseChannels,
     // origin pending queries
     origin_queries: FnvHashMap<crate::origin::QueryId, Cid>,
     /// Pending requests.
@@ -317,13 +317,13 @@ where
             _event_receiver,
             response_channels: Default::default(),
             bitswap_queries: Default::default(),
+            origin_queries: Default::default(),
             _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
             peers,
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
-            origin_queries: Default::default(),
         })
     }
 
@@ -465,23 +465,14 @@ where
             }
             BitswapEvent::Complete(query_id, result) => {
                 if let Some(cid) = self.bitswap_queries.remove(&query_id) {
-                    if let Some(chans) = self.response_channels.remove(&cid) {
-                        for chan in chans.into_iter() {
-                            match result {
-                                Ok(()) => {
-                                    if chan.send(Ok(())).is_err() {
-                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
-                                    }
-                                }
-                                Err(_) => {
-                                    if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
-                                    error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
-                                    }
-                                }
-                            }
+                    match result {
+                        Ok(()) => {
+                            self.response_channels.success(&cid);
                         }
-                    } else {
-                        debug!("[BitswapEvent::Complete] - Received Bitswap response, but response channel cannot be found");
+                        Err(e) => {
+                            debug!("failed to get cid {cid} with bitswap: {e}");
+                            self.response_channels.bitswap_error(&cid);
+                        }
                     }
                 } else {
                     error!("[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map");
@@ -495,20 +486,14 @@ where
         match origin_event {
             OriginEvent::QueryCompleted(id, _, res) => {
                 if let Some(cid) = self.origin_queries.remove(&id) {
-                    if let Some(channels) = self.response_channels.remove(&cid) {
-                        // response channels are shared for bitswap and origins. This allows the two behaviours
-                        // to answer for each other to notify any and all open requests for a cid that
-                        // the blockstore is now up to date with the cid queried
-                        let result = res.map_err(|e| e.to_string());
-                        for chan in channels.into_iter() {
-                            if chan.send(result.clone().map_err(|e| anyhow!(e))).is_err() {
-                                error!(
-                                    "[OriginEvent::QueryCompleted] - response channel send failed"
-                                );
-                            }
+                    match res {
+                        Ok(()) => {
+                            self.response_channels.success(&cid);
                         }
-                    } else {
-                        debug!("[OriginEvent::QueryCompleted] - Received Origin response, there are no pending response channels for the cid");
+                        Err(e) => {
+                            error!("failed to get cid {cid} via origin: {e}");
+                            self.response_channels.origin_error(&cid);
+                        }
                     }
                 }
             }
@@ -785,11 +770,7 @@ where
                     )))
                         .map_err(|_| anyhow!("Failed to get a bitswap block!"));
                 } else {
-                    if let Some(chans) = self.response_channels.get_mut(&cid) {
-                        chans.push(sender);
-                    } else {
-                        self.response_channels.insert(cid, vec![sender]);
-                    }
+                    self.response_channels.push_bitswap(cid, sender);
 
                     let peers = peers
                         .iter()
@@ -822,7 +803,7 @@ where
                 info!("Getting cid {cid} via origin {origin:?}");
                 let query = self.swarm.behaviour_mut().origin.get(origin, cid);
                 self.origin_queries.insert(query, cid);
-                self.response_channels.entry(cid).or_default().push(sender);
+                self.response_channels.push_origin(cid, sender);
             }
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
@@ -983,6 +964,65 @@ where
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
                     self.handle_command(command).expect("Handle rpc command.");
                 },
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ResponseChannels(
+    FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>, // bitswap
+    FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>, // origin
+);
+
+impl ResponseChannels {
+    pub fn push_bitswap(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
+        self.0.entry(cid).or_default().push(sender);
+    }
+
+    pub fn push_origin(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
+        self.1.entry(cid).or_default().push(sender);
+    }
+
+    pub fn success(&mut self, cid: &Cid) {
+        if let Some(bitswap_chans) = self.0.remove(cid) {
+            for chan in bitswap_chans {
+                if chan.send(Ok(())).is_err() {
+                    debug!("failed to send on bitswap response channel")
+                }
+            }
+        }
+        if let Some(origin_chans) = self.1.remove(cid) {
+            for chan in origin_chans {
+                if chan.send(Ok(())).is_err() {
+                    debug!("failed to send on origin response channel")
+                }
+            }
+        }
+    }
+
+    pub fn bitswap_error(&mut self, cid: &Cid) {
+        if let Some(bitswap_chans) = self.0.remove(cid) {
+            for chan in bitswap_chans {
+                if chan
+                    .send(Err(anyhow!("fetching from bitswap failed")))
+                    .is_err()
+                {
+                    debug!("failed to send on bitswap response channel")
+                }
+            }
+        }
+    }
+
+    pub fn origin_error(&mut self, cid: &Cid) {
+        if let Some(origin_chans) = self.1.remove(cid) {
+            for chan in origin_chans {
+                if chan
+                    .send(Err(anyhow!("fetching from origin failed")))
+                    .is_err()
+                {
+                    debug!("failed to send on origin response channel")
+                }
             }
         }
     }
