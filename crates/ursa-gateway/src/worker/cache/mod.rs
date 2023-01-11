@@ -5,10 +5,10 @@ pub mod worker;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{body::Body, response::Response};
 use bytes::Bytes;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
+use crate::resolver::Response;
 use crate::{
     cache::{ByteSize, Tlrfu},
     util::error::Error,
@@ -52,7 +52,7 @@ pub enum CacheCommand {
     },
     Fetch {
         cid: String,
-        sender: oneshot::Sender<Result<Response<Body>, Error>>,
+        sender: oneshot::Sender<Result<Response, Error>>,
     },
     TtlCleanUp,
 }

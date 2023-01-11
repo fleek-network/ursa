@@ -74,14 +74,11 @@ async fn fetch_and_insert(
             error!("Failed to dispatch Fetch command: {e:?}");
             anyhow!("Failed to dispatch Fetch command")
         })?;
-    let mut body = match rx
-        .await
-        .map_err(|e| {
-            error!("Failed to receive response from resolver: {e:?}");
-            anyhow!("Failed to receive response from resolver")
-        })??
-        .into_parts()
-    {
+    let response = rx.await.map_err(|e| {
+        error!("Failed to receive response from resolver: {e:?}");
+        anyhow!("Failed to receive response from resolver")
+    })??;
+    let mut body = match response.resp.into_parts() {
         (
             Parts {
                 status: StatusCode::OK,
