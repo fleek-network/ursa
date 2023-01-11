@@ -22,7 +22,7 @@ use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
-use ursa_network::{NetworkCommand, origin::Origin};
+use ursa_network::{origin::Origin, NetworkCommand};
 use ursa_store::{Dag, UrsaStore};
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;

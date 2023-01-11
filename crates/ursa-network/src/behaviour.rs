@@ -55,7 +55,7 @@ use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
-    origin::OriginBehavior
+    origin::OriginBehavior,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";

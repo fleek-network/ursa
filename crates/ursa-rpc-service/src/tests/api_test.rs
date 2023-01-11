@@ -5,10 +5,10 @@ mod tests {
     use anyhow::Result;
     use async_fs::{remove_file, File};
     use futures::io::BufReader;
+    use fvm_ipld_blockstore::Blockstore;
     use fvm_ipld_car::load_car;
     use std::path::Path;
     use std::sync::Arc;
-    use fvm_ipld_blockstore::Blockstore;
 
     #[tokio::test]
     async fn test_put_and_get() -> Result<()> {
@@ -68,11 +68,17 @@ mod tests {
         });
 
         // verify response
-        let data = interface.get(IPFS_CID.parse()?).await?.expect("could not find data in blockstore");
+        let data = interface
+            .get(IPFS_CID.parse()?)
+            .await?
+            .expect("could not find data in blockstore");
         assert_eq!(data.len(), IPFS_LEN);
 
         // verify block is stored correctly
-        let block = store.blockstore().get(&IPFS_CID.parse()?)?.expect("could not find block in blockstore");
+        let block = store
+            .blockstore()
+            .get(&IPFS_CID.parse()?)?
+            .expect("could not find block in blockstore");
         assert_eq!(block.len(), IPFS_LEN);
 
         Ok(())
