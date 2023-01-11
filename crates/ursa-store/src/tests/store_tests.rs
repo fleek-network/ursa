@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use async_fs::File;
     use cid::Cid;
     use futures::io::BufReader;
     use fvm_ipld_car::{load_car, CarReader};
-    use std::path::Path;
-    use std::sync::Arc;
 
     use crate::{
         tests::{get_store, setup_logger},
@@ -16,7 +16,7 @@ mod tests {
     async fn test_dag_traversal() -> anyhow::Result<()> {
         setup_logger();
         let store = get_store();
-        let store_2 = Arc::clone(&store);
+        let store_2 = store.clone();
 
         let path = Path::new("../../test_files/test.car");
         let file = File::open(path).await?;

@@ -1,16 +1,18 @@
-use anyhow::Result;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::{config::ProviderConfig, engine::ProviderEngine};
+use anyhow::Result;
 use db::MemoryDB;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use simple_logger::SimpleLogger;
 use tokio::task;
 use tracing::{info, log::LevelFilter};
+
 use ursa_network::{NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
+
+use crate::{config::ProviderConfig, engine::ProviderEngine};
 
 pub fn setup_logger(level: LevelFilter) {
     if SimpleLogger::new()
@@ -23,9 +25,8 @@ pub fn setup_logger(level: LevelFilter) {
     }
 }
 
-pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
-    let db = Arc::new(MemoryDB::default());
-    Arc::new(UrsaStore::new(Arc::clone(&db)))
+pub fn get_store() -> UrsaStore<MemoryDB> {
+    UrsaStore::new(Arc::new(MemoryDB::default()))
 }
 
 pub fn provider_engine_init(
@@ -43,7 +44,7 @@ pub fn provider_engine_init(
     let store = get_store();
     let index_store = get_store();
 
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let service = UrsaService::new(keypair.clone(), &network_config, store.clone())?;
 
     let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
 

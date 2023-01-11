@@ -1,15 +1,17 @@
-mod api_test;
-mod server_test;
+use std::sync::Arc;
 
 use db::MemoryDB;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
 use simple_logger::SimpleLogger;
-use std::sync::Arc;
 use tracing::{log::LevelFilter, warn};
+
 use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
 use ursa_network::{NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
+
+mod api_test;
+mod server_test;
 
 pub fn setup_logger() {
     let level = LevelFilter::Debug;
@@ -22,15 +24,14 @@ pub fn setup_logger() {
     }
 }
 
-pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
-    let db = Arc::new(MemoryDB::default());
-    Arc::new(UrsaStore::new(Arc::clone(&db)))
+pub fn get_store() -> UrsaStore<MemoryDB> {
+    UrsaStore::new(Arc::new(MemoryDB::default()))
 }
 
 type InitResult = anyhow::Result<(
     UrsaService<MemoryDB>,
     ProviderEngine<MemoryDB>,
-    Arc<UrsaStore<MemoryDB>>,
+    UrsaStore<MemoryDB>,
 )>;
 
 pub fn init() -> InitResult {
@@ -40,12 +41,12 @@ pub fn init() -> InitResult {
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let service = UrsaService::new(keypair.clone(), &network_config, store.clone())?;
     let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
 
     let provider_engine = ProviderEngine::new(
         keypair,
-        Arc::clone(&store),
+        store.clone(),
         get_store(),
         ProviderConfig::default(),
         service.command_sender(),

@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use crate::api::{NetworkInterface, NodeNetworkInterface};
-    use crate::tests::{init, setup_logger};
+    use std::path::Path;
+    use std::sync::Arc;
+
     use async_fs::{remove_file, File};
     use futures::io::BufReader;
     use fvm_ipld_car::load_car;
-    use std::path::Path;
-    use std::sync::Arc;
+
+    use crate::api::{NetworkInterface, NodeNetworkInterface};
+    use crate::tests::{init, setup_logger};
 
     #[tokio::test]
     async fn test_put_and_get() -> anyhow::Result<()> {
@@ -14,7 +16,7 @@ mod tests {
         let (mut ursa_service, mut provider_engine, store) = init()?;
 
         let interface = Arc::new(NodeNetworkInterface {
-            store: Arc::clone(&store),
+            store: store.clone(),
             network_send: ursa_service.command_sender(),
             provider_send: provider_engine.command_sender(),
         });

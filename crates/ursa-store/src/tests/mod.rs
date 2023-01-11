@@ -1,6 +1,7 @@
+use std::sync::Arc;
+
 use db::MemoryDB;
 use simple_logger::SimpleLogger;
-use std::sync::Arc;
 use tracing::{log::LevelFilter, warn};
 
 use crate::UrsaStore;
@@ -16,7 +17,6 @@ pub fn setup_logger() {
     }
 }
 
-pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
-    let db = Arc::new(MemoryDB::default());
-    Arc::new(UrsaStore::new(Arc::clone(&db)))
+pub fn get_store() -> UrsaStore<MemoryDB> {
+    UrsaStore::new(Arc::new(MemoryDB::default()))
 }
