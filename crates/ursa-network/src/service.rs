@@ -47,6 +47,7 @@ use std::{
     num::{NonZeroU8, NonZeroUsize},
     sync::Arc,
 };
+use std::collections::hash_map::Entry;
 use tokio::{
     select,
     sync::{
@@ -984,7 +985,14 @@ pub struct ResponseChannels(
 
 impl ResponseChannels {
     pub fn push_bitswap(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
-        self.0.entry(cid).or_default().push(sender);
+        match self.0.entry(cid) {
+            Entry::Occupied(mut o) => {
+                o.get_mut().push(sender);
+            },
+            Entry::Vacant(v) => {
+                v.insert(vec![sender]);
+            },
+        };
     }
 
     pub fn push_origin(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
