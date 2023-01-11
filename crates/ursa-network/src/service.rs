@@ -189,7 +189,7 @@ pub enum NetworkCommand {
 
 pub struct UrsaService<S>
 where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
     /// Store.
     pub store: Arc<UrsaStore<S>>,
@@ -223,7 +223,7 @@ where
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
@@ -726,10 +726,7 @@ where
                 }
                 Ok(())
             }
-            _ => {
-                debug!("Unhandled swarm event {:?}", event);
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 
