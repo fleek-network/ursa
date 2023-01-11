@@ -37,10 +37,6 @@ pub enum Origin {
 }
 
 impl Origin {
-    pub fn iter() -> Iter<'static, Origin> {
-        [Origin::Ipfs].iter()
-    }
-
     pub async fn get<G: Display, C: Display>(
         &self,
         client: &Client,
