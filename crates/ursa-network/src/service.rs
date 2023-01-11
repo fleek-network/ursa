@@ -41,13 +41,13 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     num::{NonZeroU8, NonZeroUsize},
     sync::Arc,
 };
-use std::collections::hash_map::Entry;
 use tokio::{
     select,
     sync::{
@@ -988,10 +988,10 @@ impl ResponseChannels {
         match self.0.entry(cid) {
             Entry::Occupied(mut o) => {
                 o.get_mut().push(sender);
-            },
+            }
             Entry::Vacant(v) => {
                 v.insert(vec![sender]);
-            },
+            }
         };
     }
 

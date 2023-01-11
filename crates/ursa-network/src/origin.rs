@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display};
-use std::slice::Iter;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
