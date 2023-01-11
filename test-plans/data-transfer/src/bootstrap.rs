@@ -114,7 +114,7 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
         };
         if seq >= lower && seq <= upper {
             batch_index = i;
-            //batch_size = upper - lower + 1;
+            
             // Wait for previous batch to finish
             client.barrier(format!("batch-{}-done", batch_index - 1), NODES_PER_BATCH).await.unwrap();
         }
