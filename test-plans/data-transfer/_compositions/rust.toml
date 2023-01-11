@@ -10,6 +10,6 @@
 
 [[groups]]
   id = "data-transfer"
-  instances = { count = 28 }
+  instances = { count = 10 }
   [groups.build_config.build_args]
     BINARY_NAME = 'data-transfer'
