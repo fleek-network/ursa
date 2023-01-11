@@ -2,14 +2,16 @@
 mod tests {
     use crate::api::{NetworkInterface, NodeNetworkInterface};
     use crate::tests::{init, setup_logger};
+    use anyhow::Result;
     use async_fs::{remove_file, File};
     use futures::io::BufReader;
     use fvm_ipld_car::load_car;
     use std::path::Path;
     use std::sync::Arc;
+    use fvm_ipld_blockstore::Blockstore;
 
     #[tokio::test]
-    async fn test_put_and_get() -> anyhow::Result<()> {
+    async fn test_put_and_get() -> Result<()> {
         setup_logger();
         let (mut ursa_service, mut provider_engine, store) = init()?;
 
@@ -41,6 +43,37 @@ mod tests {
 
         assert_eq!(cids[0], root_cid);
         remove_file(path).await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_origin_fallback() -> Result<()> {
+        setup_logger();
+
+        const IPFS_CID: &str = "bafkreihwcrnsi2tqozwq22k4vl7flutu43jlxgb3tenewysm2xvfuej5i4";
+        const IPFS_LEN: usize = 26849;
+
+        let (node, mut provider, store) = init()?;
+        let command_sender = node.command_sender();
+        provider.command_receiver().close();
+        tokio::task::spawn(async move {
+            node.start().await.unwrap();
+        });
+
+        let interface = Arc::new(NodeNetworkInterface {
+            store: Arc::clone(&store),
+            network_send: command_sender,
+            provider_send: provider.command_sender(),
+        });
+
+        // verify response
+        let data = interface.get(IPFS_CID.parse()?).await?.expect("could not find data in blockstore");
+        assert_eq!(data.len(), IPFS_LEN);
+
+        // verify block is stored correctly
+        let block = store.blockstore().get(&IPFS_CID.parse()?)?.expect("could not find block in blockstore");
+        assert_eq!(block.len(), IPFS_LEN);
 
         Ok(())
     }

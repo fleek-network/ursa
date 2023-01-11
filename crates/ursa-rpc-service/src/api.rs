@@ -20,9 +20,9 @@ use tokio::sync::mpsc::UnboundedSender as Sender;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
-use ursa_network::NetworkCommand;
+use ursa_network::{NetworkCommand, origin::Origin};
 use ursa_store::{Dag, UrsaStore};
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
@@ -62,6 +62,7 @@ pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 /// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
+    async fn check_blockstore(&self, cid: Cid) -> Result<()>;
     /// Get a bitswap block from the network
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
 
@@ -85,7 +86,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     // get peers from the network
     async fn get_peers(&self) -> Result<HashSet<PeerId>>;
 
-    // get the addrresses that p2p node is listening on
+    // get the addresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
 #[derive(Clone)]
@@ -103,7 +104,7 @@ impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
-    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
+    async fn check_blockstore(&self, cid: Cid) -> Result<()> {
         if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
             let (sender, receiver) = oneshot::channel();
@@ -111,33 +112,33 @@ where
 
             // use network sender to send command
             self.network_send.send(request)?;
+
             if let Err(e) = receiver.await? {
-                return Err(anyhow!(
-                    "The bitswap failed, please check server logs {:?}",
-                    e
-                ));
+                debug!("Falling back to origin, bitswap failed: {e:?}");
+                // bitswap failed, fallback to origin
+                let (origin_sender, origin_receiver) = oneshot::channel();
+                let origin_req = NetworkCommand::GetOrigin {
+                    origin: Origin::Ipfs,
+                    cid,
+                    sender: origin_sender,
+                };
+                self.network_send.send(origin_req)?;
+                if let Err(e) = origin_receiver.await? {
+                    return Err(anyhow!("Origin request failed: {e:?}"));
+                }
             }
         }
+
+        Ok(())
+    }
+
+    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
+        self.check_blockstore(cid).await?;
         self.store.blockstore().get(&cid)
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
-        if !self.store.blockstore().has(&root_cid)? {
-            let (sender, receiver) = oneshot::channel();
-            let request = NetworkCommand::GetBitswap {
-                cid: root_cid,
-                sender,
-            };
-
-            // use network sender to send command
-            self.network_send.send(request)?;
-            if let Err(e) = receiver.await? {
-                return Err(anyhow!(
-                    "The bitswap failed, please check server logs {:?}",
-                    e
-                ));
-            }
-        }
+        self.check_blockstore(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
         info!("Dag traversal done, now streaming the file");
 

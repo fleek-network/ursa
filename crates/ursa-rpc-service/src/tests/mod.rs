@@ -37,6 +37,7 @@ pub fn init() -> InitResult {
     let store = get_store();
     let network_config = NetworkConfig {
         swarm_addrs: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        bootstrap_nodes: vec![],
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
