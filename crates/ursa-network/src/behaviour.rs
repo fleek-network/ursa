@@ -55,6 +55,7 @@ use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
+    origin::OriginBehavior
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -106,6 +107,9 @@ where
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
     pub(crate) graphsync: GraphSync<GraphSyncStorage<S>>,
+
+    /// Fetch content from origin
+    pub(crate) origin: OriginBehavior<S>,
 }
 
 impl<P, S> Behaviour<P, S>
@@ -206,7 +210,7 @@ where
         };
 
         // Set up the Graphsync behaviour.
-        let graphsync = GraphSync::new(graphsync_store);
+        let graphsync = GraphSync::new(graphsync_store.clone());
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {
@@ -230,6 +234,8 @@ where
             warn!("Skipping bootstrap");
         }
 
+        let origin = OriginBehavior::new(Default::default(), graphsync_store.0);
+
         Behaviour {
             ping,
             autonat,
@@ -237,6 +243,7 @@ where
             relay_client: relay_client.into(),
             dcutr,
             bitswap,
+            origin,
             identify,
             gossipsub,
             kad,

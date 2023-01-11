@@ -60,6 +60,7 @@ use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
+use crate::origin::{Origin, OriginEvent};
 use crate::transport::build_transport;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
@@ -157,6 +158,12 @@ pub enum NetworkCommand {
         sender: BlockOneShotSender<()>,
     },
 
+    GetOrigin {
+        origin: Origin,
+        cid: Cid,
+        sender: BlockOneShotSender<()>,
+    },
+
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
@@ -189,7 +196,7 @@ pub enum NetworkCommand {
 
 pub struct UrsaService<S>
 where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
     /// Store.
     pub store: Arc<UrsaStore<S>>,
@@ -207,6 +214,8 @@ where
     bitswap_queries: FnvHashMap<QueryId, Cid>,
     /// hashmap for keeping track of rpc response channels.
     response_channels: FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>,
+    // origin pending queries
+    origin_queries: FnvHashMap<crate::origin::QueryId, Cid>,
     /// Pending requests.
     _pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
     /// Pending responses.
@@ -223,7 +232,7 @@ where
 
 impl<S> UrsaService<S>
 where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
+    S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
@@ -314,6 +323,7 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CountingBloomFilter::default(),
             peer_cached_content: HashMap::default(),
+            origin_queries: Default::default(),
         })
     }
 
@@ -478,6 +488,32 @@ where
                 }
             }
         }
+        Ok(())
+    }
+
+    fn handle_origin(&mut self, origin_event: OriginEvent) -> Result<()> {
+        match origin_event {
+            OriginEvent::QueryCompleted(id, _, res) => {
+                if let Some(cid) = self.origin_queries.remove(&id) {
+                    if let Some(channels) = self.response_channels.remove(&cid) {
+                        // response channels are shared for bitswap and origins. This allows the two behaviours
+                        // to answer for each other to notify any and all open requests for a cid that
+                        // the blockstore is now up to date with the cid queried
+                        let result = res.map_err(|e| e.to_string());
+                        for chan in channels.into_iter() {
+                            if chan.send(result.clone().map_err(|e| anyhow!(e))).is_err() {
+                                error!(
+                                    "[OriginEvent::QueryCompleted] - response channel send failed"
+                                );
+                            }
+                        }
+                    } else {
+                        debug!("[OriginEvent::QueryCompleted] - Received Origin response, there are no pending response channels for the cid");
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -686,6 +722,7 @@ where
                     // bitswap metrics are internal
                     self.handle_bitswap(bitswap_event)
                 }
+                BehaviourEvent::Origin(origin_event) => self.handle_origin(origin_event),
                 BehaviourEvent::Gossipsub(gossip_event) => {
                     gossip_event.record();
                     self.handle_gossip(gossip_event)
@@ -726,10 +763,7 @@ where
                 }
                 Ok(())
             }
-            _ => {
-                debug!("Unhandled swarm event {:?}", event);
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 
@@ -779,6 +813,16 @@ where
                         )
                     }
                 }
+            }
+            NetworkCommand::GetOrigin {
+                origin,
+                cid,
+                sender,
+            } => {
+                info!("Getting cid {cid} via origin {origin:?}");
+                let query = self.swarm.behaviour_mut().origin.get(origin, cid);
+                self.origin_queries.insert(query, cid);
+                self.response_channels.entry(cid).or_default().push(sender);
             }
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
