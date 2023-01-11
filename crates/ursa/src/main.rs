@@ -46,6 +46,7 @@ async fn main() -> Result<()> {
                     network_config,
                     provider_config,
                     server_config,
+                    origin_config,
                 } = config;
 
                 // ursa service setup
@@ -85,8 +86,12 @@ async fn main() -> Result<()> {
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-                let service =
-                    UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+                let service = UrsaService::new(
+                    keypair.clone(),
+                    &network_config,
+                    &origin_config,
+                    Arc::clone(&store),
+                )?;
 
                 let provider_db = RocksDb::open(
                     provider_config.database_path.resolve(),

@@ -98,7 +98,7 @@ async fn network_init(
         config.bootstrap_nodes = vec![addr];
     }
 
-    let mut service = UrsaService::new(keypair, config, Arc::clone(&store))?;
+    let mut service = UrsaService::new(keypair, config, &Default::default(), Arc::clone(&store))?;
 
     let node_addrs = async {
         loop {

@@ -67,6 +67,7 @@ use crate::{
     behaviour::{Behaviour, BehaviourEvent},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
+    OriginConfig,
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -247,7 +248,12 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
+    pub fn new(
+        keypair: Keypair,
+        config: &NetworkConfig,
+        origin_config: &OriginConfig,
+        store: Arc<UrsaStore<S>>,
+    ) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -269,6 +275,7 @@ where
         let behaviour = Behaviour::new(
             &keypair,
             config,
+            origin_config,
             bitswap_store,
             graphsync_store,
             relay_client,

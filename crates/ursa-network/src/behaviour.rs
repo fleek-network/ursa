@@ -56,6 +56,7 @@ use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
     origin::OriginBehavior,
+    OriginConfig,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -120,6 +121,7 @@ where
     pub fn new<B: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
+        origin_config: &OriginConfig,
         bitswap_store: B,
         graphsync_store: GraphSyncStorage<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
@@ -139,6 +141,9 @@ where
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
+
+        // Setup the origin behaviour
+        let origin = OriginBehavior::new(origin_config.to_owned(), graphsync_store.0.clone());
 
         if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
             // cargo tests will attempt to register duplicate registries, can ignore safely
@@ -210,7 +215,7 @@ where
         };
 
         // Set up the Graphsync behaviour.
-        let graphsync = GraphSync::new(graphsync_store.clone());
+        let graphsync = GraphSync::new(graphsync_store);
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {
@@ -233,8 +238,6 @@ where
         } else {
             warn!("Skipping bootstrap");
         }
-
-        let origin = OriginBehavior::new(Default::default(), graphsync_store.0);
 
         Behaviour {
             ping,
