@@ -28,7 +28,6 @@ Fixes # (issue)
 
 ## Checklist
 
-- [ ] I have performed a self-review and commented my code, particularly in complex areas
 - [ ] I have made corresponding changes to the tests
 - [ ] I have made corresponding changes to the documentation
 - [ ] I have run the app using my feature and ensured that no functionality is broken
