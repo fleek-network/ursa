@@ -1,29 +1,30 @@
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
 use anyhow::{anyhow, Result};
 use async_fs::{create_dir_all, File};
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use cid::Cid;
-use db::Store;
-use futures::channel::mpsc::unbounded;
-use futures::io::BufReader;
-use futures::{AsyncRead, AsyncWriteExt, SinkExt};
-use fvm_ipld_blockstore::Blockstore;
+use futures::{channel::mpsc::unbounded, io::BufReader, AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_car::{load_car, CarHeader};
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use tokio::sync::mpsc::UnboundedSender as Sender;
-use tokio::sync::{oneshot, RwLock};
-use tokio::task;
+use tokio::{
+    sync::{mpsc::UnboundedSender as Sender, oneshot, RwLock},
+    task,
+};
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{error, info};
+
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
-use ursa_store::{Dag, UrsaStore};
+use ursa_store::{Dag, StoreBase, UrsaStore};
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
@@ -89,20 +90,14 @@ pub trait NetworkInterface: Sync + Send + 'static {
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
 #[derive(Clone)]
-pub struct NodeNetworkInterface<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
-    pub store: Arc<UrsaStore<S>>,
+pub struct NodeNetworkInterface<S: StoreBase> {
+    pub store: UrsaStore<S>,
     pub network_send: Sender<NetworkCommand>,
     pub provider_send: Sender<ProviderCommand>,
 }
 
 #[async_trait]
-impl<S> NetworkInterface for NodeNetworkInterface<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+impl<S: StoreBase> NetworkInterface for NodeNetworkInterface<S> {
     async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
         if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");

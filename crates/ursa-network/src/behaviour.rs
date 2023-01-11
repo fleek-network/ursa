@@ -13,12 +13,14 @@
 //!   request/response protocol or protocol family, whereby each request is
 //!   sent over a new substream on a connection.
 
+use std::{borrow::Cow, collections::HashSet, iter, num::NonZeroUsize, time::Duration};
+
 use anyhow::Result;
 use cid::Cid;
-use db::Store;
-use fvm_ipld_blockstore::Blockstore;
 use graphsync::GraphSync;
+use libipld::codec::References;
 use libipld::store::StoreParams;
+use libipld::Ipld;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
@@ -41,20 +43,16 @@ use libp2p::{
     swarm::NetworkBehaviour,
     Multiaddr, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore};
-use std::borrow::Cow;
-use std::num::NonZeroUsize;
-use std::time::Duration;
-use std::{collections::HashSet, iter};
-
+use libp2p_bitswap::{Bitswap, BitswapConfig};
 use tracing::{info, warn};
-use ursa_metrics::BITSWAP_REGISTRY;
-use ursa_store::GraphSyncStorage;
 
-use crate::gossipsub::build_gossipsub;
+use ursa_metrics::BITSWAP_REGISTRY;
+use ursa_store::{BitswapStorage, StoreBase, UrsaStore};
+
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
+    gossipsub::build_gossipsub,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -66,11 +64,7 @@ fn ursa_agent() -> String {
 
 /// Composes protocols for the behaviour of the node in the network.
 #[derive(NetworkBehaviour)]
-pub struct Behaviour<P, S>
-where
-    P: StoreParams,
-    S: Blockstore + Clone + Store + Send + Sync + 'static,
-{
+pub struct Behaviour<S: StoreBase, P: StoreParams> {
     /// Alive checks.
     ping: Ping,
 
@@ -105,19 +99,17 @@ where
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
-    pub(crate) graphsync: GraphSync<GraphSyncStorage<S>>,
+    pub(crate) graphsync: GraphSync<UrsaStore<S>>,
 }
 
-impl<P, S> Behaviour<P, S>
+impl<S: StoreBase, P: StoreParams> Behaviour<S, P>
 where
-    P: StoreParams,
-    S: Blockstore + Clone + Store + Send + Sync + 'static,
+    Ipld: References<P::Codecs>,
 {
-    pub fn new<B: BitswapStore<Params = P>>(
+    pub fn new(
         keypair: &Keypair,
         config: &NetworkConfig,
-        bitswap_store: B,
-        graphsync_store: GraphSyncStorage<S>,
+        store: UrsaStore<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
     ) -> Self {
@@ -134,7 +126,10 @@ where
             .expect("PeerScoreParams and PeerScoreThresholds");
 
         // Setup the bitswap behaviour
-        let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
+        let bitswap = Bitswap::<P>::new(
+            BitswapConfig::default(),
+            BitswapStorage::<S, P>::from(store.clone()),
+        );
 
         if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
             // cargo tests will attempt to register duplicate registries, can ignore safely
@@ -206,7 +201,7 @@ where
         };
 
         // Set up the Graphsync behaviour.
-        let graphsync = GraphSync::new(graphsync_store);
+        let graphsync = GraphSync::new(store);
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {

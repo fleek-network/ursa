@@ -9,16 +9,15 @@ use axum::{
     Extension, Json, Router,
 };
 use cid::Cid;
-use db::Store;
 use futures::io::Cursor;
-use fvm_ipld_blockstore::Blockstore;
 use hyper::StatusCode;
 use std::{str::FromStr, sync::Arc};
 use tokio::task;
 use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
+use ursa_store::StoreBase;
 
-pub fn init<S: Blockstore + Store + Send + Sync + 'static>() -> Router {
+pub fn init<S: StoreBase>() -> Router {
     Router::new()
         .route("/ursa/v0/", post(upload_handler::<S>))
         .route("/ursa/v0/:cid", get(get_handler::<S>))
@@ -44,13 +43,10 @@ impl IntoResponse for NetworkError {
     }
 }
 
-pub async fn upload_handler<S>(
+pub async fn upload_handler<S: StoreBase>(
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
     mut buf: Multipart,
-) -> Result<impl IntoResponse, NetworkError>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+) -> Result<impl IntoResponse, NetworkError> {
     let upload_task = task::spawn(async move {
         info!("uploading file via http");
         if let Some(field) = buf
@@ -96,7 +92,7 @@ pub async fn get_handler<S>(
     Extension(interface): Extension<Arc<NodeNetworkInterface<S>>>,
 ) -> Result<impl IntoResponse, NetworkError>
 where
-    S: Blockstore + Store + Send + Sync + 'static,
+    S: StoreBase,
 {
     info!("Streaming file over http");
     if let Ok(cid) = Cid::from_str(&cid_str) {

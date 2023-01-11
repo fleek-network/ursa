@@ -2,14 +2,12 @@ use crate::advertisement::{self, EntryChunk};
 
 use advertisement::Advertisement;
 use anyhow::{anyhow, Error, Result};
-use db::Store;
 
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use cid::{multihash::Code, Cid};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::Cbor;
 use libipld::codec::Encode;
 use libipld_cbor::DagCborCodec;
@@ -25,22 +23,19 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tracing::{info, trace};
-use ursa_store::{BlockstoreExt, UrsaStore};
+use ursa_store::{BlockstoreExt, StoreBase, UrsaStore};
 
 pub const HEAD_KEY: &str = "head";
 
 pub struct Provider<S> {
     head: Arc<RwLock<Option<Cid>>>,
     keypair: Keypair,
-    store: Arc<UrsaStore<S>>,
+    store: UrsaStore<S>,
     temp_ads: HashMap<usize, Advertisement>,
 }
 
-impl<S> Provider<S>
-where
-    S: Blockstore + Store + Sync + Send + 'static,
-{
-    pub fn new(keypair: Keypair, store: Arc<UrsaStore<S>>) -> Self {
+impl<S: StoreBase> Provider<S> {
+    pub fn new(keypair: Keypair, store: UrsaStore<S>) -> Self {
         let head = store
             .blockstore()
             .read(HEAD_KEY)
@@ -54,8 +49,8 @@ where
         }
     }
 
-    pub fn store(&self) -> Arc<UrsaStore<S>> {
-        Arc::clone(&self.store)
+    pub fn store(&self) -> UrsaStore<S> {
+        self.store.clone()
     }
 
     pub fn keypair(&self) -> &Keypair {
@@ -68,15 +63,12 @@ where
     }
 }
 
-impl<S> Clone for Provider<S>
-where
-    S: Blockstore + Store + Sync + Send + 'static,
-{
+impl<S: StoreBase> Clone for Provider<S> {
     fn clone(&self) -> Self {
         Self {
             head: Arc::clone(&self.head),
             keypair: self.keypair.clone(),
-            store: Arc::clone(&self.store),
+            store: self.store.clone(),
             temp_ads: self.temp_ads.clone(),
         }
     }
@@ -107,10 +99,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
     fn create_announce_message(&mut self, peer_id: PeerId, domain: String) -> Result<Vec<u8>>;
 }
 
-impl<S> ProviderInterface for Provider<S>
-where
-    S: Blockstore + Store + Sync + Send + 'static,
-{
+impl<S: StoreBase> ProviderInterface for Provider<S> {
     fn create(&mut self, mut ad: Advertisement) -> Result<usize> {
         let id: usize = rand::thread_rng().gen();
         ad.Entries = None;

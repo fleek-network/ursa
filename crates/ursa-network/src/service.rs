@@ -11,13 +11,17 @@
 //! The [`Swarm`] events are processed in the main event loop. This loop handles dispatching [`NetworkCommand`]'s and
 //! receiving [`UrsaEvent`]'s using the respective channels.
 
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    num::{NonZeroU8, NonZeroUsize},
+};
+
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use cid::Cid;
-use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
-use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
 use libipld::DefaultParams;
@@ -41,12 +45,6 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
-use std::fmt::Debug;
-use std::{
-    collections::{HashMap, HashSet},
-    num::{NonZeroU8, NonZeroUsize},
-    sync::Arc,
-};
 use tokio::{
     select,
     sync::{
@@ -55,29 +53,27 @@ use tokio::{
     },
 };
 use tracing::{debug, error, info, trace, warn};
-use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
-use crate::behaviour::KAD_PROTOCOL;
-use crate::codec::protocol::{RequestType, ResponseType};
-use crate::transport::build_transport;
-use crate::utils::bloom_filter::CountingBloomFilter;
+use ursa_metrics::Recorder;
+use ursa_store::{StoreBase, UrsaStore};
+
 use crate::{
-    behaviour::{Behaviour, BehaviourEvent},
-    codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
+    behaviour::{Behaviour, BehaviourEvent, KAD_PROTOCOL},
+    codec::protocol::{RequestType, ResponseType, UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
+    transport::build_transport,
+    utils::bloom_filter::CountingBloomFilter,
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
 pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
-type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
+pub(crate) type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type SwarmEventType<S> = SwarmEvent<
-<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
-<
+<Behaviour<S, DefaultParams> as NetworkBehaviour>::OutEvent,
     <
         <
-            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+            <Behaviour<S, DefaultParams> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
         >::Handler as ConnectionHandler
     >::Error
 >;
@@ -187,14 +183,11 @@ pub enum NetworkCommand {
     },
 }
 
-pub struct UrsaService<S>
-where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
-{
+pub struct UrsaService<S: StoreBase> {
     /// Store.
-    pub store: Arc<UrsaStore<S>>,
+    pub store: UrsaStore<S>,
     /// The main libp2p swarm emitting events.
-    swarm: Swarm<Behaviour<DefaultParams, S>>,
+    swarm: Swarm<Behaviour<S, DefaultParams>>,
     /// Handles outbound messages to peers.
     command_sender: Sender<NetworkCommand>,
     /// Handles inbound messages from peers.
@@ -221,10 +214,7 @@ where
     peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
 }
 
-impl<S> UrsaService<S>
-where
-    S: Blockstore + Clone + Debug + Store + Send + Sync + 'static,
-{
+impl<S: StoreBase> UrsaService<S> {
     /// Init a new [`UrsaService`] based on [`NetworkConfig`]
     ///
     /// For ursa `keypair` we use ed25519 either
@@ -238,7 +228,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
+    pub fn new(keypair: Keypair, config: &NetworkConfig, store: UrsaStore<S>) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -253,15 +243,12 @@ where
             (None, None)
         };
 
-        let bitswap_store = BitswapStorage(store.clone());
-        let graphsync_store = GraphSyncStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
         let mut peers = HashSet::new();
-        let behaviour = Behaviour::new(
+        let behaviour = Behaviour::<S, DefaultParams>::new(
             &keypair,
             config,
-            bitswap_store,
-            graphsync_store,
+            store.clone(),
             relay_client,
             &mut peers,
         );
@@ -669,7 +656,6 @@ where
     /// Handle swarm events
     pub fn handle_swarm_event(&mut self, event: SwarmEventType<S>) -> Result<()> {
         // record basic swarm metrics
-
         event.record();
         match event {
             SwarmEvent::Behaviour(event) => match event {
@@ -726,10 +712,7 @@ where
                 }
                 Ok(())
             }
-            _ => {
-                debug!("Unhandled swarm event {:?}", event);
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 

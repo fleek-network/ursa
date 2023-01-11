@@ -1,8 +1,10 @@
+use std::{net::SocketAddr, sync::Arc};
+
 use anyhow::Result;
 use axum::{Extension, Router};
-use db::Store;
-use fvm_ipld_blockstore::Blockstore;
-use std::{net::SocketAddr, sync::Arc};
+use tracing::info;
+
+use ursa_store::StoreBase;
 
 use crate::{
     api::NodeNetworkInterface,
@@ -11,20 +13,13 @@ use crate::{
     rpc::{routes, RpcServer},
     service::MultiplexService,
 };
-use tracing::info;
 
-pub struct Server<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+pub struct Server<S: StoreBase> {
     rpc_server: RpcServer,
     interface: Arc<NodeNetworkInterface<S>>,
 }
 
-impl<S> Server<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+impl<S: StoreBase> Server<S> {
     pub fn new(interface: Arc<NodeNetworkInterface<S>>) -> Self {
         Self {
             rpc_server: RpcServer::new(Arc::clone(&interface)),

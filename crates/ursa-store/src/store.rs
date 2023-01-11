@@ -1,3 +1,5 @@
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+
 use anyhow::anyhow;
 use cid::{
     multihash::{Code, MultihashDigest},
@@ -8,19 +10,35 @@ use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
 use ipld_traversal::blockstore::Blockstore as GSBlockstore;
-use libipld::{store::DefaultParams, Block, Result};
+use libipld::{
+    codec::References,
+    store::{DefaultParams, StoreParams},
+    Block, Ipld, Result,
+};
 use libp2p_bitswap::BitswapStore;
-use std::sync::Arc;
 
-#[derive(Debug)]
+pub trait StoreBase: Blockstore + Store + Send + Sync + 'static {}
+impl<T> StoreBase for T where T: Blockstore + Store + Send + Sync + 'static {}
+
 pub struct UrsaStore<S> {
     pub db: Arc<S>,
 }
 
-impl<S> UrsaStore<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+impl<S> Clone for UrsaStore<S> {
+    fn clone(&self) -> Self {
+        UrsaStore {
+            db: Arc::clone(&self.db),
+        }
+    }
+}
+
+impl<S> Debug for UrsaStore<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UrsaStore").finish()
+    }
+}
+
+impl<S: StoreBase> UrsaStore<S> {
     pub fn new(db: Arc<S>) -> Self {
         Self { db }
     }
@@ -88,15 +106,19 @@ pub trait BlockstoreExt: Blockstore {
 
 impl<T: Blockstore> BlockstoreExt for T {}
 
-pub struct BitswapStorage<P>(pub Arc<UrsaStore<P>>)
-where
-    P: Blockstore + Store + Send + Sync + 'static;
+pub struct BitswapStorage<S, P = DefaultParams>(pub UrsaStore<S>, pub PhantomData<P>);
 
-impl<P> BitswapStore for BitswapStorage<P>
+impl<S, P> From<UrsaStore<S>> for BitswapStorage<S, P> {
+    fn from(value: UrsaStore<S>) -> Self {
+        Self(value, PhantomData::default())
+    }
+}
+
+impl<S: StoreBase, P: StoreParams> BitswapStore for BitswapStorage<S, P>
 where
-    P: Blockstore + Store + Send + Sync + 'static,
+    Ipld: References<P::Codecs>,
 {
-    type Params = DefaultParams;
+    type Params = P;
 
     fn contains(&mut self, cid: &Cid) -> Result<bool> {
         self.0.db.has(cid)
@@ -134,10 +156,7 @@ pub trait Dag {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
 }
 
-impl<S> Dag for UrsaStore<S>
-where
-    S: Blockstore + Sync + Send + 'static,
-{
+impl<S: StoreBase> Dag for UrsaStore<S> {
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let mut res = Vec::new();
         // get full dag starting with root id
@@ -171,43 +190,17 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct GraphSyncStorage<P>(pub Arc<UrsaStore<P>>)
-where
-    P: Blockstore + Store + Send + Sync + 'static;
-
-impl<S> GraphSyncStorage<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
-    pub fn insert(&mut self, block: &Block<DefaultParams>) -> Result<()> {
-        self.0.db.put_keyed(block.cid(), block.data()).unwrap();
-
-        Ok(())
-    }
-
-    pub fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.db.get(cid).unwrap())
-    }
-}
-
-impl<S> GSBlockstore for GraphSyncStorage<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+impl<S: StoreBase> GSBlockstore for UrsaStore<S> {
     fn get(&self, k: &cid::Cid) -> Result<Option<Vec<u8>>> {
-        self.0.blockstore().get(k)
+        self.db.get(k)
     }
 
     fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
-        self.0.blockstore().put_keyed(k, block)
+        self.db.put_keyed(k, block)
     }
 
     fn delete_block(&self, k: &Cid) -> Result<()> {
-        self.0
-            .blockstore()
-            .delete(k.to_bytes())
-            .map_err(|e| e.into())
+        self.db.delete(k.to_bytes()).map_err(|e| e.into())
     }
 }
 

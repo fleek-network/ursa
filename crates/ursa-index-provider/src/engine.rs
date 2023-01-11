@@ -1,35 +1,32 @@
-use crate::{
-    advertisement::{Advertisement, MAX_ENTRIES},
-    config::ProviderConfig,
-    provider::{Provider, ProviderInterface},
-    signed_head::SignedHead,
-};
+use std::{collections::VecDeque, str::FromStr};
+
+use anyhow::{anyhow, Error, Result};
+use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
 use bytes::Bytes;
-use db::Store;
+use cid::Cid;
 use libipld_core::ipld::Ipld;
+use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
     oneshot,
 };
-use ursa_network::{GossipsubMessage, NetworkCommand};
-
-use anyhow::{anyhow, Error, Result};
-
-use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
-use cid::Cid;
-
-use crate::provider::ProviderError;
-use fvm_ipld_blockstore::Blockstore;
-use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
-use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
-use ursa_store::{Dag, UrsaStore};
+
+use ursa_network::{GossipsubMessage, NetworkCommand};
+use ursa_store::{Dag, StoreBase, UrsaStore};
+
+use crate::{
+    advertisement::{Advertisement, MAX_ENTRIES},
+    config::ProviderConfig,
+    provider::{Provider, ProviderError, ProviderInterface},
+    signed_head::SignedHead,
+};
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 
 // handlers
-async fn head<S: Blockstore + Store + Sync + Send + 'static>(
+async fn head<S: StoreBase>(
     Extension(state): Extension<Provider<S>>,
 ) -> Result<Json<SignedHead>, ProviderError> {
     if let Some(head) = state.head() {
@@ -41,7 +38,7 @@ async fn head<S: Blockstore + Store + Sync + Send + 'static>(
     }
 }
 
-async fn get_block<S: Blockstore + Store + Sync + Send + 'static>(
+async fn get_block<S: StoreBase>(
     Extension(state): Extension<Provider<S>>,
     Path(cid): Path<String>,
 ) -> Result<Response<Body>, ProviderError> {
@@ -82,7 +79,7 @@ pub struct ProviderEngine<S> {
     /// index provider
     provider: Provider<S>,
     /// main cache node store to get all the cids in a dag
-    store: Arc<UrsaStore<S>>,
+    store: UrsaStore<S>,
     /// provider config
     config: ProviderConfig,
     /// used by other processes to send message to provider engine
@@ -95,14 +92,11 @@ pub struct ProviderEngine<S> {
     server_address: Multiaddr,
 }
 
-impl<S> ProviderEngine<S>
-where
-    S: Blockstore + Store + Sync + Send + 'static,
-{
+impl<S: StoreBase> ProviderEngine<S> {
     pub fn new(
         keypair: Keypair,
-        store: Arc<UrsaStore<S>>,
-        provider_store: Arc<UrsaStore<S>>,
+        store: UrsaStore<S>,
+        index_store: UrsaStore<S>,
         config: ProviderConfig,
         network_command_sender: Sender<NetworkCommand>,
         server_address: Multiaddr,
@@ -113,7 +107,7 @@ where
             command_sender,
             config,
             network_command_sender,
-            provider: Provider::new(keypair, provider_store),
+            provider: Provider::new(keypair, index_store),
             store,
             server_address,
         }
@@ -130,8 +124,8 @@ where
         self.provider.clone()
     }
 
-    pub fn store(&self) -> Arc<UrsaStore<S>> {
-        Arc::clone(&self.store)
+    pub fn store(&self) -> UrsaStore<S> {
+        self.store.clone()
     }
 
     pub fn router(&self) -> Router {
