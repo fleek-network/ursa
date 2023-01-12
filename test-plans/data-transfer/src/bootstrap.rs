@@ -17,7 +17,6 @@ fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaS
     UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
 }
 
-
 pub async fn start_bootstrap(client: testground::client::Client) {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
 
@@ -114,9 +113,12 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
         };
         if seq >= lower && seq <= upper {
             batch_index = i;
-            
+
             // Wait for previous batch to finish
-            client.barrier(format!("batch-{}-done", batch_index - 1), NODES_PER_BATCH).await.unwrap();
+            client
+                .barrier(format!("batch-{}-done", batch_index - 1), NODES_PER_BATCH)
+                .await
+                .unwrap();
         }
     }
 
@@ -166,7 +168,10 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
 
     // Once all nodes in a batch have reached this point, the nodes in the next batch
     // are notified and can continue.
-    client.signal(format!("batch-{}-done", batch_index)).await.unwrap();
+    client
+        .signal(format!("batch-{}-done", batch_index))
+        .await
+        .unwrap();
     // All nodes wait here and signal to the bootstrap node that they are done.
     client.signal_and_wait("done", num_nodes).await.unwrap();
 

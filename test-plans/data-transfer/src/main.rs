@@ -1,4 +1,6 @@
 mod bootstrap;
+mod cache;
+mod node;
 
 use env_logger::Env;
 use testground::client::Client;
