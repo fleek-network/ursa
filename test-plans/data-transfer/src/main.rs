@@ -17,9 +17,26 @@ async fn main() {
         return bootstrap::start_bootstrap(client).await;
     }
 
-    if let Err(e) = bootstrap::start_node(&mut client).await {
+    let num_nodes = client.run_parameters().test_instance_count - 1;
+
+    let node = match bootstrap::start_node(&mut client).await {
+        Ok(node) => node,
+        Err(e) => {
+            // All nodes wait here and signal to the bootstrap node that they are done.
+            client.signal_and_wait("done", num_nodes).await.unwrap();
+            client.record_failure(e).await.expect("Success");
+            return;
+        }
+    };
+
+    if let Err(e) = cache::test_cache_request(&mut client, node).await {
+        // All nodes wait here and signal to the bootstrap node that they are done.
+        client.signal_and_wait("done", num_nodes).await.unwrap();
         client.record_failure(e).await.expect("Success");
-    } else {
-        client.record_success().await.expect("Success");
+        return;
     }
+
+    // All nodes wait here and signal to the bootstrap node that they are done.
+    client.signal_and_wait("done", num_nodes).await.unwrap();
+    client.record_success().await.expect("Success");
 }
