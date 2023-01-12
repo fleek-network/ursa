@@ -70,12 +70,6 @@ pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 /// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
-    /// Fetch content from the origin
-    async fn get_origin(&self, cid: Cid) -> Result<()>;
-
-    /// Fetch content from the network
-    async fn get_network(&self, cid: Cid) -> Result<()>;
-
     /// Check blockstore for content, and on cache miss attempt to fetch it
     async fn check_blockstore(&self, cid: Cid) -> Result<()>;
 
@@ -140,19 +134,29 @@ where
             client: Arc::new(Client::new()),
         }
     }
-}
 
-#[async_trait]
-impl<S> NetworkInterface for NodeNetworkInterface<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
+    /// Fetch content from the network
+    async fn get_network(&self, root_cid: Cid) -> Result<()> {
+        info!("Fetching cid {root_cid} from network");
+        let (send, recv) = oneshot::channel();
+
+        // Dispatch bloom filtered bitswap request
+        self.network_send.send(NetworkCommand::GetBitswap {
+            cid: root_cid,
+            sender: send,
+        })?;
+
+        recv.await?
+    }
+
+    /// Fetch content from the origin
     async fn get_origin(&self, root_cid: Cid) -> Result<()> {
+        info!("Fetching cid {root_cid} from origin (ipfs)");
         let pending = self.pending_requests.clone();
         let (tx, mut rx) = unbounded_channel();
         match self.pending_requests.write().await.entry(root_cid) {
             Entry::Occupied(mut e) => {
-                // there is a concurrent request for this cid, just wait and return
+                // there is a concurrent request for this cid, just wait for the first one and return
                 e.get_mut().push(tx);
                 return rx
                     .recv()
@@ -181,41 +185,32 @@ where
         spawn(async move {
             // send the request
             let res = async {
-                match client.send(req).await {
-                    Ok(res) => {
-                        match CarReader::new(res).await {
-                            Ok(mut car) => {
-                                // verify the root cid is present
-                                match car.header.roots.iter().find(|cid| **cid == root_cid) {
-                                    Some(_) => {
-                                        let mut buf = Vec::with_capacity(100);
-                                        while let Ok(Some(block)) = car.next_block().await {
-                                            buf.push((block.cid, block.data));
-                                            // empty buf if it gets too big
-                                            if buf.len() > 1000 {
-                                                if let Err(e) = store.put_many_keyed(
-                                                    buf.iter().map(|(k, v)| (*k, v)),
-                                                ) {
-                                                    return Err(e.to_string());
-                                                }
-                                                buf.clear();
-                                            }
-                                        }
-                                        store
-                                            .put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))
-                                            .map_err(|e| e.to_string())
-                                    }
-                                    None => Err(format!("cid {root_cid} not found in car")),
-                                }
+                let res = client.send(req).await.map_err(|e| {
+                    format!("Error getting content for cid {root_cid} from origin: {e}")
+                })?;
+
+                let mut car = CarReader::new(res).await.map_err(|e| {
+                    format!("Error reading car file for cid {root_cid} from origin: {e}")
+                })?;
+
+                if car.header.roots.iter().any(|cid| *cid == root_cid) {
+                    // see [fvm_ipld_car::load_car]
+                    let mut buf = Vec::with_capacity(100);
+                    while let Ok(Some(block)) = car.next_block().await {
+                        buf.push((block.cid, block.data));
+                        // empty buf if it gets too big
+                        if buf.len() > 1000 {
+                            if let Err(e) = store.put_many_keyed(buf.iter().map(|(k, v)| (*k, v))) {
+                                return Err(e.to_string());
                             }
-                            Err(e) => {
-                                Err(format!("Failed to read car file for cid {root_cid}: {e}"))
-                            }
+                            buf.clear();
                         }
                     }
-                    Err(e) => Err(format!(
-                        "Error getting content for cid {root_cid} from origin: {e}"
-                    )),
+                    store
+                        .put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))
+                        .map_err(|e| e.to_string())
+                } else {
+                    Err(format!("Root cid {root_cid} not found in car header"))
                 }
             }
             .await;
@@ -233,6 +228,7 @@ where
                     }
                 }
                 Err(e) => {
+                    error!(e);
                     if let Some(senders) = pending.remove(&root_cid) {
                         for sender in senders {
                             if sender.send(Err(anyhow!(e.clone()))).is_err() {
@@ -248,19 +244,13 @@ where
             .await
             .ok_or_else(|| anyhow!("Failed to receive status from channel"))?
     }
+}
 
-    async fn get_network(&self, root_cid: Cid) -> Result<()> {
-        let (send, recv) = oneshot::channel();
-
-        // Dispatch bloom filtered bitswap request
-        self.network_send.send(NetworkCommand::GetBitswap {
-            cid: root_cid,
-            sender: send,
-        })?;
-
-        recv.await?
-    }
-
+#[async_trait]
+impl<S> NetworkInterface for NodeNetworkInterface<S>
+where
+    S: Blockstore + Store + Send + Sync + 'static,
+{
     async fn check_blockstore(&self, cid: Cid) -> Result<()> {
         if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
