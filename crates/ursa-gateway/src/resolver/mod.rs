@@ -9,8 +9,10 @@ use model::IndexerResponse;
 use serde_json::from_slice;
 use tracing::{debug, error, info, warn};
 
-use crate::resolver::model::Metadata;
-use crate::{resolver::model::ProviderResult, util::error::Error};
+use crate::{
+    resolver::model::{Metadata, ProviderResult},
+    util::error::Error,
+};
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 

@@ -11,7 +11,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::{error, info};
+use tracing::{error, info, info_span, Instrument};
 
 use crate::resolver::Resolver;
 
@@ -23,6 +23,7 @@ pub fn start<Cache: WorkerCache>(
     mut shutdown_rx: Receiver<()>,
 ) -> JoinHandle<()> {
     spawn(async move {
+        info!("Main worker start");
         loop {
             let signal_tx = signal_tx.clone(); // move to cache worker thread
             select! {
@@ -31,26 +32,26 @@ pub fn start<Cache: WorkerCache>(
                     let resolver = Arc::clone(&resolver);
                     match cmd {
                         CacheCommand::GetSync{key} => {
-                            info!("Dispatch GetSyncAnnounce command with key: {key:?}");
                             spawn(async move {
+                                info!("Dispatch GetSyncAnnounce command with key: {key:?}");
                                 if let Err(e) = cache.write().await.get(&key).await {
                                     error!("Dispatch GetSyncAnnounce command error with key: {key:?} {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
-                            });
+                            }.instrument(info_span!("Dispatch GetSyncAnnounce")));
                         },
                         CacheCommand::InsertSync{key, value} => {
-                            info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
                             spawn(async move {
+                                info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
                                 if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
                                     error!("Dispatch InsertSyncAnnounce command error with key: {key:?} {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
-                            });
+                            }.instrument(info_span!("Dispatch InsertSyncAnnounce")));
                         },
                         CacheCommand::Fetch{cid, sender} => {
-                            info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                             spawn(async move {
+                                info!("Dispatch FetchAnnounce command with cid: {cid:?}");
                                 let result = match resolver.resolve_content(&cid).await {
                                     Ok(content) => sender.send(Ok(content)),
                                     Err(message) => sender.send(Err(message))
@@ -59,24 +60,24 @@ pub fn start<Cache: WorkerCache>(
                                     error!("Dispatch FetchAnnounce command error with cid: {cid:?} {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 }
-                            });
+                            }.instrument(info_span!("Dispatch FetchAnnounce")));
                         },
                         CacheCommand::TtlCleanUp => {
-                            info!("Dispatch TtlCleanUp command");
                             spawn(async move {
+                                info!("Dispatch TtlCleanUp command");
                                 if let Err(e) = cache.write().await.ttl_cleanup().await {
                                     error!("Dispatch TtlCleanUp command error {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
-                            });
+                            }.instrument(info_span!("Dispatch TtlCleanUp")));
                         }
                     }
                 }
                 _ = shutdown_rx.recv() => {
-                    info!("Worker stopped");
+                    info!("Main worker stopped");
                     break;
                 }
             }
         }
-    })
+    }.instrument(info_span!("Main worker")))
 }
