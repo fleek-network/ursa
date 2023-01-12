@@ -29,3 +29,6 @@ libp2p.workspace = true
 async-trait.workspace = true
 tokio-util.workspace = true
 bytes.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+opentelemetry-jaeger.workspace = true
