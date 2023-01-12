@@ -4,8 +4,11 @@ name = "data-transfer"
 version = "0.1.0"
 
 [dependencies]
+cid = "0.8.6"
 env_logger = "0.9.0"
 if-addrs = "0.7.0"
+ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
+libipld = "0.14.0"
 futures = "0.3.1"
 libp2p = { version = "0.50", features = ["websocket", "mplex", "yamux", "tcp", "async-std", "ping", "noise", "dns", "rsa", "macros"]}
 serde_json = "1"
