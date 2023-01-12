@@ -29,14 +29,14 @@ async fn main() {
         }
     };
 
-    if let Err(e) = cache::test_cache_request(&mut client, node).await {
-        // All nodes wait here and signal to the bootstrap node that they are done.
-        client.signal_and_wait("done", num_nodes).await.unwrap();
-        client.record_failure(e).await.expect("Success");
-        return;
-    }
+    let result = cache::test_cache_request(&mut client, node).await;
 
     // All nodes wait here and signal to the bootstrap node that they are done.
     client.signal_and_wait("done", num_nodes).await.unwrap();
-    client.record_success().await.expect("Success");
+
+    if let Err(e) = result {
+        client.record_failure(e).await.expect("Success");
+    } else {
+        client.record_success().await.expect("Success");
+    }
 }
