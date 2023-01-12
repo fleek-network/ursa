@@ -2,7 +2,6 @@ mod behaviour;
 mod codec;
 pub mod config;
 mod gossipsub;
-pub mod origin;
 pub mod service;
 mod transport;
 mod utils;

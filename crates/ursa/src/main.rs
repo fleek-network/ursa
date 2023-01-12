@@ -46,7 +46,6 @@ async fn main() -> Result<()> {
                     network_config,
                     provider_config,
                     server_config,
-                    origin_config,
                 } = config;
 
                 // ursa service setup
@@ -86,12 +85,8 @@ async fn main() -> Result<()> {
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-                let service = UrsaService::new(
-                    keypair.clone(),
-                    &network_config,
-                    &origin_config,
-                    Arc::clone(&store),
-                )?;
+                let service =
+                    UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
                 let provider_db = RocksDb::open(
                     provider_config.database_path.resolve(),
@@ -117,11 +112,12 @@ async fn main() -> Result<()> {
                 let index_provider_router = index_provider_engine.router();
 
                 // server setup
-                let interface = Arc::new(NodeNetworkInterface {
+                let interface = Arc::new(NodeNetworkInterface::new(
                     store,
-                    network_send: service.command_sender(),
-                    provider_send: index_provider_engine.command_sender(),
-                });
+                    service.command_sender(),
+                    index_provider_engine.command_sender(),
+                    Default::default(),
+                ));
                 let server = Server::new(interface);
 
                 // Start libp2p service

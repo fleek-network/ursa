@@ -2,7 +2,6 @@ use crate::behaviour::BehaviourEvent;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
     codec::protocol::{RequestType, UrsaExchangeRequest},
-    origin::Origin,
     NetworkCommand, NetworkConfig, UrsaService, URSA_GLOBAL,
 };
 use anyhow::Result;
@@ -98,7 +97,7 @@ async fn network_init(
         config.bootstrap_nodes = vec![addr];
     }
 
-    let mut service = UrsaService::new(keypair, config, &Default::default(), Arc::clone(&store))?;
+    let mut service = UrsaService::new(keypair, config, Arc::clone(&store))?;
 
     let node_addrs = async {
         loop {
@@ -583,39 +582,5 @@ async fn test_send_cache_summary() -> Result<()> {
         "CID not contained in cache summary."
     );
 
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_origin_get() -> Result<()> {
-    const IPFS_CID: &str = "bafkreihwcrnsi2tqozwq22k4vl7flutu43jlxgb3tenewysm2xvfuej5i4";
-    const IPFS_LEN: usize = 26849;
-
-    let mut config = NetworkConfig {
-        bootstrap_nodes: vec![],
-        ..Default::default()
-    };
-    let (node, _, _, store) = network_init(&mut config, None, None).await?;
-    let command_sender = node.command_sender();
-    let mut node_store = BitswapStorage(store.clone());
-    tokio::task::spawn(async move { node.start().await.unwrap() });
-
-    let (sender, receiver) = oneshot::channel();
-    let msg = NetworkCommand::GetOrigin {
-        origin: Origin::Ipfs,
-        cid: IPFS_CID.parse()?,
-        sender,
-    };
-    assert!(command_sender.send(msg).is_ok());
-
-    match receiver.await? {
-        Ok(_) => {
-            let block = node_store
-                .get(&IPFS_CID.parse()?)?
-                .expect("Block not found.");
-            assert_eq!(block.len(), IPFS_LEN);
-        }
-        Err(e) => panic!("Error: {:?}", e),
-    }
     Ok(())
 }

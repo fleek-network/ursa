@@ -41,7 +41,6 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
-use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
@@ -61,14 +60,12 @@ use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
-use crate::origin::{Origin, OriginEvent};
 use crate::transport::build_transport;
 use crate::utils::bloom_filter::CountingBloomFilter;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
     config::NetworkConfig,
-    OriginConfig,
 };
 
 pub const URSA_GLOBAL: &str = "/ursa/global";
@@ -76,12 +73,12 @@ pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type SwarmEventType<S> = SwarmEvent<
-<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
-<
+    <Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
     <
-        <
-            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
-        >::Handler as ConnectionHandler
+    <
+    <
+    Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+    >::Handler as ConnectionHandler
     >::Error
 >;
 
@@ -160,12 +157,6 @@ pub enum NetworkCommand {
         sender: BlockOneShotSender<()>,
     },
 
-    GetOrigin {
-        origin: Origin,
-        cid: Cid,
-        sender: BlockOneShotSender<()>,
-    },
-
     Put {
         cid: Cid,
         sender: oneshot::Sender<Result<()>>,
@@ -214,10 +205,8 @@ where
     _event_receiver: Receiver<NetworkEvent>,
     /// Bitswap pending queries.
     bitswap_queries: FnvHashMap<QueryId, Cid>,
-    /// Structure to keep track of rpc response channels for cids.
-    response_channels: ResponseChannels,
-    // origin pending queries
-    origin_queries: FnvHashMap<crate::origin::QueryId, Cid>,
+    /// hashmap for keeping track of rpc response channels.
+    response_channels: FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>,
     /// Pending requests.
     _pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
     /// Pending responses.
@@ -249,12 +238,7 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(
-        keypair: Keypair,
-        config: &NetworkConfig,
-        origin_config: &OriginConfig,
-        store: Arc<UrsaStore<S>>,
-    ) -> Result<Self> {
+    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -276,7 +260,6 @@ where
         let behaviour = Behaviour::new(
             &keypair,
             config,
-            origin_config,
             bitswap_store,
             graphsync_store,
             relay_client,
@@ -325,7 +308,6 @@ where
             _event_receiver,
             response_channels: Default::default(),
             bitswap_queries: Default::default(),
-            origin_queries: Default::default(),
             _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
             peers,
@@ -473,40 +455,29 @@ where
             }
             BitswapEvent::Complete(query_id, result) => {
                 if let Some(cid) = self.bitswap_queries.remove(&query_id) {
-                    match result {
-                        Ok(()) => {
-                            self.response_channels.success(&cid);
+                    if let Some(chans) = self.response_channels.remove(&cid) {
+                        for chan in chans.into_iter() {
+                            match result {
+                                Ok(()) => {
+                                    if chan.send(Ok(())).is_err() {
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                    }
+                                }
+                                Err(_) => {
+                                    if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                    }
+                                }
+                            }
                         }
-                        Err(e) => {
-                            debug!("failed to get cid {cid} with bitswap: {e}");
-                            self.response_channels.bitswap_error(&cid);
-                        }
+                    } else {
+                        debug!("[BitswapEvent::Complete] - Received Bitswap response, but response channel cannot be found");
                     }
                 } else {
                     error!("[BitswapEvent::Complete] - Query Id {query_id:?} not found in the hash map");
                 }
             }
         }
-        Ok(())
-    }
-
-    fn handle_origin(&mut self, origin_event: OriginEvent) -> Result<()> {
-        match origin_event {
-            OriginEvent::QueryCompleted(id, _, res) => {
-                if let Some(cid) = self.origin_queries.remove(&id) {
-                    match res {
-                        Ok(()) => {
-                            self.response_channels.success(&cid);
-                        }
-                        Err(e) => {
-                            error!("failed to get cid {cid} via origin: {e}");
-                            self.response_channels.origin_error(&cid);
-                        }
-                    }
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -715,7 +686,6 @@ where
                     // bitswap metrics are internal
                     self.handle_bitswap(bitswap_event)
                 }
-                BehaviourEvent::Origin(origin_event) => self.handle_origin(origin_event),
                 BehaviourEvent::Gossipsub(gossip_event) => {
                     gossip_event.record();
                     self.handle_gossip(gossip_event)
@@ -778,7 +748,11 @@ where
                     )))
                         .map_err(|_| anyhow!("Failed to get a bitswap block!"));
                 } else {
-                    self.response_channels.push_bitswap(cid, sender);
+                    if let Some(chans) = self.response_channels.get_mut(&cid) {
+                        chans.push(sender);
+                    } else {
+                        self.response_channels.insert(cid, vec![sender]);
+                    }
 
                     let peers = peers
                         .iter()
@@ -802,16 +776,6 @@ where
                         )
                     }
                 }
-            }
-            NetworkCommand::GetOrigin {
-                origin,
-                cid,
-                sender,
-            } => {
-                info!("Getting cid {cid} via origin {origin:?}");
-                let query = self.swarm.behaviour_mut().origin.get(origin, cid);
-                self.origin_queries.insert(query, cid);
-                self.response_channels.push_origin(cid, sender);
             }
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
@@ -972,72 +936,6 @@ where
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
                     self.handle_command(command).expect("Handle rpc command.");
                 },
-            }
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct ResponseChannels(
-    FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>, // bitswap
-    FnvHashMap<Cid, Vec<BlockOneShotSender<()>>>, // origin
-);
-
-impl ResponseChannels {
-    pub fn push_bitswap(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
-        match self.0.entry(cid) {
-            Entry::Occupied(mut o) => {
-                o.get_mut().push(sender);
-            }
-            Entry::Vacant(v) => {
-                v.insert(vec![sender]);
-            }
-        };
-    }
-
-    pub fn push_origin(&mut self, cid: Cid, sender: BlockOneShotSender<()>) {
-        self.1.entry(cid).or_default().push(sender);
-    }
-
-    pub fn success(&mut self, cid: &Cid) {
-        if let Some(bitswap_chans) = self.0.remove(cid) {
-            for chan in bitswap_chans {
-                if chan.send(Ok(())).is_err() {
-                    debug!("failed to send on bitswap response channel")
-                }
-            }
-        }
-        if let Some(origin_chans) = self.1.remove(cid) {
-            for chan in origin_chans {
-                if chan.send(Ok(())).is_err() {
-                    debug!("failed to send on origin response channel")
-                }
-            }
-        }
-    }
-
-    pub fn bitswap_error(&mut self, cid: &Cid) {
-        if let Some(bitswap_chans) = self.0.remove(cid) {
-            for chan in bitswap_chans {
-                if chan
-                    .send(Err(anyhow!("fetching from bitswap failed")))
-                    .is_err()
-                {
-                    debug!("failed to send on bitswap response channel")
-                }
-            }
-        }
-    }
-
-    pub fn origin_error(&mut self, cid: &Cid) {
-        if let Some(origin_chans) = self.1.remove(cid) {
-            for chan in origin_chans {
-                if chan
-                    .send(Err(anyhow!("fetching from origin failed")))
-                    .is_err()
-                {
-                    debug!("failed to send on origin response channel")
-                }
             }
         }
     }

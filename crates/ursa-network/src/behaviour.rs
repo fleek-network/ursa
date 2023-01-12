@@ -55,8 +55,6 @@ use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
     config::NetworkConfig,
-    origin::OriginBehavior,
-    OriginConfig,
 };
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
@@ -108,9 +106,6 @@ where
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
     pub(crate) graphsync: GraphSync<GraphSyncStorage<S>>,
-
-    /// Fetch content from origin
-    pub(crate) origin: OriginBehavior<S>,
 }
 
 impl<P, S> Behaviour<P, S>
@@ -121,7 +116,6 @@ where
     pub fn new<B: BitswapStore<Params = P>>(
         keypair: &Keypair,
         config: &NetworkConfig,
-        origin_config: &OriginConfig,
         bitswap_store: B,
         graphsync_store: GraphSyncStorage<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
@@ -141,9 +135,6 @@ where
 
         // Setup the bitswap behaviour
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
-
-        // Setup the origin behaviour
-        let origin = OriginBehavior::new(origin_config.to_owned(), graphsync_store.0.clone());
 
         if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
             // cargo tests will attempt to register duplicate registries, can ignore safely
@@ -246,7 +237,6 @@ where
             relay_client: relay_client.into(),
             dcutr,
             bitswap,
-            origin,
             identify,
             gossipsub,
             kad,

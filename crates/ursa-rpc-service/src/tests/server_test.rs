@@ -20,11 +20,12 @@ mod tests {
         setup_logger();
         let (ursa_service, provider_engine, store) = init()?;
 
-        let interface = Arc::new(NodeNetworkInterface {
-            store,
-            network_send: ursa_service.command_sender(),
-            provider_send: provider_engine.command_sender(),
-        });
+        let interface = Arc::new(NodeNetworkInterface::new(
+            Arc::clone(&store),
+            ursa_service.command_sender(),
+            provider_engine.command_sender(),
+            Default::default(),
+        ));
         let server = Server::new(interface);
         let metrics = ursa_metrics::routes::init();
         let http_app = server.http_app(provider_engine.router(), Some(metrics));
@@ -46,11 +47,12 @@ mod tests {
         setup_logger();
         let (ursa_service, provider_engine, store) = init()?;
 
-        let interface = Arc::new(NodeNetworkInterface {
-            store,
-            network_send: ursa_service.command_sender(),
-            provider_send: provider_engine.command_sender(),
-        });
+        let interface = Arc::new(NodeNetworkInterface::new(
+            Arc::clone(&store),
+            ursa_service.command_sender(),
+            provider_engine.command_sender(),
+            Default::default(),
+        ));
         let server = Server::new(interface);
         let rpc_app = server.rpc_app();
 

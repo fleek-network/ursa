@@ -9,7 +9,7 @@ use std::{
 };
 use tracing::{info, warn};
 use ursa_index_provider::config::ProviderConfig;
-use ursa_network::{NetworkConfig, OriginConfig};
+use ursa_network::NetworkConfig;
 use ursa_rpc_service::config::ServerConfig;
 
 pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
@@ -22,8 +22,6 @@ pub struct UrsaConfig {
     pub provider_config: ProviderConfig,
     #[serde(default)]
     pub server_config: ServerConfig,
-    #[serde(default)]
-    pub origin_config: OriginConfig,
 }
 
 impl UrsaConfig {

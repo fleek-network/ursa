@@ -101,29 +101,3 @@ impl Default for NetworkConfig {
         }
     }
 }
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
-pub struct OriginConfig {
-    #[serde(default = "OriginConfig::default_ipfs_gateway")]
-    pub ipfs_gateway: String,
-    #[serde(default = "OriginConfig::default_arweave_gateway")]
-    pub arweave_gateway: String,
-}
-
-impl OriginConfig {
-    pub fn default_ipfs_gateway() -> String {
-        "ipfs.io".to_string()
-    }
-    pub fn default_arweave_gateway() -> String {
-        "arweave.net".to_string()
-    }
-}
-
-impl Default for OriginConfig {
-    fn default() -> Self {
-        Self {
-            ipfs_gateway: Self::default_ipfs_gateway(),
-            arweave_gateway: Self::default_arweave_gateway(),
-        }
-    }
-}

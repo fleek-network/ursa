@@ -5,7 +5,6 @@ mod tests {
     use anyhow::Result;
     use async_fs::{remove_file, File};
     use futures::io::BufReader;
-    use fvm_ipld_blockstore::Blockstore;
     use fvm_ipld_car::load_car;
     use std::path::Path;
     use std::sync::Arc;
@@ -15,11 +14,12 @@ mod tests {
         setup_logger();
         let (mut ursa_service, mut provider_engine, store) = init()?;
 
-        let interface = Arc::new(NodeNetworkInterface {
-            store: Arc::clone(&store),
-            network_send: ursa_service.command_sender(),
-            provider_send: provider_engine.command_sender(),
-        });
+        let interface = Arc::new(NodeNetworkInterface::new(
+            Arc::clone(&store),
+            ursa_service.command_sender(),
+            provider_engine.command_sender(),
+            Default::default(),
+        ));
 
         // the test case does not start the provider engine, so the best way
         // for put_file to not call provider engine is to close the channel
@@ -61,25 +61,19 @@ mod tests {
             node.start().await.unwrap();
         });
 
-        let interface = Arc::new(NodeNetworkInterface {
-            store: Arc::clone(&store),
-            network_send: command_sender,
-            provider_send: provider.command_sender(),
-        });
+        let interface = Arc::new(NodeNetworkInterface::new(
+            Arc::clone(&store),
+            command_sender,
+            provider.command_sender(),
+            Default::default(),
+        ));
 
-        // verify response
+        // since we have no peers, get will fallback to origin
         let data = interface
             .get(IPFS_CID.parse()?)
             .await?
             .expect("could not find data in blockstore");
         assert_eq!(data.len(), IPFS_LEN);
-
-        // verify block is stored correctly
-        let block = store
-            .blockstore()
-            .get(&IPFS_CID.parse()?)?
-            .expect("could not find block in blockstore");
-        assert_eq!(block.len(), IPFS_LEN);
 
         Ok(())
     }
