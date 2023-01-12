@@ -20,11 +20,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use surf::{http::Method, Client, RequestBuilder};
-use tokio::task;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender as Sender},
     oneshot, RwLock,
 };
+use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
