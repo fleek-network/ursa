@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use surf::{http::Method, Client, RequestBuilder};
-use tokio::spawn;
+use tokio::task;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender as Sender},
     oneshot, RwLock,
@@ -140,7 +140,6 @@ where
         info!("Fetching cid {root_cid} from network");
         let (send, recv) = oneshot::channel();
 
-        // Dispatch bloom filtered bitswap request
         self.network_send.send(NetworkCommand::GetBitswap {
             cid: root_cid,
             sender: send,
@@ -182,7 +181,7 @@ where
         .build();
 
         let store = self.store.db.clone();
-        spawn(async move {
+        task::spawn(async move {
             // send the request
             let res = async {
                 let res = client.send(req).await.map_err(|e| {
@@ -329,7 +328,7 @@ where
 
         let body = StreamBody::new(ReaderStream::new(reader));
 
-        spawn(async move {
+        task::spawn(async move {
             if let Err(err) = header
                 .write_stream_async(&mut writer.compat_write(), &mut rx)
                 .await
