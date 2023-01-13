@@ -254,8 +254,8 @@ where
 }
 
 impl<S> NodeNetworkInterface<S>
-    where
-        S: Blockstore + Store + Send + Sync + 'static,
+where
+    S: Blockstore + Store + Send + Sync + 'static,
 {
     pub fn new(
         store: Arc<UrsaStore<S>>,
@@ -330,10 +330,10 @@ impl<S> NodeNetworkInterface<S>
                 "https://{}/ipfs/{root_cid}",
                 self.origin_config.ipfs_gateway
             )
-                .parse()?,
+            .parse()?,
         )
-            .header("Accept", "application/vnd.ipld.car")
-            .build();
+        .header("Accept", "application/vnd.ipld.car")
+        .build();
 
         let store = self.store.db.clone();
         task::spawn(async move {
@@ -351,7 +351,7 @@ impl<S> NodeNetworkInterface<S>
 
                 Ok(())
             }
-                .await;
+            .await;
 
             // notify pending requests for cids
             let mut pending = pending.write().await;
@@ -427,8 +427,8 @@ pub struct Car<R> {
 }
 
 impl<R> Car<R>
-    where
-        R: AsyncRead + Send + Unpin,
+where
+    R: AsyncRead + Send + Unpin,
 {
     pub fn new(size: u64, reader: R) -> Self {
         Self { size, reader }
@@ -445,8 +445,8 @@ impl Car<BufReader<File>> {
 }
 
 impl<R> AsyncRead for Car<R>
-    where
-        R: AsyncRead + Send + Unpin,
+where
+    R: AsyncRead + Send + Unpin,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -458,9 +458,9 @@ impl<R> AsyncRead for Car<R>
 }
 
 pub async fn load_car_checked<R, B>(s: &B, reader: R, root_cid: Cid) -> Result<Vec<Cid>>
-    where
-        B: Blockstore,
-        R: AsyncRead + Send + Unpin,
+where
+    B: Blockstore,
+    R: AsyncRead + Send + Unpin,
 {
     let mut car = CarReader::new(reader).await?;
     // verify root cid is present in the car header
