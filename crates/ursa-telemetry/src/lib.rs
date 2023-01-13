@@ -1,3 +1,4 @@
+use opentelemetry::sdk::trace::{self, Sampler};
 use serde::{Deserialize, Serialize};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
@@ -74,10 +75,12 @@ impl TelemetryConfig {
 
         let mut tracing_layers = vec![];
 
-        if self.pretty_log {
-            let log_subscriber = fmt::layer().pretty().with_filter(env_filter);
-            tracing_layers.push(log_subscriber.boxed());
-        }
+        let log_subscriber = if self.pretty_log {
+            fmt::layer().pretty().boxed()
+        } else {
+            fmt::layer().boxed()
+        };
+        tracing_layers.push(log_subscriber);
 
         #[cfg(feature = "tokio-console")]
         if self.tokio_console {
@@ -101,6 +104,11 @@ impl TelemetryConfig {
 
         if self.jaeger_tracer {
             let tracer = opentelemetry_jaeger::new_agent_pipeline()
+                .with_service_name(self.name)
+                .with_max_packet_size(9_216)
+                .with_auto_split_batch(true)
+                .with_instrumentation_library_tags(false)
+                .with_trace_config(trace::config().with_sampler(Sampler::AlwaysOn))
                 .install_batch(opentelemetry::runtime::Tokio)?;
             let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -108,6 +116,7 @@ impl TelemetryConfig {
         }
 
         Registry::default()
+            .with(env_filter)
             .with(tracing_layers)
             .with(ErrorLayer::default())
             .init();

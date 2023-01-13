@@ -10,6 +10,7 @@ use axum::{
 use cid::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
+use tracing::{info_span, Instrument};
 
 use crate::{
     config::GatewayConfig, server::model::HttpResponse, util::error::Error,
@@ -22,6 +23,7 @@ pub async fn get_car_handler<Cache: ServerCache>(
     Extension(cache): Extension<Arc<RwLock<Cache>>>,
     Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
 ) -> Response {
+    let span = info_span!("Get car handler");
     if Cid::from_str(&cid).is_err() {
         return error_handler(
             StatusCode::BAD_REQUEST,
@@ -31,7 +33,13 @@ pub async fn get_car_handler<Cache: ServerCache>(
     };
 
     let no_cache = cache_control.map_or(false, |c| c.no_cache());
-    match cache.read().await.get_announce(&cid, no_cache).await {
+    match cache
+        .read()
+        .await
+        .get_announce(&cid, no_cache)
+        .instrument(span)
+        .await
+    {
         Ok(stream) => (
             [
                 (

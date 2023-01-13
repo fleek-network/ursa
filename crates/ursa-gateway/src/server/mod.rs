@@ -16,7 +16,7 @@ use axum::{
     Json, Router, ServiceExt,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle};
-use bytes::Bytes;
+use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
@@ -31,9 +31,9 @@ use tower_http::{
     normalize_path::NormalizePath,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     timeout::TimeoutLayer,
-    trace::{DefaultMakeSpan, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, TraceLayer},
+    trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer},
 };
-use tracing::{error, info, trace, Level};
+use tracing::{error, info, Level};
 
 use crate::{
     config::{GatewayConfig, ServerConfig},
@@ -83,24 +83,17 @@ pub async fn start<Cache: ServerCache>(
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                    .on_eos(DefaultOnEos::new().level(Level::INFO))
                     .on_failure(DefaultOnFailure::new().level(Level::ERROR))
                     .on_response(
                         DefaultOnResponse::new()
                             .level(Level::INFO)
                             .include_headers(true)
                             .latency_unit(tower_http::LatencyUnit::Micros),
-                    )
-                    .on_body_chunk(|chunk: &Bytes, latency: Duration, _: &tracing::Span| {
-                        trace!(
-                            "sending body chunk size_bytes={} latency={:?}",
-                            chunk.len(),
-                            latency
-                        )
-                    }),
+                    ),
             )
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid {}))
+            .layer(opentelemetry_tracing_layer())
             .layer(
                 CorsLayer::new()
                     .allow_methods([Method::GET])
