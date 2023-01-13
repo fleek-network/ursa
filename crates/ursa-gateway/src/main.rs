@@ -97,9 +97,11 @@ async fn main() -> Result<()> {
                         signal_tx.send(()).await.expect("Send signal successfully");
                     };
                     info!("Server stopped");
-                }
-                .instrument(info_span!("Server worker"));
-                (spawn(worker), signal_rx)
+                };
+                (
+                    spawn(worker.instrument(info_span!("Server worker"))),
+                    signal_rx,
+                )
             };
 
             let (admin_worker, mut admin_worker_signal_rx) = {
@@ -111,9 +113,11 @@ async fn main() -> Result<()> {
                         signal_tx.send(()).await.expect("Send signal successfully");
                     };
                     info!("Admin server stopped");
-                }
-                .instrument(info_span!("Admin worker"));
-                (spawn(worker), signal_rx)
+                };
+                (
+                    spawn(worker.instrument(info_span!("Admin worker"))),
+                    signal_rx,
+                )
             };
 
             let (ttl_cache_worker, mut ttl_cache_worker_signal_rx) = {
@@ -140,8 +144,11 @@ async fn main() -> Result<()> {
                         }
                     }
                     info!("TTL cache worker stopped");
-                }.instrument(info_span!("TTL cache worker"));
-                (spawn(worker), signal_rx)
+                };
+                (
+                    spawn(worker.instrument(info_span!("TTL cache worker"))),
+                    signal_rx,
+                )
             };
 
             // main worker to stop last

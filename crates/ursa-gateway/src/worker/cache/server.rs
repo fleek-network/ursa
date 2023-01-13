@@ -51,15 +51,13 @@ impl ServerCache for Cache {
                     error!("Failed to dispatch GetSync command: {e:?}");
                     anyhow!("Failed to dispatch GetSync command")
                 })?;
-            spawn(
-                async move {
-                    let span = info_span!("Stream writing");
-                    if let Err(e) = w.write_all(data.as_ref()).instrument(span).await {
-                        error!("Failed to write to stream: {e:?}");
-                    }
+            let stream_writer = async move {
+                let span = info_span!("Stream writing");
+                if let Err(e) = w.write_all(data.as_ref()).instrument(span).await {
+                    error!("Failed to write to stream: {e:?}");
                 }
-                .instrument(span),
-            );
+            };
+            spawn(stream_writer.instrument(span));
         } else {
             let span = info_span!("Cache missed");
             fetch_and_insert(k, &self.tx, w).instrument(span).await?;
