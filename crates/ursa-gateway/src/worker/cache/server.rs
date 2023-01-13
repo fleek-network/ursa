@@ -13,7 +13,8 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::error;
+use tracing::{error, info_span, Instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::{Cache, CacheCommand};
 use crate::util::error::Error;
@@ -36,24 +37,32 @@ impl ServerCache for Cache {
     ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
-            fetch_and_insert(k, &self.tx, w).await?;
+            let span = info_span!("Fetch and insert with no cache");
+            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
+            let span = info_span!("Get announce with cache hit");
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
                     key: String::from(k),
+                    ctx: Span::current().context(),
                 })
                 .map_err(|e| {
                     error!("Failed to dispatch GetSync command: {e:?}");
                     anyhow!("Failed to dispatch GetSync command")
                 })?;
-            spawn(async move {
-                if let Err(e) = w.write_all(data.as_ref()).await {
-                    error!("Failed to write to stream: {e:?}");
+            spawn(
+                async move {
+                    let span = info_span!("Stream writing");
+                    if let Err(e) = w.write_all(data.as_ref()).instrument(span).await {
+                        error!("Failed to write to stream: {e:?}");
+                    }
                 }
-            });
+                .instrument(span),
+            );
         } else {
-            fetch_and_insert(k, &self.tx, w).await?;
+            let span = info_span!("Fetch and insert with cache missed");
+            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         }
         Ok(StreamBody::new(ReaderStream::new(r)))
     }
@@ -69,6 +78,7 @@ async fn fetch_and_insert(
         .send(CacheCommand::Fetch {
             cid: String::from(k),
             sender: tx,
+            ctx: Span::current().context(),
         })
         .map_err(|e| {
             error!("Failed to dispatch Fetch command: {e:?}");
@@ -99,29 +109,33 @@ async fn fetch_and_insert(
     };
     let key = String::from(k); // move to [worker|writer] thread
     let tx = cmd_sender.clone(); // move to [worker|writer] thread
-    spawn(async move {
-        let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-        while let Some(buf) = body.data().await {
-            match buf {
-                Ok(buf) => {
-                    if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
-                        error!("Failed to write to stream for {e:?}");
+    spawn(
+        async move {
+            let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+            while let Some(buf) = body.data().await {
+                match buf {
+                    Ok(buf) => {
+                        if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
+                            error!("Failed to write to stream for {e:?}");
+                            return;
+                        };
+                        bytes.put(buf);
+                    }
+                    Err(e) => {
+                        error!("Failed to read stream for {e:?}");
                         return;
-                    };
-                    bytes.put(buf);
-                }
-                Err(e) => {
-                    error!("Failed to read stream for {e:?}");
-                    return;
+                    }
                 }
             }
+            if let Err(e) = tx.send(CacheCommand::InsertSync {
+                key,
+                value: Arc::new(bytes.into()),
+                ctx: Span::current().context(),
+            }) {
+                error!("Failed to dispatch InsertSync command: {e:?}");
+            };
         }
-        if let Err(e) = tx.send(CacheCommand::InsertSync {
-            key,
-            value: Arc::new(bytes.into()),
-        }) {
-            error!("Failed to dispatch InsertSync command: {e:?}");
-        };
-    });
+        .instrument(info_span!("Stream writing")),
+    );
     Ok(())
 }
