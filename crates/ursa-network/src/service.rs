@@ -519,7 +519,7 @@ where
                         peer,
                         num_remaining,
                     }) => {
-                        info!(
+                        debug!(
                             "[KademliaEvent::Bootstrap] - Received peer: {peer:?}, {}",
                             match num_remaining {
                                 0 => "bootstrap complete!".into(),
@@ -533,7 +533,7 @@ where
                 },
                 other => debug!("[KademliaEvent::OutboundQueryProgressed] - {id:?}: {other:?}"),
             },
-            _ => info!("[KademliaEvent] - {event:?}"),
+            _ => debug!("[KademliaEvent] - {event:?}"),
         }
         Ok(())
     }
