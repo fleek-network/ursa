@@ -9,6 +9,7 @@ use axum::{
     http::{response::Parts, StatusCode},
 };
 use bytes::BufMut;
+use hyper::Body;
 use tokio::{
     io::{duplex, AsyncWriteExt, DuplexStream},
     spawn,
@@ -28,10 +29,11 @@ pub trait ServerCache: Send + Sync + 'static {
 #[async_trait]
 impl ServerCache for Cache {
     async fn get_announce(&self, k: &str, no_cache: bool) -> Result<StreamBody, Error> {
-        let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
-            fetch_and_insert(k, &self.tx, w).await?;
+            fetch_and_insert(k, &self.tx, self.stream_buf as usize, 69).await
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
+            let (mut w, r) = duplex(self.stream_buf as usize);
+
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
@@ -46,17 +48,15 @@ impl ServerCache for Cache {
                     error!("Failed to write to stream: {e:?}");
                 }
             });
+            return Ok(StreamBody::Duplex(r));
         } else {
-            fetch_and_insert(k, &self.tx, w).await?;
+            fetch_and_insert(k, &self.tx, self.stream_buf as usize, 69).await
         }
-        Ok(StreamBody::Duplex(axum::body::StreamBody::new(
-            ReaderStream::new(r),
-        )))
     }
 }
 
 /// Returns stream of bytes and advertised size of the content.
-async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<Response, Error> {
+async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<(Body, u64), Error> {
     let (tx, rx) = oneshot::channel();
     cmd_sender
         .send(CacheCommand::Fetch {
@@ -72,16 +72,7 @@ async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<Re
         anyhow!("Failed to receive response from resolver")
     })??;
 
-    Ok(response)
-}
-
-async fn fetch_and_insert(
-    k: &str,
-    cmd_sender: &UnboundedSender<CacheCommand>,
-    mut stream_writer: DuplexStream,
-) -> Result<(), Error> {
-    let response = fetch(k, cmd_sender).await?;
-    let mut body = match response.resp.into_parts() {
+    let body = match response.resp.into_parts() {
         (
             Parts {
                 status: StatusCode::OK,
@@ -97,6 +88,23 @@ async fn fetch_and_insert(
             ));
         }
     };
+
+    Ok((body, response.size))
+}
+
+async fn fetch_and_insert(
+    k: &str,
+    cmd_sender: &UnboundedSender<CacheCommand>,
+    stream_buf: usize,
+    max_content_size: u64,
+) -> Result<StreamBody, Error> {
+    let (mut body, content_size) = fetch(k, cmd_sender).await?;
+
+    if content_size > max_content_size {
+        return Ok(StreamBody::Direct(body));
+    }
+
+    let (mut stream_writer, r) = duplex(stream_buf);
 
     let key = String::from(k); // move to [worker|writer] thread
     let tx = cmd_sender.clone(); // move to [worker|writer] thread
@@ -124,17 +132,22 @@ async fn fetch_and_insert(
             error!("Failed to dispatch InsertSync command: {e:?}");
         };
     });
-    Ok(())
+
+    Ok(StreamBody::Duplex(r))
 }
 
 pub enum StreamBody {
-    Duplex(axum::body::StreamBody<ReaderStream<DuplexStream>>),
+    Direct(Body),
+    Duplex(DuplexStream),
 }
 
 impl IntoResponse for StreamBody {
     fn into_response(self) -> axum::response::Response {
         match self {
-            StreamBody::Duplex(stream_body) => stream_body.into_response(),
+            StreamBody::Direct(body) => axum::body::StreamBody::new(body).into_response(),
+            StreamBody::Duplex(duplex_stream) => {
+                axum::body::StreamBody::new(ReaderStream::new(duplex_stream)).into_response()
+            }
         }
     }
 }
