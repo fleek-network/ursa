@@ -88,6 +88,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     // get the addrresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
+
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
