@@ -24,7 +24,7 @@ use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender as Sender},
     oneshot, RwLock,
 };
-use tokio::task;
+use tokio::task::{self, JoinHandle};
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
@@ -70,11 +70,8 @@ pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 /// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
-    /// Check blockstore for content, and on cache miss attempt to fetch it
-    async fn check_blockstore(&self, cid: Cid) -> Result<()>;
-
     /// Get a bitswap block from the network
-    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
     /// Get content under a cid
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
@@ -135,16 +132,33 @@ where
         }
     }
 
+    /// Check blockstore for content. On cache miss, attempt to fetch and start providing it
+    /// Returns Ok(true) if the block was found in the blockstore, and Ok(false) if the content was fetched
+    async fn check_blockstore(&self, cid: Cid) -> Result<bool> {
+        if !self.store.blockstore().has(&cid)? {
+            info!("Requesting block with the cid {cid:?}");
+            let res = match self.get_network(cid).await {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    info!("Failed to get block from network: {}", e);
+                    self.get_origin(cid).await
+                }
+            };
+
+            res.map(|_| false)
+        } else {
+            Ok(true)
+        }
+    }
+
     /// Fetch content from the network
     async fn get_network(&self, root_cid: Cid) -> Result<()> {
         info!("Fetching cid {root_cid} from network");
         let (send, recv) = oneshot::channel();
-
         self.network_send.send(NetworkCommand::GetBitswap {
             cid: root_cid,
             sender: send,
         })?;
-
         recv.await?
     }
 
@@ -183,40 +197,24 @@ where
         let store = self.store.db.clone();
         task::spawn(async move {
             // send the request
-            let res = async {
+            let result: Result<(), String> = async {
                 let res = client.send(req).await.map_err(|e| {
                     format!("Error getting content for cid {root_cid} from origin: {e}")
                 })?;
 
-                let mut car = CarReader::new(res).await.map_err(|e| {
-                    format!("Error reading car file for cid {root_cid} from origin: {e}")
-                })?;
+                load_car_checked(store.as_ref(), res, root_cid)
+                    .await
+                    .map_err(|e| {
+                        format!("Error loading car file for cid {root_cid} from origin: {e}")
+                    })?;
 
-                if car.header.roots.iter().any(|cid| *cid == root_cid) {
-                    // see [fvm_ipld_car::load_car]
-                    let mut buf = Vec::with_capacity(100);
-                    while let Ok(Some(block)) = car.next_block().await {
-                        buf.push((block.cid, block.data));
-                        // empty buf if it gets too big
-                        if buf.len() > 1000 {
-                            if let Err(e) = store.put_many_keyed(buf.iter().map(|(k, v)| (*k, v))) {
-                                return Err(e.to_string());
-                            }
-                            buf.clear();
-                        }
-                    }
-                    store
-                        .put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))
-                        .map_err(|e| e.to_string())
-                } else {
-                    Err(format!("Root cid {root_cid} not found in car header"))
-                }
+                Ok(())
             }
             .await;
 
             // notify pending requests for cids
             let mut pending = pending.write().await;
-            match res {
+            match result {
                 Ok(()) => {
                     if let Some(senders) = pending.remove(&root_cid) {
                         for sender in senders {
@@ -243,6 +241,43 @@ where
             .await
             .ok_or_else(|| anyhow!("Failed to receive status from channel"))?
     }
+
+    /// Trigger the network and provider to start providing the content id.
+    fn provide_cid(&self, cid: Cid, size: u64) -> JoinHandle<Result<()>> {
+        let network = self.network_send.clone();
+        let provider = self.provider_send.clone();
+
+        task::spawn(async move {
+            // network content replication
+            let (sender, receiver) = oneshot::channel();
+            if let Err(e) = network.send(NetworkCommand::Put { cid, sender }) {
+                error!("Failed to send network command: {}", e);
+            } else {
+                match receiver.await {
+                    Ok(Ok(())) => return Ok(()),
+                    Ok(Err(e)) => error!("Failed to replicate content with cid {cid}: {e}"),
+                    Err(e) => error!("Failed to replicate content with cid {cid}: {e}"),
+                }
+            }
+
+            // provider announcement
+            let (sender, receiver) = oneshot::channel();
+            if let Err(e) = provider.send(ProviderCommand::Put {
+                context_id: cid.to_bytes(),
+                size,
+                sender,
+            }) {
+                error!("Failed to announce content with cid {cid}: {e}");
+            } else {
+                match receiver.await {
+                    Ok(r) => return r,
+                    Err(e) => error!("Failed to announce content with cid {cid}: {e}"),
+                };
+            }
+
+            Ok(())
+        })
+    }
 }
 
 #[async_trait]
@@ -250,31 +285,31 @@ impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
-    async fn check_blockstore(&self, cid: Cid) -> Result<()> {
-        if !self.store.blockstore().has(&cid)? {
-            info!("Requesting block with the cid {cid:?}");
-            match self.get_network(cid).await {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    info!("Failed to get block from network: {}", e);
-                    self.get_origin(cid).await
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
+        let new = self.check_blockstore(cid).await?;
 
-    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
-        self.check_blockstore(cid).await?;
-        self.store.blockstore().get(&cid)
+        let content = self.store.blockstore().get(&cid)?.ok_or_else(|| anyhow!(
+            "content was fetched but could not be found in blockstore"
+        ))?;
+
+        if new {
+            let size = content.len() as u64;
+            self.provide_cid(cid, size);
+        }
+
+        Ok(content)
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
-        self.check_blockstore(root_cid).await?;
+        let new = self.check_blockstore(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
-        info!("Dag traversal done, now streaming the file");
 
+        if new {
+            let size = dag.iter().map(|(_, c)| c.len() as u64).sum();
+            self.provide_cid(root_cid, size);
+        }
+
+        info!("Dag traversal done, now streaming the file");
         Ok(dag)
     }
 
@@ -350,39 +385,8 @@ where
         let size = car.size;
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
-
         info!("The inserted cids are: {cids:?}");
-
-        let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::Put {
-            cid: root_cid,
-            sender,
-        };
-        if let Err(e) = self.network_send.send(request) {
-            error!("There was an error while sending NetworkCommand::Put: {e}");
-        } else if let Err(e) = receiver.await {
-            return Err(anyhow!(format!(
-                "The PUT failed, please check server logs {e:?}"
-            )));
-        }
-
-        let (sender, receiver) = oneshot::channel();
-        let request = ProviderCommand::Put {
-            context_id: root_cid.to_bytes(),
-            size,
-            sender,
-        };
-        if let Err(e) = self.provider_send.send(request) {
-            // this error can be ignored for test_put_and_get test case
-            error!("there was an error while sending provider command {e}");
-            return Ok(cids);
-        }
-        match receiver.await {
-            Ok(_) => Ok(cids),
-            Err(e) => Err(anyhow!(format!(
-                "The PUT failed, please check server logs {e:?}"
-            ))),
-        }
+        self.provide_cid(root_cid, size).await?.map(|_| cids)
     }
 
     /// Used through CLI
@@ -450,4 +454,28 @@ where
     ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.reader).poll_read(cx, buf)
     }
+}
+
+pub async fn load_car_checked<R, B>(s: &B, reader: R, root_cid: Cid) -> Result<Vec<Cid>>
+where
+    B: Blockstore,
+    R: AsyncRead + Send + Unpin,
+{
+    let mut car = CarReader::new(reader).await?;
+    // verify root cid is present in the car header
+    if !car.header.roots.contains(&root_cid) {
+        return Err(anyhow!("Root CID not present in car header"));
+    }
+    // load into store
+    let mut buf = Vec::with_capacity(100);
+    while let Ok(Some(block)) = car.next_block().await {
+        buf.push((block.cid, block.data));
+        // empty buf if it gets too big
+        if buf.len() > 1000 {
+            s.put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))?;
+            buf.clear();
+        }
+    }
+    s.put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))?;
+    Ok(car.header.roots)
 }

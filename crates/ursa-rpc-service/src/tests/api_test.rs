@@ -50,7 +50,6 @@ mod tests {
     #[tokio::test]
     async fn test_origin_fallback() -> Result<()> {
         setup_logger();
-
         const IPFS_CID: &str = "bafkreihwcrnsi2tqozwq22k4vl7flutu43jlxgb3tenewysm2xvfuej5i4";
         const IPFS_LEN: usize = 26849;
 
@@ -69,10 +68,8 @@ mod tests {
         ));
 
         // since we have no peers, get will fallback to origin
-        let data = interface
-            .get(IPFS_CID.parse()?)
-            .await?
-            .expect("could not find data in blockstore");
+        let (cid, data) = &interface.get_data(IPFS_CID.parse()?).await?[0];
+        assert_eq!(cid.to_string(), IPFS_CID);
         assert_eq!(data.len(), IPFS_LEN);
 
         Ok(())
