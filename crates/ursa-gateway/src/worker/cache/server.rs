@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::resolver::Response;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use axum::response::IntoResponse;
@@ -30,10 +29,11 @@ pub trait ServerCache: Send + Sync + 'static {
 impl ServerCache for Cache {
     async fn get_announce(&self, k: &str, no_cache: bool) -> Result<StreamBody, Error> {
         if no_cache {
-            fetch_and_insert(k, &self.tx, self.stream_buf as usize, 69).await
+            fetch(k, &self.tx)
+                .await
+                .map(|(body, _)| StreamBody::Direct(body))
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let (mut w, r) = duplex(self.stream_buf as usize);
-
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
@@ -48,9 +48,41 @@ impl ServerCache for Cache {
                     error!("Failed to write to stream: {e:?}");
                 }
             });
-            return Ok(StreamBody::Duplex(r));
+            Ok(StreamBody::Duplex(r))
         } else {
-            fetch_and_insert(k, &self.tx, self.stream_buf as usize, 69).await
+            let (mut body, content_size) = fetch(k, &self.tx).await?;
+            if content_size > 69 {
+                return Ok(StreamBody::Direct(body));
+            }
+            let key = String::from(k); // move to [worker|writer] thread
+            let tx = self.tx.clone(); // move to [worker|writer] thread
+            let (mut w, r) = duplex(self.stream_buf as usize);
+            spawn(async move {
+                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+                while let Some(buf) = body.data().await {
+                    match buf {
+                        Ok(buf) => {
+                            if let Err(e) = w.write_all(buf.as_ref()).await {
+                                error!("Failed to write to stream for {e:?}");
+                                return;
+                            };
+                            bytes.put(buf);
+                        }
+                        Err(e) => {
+                            error!("Failed to read stream for {e:?}");
+                            return;
+                        }
+                    }
+                }
+                if let Err(e) = tx.send(CacheCommand::InsertSync {
+                    key,
+                    value: Arc::new(bytes.into()),
+                }) {
+                    error!("Failed to dispatch InsertSync command: {e:?}");
+                };
+            });
+
+            Ok(StreamBody::Duplex(r))
         }
     }
 }
@@ -71,7 +103,6 @@ async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<(B
         error!("Failed to receive response from resolver: {e:?}");
         anyhow!("Failed to receive response from resolver")
     })??;
-
     let body = match response.resp.into_parts() {
         (
             Parts {
@@ -88,52 +119,7 @@ async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<(B
             ));
         }
     };
-
     Ok((body, response.size))
-}
-
-async fn fetch_and_insert(
-    k: &str,
-    cmd_sender: &UnboundedSender<CacheCommand>,
-    stream_buf: usize,
-    max_content_size: u64,
-) -> Result<StreamBody, Error> {
-    let (mut body, content_size) = fetch(k, cmd_sender).await?;
-
-    if content_size > max_content_size {
-        return Ok(StreamBody::Direct(body));
-    }
-
-    let (mut stream_writer, r) = duplex(stream_buf);
-
-    let key = String::from(k); // move to [worker|writer] thread
-    let tx = cmd_sender.clone(); // move to [worker|writer] thread
-    spawn(async move {
-        let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-        while let Some(buf) = body.data().await {
-            match buf {
-                Ok(buf) => {
-                    if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
-                        error!("Failed to write to stream for {e:?}");
-                        return;
-                    };
-                    bytes.put(buf);
-                }
-                Err(e) => {
-                    error!("Failed to read stream for {e:?}");
-                    return;
-                }
-            }
-        }
-        if let Err(e) = tx.send(CacheCommand::InsertSync {
-            key,
-            value: Arc::new(bytes.into()),
-        }) {
-            error!("Failed to dispatch InsertSync command: {e:?}");
-        };
-    });
-
-    Ok(StreamBody::Duplex(r))
 }
 
 pub enum StreamBody {
