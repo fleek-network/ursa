@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
                         }
                     }
                     info!("TTL cache worker stopped");
-                }.instrument(info_span!("Ttl cache worker"));
+                }.instrument(info_span!("TTL cache worker"));
                 (spawn(worker), signal_rx)
             };
 

@@ -71,8 +71,9 @@ pub fn start<Cache: WorkerCache>(
                         },
                         CacheCommand::TtlCleanUp => {
                             spawn(async move {
+                                let span = info_span!("[Worker]: TtlCleanUp");
                                 info!("Dispatch TtlCleanUp command");
-                                if let Err(e) = cache.write().await.ttl_cleanup().await {
+                                if let Err(e) = cache.write().await.ttl_cleanup().instrument(span).await {
                                     error!("Dispatch TtlCleanUp command error {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };

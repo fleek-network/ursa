@@ -37,10 +37,10 @@ impl ServerCache for Cache {
     ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
-            let span = info_span!("Fetch and insert with no cache");
+            let span = info_span!("Cache invalidate");
             fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
-            let span = info_span!("Get announce with cache hit");
+            let span = info_span!("Cache hit");
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
@@ -61,7 +61,7 @@ impl ServerCache for Cache {
                 .instrument(span),
             );
         } else {
-            let span = info_span!("Fetch and insert with cache missed");
+            let span = info_span!("Cache missed");
             fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         }
         Ok(StreamBody::new(ReaderStream::new(r)))
@@ -109,33 +109,31 @@ async fn fetch_and_insert(
     };
     let key = String::from(k); // move to [worker|writer] thread
     let tx = cmd_sender.clone(); // move to [worker|writer] thread
-    spawn(
-        async move {
-            let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-            while let Some(buf) = body.data().await {
-                match buf {
-                    Ok(buf) => {
-                        if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
-                            error!("Failed to write to stream for {e:?}");
-                            return;
-                        };
-                        bytes.put(buf);
-                    }
-                    Err(e) => {
-                        error!("Failed to read stream for {e:?}");
+    let stream_writer = async move {
+        let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+        while let Some(buf) = body.data().await {
+            match buf {
+                Ok(buf) => {
+                    if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
+                        error!("Failed to write to stream for {e:?}");
                         return;
-                    }
+                    };
+                    bytes.put(buf);
+                }
+                Err(e) => {
+                    error!("Failed to read stream for {e:?}");
+                    return;
                 }
             }
-            if let Err(e) = tx.send(CacheCommand::InsertSync {
-                key,
-                value: Arc::new(bytes.into()),
-                ctx: Span::current().context(),
-            }) {
-                error!("Failed to dispatch InsertSync command: {e:?}");
-            };
         }
-        .instrument(info_span!("Stream writing")),
-    );
+        if let Err(e) = tx.send(CacheCommand::InsertSync {
+            key,
+            value: Arc::new(bytes.into()),
+            ctx: Span::current().context(),
+        }) {
+            error!("Failed to dispatch InsertSync command: {e:?}");
+        };
+    };
+    spawn(stream_writer.instrument(info_span!("Stream writing")));
     Ok(())
 }
