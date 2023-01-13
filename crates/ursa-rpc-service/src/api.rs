@@ -288,9 +288,10 @@ where
     async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
         let new = self.check_blockstore(cid).await?;
 
-        let content = self.store.blockstore().get(&cid)?.ok_or_else(|| anyhow!(
-            "content was fetched but could not be found in blockstore"
-        ))?;
+        let content =
+            self.store.blockstore().get(&cid)?.ok_or_else(|| {
+                anyhow!("content was fetched but could not be found in blockstore")
+            })?;
 
         if new {
             let size = content.len() as u64;
