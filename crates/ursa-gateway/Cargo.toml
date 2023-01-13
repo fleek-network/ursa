@@ -11,6 +11,7 @@ description = "Ursa's proxy gateway"
 anyhow.workspace = true
 axum.workspace = true
 axum-server.workspace = true
+axum-tracing-opentelemetry.workspace = true
 bincode.workspace = true
 base64.workspace = true
 tower = { workspace = true, features = ["full"] }
@@ -30,3 +31,5 @@ async-trait.workspace = true
 tokio-util.workspace = true
 bytes.workspace = true
 ursa-telemetry = { path = "../ursa-telemetry" }
+opentelemetry.workspace = true
+tracing-opentelemetry.workspace = true
