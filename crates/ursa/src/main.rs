@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
                     store,
                     service.command_sender(),
                     index_provider_engine.command_sender(),
-                    Default::default(),
+                    server_config.origin.clone(),
                 ));
                 let server = Server::new(interface);
 
