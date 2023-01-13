@@ -51,7 +51,7 @@ impl ServerCache for Cache {
             Ok(StreamBody::Duplex(r))
         } else {
             let (mut body, content_size) = fetch(k, &self.tx).await?;
-            if content_size > 69 {
+            if content_size > self.cache_control_max_size {
                 info!("Content size is {content_size}...skipping cache");
                 return Ok(StreamBody::Direct(body));
             }

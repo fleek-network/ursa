@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
                 gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
                 worker_tx.clone(),                                // cache command producer
                 gateway_config.server.stream_buf,
+                gateway_config.server.cache_control_max_size,
             )));
             let server_cache = Arc::clone(&cache);
             let admin_cache = Arc::clone(&server_cache);

@@ -62,6 +62,7 @@ pub struct ServerConfig {
     pub key_path: PathBuf,
     pub stream_buf: u64,
     pub cache_control_max_age: u64,
+    pub cache_control_max_size: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -103,8 +104,9 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("server_key.pem"),
-                stream_buf: 2_000_000,          // 2MB
-                cache_control_max_age: 604_800, // one week
+                stream_buf: 2_000_000,                 // 2MB
+                cache_control_max_age: 604_800,        // one week
+                cache_control_max_size: 1_000_000_000, // 1GB
             },
             admin_server: AdminConfig {
                 addr: "0.0.0.0".into(),
@@ -185,6 +187,9 @@ impl GatewayConfig {
         }
         if let Some(ttl_cache_interval) = config.ttl_cache_interval {
             self.worker.ttl_cache_interval = ttl_cache_interval;
+        }
+        if let Some(cache_control_max_size) = config.cache_control_max_size {
+            self.server.cache_control_max_size = cache_control_max_size;
         }
     }
 }

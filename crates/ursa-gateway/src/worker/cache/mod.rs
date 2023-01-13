@@ -24,6 +24,7 @@ pub struct Cache {
     tlrfu: Tlrfu<Bytes>,
     tx: UnboundedSender<CacheCommand>,
     stream_buf: u64,
+    cache_control_max_size: u64,
 }
 
 impl Cache {
@@ -32,11 +33,13 @@ impl Cache {
         ttl_buf: u128,
         tx: UnboundedSender<CacheCommand>,
         stream_buf: u64,
+        cache_control_max_size: u64,
     ) -> Self {
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
             stream_buf,
+            cache_control_max_size,
         }
     }
 }
