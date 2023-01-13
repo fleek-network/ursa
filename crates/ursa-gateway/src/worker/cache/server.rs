@@ -15,7 +15,7 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::error;
+use tracing::{error, info};
 
 use super::{Cache, CacheCommand};
 use crate::util::error::Error;
@@ -52,6 +52,7 @@ impl ServerCache for Cache {
         } else {
             let (mut body, content_size) = fetch(k, &self.tx).await?;
             if content_size > 69 {
+                info!("Content size is {content_size}...skipping cache");
                 return Ok(StreamBody::Direct(body));
             }
             let key = String::from(k); // move to [worker|writer] thread
