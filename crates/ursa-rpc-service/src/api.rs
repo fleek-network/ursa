@@ -24,7 +24,7 @@ use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender as Sender},
     oneshot, RwLock,
 };
-use tokio::task::{self, JoinHandle};
+use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
@@ -119,29 +119,30 @@ where
 {
     async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
         let new = self.check_blockstore(cid).await?;
-
         let content =
             self.store.blockstore().get(&cid)?.ok_or_else(|| {
                 anyhow!("content was fetched but could not be found in blockstore")
             })?;
-
         if new {
             let size = content.len() as u64;
-            self.provide_cid(cid, size);
+            if let Err(e) = self.provide_cid(cid, size).await {
+                error!("{e}")
+            }
         }
-
         Ok(content)
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let new = self.check_blockstore(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
-
         if new {
+            // note: this is blocking, so we need to ensure that Provider and Network Put
+            // do not take excessive time to initiate to avoid delaying response time
             let size = dag.iter().map(|(_, c)| c.len() as u64).sum();
-            self.provide_cid(root_cid, size);
+            if let Err(e) = self.provide_cid(root_cid, size).await {
+                error!("{e}")
+            }
         }
-
         info!("Dag traversal done, now streaming the file");
         Ok(dag)
     }
@@ -219,7 +220,7 @@ where
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
         info!("The inserted cids are: {cids:?}");
-        self.provide_cid(root_cid, size).await?.map(|_| cids)
+        self.provide_cid(root_cid, size).await.map(|_| cids)
     }
 
     /// Used through CLI
@@ -384,40 +385,34 @@ where
     }
 
     /// Trigger the network and provider to start providing the content id.
-    fn provide_cid(&self, cid: Cid, size: u64) -> JoinHandle<Result<()>> {
-        let network = self.network_send.clone();
-        let provider = self.provider_send.clone();
-
-        task::spawn(async move {
-            // network content replication
-            let (sender, receiver) = oneshot::channel();
-            if let Err(e) = network.send(NetworkCommand::Put { cid, sender }) {
-                error!("Failed to send network command: {}", e);
-            } else {
-                match receiver.await {
-                    Ok(Ok(())) => return Ok(()),
-                    Ok(Err(e)) => error!("Failed to replicate content with cid {cid}: {e}"),
-                    Err(e) => error!("Failed to replicate content with cid {cid}: {e}"),
-                }
+    async fn provide_cid(&self, cid: Cid, size: u64) -> Result<()> {
+        // network content replication
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.network_send.send(NetworkCommand::Put { cid, sender }) {
+            error!("Failed to send network command: {}", e);
+        } else {
+            match receiver.await {
+                Ok(res) => res?,
+                Err(e) => error!("Error receiving network put status for {cid}: {e}"),
             }
+        }
 
-            // provider announcement
-            let (sender, receiver) = oneshot::channel();
-            if let Err(e) = provider.send(ProviderCommand::Put {
-                context_id: cid.to_bytes(),
-                size,
-                sender,
-            }) {
-                error!("Failed to announce content with cid {cid}: {e}");
-            } else {
-                match receiver.await {
-                    Ok(r) => return r,
-                    Err(e) => error!("Failed to announce content with cid {cid}: {e}"),
-                };
-            }
+        // provider announcement
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.provider_send.send(ProviderCommand::Put {
+            context_id: cid.to_bytes(),
+            size,
+            sender,
+        }) {
+            error!("Failed to announce content with cid {cid}: {e}");
+        } else {
+            match receiver.await {
+                Ok(r) => return r,
+                Err(e) => error!("Error receiving provider put status for {cid}: {e}"),
+            };
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }
 
