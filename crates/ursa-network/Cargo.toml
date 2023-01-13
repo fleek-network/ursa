@@ -36,7 +36,6 @@ tokio.workspace = true
 tracing.workspace = true
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-store = { path = "../ursa-store" }
-void = "1.0.2"
 
 [dependencies.libp2p]
 workspace = true
