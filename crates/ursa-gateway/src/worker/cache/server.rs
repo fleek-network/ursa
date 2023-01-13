@@ -15,7 +15,8 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::{error, info};
+use tracing::{error, info, info_span, Instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::{Cache, CacheCommand};
 use crate::util::error::Error;
@@ -29,61 +30,72 @@ pub trait ServerCache: Send + Sync + 'static {
 impl ServerCache for Cache {
     async fn get_announce(&self, k: &str, no_cache: bool) -> Result<StreamBody, Error> {
         if no_cache {
+            let span = info_span!("Cache invalidate");
             fetch(k, &self.tx)
+                .instrument(span)
                 .await
                 .map(|(body, _)| StreamBody::Direct(body))
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let (mut w, r) = duplex(self.stream_buf as usize);
+            let span = info_span!("Cache hit");
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
                     key: String::from(k),
+                    ctx: Span::current().context(),
                 })
                 .map_err(|e| {
                     error!("Failed to dispatch GetSync command: {e:?}");
                     anyhow!("Failed to dispatch GetSync command")
                 })?;
-            spawn(async move {
-                if let Err(e) = w.write_all(data.as_ref()).await {
+            let stream_writer = async move {
+                let span = info_span!("Stream writing");
+                if let Err(e) = w.write_all(data.as_ref()).instrument(span).await {
                     error!("Failed to write to stream: {e:?}");
                 }
-            });
+            };
+            spawn(stream_writer.instrument(span));
             Ok(StreamBody::Duplex(r))
         } else {
-            let (mut body, content_size) = fetch(k, &self.tx).await?;
-            if content_size > self.cache_control_max_size {
-                info!("Content size is {content_size}...skipping cache");
-                return Ok(StreamBody::Direct(body));
-            }
-            let key = String::from(k); // move to [worker|writer] thread
-            let tx = self.tx.clone(); // move to [worker|writer] thread
-            let (mut w, r) = duplex(self.stream_buf as usize);
-            spawn(async move {
-                let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
-                while let Some(buf) = body.data().await {
-                    match buf {
-                        Ok(buf) => {
-                            if let Err(e) = w.write_all(buf.as_ref()).await {
-                                error!("Failed to write to stream for {e:?}");
+            let span = info_span!("Cache missed");
+            let cache_miss = async {
+                let (mut body, content_size) = fetch(k, &self.tx).await?;
+                if content_size > self.cache_control_max_size {
+                    info!("Content size is {content_size}...skipping cache");
+                    return Ok(StreamBody::Direct(body));
+                }
+                let key = String::from(k); // move to [worker|writer] thread
+                let tx = self.tx.clone(); // move to [worker|writer] thread
+                let (mut stream_writer, stream_reader) = duplex(self.stream_buf as usize);
+                let stream_writer = async move {
+                    let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
+                    while let Some(buf) = body.data().await {
+                        match buf {
+                            Ok(buf) => {
+                                if let Err(e) = stream_writer.write_all(buf.as_ref()).await {
+                                    error!("Failed to write to stream for {e:?}");
+                                    return;
+                                };
+                                bytes.put(buf);
+                            }
+                            Err(e) => {
+                                error!("Failed to read stream for {e:?}");
                                 return;
-                            };
-                            bytes.put(buf);
-                        }
-                        Err(e) => {
-                            error!("Failed to read stream for {e:?}");
-                            return;
+                            }
                         }
                     }
-                }
-                if let Err(e) = tx.send(CacheCommand::InsertSync {
-                    key,
-                    value: Arc::new(bytes.into()),
-                }) {
-                    error!("Failed to dispatch InsertSync command: {e:?}");
+                    if let Err(e) = tx.send(CacheCommand::InsertSync {
+                        key,
+                        value: Arc::new(bytes.into()),
+                        ctx: Span::current().context(),
+                    }) {
+                        error!("Failed to dispatch InsertSync command: {e:?}");
+                    };
                 };
-            });
-
-            Ok(StreamBody::Duplex(r))
+                spawn(stream_writer.instrument(info_span!("Stream writing")));
+                Ok(StreamBody::Duplex(stream_reader))
+            };
+            cache_miss.instrument(span).await
         }
     }
 }
@@ -95,6 +107,7 @@ async fn fetch(k: &str, cmd_sender: &UnboundedSender<CacheCommand>) -> Result<(B
         .send(CacheCommand::Fetch {
             cid: String::from(k),
             sender: tx,
+            ctx: Span::current().context(),
         })
         .map_err(|e| {
             error!("Failed to dispatch Fetch command: {e:?}");

@@ -9,14 +9,21 @@ use testground::client::Client;
 use ursa_network::{NetworkCommand, NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
 
+use crate::node::Node;
+
 static NODES_PER_BATCH: u64 = 5;
 
-fn node_init(keypair: libp2p::identity::Keypair, config: NetworkConfig) -> UrsaService<MemoryDB> {
+fn node_init(
+    keypair: libp2p::identity::Keypair,
+    config: NetworkConfig,
+) -> (UrsaService<MemoryDB>, Arc<UrsaStore<MemoryDB>>) {
     let db = Arc::new(MemoryDB::default());
     let store = Arc::new(UrsaStore::new(Arc::clone(&db)));
-    UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap()
+    (
+        UrsaService::new(keypair, &config, Arc::clone(&store)).unwrap(),
+        store,
+    )
 }
-
 
 pub async fn start_bootstrap(client: testground::client::Client) {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
@@ -50,7 +57,7 @@ pub async fn start_bootstrap(client: testground::client::Client) {
         .unwrap();
 
     // Start service.
-    let service = node_init(local_key, config);
+    let (service, _) = node_init(local_key, config);
     tokio::task::spawn(async move { service.start().await.unwrap() });
     client.record_message(format!("[Bootstrap]: listening at {peer_id:?}"));
 
@@ -66,7 +73,7 @@ pub async fn start_bootstrap(client: testground::client::Client) {
     client.record_success().await.expect("Success");
 }
 
-pub async fn start_node(client: &mut Client) -> Result<(), String> {
+pub async fn start_node(client: &mut Client) -> Result<Node, String> {
     let seq = client.global_seq();
     let test_instance_count = client.run_parameters().test_instance_count as usize;
     let num_nodes = client.run_parameters().test_instance_count - 1;
@@ -114,9 +121,12 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
         };
         if seq >= lower && seq <= upper {
             batch_index = i;
-            
+
             // Wait for previous batch to finish
-            client.barrier(format!("batch-{}-done", batch_index - 1), NODES_PER_BATCH).await.unwrap();
+            client
+                .barrier(format!("batch-{}-done", batch_index - 1), NODES_PER_BATCH)
+                .await
+                .unwrap();
         }
     }
 
@@ -137,7 +147,7 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
 
     // Init service.
     let local_key = libp2p::identity::Keypair::generate_ed25519();
-    let service = node_init(local_key.clone(), config);
+    let (service, store) = node_init(local_key.clone(), config);
     let cmd_sender = service.command_sender();
 
     // Start service.
@@ -166,12 +176,13 @@ pub async fn start_node(client: &mut Client) -> Result<(), String> {
 
     // Once all nodes in a batch have reached this point, the nodes in the next batch
     // are notified and can continue.
-    client.signal(format!("batch-{}-done", batch_index)).await.unwrap();
-    // All nodes wait here and signal to the bootstrap node that they are done.
-    client.signal_and_wait("done", num_nodes).await.unwrap();
+    client
+        .signal(format!("batch-{}-done", batch_index))
+        .await
+        .unwrap();
 
     if peers.len() > 1 {
-        Ok(())
+        Ok(Node::new(store, cmd_sender))
     } else {
         Err("failed to bootstrap".to_string())
     }

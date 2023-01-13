@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
+use opentelemetry::Context;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
 use crate::resolver::Response;
@@ -48,14 +49,17 @@ impl Cache {
 pub enum CacheCommand {
     GetSync {
         key: String,
+        ctx: Context,
     },
     InsertSync {
         key: String,
         value: Arc<Bytes>,
+        ctx: Context,
     },
     Fetch {
         cid: String,
         sender: oneshot::Sender<Result<Response, Error>>,
+        ctx: Context,
     },
     TtlCleanUp,
 }
