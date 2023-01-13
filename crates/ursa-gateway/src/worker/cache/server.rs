@@ -13,7 +13,8 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::error;
+use tracing::{error, info_span, Instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::{Cache, CacheCommand};
 use crate::util::error::Error;
@@ -36,24 +37,30 @@ impl ServerCache for Cache {
     ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
         let (mut w, r) = duplex(self.stream_buf as usize);
         if no_cache {
-            fetch_and_insert(k, &self.tx, w).await?;
+            let span = info_span!("Cache invalidate");
+            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
+            let span = info_span!("Cache hit");
             let data = Arc::clone(data);
             self.tx
                 .send(CacheCommand::GetSync {
                     key: String::from(k),
+                    ctx: Span::current().context(),
                 })
                 .map_err(|e| {
                     error!("Failed to dispatch GetSync command: {e:?}");
                     anyhow!("Failed to dispatch GetSync command")
                 })?;
-            spawn(async move {
-                if let Err(e) = w.write_all(data.as_ref()).await {
+            let stream_writer = async move {
+                let span = info_span!("Stream writing");
+                if let Err(e) = w.write_all(data.as_ref()).instrument(span).await {
                     error!("Failed to write to stream: {e:?}");
                 }
-            });
+            };
+            spawn(stream_writer.instrument(span));
         } else {
-            fetch_and_insert(k, &self.tx, w).await?;
+            let span = info_span!("Cache missed");
+            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
         }
         Ok(StreamBody::new(ReaderStream::new(r)))
     }
@@ -69,6 +76,7 @@ async fn fetch_and_insert(
         .send(CacheCommand::Fetch {
             cid: String::from(k),
             sender: tx,
+            ctx: Span::current().context(),
         })
         .map_err(|e| {
             error!("Failed to dispatch Fetch command: {e:?}");
@@ -99,7 +107,7 @@ async fn fetch_and_insert(
     };
     let key = String::from(k); // move to [worker|writer] thread
     let tx = cmd_sender.clone(); // move to [worker|writer] thread
-    spawn(async move {
+    let stream_writer = async move {
         let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
         while let Some(buf) = body.data().await {
             match buf {
@@ -119,9 +127,11 @@ async fn fetch_and_insert(
         if let Err(e) = tx.send(CacheCommand::InsertSync {
             key,
             value: Arc::new(bytes.into()),
+            ctx: Span::current().context(),
         }) {
             error!("Failed to dispatch InsertSync command: {e:?}");
         };
-    });
+    };
+    spawn(stream_writer.instrument(info_span!("Stream writing")));
     Ok(())
 }
