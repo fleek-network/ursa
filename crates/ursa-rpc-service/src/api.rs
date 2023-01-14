@@ -100,6 +100,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
 
 type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<()>>>>>>;
 
+#[derive(Clone)]
 pub struct NodeNetworkInterface<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
