@@ -43,11 +43,11 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
         Ok(())
     } else {
         // Poll store to see if data has been transferred.
-        let check = PendingPullRequest {
+        let pending = PendingPullRequest {
             cid: *block.cid(),
             store: GraphSyncStorage(node.store.clone()),
         };
-        timeout(Duration::from_secs(5), check)
+        timeout(Duration::from_secs(5), pending)
             .await
             .map_err(|_| "Data transfer failed".to_string())
     };
