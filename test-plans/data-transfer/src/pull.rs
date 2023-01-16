@@ -19,6 +19,13 @@ fn create_block(content: &[u8]) -> Block<DefaultParams> {
 }
 
 pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
+    // Let's wait until all nodes are ready to begin.
+    let num_nodes = client.run_parameters().test_instance_count - 1;
+    client
+        .signal_and_wait("pull-test-ready", num_nodes)
+        .await
+        .unwrap();
+
     let block = create_block(&b"hello world"[..]);
     // Pick random node for now.
     let seq = client.global_seq();
@@ -45,7 +52,6 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
             .map_err(|_| "Data transfer failed".to_string())
     };
     // Let's wait until everyone is done.
-    let num_nodes = client.run_parameters().test_instance_count - 1;
     client
         .signal_and_wait("test_cache_request_done", num_nodes)
         .await

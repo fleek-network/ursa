@@ -30,10 +30,6 @@ async fn main() {
     };
 
     // Wait for all nodes to bootstrap.
-    client
-        .signal_and_wait("bootstrap-done", num_nodes)
-        .await
-        .unwrap();
     let result = pull::run_test(&mut client, node).await;
 
     // All nodes wait here and signal to the bootstrap node that they are done.
