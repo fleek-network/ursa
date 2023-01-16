@@ -124,6 +124,7 @@ where
             self.store.blockstore().get(&cid)?.ok_or_else(|| {
                 anyhow!("content was fetched but could not be found in blockstore")
             })?;
+        // if the content was fetched and new to the blockstore, we need to start providing it
         if new {
             let size = content.len() as u64;
             if let Err(e) = self.provide_cid(cid, size).await {
@@ -136,6 +137,7 @@ where
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         let new = self.check_blockstore(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
+        // if the content was fetched and new to the blockstore, we need to start providing it
         if new {
             // note: this is blocking, so we need to ensure that Provider and Network Put
             // do not take excessive time to initiate to avoid delaying response time
