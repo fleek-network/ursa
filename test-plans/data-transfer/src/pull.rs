@@ -50,7 +50,7 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
         .signal_and_wait("test_cache_request_done", num_nodes)
         .await
         .unwrap();
-    if result.is_ok() {
+    if result.is_ok() && seq != 2 {
         client.record_message("Data was pulled succesfully")
     }
     result
