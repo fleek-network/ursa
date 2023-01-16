@@ -1,6 +1,6 @@
 mod bootstrap;
-mod cache;
 mod node;
+mod pull;
 
 use env_logger::Env;
 use testground::client::Client;
@@ -29,7 +29,7 @@ async fn main() {
         }
     };
 
-    let result = cache::test_cache_request(&mut client, node).await;
+    let result = pull::run_test(&mut client, node).await;
 
     // All nodes wait here and signal to the bootstrap node that they are done.
     client.signal_and_wait("done", num_nodes).await.unwrap();
