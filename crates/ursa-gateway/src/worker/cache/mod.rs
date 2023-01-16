@@ -9,7 +9,7 @@ use bytes::Bytes;
 use opentelemetry::Context;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
-use crate::resolver::Response;
+use crate::resolver::NodeResponse;
 use crate::{
     cache::{ByteSize, Tlrfu},
     util::error::Error,
@@ -58,7 +58,7 @@ pub enum CacheCommand {
     },
     Fetch {
         cid: String,
-        sender: oneshot::Sender<Result<Response, Error>>,
+        sender: oneshot::Sender<Result<NodeResponse, Error>>,
         ctx: Context,
     },
     TtlCleanUp,

@@ -24,7 +24,7 @@ pub struct Resolver {
 }
 
 #[derive(Debug)]
-pub struct Response {
+pub struct NodeResponse {
     pub resp: response::Response<Body>,
     pub size: u64,
 }
@@ -37,7 +37,7 @@ impl Resolver {
         }
     }
 
-    pub async fn resolve_content(&self, cid: &str) -> Result<Response, Error> {
+    pub async fn resolve_content(&self, cid: &str) -> Result<NodeResponse, Error> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
 
         let uri = endpoint.parse::<Uri>().map_err(|e| {
@@ -172,7 +172,7 @@ impl Resolver {
             };
             match self.client.get(uri).await {
                 Ok(resp) => {
-                    return Ok(Response {
+                    return Ok(NodeResponse {
                         resp,
                         size: metadata.size,
                     })
