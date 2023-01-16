@@ -2,18 +2,20 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
+use axum::response::IntoResponse;
 use axum::{
-    body::{HttpBody, StreamBody},
+    body::HttpBody,
     http::{response::Parts, StatusCode},
 };
 use bytes::BufMut;
+use hyper::Body;
 use tokio::{
     io::{duplex, AsyncWriteExt, DuplexStream},
     spawn,
     sync::{mpsc::UnboundedSender, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use tracing::{error, info_span, Instrument, Span};
+use tracing::{error, info, info_span, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::{Cache, CacheCommand};
@@ -21,25 +23,19 @@ use crate::util::error::Error;
 
 #[async_trait]
 pub trait ServerCache: Send + Sync + 'static {
-    async fn get_announce(
-        &self,
-        k: &str,
-        no_cache: bool,
-    ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error>;
+    async fn get_announce(&self, k: &str, no_cache: bool) -> Result<StreamBody, Error>;
 }
 
 #[async_trait]
 impl ServerCache for Cache {
-    async fn get_announce(
-        &self,
-        k: &str,
-        no_cache: bool,
-    ) -> Result<StreamBody<ReaderStream<DuplexStream>>, Error> {
-        let (mut w, r) = duplex(self.stream_buf as usize);
+    async fn get_announce(&self, k: &str, no_cache: bool) -> Result<StreamBody, Error> {
         if no_cache {
             let span = info_span!("Cache invalidate");
-            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
+            fetch_and_insert(k, &self.tx, self.stream_buf, self.cache_control_max_size)
+                .instrument(span)
+                .await
         } else if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
+            let (mut w, r) = duplex(self.stream_buf as usize);
             let span = info_span!("Cache hit");
             let data = Arc::clone(data);
             self.tx
@@ -58,19 +54,22 @@ impl ServerCache for Cache {
                 }
             };
             spawn(stream_writer.instrument(span));
+            Ok(StreamBody::Duplex(r))
         } else {
             let span = info_span!("Cache missed");
-            fetch_and_insert(k, &self.tx, w).instrument(span).await?;
+            fetch_and_insert(k, &self.tx, self.stream_buf, self.cache_control_max_size)
+                .instrument(span)
+                .await
         }
-        Ok(StreamBody::new(ReaderStream::new(r)))
     }
 }
 
 async fn fetch_and_insert(
     k: &str,
     cmd_sender: &UnboundedSender<CacheCommand>,
-    mut stream_writer: DuplexStream,
-) -> Result<(), Error> {
+    stream_buf: u64,
+    cache_control_max_size: u64,
+) -> Result<StreamBody, Error> {
     let (tx, rx) = oneshot::channel();
     cmd_sender
         .send(CacheCommand::Fetch {
@@ -82,14 +81,11 @@ async fn fetch_and_insert(
             error!("Failed to dispatch Fetch command: {e:?}");
             anyhow!("Failed to dispatch Fetch command")
         })?;
-    let mut body = match rx
-        .await
-        .map_err(|e| {
-            error!("Failed to receive response from resolver: {e:?}");
-            anyhow!("Failed to receive response from resolver")
-        })??
-        .into_parts()
-    {
+    let response = rx.await.map_err(|e| {
+        error!("Failed to receive response from resolver: {e:?}");
+        anyhow!("Failed to receive response from resolver")
+    })??;
+    let mut body = match response.resp.into_parts() {
         (
             Parts {
                 status: StatusCode::OK,
@@ -105,8 +101,13 @@ async fn fetch_and_insert(
             ));
         }
     };
+    if response.size > cache_control_max_size {
+        info!("Content size is {}..skipping cache", response.size);
+        return Ok(StreamBody::Direct(body));
+    }
     let key = String::from(k); // move to [worker|writer] thread
     let tx = cmd_sender.clone(); // move to [worker|writer] thread
+    let (mut stream_writer, stream_reader) = duplex(stream_buf as usize);
     let stream_writer = async move {
         let mut bytes = Vec::with_capacity(body.size_hint().lower() as usize);
         while let Some(buf) = body.data().await {
@@ -133,5 +134,21 @@ async fn fetch_and_insert(
         };
     };
     spawn(stream_writer.instrument(info_span!("Stream writing")));
-    Ok(())
+    Ok(StreamBody::Duplex(stream_reader))
+}
+
+pub enum StreamBody {
+    Direct(Body),
+    Duplex(DuplexStream),
+}
+
+impl IntoResponse for StreamBody {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            StreamBody::Direct(body) => axum::body::StreamBody::new(body).into_response(),
+            StreamBody::Duplex(duplex_stream) => {
+                axum::body::StreamBody::new(ReaderStream::new(duplex_stream)).into_response()
+            }
+        }
+    }
 }

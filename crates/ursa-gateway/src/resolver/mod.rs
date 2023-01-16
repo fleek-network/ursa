@@ -1,7 +1,7 @@
 pub mod model;
 
 use anyhow::{anyhow, Context};
-use axum::{body::Body, http::response::Parts, response::Response};
+use axum::{body::Body, http::response, http::response::Parts};
 use hyper::{body::to_bytes, client::HttpConnector, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
@@ -23,6 +23,12 @@ pub struct Resolver {
     client: Client,
 }
 
+#[derive(Debug)]
+pub struct NodeResponse {
+    pub resp: response::Response<Body>,
+    pub size: u64,
+}
+
 impl Resolver {
     pub fn new(indexer_cid_url: String, client: Client) -> Self {
         Self {
@@ -31,7 +37,7 @@ impl Resolver {
         }
     }
 
-    pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
+    pub async fn resolve_content(&self, cid: &str) -> Result<NodeResponse, Error> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
 
         let uri = endpoint.parse::<Uri>().map_err(|e| {
@@ -165,7 +171,12 @@ impl Resolver {
                 }
             };
             match self.client.get(uri).await {
-                Ok(resp) => return Ok(resp),
+                Ok(resp) => {
+                    return Ok(NodeResponse {
+                        resp,
+                        size: metadata.size,
+                    })
+                }
                 Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };
         }
