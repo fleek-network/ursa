@@ -16,19 +16,11 @@ exclude = [
   "test-plans",
 ]
 
-[profile.release]
-# 2 full, 0 nothing, 1 good enough.
-debug = 1
-# currently enabled, may increase build time, but runtime faster, can set to `"thin"`.
-lto = true
-# optimize for binary size, but also turn off loop vectorization.
-opt-level = 'z'
-# speeds up build time to offset some of the link time optimization.
-codegen-units = 1
-# strip debug info from binary.
-strip = 'debuginfo'
-# On panic terminate the process.
-panic = 'abort'
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0/MIT"
+repository = "https://github.com/fleek-network/ursa"
 
 [workspace.dependencies]
 anyhow = "1.0.67"
@@ -96,3 +88,17 @@ tracing-tree = "0.2.2"
 tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 axum-tracing-opentelemetry = "0.7.4"
+
+[profile.release]
+# 2 full, 0 nothing, 1 good enough.
+debug = 1
+# currently enabled, may increase build time, but runtime faster, can set to `"thin"`.
+lto = true
+# optimize for binary size, but also turn off loop vectorization.
+opt-level = 'z'
+# speeds up build time to offset some of the link time optimization.
+codegen-units = 1
+# strip debug info from binary.
+strip = 'debuginfo'
+# On panic terminate the process.
+panic = 'abort'
