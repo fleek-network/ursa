@@ -1,11 +1,11 @@
 [package]
 name = "ursa-network"
-version = "0.1.0"
-edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
-license = "MIT"
-repository = "https://github.com/fleek-network/ursa"
 description = "Ursa's libp2p implementation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
