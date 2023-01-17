@@ -1,8 +1,15 @@
 pub mod model;
 
 use anyhow::{anyhow, Context};
-use axum::{body::Body, http::response, http::response::Parts};
-use hyper::{body::to_bytes, client::HttpConnector, StatusCode, Uri};
+use axum::{
+    body::Body,
+    http::response::{Parts, Response},
+};
+use hyper::{
+    body::to_bytes,
+    client::{self, HttpConnector},
+    StatusCode, Uri,
+};
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
 use model::IndexerResponse;
@@ -16,7 +23,7 @@ use crate::{
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
-type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
+type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
 pub struct Resolver {
     indexer_cid_url: String,
@@ -25,7 +32,7 @@ pub struct Resolver {
 
 #[derive(Debug)]
 pub struct NodeResponse {
-    pub resp: response::Response<Body>,
+    pub resp: Response<Body>,
     pub size: u64,
 }
 

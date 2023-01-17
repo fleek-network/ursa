@@ -9,9 +9,9 @@ use bytes::Bytes;
 use opentelemetry::Context;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
-use crate::resolver::NodeResponse;
 use crate::{
     cache::{ByteSize, Tlrfu},
+    resolver::NodeResponse,
     util::error::Error,
 };
 

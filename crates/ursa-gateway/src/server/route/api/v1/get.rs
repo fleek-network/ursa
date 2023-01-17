@@ -31,7 +31,6 @@ pub async fn get_car_handler<Cache: ServerCache>(
         )
         .into_response();
     };
-
     let no_cache = cache_control.map_or(false, |c| c.no_cache());
     match cache
         .read()
