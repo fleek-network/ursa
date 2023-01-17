@@ -207,7 +207,7 @@ where
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
         info!("The inserted cids are: {cids:?}");
-        self.provide_cid(root_cid, Some(size)).await.map(|_| cids)
+        self.provide_cid(root_cid, size).await.map(|_| cids)
     }
 
     /// Used through CLI
@@ -265,13 +265,15 @@ where
     async fn sync_content(&self, cid: Cid) -> Result<()> {
         if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
-            if let Err(e) = self.get_network(cid).await {
-                info!("Failed to get content from network: {}", e);
-                let size = self.get_origin(cid).await?;
-                self.provide_cid(cid, Some(size)).await
-            } else {
-                self.provide_cid(cid, None).await
-            }
+
+            let size = match self.get_network(cid).await {
+                Ok(_) => self.store.car_size(&cid).await?,
+                Err(e) => {
+                    info!("Failed to get content from network: {}", e);
+                    self.get_origin(cid).await?
+                },
+            };
+            self.provide_cid(cid, size).await
         } else {
             Ok(())
         }
@@ -376,12 +378,7 @@ where
 
     /// Trigger the network and provider to start providing the content id.
     /// If the size is not provided, it will be calculated from the blockstore
-    async fn provide_cid(&self, cid: Cid, size: Option<u64>) -> Result<()> {
-        let size = match size {
-            None => self.store.car_size(&cid).await?,
-            Some(s) => s,
-        };
-
+    async fn provide_cid(&self, cid: Cid, size: u64) -> Result<()> {
         // network content replication
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.network_send.send(NetworkCommand::Put { cid, sender }) {
