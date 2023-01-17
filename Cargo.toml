@@ -88,6 +88,7 @@ tracing-tree = "0.2.2"
 tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 axum-tracing-opentelemetry = "0.7.4"
+axum-prometheus = "0.3.0"
 
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.

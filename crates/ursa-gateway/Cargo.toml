@@ -33,3 +33,4 @@ bytes.workspace = true
 ursa-telemetry = { path = "../ursa-telemetry" }
 opentelemetry.workspace = true
 tracing-opentelemetry.workspace = true
+axum-prometheus.workspace = true
