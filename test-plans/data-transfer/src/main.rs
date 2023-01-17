@@ -34,9 +34,11 @@ async fn main() {
     // All nodes wait here and signal to the bootstrap node that they are done.
     client.signal_and_wait("done", num_nodes).await.unwrap();
 
-    if let Err(e) = result {
-        client.record_failure(e).await.expect("Success");
-    } else {
-        client.record_success().await.expect("Success");
+    match result {
+        Ok((test_name, duration)) => {
+            client.record_message(format!("{test_name}: {duration:?}"));
+            client.record_success().await.expect("Success")
+        }
+        Err(e) => client.record_failure(e).await.expect("Success"),
     }
 }
