@@ -98,7 +98,7 @@ pub trait NetworkInterface: Sync + Send + 'static {
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
 
-type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<()>>>>>>;
+type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<u64>>>>>>;
 
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
@@ -119,33 +119,17 @@ where
     S: Blockstore + Store + Send + Sync + 'static,
 {
     async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
-        let new = self.check_blockstore(cid).await?;
+        self.sync_content(cid).await?;
         let content =
             self.store.blockstore().get(&cid)?.ok_or_else(|| {
                 anyhow!("content was fetched but could not be found in blockstore")
             })?;
-        // if the content was fetched and new to the blockstore, we need to start providing it
-        if new {
-            let size = content.len() as u64;
-            if let Err(e) = self.provide_cid(cid, size).await {
-                error!("{e}")
-            }
-        }
         Ok(content)
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
-        let new = self.check_blockstore(root_cid).await?;
+        self.sync_content(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
-        // if the content was fetched and new to the blockstore, we need to start providing it
-        if new {
-            // note: this is blocking, so we need to ensure that Provider and Network Put
-            // do not take excessive time to initiate to avoid delaying response time
-            let size = dag.iter().map(|(_, c)| c.len() as u64).sum();
-            if let Err(e) = self.provide_cid(root_cid, size).await {
-                error!("{e}")
-            }
-        }
         info!("Dag traversal done, now streaming the file");
         Ok(dag)
     }
@@ -223,7 +207,7 @@ where
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
         info!("The inserted cids are: {cids:?}");
-        self.provide_cid(root_cid, size).await.map(|_| cids)
+        self.provide_cid(root_cid, Some(size)).await.map(|_| cids)
     }
 
     /// Used through CLI
@@ -277,22 +261,19 @@ where
         }
     }
 
-    /// Check blockstore for content. On cache miss, attempt to fetch and start providing it
-    /// Returns Ok(true) if the block was found in the blockstore, and Ok(false) if the content was fetched
-    async fn check_blockstore(&self, cid: Cid) -> Result<bool> {
+    /// Ensure a root cid is synced to the blockstore
+    async fn sync_content(&self, cid: Cid) -> Result<()> {
         if !self.store.blockstore().has(&cid)? {
             info!("Requesting block with the cid {cid:?}");
-            let res = match self.get_network(cid).await {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    info!("Failed to get block from network: {}", e);
-                    self.get_origin(cid).await
-                }
-            };
-
-            res.map(|_| false)
+            if let Err(e) = self.get_network(cid).await {
+                info!("Failed to get content from network: {}", e);
+                let size = self.get_origin(cid).await?;
+                self.provide_cid(cid, Some(size)).await
+            } else {
+                self.provide_cid(cid, None).await
+            }
         } else {
-            Ok(true)
+            Ok(())
         }
     }
 
@@ -307,8 +288,9 @@ where
         recv.await?
     }
 
-    /// Fetch content from the origin
-    async fn get_origin(&self, root_cid: Cid) -> Result<()> {
+    /// Fetch content from the origin.
+    /// Returns the size of the car file received
+    async fn get_origin(&self, root_cid: Cid) -> Result<u64> {
         info!("Fetching cid {root_cid} from origin (ipfs)");
         let pending = self.pending_requests.clone();
         let (tx, mut rx) = unbounded_channel();
@@ -342,28 +324,33 @@ where
         let store = self.store.db.clone();
         task::spawn(async move {
             // send the request
-            let result: Result<(), String> = async {
-                let res = client.send(req).await.map_err(|e| {
+            let result: Result<u64, String> = async {
+                let mut res = client.send(req).await.map_err(|e| {
                     format!("Error getting content for cid {root_cid} from origin: {e}")
                 })?;
 
-                load_car_checked(store.as_ref(), res, root_cid)
+                let body = res.body_bytes().await.map_err(|e| {
+                    format!("Error receiving content for cid {root_cid} from origin: {e}")
+                })?;
+                let len = body.len() as u64;
+
+                load_car_checked(store.as_ref(), body.as_slice(), root_cid)
                     .await
                     .map_err(|e| {
                         format!("Error loading car file for cid {root_cid} from origin: {e}")
                     })?;
 
-                Ok(())
+                Ok(len)
             }
             .await;
 
             // notify pending requests for cids
             let mut pending = pending.write().await;
             match result {
-                Ok(()) => {
+                Ok(len) => {
                     if let Some(senders) = pending.remove(&root_cid) {
                         for sender in senders {
-                            if sender.send(Ok(())).is_err() {
+                            if sender.send(Ok(len)).is_err() {
                                 debug!("Failed to send origin status to channel");
                             }
                         }
@@ -388,7 +375,13 @@ where
     }
 
     /// Trigger the network and provider to start providing the content id.
-    async fn provide_cid(&self, cid: Cid, size: u64) -> Result<()> {
+    /// If the size is not provided, it will be calculated from the blockstore
+    async fn provide_cid(&self, cid: Cid, size: Option<u64>) -> Result<()> {
+        let size = match size {
+            None => self.store.car_size(&cid).await?,
+            Some(s) => s,
+        };
+
         // network content replication
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.network_send.send(NetworkCommand::Put { cid, sender }) {

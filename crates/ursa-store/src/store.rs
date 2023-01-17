@@ -1,16 +1,20 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use cid::{
     multihash::{Code, MultihashDigest},
     Cid,
 };
 use db::Store;
 use fnv::FnvHashSet;
+use futures::{channel::mpsc::unbounded, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_car::CarHeader;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
 use ipld_traversal::blockstore::Blockstore as GSBlockstore;
 use libipld::{store::DefaultParams, Block, Result};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
+use tokio::{sync::RwLock, task};
 
 #[derive(Debug)]
 pub struct UrsaStore<S> {
@@ -129,11 +133,16 @@ where
     }
 }
 
+#[async_trait]
 pub trait Dag {
     /// traverse a dag and get full dag given a root cid
     fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
+
+    /// Build a temporary car file from a root cid and return the size
+    async fn car_size(&self, root_cid: &Cid) -> Result<u64>;
 }
 
+#[async_trait]
 impl<S> Dag for UrsaStore<S>
 where
     S: Blockstore + Sync + Send + 'static,
@@ -168,6 +177,32 @@ where
             }
         }
         Ok(res)
+    }
+
+    /// Build a temporary car file from a root cid and return the size
+    async fn car_size(&self, root_cid: &Cid) -> Result<u64> {
+        let buf: Arc<RwLock<Vec<u8>>> = Default::default();
+        let header = CarHeader {
+            roots: vec![*root_cid],
+            version: 1,
+        };
+        let (mut tx, mut rx) = unbounded();
+        let buf_cloned = buf.clone();
+        let write_task = task::spawn(async move {
+            header
+                .write_stream_async(&mut *buf_cloned.write().await, &mut rx)
+                .await
+                .unwrap()
+        });
+        let dag = self.dag_traversal(root_cid)?;
+        for item in dag {
+            tx.send(item).await.unwrap();
+        }
+        drop(tx);
+        write_task.await?;
+
+        let len = buf.read().await.len();
+        Ok(len as u64)
     }
 }
 
