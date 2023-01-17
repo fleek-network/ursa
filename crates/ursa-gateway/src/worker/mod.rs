@@ -11,7 +11,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::{error, info, info_span, Instrument};
+use tracing::{error, info, info_span, warn, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::resolver::Resolver;
@@ -36,9 +36,9 @@ pub fn start<Cache: WorkerCache>(
                             let span = info_span!("[Worker]: GetSync");
                             span.set_parent(ctx);
                             spawn(async move {
-                                info!("Dispatch GetSyncAnnounce command with key: {key:?}");
+                                info!("Process GetSyncAnnounce command with key: {key:?}");
                                 if let Err(e) = cache.write().await.get(&key).await {
-                                    error!("Dispatch GetSyncAnnounce command error with key: {key:?} {e:?}");
+                                    error!("Process GetSyncAnnounce command error with key: {key:?} {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             }.instrument(span));
@@ -47,9 +47,9 @@ pub fn start<Cache: WorkerCache>(
                             let span = info_span!("[Worker]: InsertSync");
                             span.set_parent(ctx);
                             spawn(async move {
-                                info!("Dispatch InsertSyncAnnounce command with key: {key:?}");
+                                info!("Process InsertSyncAnnounce command with key: {key:?}");
                                 if let Err(e) = cache.write().await.insert(String::from(&key), value).await {
-                                    error!("Dispatch InsertSyncAnnounce command error with key: {key:?} {e:?}");
+                                    error!("Process InsertSyncAnnounce command error with key: {key:?} {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             }.instrument(span));
@@ -58,23 +58,18 @@ pub fn start<Cache: WorkerCache>(
                             let span = info_span!("[Worker]: Fetch");
                             span.set_parent(ctx);
                             spawn(async move {
-                                info!("Dispatch FetchAnnounce command with cid: {cid:?}");
-                                let result = match resolver.resolve_content(&cid).await {
-                                    Ok(content) => sender.send(Ok(content)),
-                                    Err(message) => sender.send(Err(message))
-                                };
-                                if let Err(e) = result {
-                                    error!("Dispatch FetchAnnounce command error with cid: {cid:?} {e:?}");
-                                    signal_tx.send(()).await.expect("Send signal successfully");
+                                info!("Process FetchAnnounce command with cid: {cid:?}");
+                                if let Err(e) = sender.send(resolver.resolve_content(&cid).await) {
+                                    warn!("Process FetchAnnounce command error with cid: {cid:?}. Receiver stopped\n{e:?}");
                                 }
                             }.instrument(span));
                         },
                         CacheCommand::TtlCleanUp => {
                             spawn(async move {
                                 let span = info_span!("[Worker]: TtlCleanUp");
-                                info!("Dispatch TtlCleanUp command");
+                                info!("Process TtlCleanUp command");
                                 if let Err(e) = cache.write().await.ttl_cleanup().instrument(span).await {
-                                    error!("Dispatch TtlCleanUp command error {e:?}");
+                                    error!("Process TtlCleanUp command error {e:?}");
                                     signal_tx.send(()).await.expect("Send signal successfully");
                                 };
                             });
