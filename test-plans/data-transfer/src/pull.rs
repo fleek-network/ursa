@@ -58,7 +58,7 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
     let duration = Instant::now().duration_since(start);
     // Let's wait until everyone is done.
     client
-        .signal_and_wait("test_cache_request_done", num_nodes)
+        .signal_and_wait("pull-test-done", num_nodes)
         .await
         .unwrap();
 
