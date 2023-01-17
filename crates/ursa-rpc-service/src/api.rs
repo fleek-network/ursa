@@ -271,7 +271,7 @@ where
                 Err(e) => {
                     info!("Failed to get content from network: {}", e);
                     self.get_origin(cid).await?
-                },
+                }
             };
             self.provide_cid(cid, size).await
         } else {
