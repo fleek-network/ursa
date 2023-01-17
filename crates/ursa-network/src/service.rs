@@ -73,12 +73,12 @@ pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type SwarmEventType<S> = SwarmEvent<
-    <Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
+<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
+<
     <
-    <
-    <
-    Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
-    >::Handler as ConnectionHandler
+        <
+            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+        >::Handler as ConnectionHandler
     >::Error
 >;
 
