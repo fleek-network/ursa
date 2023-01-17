@@ -1,19 +1,10 @@
 use crate::node::Node;
 use cid::multihash::Code;
-use cid::Cid;
-use db::MemoryDB;
 use ipld_traversal::blockstore::Blockstore;
 use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams};
-use std::future::Future;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
 use testground::client::Client;
-use tokio::{
-    sync::oneshot,
-    time::{timeout, Instant},
-};
+use tokio::{sync::oneshot, time::Instant};
 use ursa_network::NetworkCommand;
 use ursa_store::GraphSyncStorage;
 
@@ -46,14 +37,26 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
         receiver.await.unwrap().unwrap();
         Ok(())
     } else {
-        // Poll store to see if data has been transferred.
-        let pending = PendingPullRequest {
-            cid: *block.cid(),
-            store: GraphSyncStorage(node.store.clone()),
-        };
-        timeout(Duration::from_secs(5), pending)
-            .await
-            .map_err(|_| "Data transfer failed".to_string())
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        tokio::task::spawn(async move {
+            let store = GraphSyncStorage(node.store.clone());
+            let cid = *block.cid();
+            let start = Instant::now();
+            loop {
+                if let Ok(true) = store.has(&cid) {
+                    sender.send(Ok(())).unwrap();
+                    break;
+                }
+                let duration = Instant::now().duration_since(start);
+                if duration > Duration::from_secs(5) {
+                    sender
+                        .send(Err("Data transfer failed".to_string()))
+                        .unwrap();
+                    break;
+                }
+            }
+        });
+        receiver.await.unwrap()
     };
     let duration = Instant::now().duration_since(start);
     // Let's wait until everyone is done.
@@ -63,19 +66,4 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
         .unwrap();
 
     result.map(|_| (format!("[Pull] Results for node {seq}"), duration))
-}
-
-struct PendingPullRequest {
-    cid: Cid,
-    store: GraphSyncStorage<MemoryDB>,
-}
-
-impl Future for PendingPullRequest {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.store.has(&self.cid) {
-            Ok(true) => Poll::Ready(()),
-            _ => Poll::Pending,
-        }
-    }
 }
