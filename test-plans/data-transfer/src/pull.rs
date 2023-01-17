@@ -10,7 +10,10 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 use testground::client::Client;
-use tokio::{sync::oneshot, time::timeout};
+use tokio::{
+    sync::oneshot,
+    time::{timeout, Instant},
+};
 use ursa_network::NetworkCommand;
 use ursa_store::GraphSyncStorage;
 
@@ -18,7 +21,7 @@ fn create_block(content: &[u8]) -> Block<DefaultParams> {
     Block::encode(DagCborCodec, Code::Blake3_256, &ipld!(content)).unwrap()
 }
 
-pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
+pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Duration), String> {
     // Let's wait until all nodes are ready to begin.
     let num_nodes = client.run_parameters().test_instance_count - 1;
     client
@@ -29,6 +32,7 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
     let block = create_block(&b"hello world"[..]);
     // Pick random node for now.
     let seq = client.global_seq();
+    let start = Instant::now();
     let result = if seq == 2 {
         // Send PUT request and trigger CacheRequest.
         let mut store = GraphSyncStorage(node.store);
@@ -51,15 +55,14 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(), String> {
             .await
             .map_err(|_| "Data transfer failed".to_string())
     };
+    let duration = Instant::now().duration_since(start);
     // Let's wait until everyone is done.
     client
         .signal_and_wait("test_cache_request_done", num_nodes)
         .await
         .unwrap();
-    if result.is_ok() && seq != 2 {
-        client.record_message("Data was pulled succesfully")
-    }
-    result
+
+    result.map(|_| (format!("[Pull] Results for node {seq}"), duration))
 }
 
 struct PendingPullRequest {
