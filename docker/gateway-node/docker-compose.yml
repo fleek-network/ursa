@@ -67,9 +67,7 @@ services:
       dockerfile: Dockerfile-gateway
     restart: on-failure
     ports:
-      - "443:443"
-    expose:
-      - "443"
+      - 443:443
     volumes:
       - ${HOME}/.ursa/gateway/:/root/.ursa/gateway/:rw
     command:
