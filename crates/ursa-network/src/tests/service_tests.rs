@@ -424,7 +424,7 @@ async fn test_bitswap_sync() -> Result<()> {
     match res {
         Ok(_) => {
             for cid in cids_vec {
-                assert!(bitswap_store_2.contains(&cid).is_ok());
+                assert!(bitswap_store_2.contains(&cid).unwrap());
             }
         }
         Err(e) => panic!("{e:?}"),
