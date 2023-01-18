@@ -24,7 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 1,
+  "id": 3,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -215,7 +215,7 @@
           "refId": "A"
         }
       ],
-      "title": "axum_metrics_demo_http_counter",
+      "title": "axum_http_requests_total",
       "type": "timeseries"
     }
   ],
@@ -234,6 +234,6 @@
   "timezone": "",
   "title": "gateway dashboard",
   "uid": "xOSn3fy7k",
-  "version": 3,
+  "version": 2,
   "weekStart": ""
 }
