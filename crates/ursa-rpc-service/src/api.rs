@@ -267,7 +267,7 @@ where
             info!("Requesting block with the cid {cid:?}");
 
             let size = match self.get_network(cid).await {
-                Ok(_) => self.store.car_size(&cid).await?,
+                Ok(_) => self.store.car_size(&cid)?,
                 Err(e) => {
                     info!("Failed to get content from network: {}", e);
                     self.get_origin(cid).await?

@@ -26,6 +26,7 @@ serde.workspace = true
 simple_logger.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+integer-encoding.workspace = true
 
 [features]
 default = ["rocksdb"]
