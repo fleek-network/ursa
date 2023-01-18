@@ -15,6 +15,7 @@ use axum::{
     routing::get,
     Json, Router, ServiceExt,
 };
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use route::api::v1::get::get_car_handler;
@@ -73,10 +74,16 @@ pub async fn start<Cache: ServerCache>(
         *port,
     ));
 
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
+        .with_ignore_patterns(&["/metrics", "/ping"])
+        .with_default_metrics()
+        .build_pair();
+
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
             .route("/ping", get(|| async { "pong" }))
             .route("/:cid", get(get_car_handler::<Cache>))
+            .route("/metrics", get(|| async move { metric_handle.render() }))
             .layer(Extension(config))
             .layer(Extension(cache))
             .layer(CatchPanicLayer::custom(recover))
@@ -101,6 +108,7 @@ pub async fn start<Cache: ServerCache>(
             )
             .layer(CompressionLayer::new())
             .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
+            .layer(prometheus_layer)
             .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize)),
     );
 
