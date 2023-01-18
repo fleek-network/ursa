@@ -1,7 +1,7 @@
 log_level = "DEBUG"
 
 [server]
-port = 80
+port = 443
 addr = "0.0.0.0"
 request_timeout = 5000 # 5s
 concurrency_limit = 100000

@@ -111,4 +111,4 @@ jobs:
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.ursa-gateway-meta.outputs.tags }}
           labels: ${{ steps.ursa-gateway-meta.outputs.labels }}
-          file: ./docker/gateway-node/Dockerfile
+          file: Dockerfile-gateway

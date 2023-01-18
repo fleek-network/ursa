@@ -68,6 +68,20 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - grafana:/var/lib/grafana
 
+  ursa-gateway:
+    # default image name which matches suggested docker run version for cache
+    image: ursa-gateway
+    build:
+      context: ../../.
+      dockerfile: Dockerfile-gateway
+    restart: on-failure
+    ports:
+      - "443:443"
+    expose:
+      - "443"
+    volumes:
+      - ${HOME}/.ursa/gateway/:/root/.ursa//gateway/:rw
+
 volumes:
   grafana:
   prometheus:

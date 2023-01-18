@@ -95,7 +95,7 @@ impl Default for GatewayConfig {
             log_level: "INFO".into(),
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
-                port: 80,
+                port: 443,
                 request_timeout: 5_000, // 5s
                 concurrency_limit: 100_000,
                 cert_path: PathBuf::from(env!("HOME"))
