@@ -1,15 +1,15 @@
 [metadata]
-  name = "rust-cross-versions-{{ $.Env.GitReference }}"
+  name = "pull"
 
 [global]
   plan = "ursa/data-transfer"
-  case = "data-transfer"
+  case = "pull"
   builder = "docker:generic"
   runner = "local:docker"
   concurrent_builds = 1
 
 [[groups]]
-  id = "data-transfer"
+  id = "groups1"
   instances = { count = 10 }
   [groups.build_config.build_args]
-    BINARY_NAME = 'data-transfer'
+    BINARY_NAME = 'pull'

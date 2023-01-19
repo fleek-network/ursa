@@ -7,16 +7,13 @@ RUN apt-get update && apt-get install -y cmake protobuf-compiler libclang-dev li
 # See https://blog.mgattozzi.dev/caching-rust-docker-builds/
 # And https://github.com/rust-lang/cargo/issues/2644
 
-RUN mkdir -p ./plan/src/
-RUN echo "fn main() {}" > ./plan/src/main.rs
-COPY ./plan/Cargo.toml ./plan/
-RUN cd ./plan/  && cargo build --release
+COPY ./plan/ ./plan
+RUN cd ./plan/ && cargo build --release
 
-COPY . .
-
+ARG BINARY_NAME
 RUN cd ./plan/  \
-    && cargo build --release \
-    && mv /usr/src/testplan/plan/target/release/data-transfer /usr/local/bin/testplan
+    && cargo build --bin=${BINARY_NAME} --release \
+    && mv /usr/src/testplan/plan/target/release/${BINARY_NAME} /usr/local/bin/testplan
 
 FROM debian:bullseye
 RUN apt-get update && apt-get install -y libcurl4-openssl-dev

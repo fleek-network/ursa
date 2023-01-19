@@ -11,5 +11,5 @@ enabled = true
 enabled = true
 
 [[testcases]]
-name = "data-transfer"
+name = "pull"
 instances = { min = 2, max = 30, default = 5 }
