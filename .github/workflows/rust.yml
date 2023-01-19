@@ -51,7 +51,7 @@ jobs:
         run: |
           brew update
           brew install protobuf
-          protoc --version      
+          protoc --version
 
       - name: Install Rust ${{ matrix.rust }}
         uses: actions-rs/toolchain@v1
@@ -70,7 +70,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/            
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
@@ -117,10 +117,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/            
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
-          
+
       - run: cargo test --workspace --all-features
       - run: cargo test --workspace --no-default-features
 
@@ -171,13 +171,13 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/            
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - run: cargo clippy --workspace --all-targets
-      - run: cargo clippy --workspace --all-targets --no-default-features
-      - run: cargo clippy --workspace --all-targets --all-features
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   rustfmt:
     name: Code formatting
@@ -215,7 +215,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/            
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 

@@ -45,7 +45,7 @@ futures = "0.3.25"
 futures-util = "0.3.25"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_car = "0.6.0"
-fvm_ipld_encoding = "0.3.0"
+fvm_ipld_encoding = "=0.3.2"
 graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git",  branch = "downgrade-cid" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
