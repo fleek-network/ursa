@@ -1,0 +1,8 @@
+[package]
+name = "ursa-proxy"
+authors = ["Miguel Guarniz <miguel@fleek.xyz>"]
+description = "Ursa's proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
