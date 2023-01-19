@@ -59,15 +59,25 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - grafana:/var/lib/grafana
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - 16686:16686
+
   ursa-gateway:
     # default image name which matches suggested docker run version for cache
     image: ursa-gateway
+    container_name: ursa-gateway
     build:
       context: ../../.
       dockerfile: Dockerfile-gateway
     restart: on-failure
     ports:
       - 443:443
+    environment:
+      - OTEL_EXPORTER_JAEGER_AGENT_HOST=jaeger
+      - OTEL_EXPORTER_JAEGER_AGENT_PORT=6831
     volumes:
       - ${HOME}/.ursa/gateway/:/root/.ursa/gateway/:rw
     command:
