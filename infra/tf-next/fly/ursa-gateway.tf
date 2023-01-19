@@ -21,6 +21,6 @@ resource "fly_machine" "ursa-gateway-machine" {
     },
   ]
   cpus = 4
-  memorymb = 4096
+  memorymb = 8192
   depends_on = [fly_app.ursa_gateway]
 }
