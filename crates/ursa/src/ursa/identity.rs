@@ -1,4 +1,4 @@
-use libp2p::identity::Keypair;
+use libp2p::identity::{ed25519, Keypair};
 
 use libp2p::PeerId;
 use std::fs::create_dir_all;
@@ -86,21 +86,10 @@ impl Identity for Keypair {
         let keypair = match parsed.tag.as_str() {
             // PEM encoded ed25519 key
             "PRIVATE KEY" => {
-                if parsed.contents.len() != 85 {
-                    error!("Invalid ed25519 pkcs#8 v2 key length (is the encoding correct?)");
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Invalid ed25519 key length",
-                    ));
-                }
-
-                let mut buf = [0; 64];
                 // private key - offset 16; 32bytes long
-                buf[..32].copy_from_slice(&parsed.contents[16..48]);
-                // public key - offset 53; 32bytes long
-                buf[32..].copy_from_slice(&parsed.contents[53..]);
-
-                Keypair::Ed25519(libp2p::identity::ed25519::Keypair::decode(buf.as_mut()).unwrap())
+                let sk_bytes = parsed.contents[16..48].to_vec();
+                let secret = ed25519::SecretKey::from_bytes(sk_bytes).unwrap();
+                Keypair::Ed25519(secret.into())
             }
             _ => panic!("Unsupported key type"),
         };
