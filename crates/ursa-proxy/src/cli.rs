@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
+use crate::config::DEFAULT_URSA_PROXY_CONFIG_PATH;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -16,10 +18,7 @@ pub enum Commands {
 
 #[derive(Args)]
 pub struct DaemonCmdOpts {
-    /// Listen address
-    #[arg(long)]
-    pub listen_addr: Option<String>,
-    /// Listen port
-    #[arg(long)]
-    pub listen_port: Option<u16>,
+    /// Config path
+    #[arg(long, default_value_t = format!("{}/{}", env!("HOME"), DEFAULT_URSA_PROXY_CONFIG_PATH))]
+    pub config: String,
 }
