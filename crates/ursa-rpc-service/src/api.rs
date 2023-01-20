@@ -8,7 +8,7 @@ use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::{load_car, CarHeader, CarReader};
+use fvm_ipld_car::{load_car, CarHeader};
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use std::collections::{
@@ -336,7 +336,7 @@ where
                 })?;
                 let len = body.len() as u64;
 
-                load_car_checked(store.as_ref(), body.as_slice(), root_cid)
+                load_car(store.as_ref(), body.as_slice())
                     .await
                     .map_err(|e| {
                         format!("Error loading car file for cid {root_cid} from origin: {e}")
@@ -443,28 +443,4 @@ where
     ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.reader).poll_read(cx, buf)
     }
-}
-
-pub async fn load_car_checked<R, B>(s: &B, reader: R, root_cid: Cid) -> Result<Vec<Cid>>
-where
-    B: Blockstore,
-    R: AsyncRead + Send + Unpin,
-{
-    let mut car = CarReader::new(reader).await?;
-    // verify root cid is present in the car header
-    if !car.header.roots.contains(&root_cid) {
-        return Err(anyhow!("Root CID not present in car header"));
-    }
-    // load into store
-    let mut buf = Vec::with_capacity(100);
-    while let Ok(Some(block)) = car.next_block().await {
-        buf.push((block.cid, block.data));
-        // empty buf if it gets too big
-        if buf.len() > 1000 {
-            s.put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))?;
-            buf.clear();
-        }
-    }
-    s.put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))?;
-    Ok(car.header.roots)
 }
