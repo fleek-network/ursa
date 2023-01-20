@@ -1,9 +1,9 @@
-resource "fly_machine" "ursa-gateway-machine" {
+resource "fly_machine" "ursa_gateway_machine" {
   for_each = toset(var.regions)
-  app    = "ursa-gateway"
-  region = each.value
-  name   = "ursa-gateway-${each.value}"
-  image  = "ghcr.io/fleek-network/ursa-gateway:latest"
+  app      = fly_app.ursa_gateway.name
+  region   = each.value
+  name     = "ursa-gateway-${each.value}"
+  image    = "fleeknetwork/ursa-gateway"
   services = [
     {
       ports = [

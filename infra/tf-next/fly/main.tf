@@ -8,9 +8,7 @@ terraform {
 }
 
 provider "fly" {
-  useinternaltunnel    = true
-  internaltunnelorg    = "fleek-network"
-  internaltunnelregion = "yyz"
+    fly_http_endpoint = "api.machines.dev"
 }
 
 resource "fly_app" "ursa_gateway" {
@@ -19,7 +17,7 @@ resource "fly_app" "ursa_gateway" {
 }
 
 # resource "fly_volume" "ursa_gateway_volume" {
-#   app    = "ursa-gateway"
+#   app    = fly_app.ursa_gateway.name
 #   name   = "ursa_gateway_volume"
 #   size   = 15
 #   region = "yyz"
@@ -28,13 +26,13 @@ resource "fly_app" "ursa_gateway" {
 # }
 
 resource "fly_ip" "ursa_gateway_ip" {
-  app        = "ursa-gateway"
+  app        = fly_app.ursa_gateway.name
   type       = "v4"
   depends_on = [fly_app.ursa_gateway]
 }
 
 resource "fly_ip" "ursa_gateway_ipv6" {
-  app        = "ursa-gateway"
+  app        = fly_app.ursa_gateway.name
   type       = "v6"
   depends_on = [fly_app.ursa_gateway]
 }
