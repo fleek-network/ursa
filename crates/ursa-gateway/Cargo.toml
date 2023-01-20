@@ -1,11 +1,11 @@
 [package]
 name = "ursa-gateway"
-version = "0.1.0"
-edition = "2021"
 authors = ["b0xtch <mahmoud@fleek.co>"]
-license = "MIT"
-repository = "https://github.com/fleek-network/ursa"
 description = "Ursa's proxy gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
@@ -33,3 +33,4 @@ bytes.workspace = true
 ursa-telemetry = { path = "../ursa-telemetry" }
 opentelemetry.workspace = true
 tracing-opentelemetry.workspace = true
+axum-prometheus.workspace = true

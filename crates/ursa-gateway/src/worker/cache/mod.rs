@@ -5,13 +5,13 @@ pub mod worker;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{body::Body, response::Response};
 use bytes::Bytes;
 use opentelemetry::Context;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
 use crate::{
     cache::{ByteSize, Tlrfu},
+    resolver::NodeResponse,
     util::error::Error,
 };
 
@@ -25,6 +25,7 @@ pub struct Cache {
     tlrfu: Tlrfu<Bytes>,
     tx: UnboundedSender<CacheCommand>,
     stream_buf: u64,
+    cache_control_max_size: u64,
 }
 
 impl Cache {
@@ -33,11 +34,13 @@ impl Cache {
         ttl_buf: u128,
         tx: UnboundedSender<CacheCommand>,
         stream_buf: u64,
+        cache_control_max_size: u64,
     ) -> Self {
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
             stream_buf,
+            cache_control_max_size,
         }
     }
 }
@@ -55,7 +58,7 @@ pub enum CacheCommand {
     },
     Fetch {
         cid: String,
-        sender: oneshot::Sender<Result<Response<Body>, Error>>,
+        sender: oneshot::Sender<Result<NodeResponse, Error>>,
         ctx: Context,
     },
     TtlCleanUp,

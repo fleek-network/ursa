@@ -1,8 +1,15 @@
 pub mod model;
 
 use anyhow::{anyhow, Context};
-use axum::{body::Body, http::response::Parts, response::Response};
-use hyper::{body::to_bytes, client::HttpConnector, StatusCode, Uri};
+use axum::{
+    body::Body,
+    http::response::{Parts, Response},
+};
+use hyper::{
+    body::to_bytes,
+    client::{self, HttpConnector},
+    StatusCode, Uri,
+};
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
 use model::IndexerResponse;
@@ -16,11 +23,17 @@ use crate::{
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
-type Client = hyper::client::Client<HttpsConnector<HttpConnector>, Body>;
+type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
+}
+
+#[derive(Debug)]
+pub struct NodeResponse {
+    pub resp: Response<Body>,
+    pub size: u64,
 }
 
 impl Resolver {
@@ -31,7 +44,7 @@ impl Resolver {
         }
     }
 
-    pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
+    pub async fn resolve_content(&self, cid: &str) -> Result<NodeResponse, Error> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
 
         let uri = endpoint.parse::<Uri>().map_err(|e| {
@@ -165,7 +178,12 @@ impl Resolver {
                 }
             };
             match self.client.get(uri).await {
-                Ok(resp) => return Ok(resp),
+                Ok(resp) => {
+                    return Ok(NodeResponse {
+                        resp,
+                        size: metadata.size,
+                    })
+                }
                 Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };
         }

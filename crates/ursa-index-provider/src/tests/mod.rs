@@ -59,7 +59,7 @@ pub fn provider_engine_init(
     let router = provider_engine.router();
     task::spawn(async move {
         // startup standalone http server for index provider
-        axum::Server::bind(&SocketAddr::from_str(&format!("0.0.0.0:{}", port)).unwrap())
+        axum::Server::bind(&SocketAddr::from_str(&format!("0.0.0.0:{port}")).unwrap())
             .serve(router.into_make_service())
             .await
             .expect("Failed to start provider server");

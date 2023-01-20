@@ -762,9 +762,10 @@ where
                             }
                             true
                         })
-                        .copied();
+                        .copied()
+                        .collect();
 
-                    let query = self.swarm.behaviour_mut().get_block(cid, peers);
+                    let query = self.swarm.behaviour_mut().sync_block(cid, peers);
 
                     if let Ok(query_id) = query {
                         self.bitswap_queries.insert(query_id, cid);
