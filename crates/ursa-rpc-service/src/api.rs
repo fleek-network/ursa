@@ -29,7 +29,7 @@ use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
-use ursa_store::{Dag, UrsaStore};
+use ursa_store::{BlockstoreExt, UrsaStore};
 
 use crate::config::OriginConfig;
 
@@ -129,7 +129,7 @@ where
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
         self.sync_content(root_cid).await?;
-        let dag = self.store.dag_traversal(&root_cid)?;
+        let dag = self.store.db.dag_traversal(&root_cid)?;
         info!("Dag traversal done, now streaming the file");
         Ok(dag)
     }
@@ -267,7 +267,7 @@ where
             info!("Requesting block with the cid {cid:?}");
 
             let size = match self.get_network(cid).await {
-                Ok(_) => self.store.car_size(&cid)?,
+                Ok(_) => self.store.db.car_size(&cid)?,
                 Err(e) => {
                     info!("Failed to get content from network: {}", e);
                     self.get_origin(cid).await?

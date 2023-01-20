@@ -23,7 +23,7 @@ use fvm_ipld_blockstore::Blockstore;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
-use ursa_store::{Dag, UrsaStore};
+use ursa_store::{BlockstoreExt, UrsaStore};
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
@@ -225,7 +225,7 @@ where
         );
         let provider_id = self.provider.create(advertisement)?;
 
-        let dag = self.store.dag_traversal(&(root_cid))?;
+        let dag = self.store.db.dag_traversal(&(root_cid))?;
         let entries = dag
             .iter()
             .map(|d| return Ipld::Bytes(d.0.hash().to_bytes()))

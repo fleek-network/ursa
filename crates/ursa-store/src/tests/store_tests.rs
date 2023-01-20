@@ -9,7 +9,7 @@ mod tests {
 
     use crate::{
         tests::{get_store, setup_logger},
-        Dag,
+        BlockstoreExt,
     };
 
     #[tokio::test]
@@ -32,7 +32,7 @@ mod tests {
             cids_vec.push(block.cid);
         }
 
-        let res = store_2.dag_traversal(&cids[0])?;
+        let res = store_2.db.dag_traversal(&cids[0])?;
         assert_eq!(cids_vec.len(), res.len());
         // todo: check if they both have sam cids
         Ok(())
