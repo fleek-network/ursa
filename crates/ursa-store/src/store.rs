@@ -31,6 +31,58 @@ where
     pub fn blockstore(&self) -> &S {
         &self.db
     }
+
+    /// traverse a dag and get full dag given a root cid
+    pub fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
+        let mut res = Vec::new();
+        // get full dag starting with root id
+        let mut current = FnvHashSet::default();
+        let mut refs = FnvHashSet::default();
+        current.insert(*root_cid);
+
+        while let Some(cid) = current.iter().next().copied() {
+            current.remove(&cid);
+            if refs.contains(&cid) {
+                continue;
+            }
+            match self.db.get(&cid)? {
+                Some(data) => {
+                    res.push((cid, data.clone()));
+                    let next_block = Block::<DefaultParams>::new(cid, data)?;
+                    next_block.references(&mut current)?;
+                    refs.insert(cid);
+                }
+                None => {
+                    // TODO: handle the case where parts of the dags are missing
+                    return Err(anyhow!(
+                        "The block with cid {:?} from the dag with the root {:?} is missing ",
+                        cid,
+                        root_cid
+                    ));
+                }
+            }
+        }
+        Ok(res)
+    }
+
+    /// Calculate a car file size from a root cid
+    pub fn car_size(&self, root_cid: &Cid) -> Result<u64> {
+        let dag = self.dag_traversal(root_cid)?;
+
+        let header_bytes = to_vec(&CarHeader {
+            roots: vec![*root_cid],
+            version: 1,
+        })?;
+        let mut len = header_bytes.len();
+
+        for (cid, bytes) in dag {
+            let block_len = bytes.len() + cid.to_bytes().len();
+            len += block_len.encode_var_vec().len(); // varint size
+            len += block_len;
+        }
+
+        Ok(len as u64)
+    }
 }
 
 /// Extension methods for inserting and retrieving IPLD data with CIDs
@@ -86,58 +138,6 @@ pub trait BlockstoreExt: Blockstore {
         self.put_many_keyed(keyed_objects)?;
 
         Ok(cids)
-    }
-
-    /// traverse a dag and get full dag given a root cid
-    fn dag_traversal(&self, root_cid: &Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
-        let mut res = Vec::new();
-        // get full dag starting with root id
-        let mut current = FnvHashSet::default();
-        let mut refs = FnvHashSet::default();
-        current.insert(*root_cid);
-
-        while let Some(cid) = current.iter().next().copied() {
-            current.remove(&cid);
-            if refs.contains(&cid) {
-                continue;
-            }
-            match self.get(&cid)? {
-                Some(data) => {
-                    res.push((cid, data.clone()));
-                    let next_block = Block::<DefaultParams>::new(cid, data)?;
-                    next_block.references(&mut current)?;
-                    refs.insert(cid);
-                }
-                None => {
-                    // TODO: handle the case where parts of the dags are missing
-                    return Err(anyhow!(
-                        "The block with cid {:?} from the dag with the root {:?} is missing ",
-                        cid,
-                        root_cid
-                    ));
-                }
-            }
-        }
-        Ok(res)
-    }
-
-    /// Calculate a car file size from a root cid
-    fn car_size(&self, root_cid: &Cid) -> Result<u64> {
-        let dag = self.dag_traversal(root_cid)?;
-
-        let header_bytes = to_vec(&CarHeader {
-            roots: vec![*root_cid],
-            version: 1,
-        })?;
-        let mut len = header_bytes.len();
-
-        for (cid, bytes) in dag {
-            let block_len = bytes.len() + cid.to_bytes().len();
-            len += block_len.encode_var_vec().len(); // varint size
-            len += block_len;
-        }
-
-        Ok(len as u64)
     }
 }
 
