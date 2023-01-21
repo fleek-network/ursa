@@ -21,10 +21,8 @@ RUN --mount=type=cache,target=/ursa/target \
     objcopy --compress-debug-sections target/release/ursa-gateway ./ursa-gateway \
     # For local dev
     && mv /ursa/crates/ursa-gateway/example/local.toml ./ \
-    && cp /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./server_cert.pem \
-    && cp /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./server_key.pem \
-    && mv /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./admin_cert.pem \
-    && mv /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./admin_key.pem
+    && mv /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./server_cert.pem \
+    && mv /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./server_key.pem
 
 FROM debian:bullseye-slim
 
@@ -41,12 +39,5 @@ WORKDIR ursa
 # Get compiled binaries from builder's cargo install directory
 
 # For local dev
-RUN mkdir -p .ursa/gateway/
-COPY --from=builder \
-    /ursa/server_cert.pem \
-    /ursa/server_key.pem \
-    /ursa/admin_cert.pem \
-    /ursa/admin_key.pem .ursa/gateway/
-
-COPY --from=builder /ursa/ursa-gateway /ursa/local.toml ./
+COPY --from=builder /ursa/ursa-gateway ./
 CMD ["./ursa-gateway", "--config", "local.toml", "daemon"]
