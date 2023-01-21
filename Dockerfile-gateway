@@ -31,4 +31,4 @@ RUN apt-get update && apt-get install -y \
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /ursa/ursa-gateway /usr/local/bin
 
-ENTRYPOINT ["ursa-gateway"]
+ENTRYPOINT ["ursa-gateway", "daemon"]
