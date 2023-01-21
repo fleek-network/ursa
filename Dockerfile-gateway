@@ -7,28 +7,47 @@ RUN apt-get update && apt-get install -y \
     cmake \
     libclang-dev \
     protobuf-compiler
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install cargo-strip
-
+    
 COPY . .
 ENV RUST_BACKTRACE=1
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/ursa/target \
-    cargo build --profile $PROFILE --bin ursa-gateway \
-    && cargo strip \
-    && mv /ursa/target/release/ursa-gateway /ursa/
+RUN --mount=type=cache,target=/ursa/target \
+	--mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/git \
+	--mount=type=cache,target=/usr/local/rustup \
+    set -eux; \
+	rustup install stable; \
+    cargo build --profile $PROFILE --bin ursa-gateway; \
+    objcopy --compress-debug-sections target/release/ursa-gateway ./ursa-gateway \
+    # For local dev
+    && mv /ursa/crates/ursa-gateway/example/local.toml ./ \
+    && cp /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./server_cert.pem \
+    && cp /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./server_key.pem \
+    && mv /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./admin_cert.pem \
+    && mv /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./admin_key.pem
 
 FROM debian:bullseye-slim
 
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev \
-    && apt-get clean \
-    && apt-get purge -y \
-    && rm -rf /var/lib/apt/lists*
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update; \
+    apt-get install --yes --no-install-recommends libcurl4-openssl-dev; \
+    apt-get clean autoclean; \
+    apt-get autoremove --yes; \
+    rm -rf /var/lib/{apt,dpkg,cache,log}/; \
+    echo "Installed base utils!"    
+
+WORKDIR ursa
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /ursa/ursa-gateway /usr/local/bin
 
-ENTRYPOINT ["ursa-gateway", "daemon"]
+# For local dev
+RUN mkdir -p .ursa/gateway/
+COPY --from=builder \
+    /ursa/server_cert.pem \
+    /ursa/server_key.pem \
+    /ursa/admin_cert.pem \
+    /ursa/admin_key.pem .ursa/gateway/
+
+COPY --from=builder /ursa/ursa-gateway /ursa/local.toml ./
+CMD ["./ursa-gateway", "--config", "local.toml", "daemon"]
