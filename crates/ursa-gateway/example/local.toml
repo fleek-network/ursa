@@ -10,4 +10,4 @@ key_path = ".ursa/gateway/key.pem"
 stream_buf = 2000000 # 2mb
 
 [indexer]
-cid_url = "http://0.0.0.0:3000/cid"
+cid_url = "https://dev.cid.contact/cid"

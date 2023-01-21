@@ -31,7 +31,7 @@ FROM debian:bullseye-slim
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-get update; \
-    apt-get install --yes --no-install-recommends libcurl4-openssl-dev; \
+    apt-get install --yes --no-install-recommends libcurl4-openssl-dev curl ca-certificates htop; \
     apt-get clean autoclean; \
     apt-get autoremove --yes; \
     rm -rf /var/lib/{apt,dpkg,cache,log}/
