@@ -3,7 +3,7 @@ resource "fly_machine" "ursa_gateway_machine" {
   app      = fly_app.ursa_gateway.name
   region   = each.key
   name     = "ursa-gateway-${each.key}"
-  image    = "fleeknetwork/ursa-gateway:latest"
+  image    = "fleeknetwork/ursa-gateway"
   services = [
     {
       ports = [
