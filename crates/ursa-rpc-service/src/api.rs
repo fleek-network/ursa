@@ -8,7 +8,7 @@ use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::{load_car, CarHeader};
+use fvm_ipld_car::{load_car, CarHeader, CarReader};
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use std::collections::{
@@ -336,13 +336,20 @@ where
                 })?;
                 let len = body.len() as u64;
 
-                load_car(store.as_ref(), body.as_slice())
-                    .await
-                    .map_err(|e| {
-                        format!("Error loading car file for cid {root_cid} from origin: {e}")
-                    })?;
+                let car = CarReader::new(body.as_slice()).await.map_err(|e| {
+                    format!("Error reading car file for cid {root_cid} from origin: {e}")
+                })?;
 
-                Ok(len)
+                if car.header.roots.contains(&root_cid) {
+                    car.read_into(store.as_ref())
+                        .await
+                        .map_err(|e| format!("Error storing cid {root_cid} from origin: {e}"))?;
+                    Ok(len)
+                } else {
+                    Err(format!(
+                        "Error: cid {root_cid} not found in the origin response car file"
+                    ))
+                }
             }
             .await;
 
