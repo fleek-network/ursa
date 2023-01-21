@@ -1,8 +1,8 @@
 resource "fly_machine" "ursa_gateway_machine" {
   for_each = toset(var.regions)
   app      = fly_app.ursa_gateway.name
-  region   = each.value
-  name     = "ursa-gateway-${each.value}"
+  region   = each.key
+  name     = "ursa-gateway-${each.key}"
   image    = "fleeknetwork/ursa-gateway:latest"
   services = [
     {
