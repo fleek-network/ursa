@@ -34,8 +34,7 @@ RUN set -eux; \
     apt-get install --yes --no-install-recommends libcurl4-openssl-dev; \
     apt-get clean autoclean; \
     apt-get autoremove --yes; \
-    rm -rf /var/lib/{apt,dpkg,cache,log}/; \
-    echo "Installed base utils!"    
+    rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 WORKDIR ursa
 
