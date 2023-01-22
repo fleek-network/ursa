@@ -578,7 +578,7 @@ async fn test_send_cache_summary() -> Result<()> {
         .get(&peer_id_1)
         .expect("Peer id not contained in peer content.");
     assert!(
-        cached_content.contains(&Cid::default().to_bytes()),
+        cached_content.contains(Cid::default().to_bytes()),
         "CID not contained in cache summary."
     );
 
