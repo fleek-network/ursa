@@ -388,7 +388,7 @@ where
                     );
                 }
 
-                // check if received identify is from a peer on the same network
+                // Check if received identify is from a peer on the same network
                 if info
                     .protocols
                     .iter()
