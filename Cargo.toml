@@ -38,13 +38,14 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
+integer-encoding = "3.0.4"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
 fastmurmur3 = "0.1.2"
 fnv = "1.0.7"
 futures = "0.3.25"
 futures-util = "0.3.25"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_car = "0.6.0"
+fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm/" }
+fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_encoding = "=0.3.2"
 graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git",  branch = "downgrade-cid" }
 hyper = { version = "0.14.23", features = ["full"] }

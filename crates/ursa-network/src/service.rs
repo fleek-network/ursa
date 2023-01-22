@@ -465,7 +465,7 @@ where
                                 }
                                 Err(_) => {
                                     if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
-                                    error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
                                 }
                             }

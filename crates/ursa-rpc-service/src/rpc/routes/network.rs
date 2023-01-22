@@ -37,7 +37,7 @@ where
     if let Ok(cid) = Cid::from_str(&params.cid) {
         match data.0.get(cid).await {
             Err(err) => Err(Error::internal(err)),
-            Ok(res) => Ok(res.unwrap()),
+            Ok(res) => Ok(res),
         }
     } else {
         error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
