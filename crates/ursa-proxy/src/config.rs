@@ -2,8 +2,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs::read_to_string, path::PathBuf};
 
-use crate::cli::DaemonCmdOpts;
-
 pub const DEFAULT_URSA_PROXY_CONFIG_PATH: &str = ".ursa/proxy/config.toml";
 
 pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {

@@ -1,8 +1,7 @@
 use crate::cli::{Cli, Commands};
 use crate::config::load_config;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 
 mod cli;
