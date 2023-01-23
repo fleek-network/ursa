@@ -33,11 +33,12 @@ impl ProxyCore {
                     .unwrap_or("0.0.0.0".to_string())
                     .parse::<IpAddr>()
                     .context("Invalid binding address")?,
-                server_config.listen_port.unwrap_or(8080),
+                server_config.listen_port.unwrap_or(0),
             ));
             info!("Listening on {bind_addr:?}");
             servers.spawn(Server::bind(&bind_addr).serve(app.into_make_service()));
         }
+        // TODO: Implement safe cancel.
         while let Some(_) = servers.join_next().await {}
         Ok(())
     }
