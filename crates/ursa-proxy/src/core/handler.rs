@@ -1,10 +1,11 @@
 use crate::core::ServerConfig;
-use axum::body::StreamBody;
-use axum::extract::Path;
-use axum::http::response::Parts;
-use axum::http::{StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::Extension;
+use axum::{
+    body::StreamBody,
+    extract::Path,
+    http::{response::Parts, StatusCode, Uri},
+    response::{IntoResponse, Response},
+    Extension,
+};
 use hyper::Client;
 use std::sync::Arc;
 use tracing::info;

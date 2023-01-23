@@ -1,7 +1,6 @@
 mod handler;
 
-use crate::config::ProxyConfig;
-use crate::core::handler::proxy_pass;
+use crate::{config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{anyhow, Context, Result};
 use axum::{routing::get, Extension, Router, Server};
 use std::net::{IpAddr, SocketAddr};
