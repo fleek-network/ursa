@@ -1,0 +1,15 @@
+[metadata]
+  name = "fetching"
+
+[global]
+  plan = "ursa/fetching"
+  case = "fetching"
+  builder = "docker:generic"
+  runner = "local:docker"
+  concurrent_builds = 1
+
+[[groups]]
+  id = "fetching"
+  instances = { count = 10 }
+  [groups.build_config.build_args]
+    BINARY_NAME = "fetching"
