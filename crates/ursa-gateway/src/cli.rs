@@ -42,12 +42,12 @@ pub struct DaemonCmdOpts {
     /// concurrency limit
     #[arg(long)]
     pub concurrency_limit: Option<u32>,
-    /// server tls cert path
+    /// tls cert path
     #[arg(long)]
-    pub server_tls_cert_path: Option<PathBuf>,
-    /// server tls key path
+    pub tls_cert_path: Option<PathBuf>,
+    /// tls key path
     #[arg(long)]
-    pub server_tls_key_path: Option<PathBuf>,
+    pub tls_key_path: Option<PathBuf>,
     /// server stream buffer
     #[arg(long)]
     pub server_stream_buffer: Option<u64>,
@@ -63,12 +63,6 @@ pub struct DaemonCmdOpts {
     /// admin address
     #[arg(long)]
     pub admin_addr: Option<String>,
-    /// admin tls cert path
-    #[arg(long)]
-    pub admin_tls_cert_path: Option<PathBuf>,
-    /// admin tls key path
-    #[arg(long)]
-    pub admin_tls_key_path: Option<PathBuf>,
     /// indexer cid url
     #[arg(long)]
     pub indexer_cid_url: Option<String>,

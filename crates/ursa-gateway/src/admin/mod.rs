@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use axum_server::{tls_rustls::RustlsConfig, Handle};
+use axum_server::Handle;
 use route::api::v1::{get::get_config_handler, post::purge_cache_handler};
 use tokio::{
     select, spawn,
@@ -31,21 +31,9 @@ pub async fn start<Cache: AdminCache>(
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
-        admin_server:
-            AdminConfig {
-                addr,
-                port,
-                cert_path,
-                key_path,
-            },
+        admin_server: AdminConfig { addr, port },
         ..
     } = &(*config_reader.read().await);
-
-    let rustls_config = RustlsConfig::from_pem_file(&cert_path, &key_path)
-        .await
-        .with_context(|| {
-            format!("Failed to init tls from: cert: {cert_path:?}: path:{key_path:?}")
-        })?;
 
     let addr = SocketAddr::from((
         addr.parse::<Ipv4Addr>()
@@ -64,7 +52,7 @@ pub async fn start<Cache: AdminCache>(
     let handle = Handle::new();
     spawn(graceful_shutdown(handle.clone(), shutdown_rx));
 
-    axum_server::bind_rustls(addr, rustls_config)
+    axum_server::bind(addr)
         .handle(handle)
         .serve(app.into_make_service())
         .await
