@@ -32,8 +32,6 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
         // Send PUT request .
         let mut store = GraphSyncStorage(node.store.clone());
         store.insert(&block).unwrap();
-        // This will cause the data transfer to fail, why?
-        //node.store.db.put_keyed(block.cid(), block.data()).unwrap();
         let (sender, receiver) = oneshot::channel();
         let request = NetworkCommand::Put {
             cid: *block.cid(),
