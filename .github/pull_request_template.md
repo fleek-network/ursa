@@ -2,8 +2,6 @@
 
 <!-- Please include a summary of why the pull request is needed, including motivation and context --->
 
-
-
 Fixes # (issue)
 
 ## What
@@ -18,13 +16,9 @@ Fixes # (issue)
 
 <!-- (optional) Include screenshots or links to showcase the changes made ---> 
 
-
-
 ## Notes
 
 <!-- (optional) open questions, notable changes, or requirements to consider for reviewers -->
-
-
 
 ## Checklist
 
