@@ -1,10 +1,13 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs::read_to_string, path::PathBuf};
 
 pub const DEFAULT_URSA_PROXY_CONFIG_PATH: &str = ".ursa/proxy/config.toml";
 
 pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {
+    if !path.exists() {
+        bail!("Could not find config file")
+    }
     let toml = read_to_string(path)?;
     toml::from_str(&toml).context("Failed to deserialize")
 }
