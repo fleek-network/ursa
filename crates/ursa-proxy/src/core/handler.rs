@@ -11,11 +11,10 @@ use std::sync::Arc;
 use tracing::info;
 
 pub async fn proxy_pass(
-    Path(cid): Path<String>,
+    Path(path): Path<String>,
     Extension(config): Extension<Arc<ServerConfig>>,
 ) -> Response {
-    let addr = format!("http://{}:{}", config.addr, config.port);
-    let endpoint = format!("{addr}/ursa/v0/{cid}");
+    let endpoint = format!("http://{}/{}", config.proxy_pass, path);
     info!("Sending request to {endpoint}");
     let uri = match endpoint.parse::<Uri>() {
         Ok(uri) => uri,

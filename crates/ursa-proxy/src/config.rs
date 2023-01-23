@@ -16,8 +16,7 @@ pub struct ProxyConfig {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ServerConfig {
-    pub port: u16,
-    pub addr: String,
+    pub proxy_pass: String,
     pub listen_addr: Option<String>,
     pub listen_port: Option<u16>,
 }

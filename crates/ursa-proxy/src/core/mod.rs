@@ -24,7 +24,7 @@ impl ProxyCore {
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
             let app = Router::new()
-                .route("/:cid", get(proxy_pass))
+                .route("/*path", get(proxy_pass))
                 .layer(Extension(server_config.clone()));
             let bind_addr = SocketAddr::from((
                 server_config
