@@ -31,7 +31,7 @@ axum-server = { version = "0.4.4", features = ["tls-rustls"] }
 base64 = "0.13.0"
 bincode = "1.3.3"
 bytes = "1.3.0"
-cid = "0.8.6"
+cid = "0.10.1"
 clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
 ctrlc = "3.2.4"
