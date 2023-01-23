@@ -1,0 +1,24 @@
+[package]
+edition = "2021"
+name = "fetching"
+version = "0.1.0"
+
+[dependencies]
+cid = "0.8.6"
+env_logger = "0.9.0"
+if-addrs = "0.7.0"
+ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
+fvm_ipld_blockstore = "0.1.1"
+libipld = "0.14.0"
+futures = "0.3.1"
+fvm_ipld_car = "0.6.0"
+libp2p = { version = "0.50", features = ["websocket", "mplex", "yamux", "tcp", "async-std", "ping", "noise", "dns", "rsa", "macros"]}
+libp2p-bitswap = "0.25.0"
+serde_json = "1"
+testground = "0.4"
+tokio = { version = "1.23", default-features = false, features = ["sync", "rt-multi-thread", "macros", "net"] }
+db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
+ursa-network = { git = "https://github.com/fleek-network/ursa" }
+ursa-store = { git = "https://github.com/fleek-network/ursa" }
+ursa-index-provider = { git = "https://github.com/fleek-network/ursa" }
+rand = "0.8.5"
