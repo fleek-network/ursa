@@ -1,5 +1,5 @@
 use crate::behaviour::BehaviourEvent;
-use crate::utils::bloom_filter::CountingBloomFilter;
+use crate::utils::cache_summary::CacheSummary;
 use crate::{
     codec::protocol::{RequestType, UrsaExchangeRequest},
     NetworkCommand, NetworkConfig, UrsaService, URSA_GLOBAL,
@@ -277,7 +277,7 @@ async fn test_network_req_res() -> Result<()> {
     let request = UrsaExchangeRequest(RequestType::CarRequest("Qm".to_string()));
     let msg = NetworkCommand::SendRequest {
         peer_id: peer_id_2,
-        request,
+        request: Box::new(request),
         channel: sender,
     };
 
@@ -549,10 +549,10 @@ async fn test_send_cache_summary() -> Result<()> {
         select! {
             event_1 = node_1.swarm.select_next_some() => {
                 if let SwarmEvent::ConnectionEstablished { .. } = event_1 {
-                    let mut cached_content = CountingBloomFilter::default();
+                    let mut cached_content = CacheSummary::default();
                     cached_content.insert(&Cid::default().to_bytes());
                     let request = UrsaExchangeRequest(RequestType::StoreSummary(
-                        cached_content,
+                        Box::new(cached_content),
                     ));
                     node_1.swarm.behaviour_mut().request_response.send_request(&peer_id_2, request);
                 }
@@ -578,7 +578,7 @@ async fn test_send_cache_summary() -> Result<()> {
         .get(&peer_id_1)
         .expect("Peer id not contained in peer content.");
     assert!(
-        cached_content.contains(&Cid::default().to_bytes()),
+        cached_content.contains(Cid::default().to_bytes()),
         "CID not contained in cache summary."
     );
 
