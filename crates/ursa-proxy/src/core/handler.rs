@@ -1,4 +1,4 @@
-use crate::core::ServerConfig;
+use crate::config::ServerConfig;
 use axum::{
     body::StreamBody,
     extract::Path,
