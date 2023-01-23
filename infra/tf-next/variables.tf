@@ -60,6 +60,6 @@ variable "lets_encrypt_env" {
 # Images  #
 ###########
 variable "k8s_ursa_docker_image" {
-  default     = "ghcr.io/fleek-network/ursa:main"
+  default     = "ghcr.io/fleek-network/ursa:latest"
   description = "Ursa node docker image"
 }
