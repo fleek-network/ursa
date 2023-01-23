@@ -22,7 +22,7 @@ pub async fn start_server(config: ProxyConfig) -> Result<()> {
         port: server.port,
     });
     let app = Router::new()
-        .route("/", get(proxy_pass))
+        .route("/:cid", get(proxy_pass))
         .layer(Extension(server_config));
     let bind_addr = SocketAddr::from((
         server
