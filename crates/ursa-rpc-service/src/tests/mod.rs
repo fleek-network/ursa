@@ -2,12 +2,12 @@ mod api_test;
 mod server_test;
 
 use anyhow::Result;
+use axum::{headers::HeaderMap, routing::get, Router};
 use db::MemoryDB;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
-use axum::{Router, routing::get, headers::HeaderMap};
 use tracing::{log::LevelFilter, warn};
 use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
 use ursa_network::{NetworkConfig, UrsaService};
@@ -61,14 +61,17 @@ pub fn init() -> InitResult {
 pub async fn dummy_ipfs() -> Result<()> {
     let file: Vec<u8> = std::fs::read("../../test_files/test.car")?;
 
-    let router = Router::new()
-        .route("/ipfs/:cid", get(|| async move {
+    let router = Router::new().route(
+        "/ipfs/:cid",
+        get(|| async move {
             let mut headers = HeaderMap::new();
             headers.insert("Content-Type", "application/vnd.ipfs.car".parse().unwrap());
             (headers, file.clone())
-        }));
+        }),
+    );
 
     axum::Server::bind(&"0.0.0.0:9682".parse().unwrap())
         .serve(router.into_make_service())
-        .await.map_err(|e| e.into())
+        .await
+        .map_err(|e| e.into())
 }

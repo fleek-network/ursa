@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::api::{NetworkInterface, NodeNetworkInterface};
+    use crate::config::OriginConfig;
     use crate::tests::{dummy_ipfs, init, setup_logger};
     use anyhow::Result;
     use async_fs::{remove_file, File};
@@ -10,7 +11,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::task;
     use tracing::error;
-    use crate::config::OriginConfig;
 
     #[tokio::test]
     async fn test_put_and_get() -> Result<()> {
