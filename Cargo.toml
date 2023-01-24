@@ -5,6 +5,7 @@ members = [
   "crates/ursa-index-provider",
   "crates/ursa-metrics",
   "crates/ursa-network",
+  "crates/ursa-proxy",
   "crates/ursa-rpc-service",
   "crates/ursa-store",
   "crates/ursa-telemetry",
