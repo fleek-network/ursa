@@ -7,13 +7,12 @@ use crate::{
 use anyhow::Result;
 use async_fs::File;
 use bytes::Bytes;
-use cid::{multihash::Code, Cid};
 use db::MemoryDB;
 use futures::io::BufReader;
 use futures::StreamExt;
 use fvm_ipld_car::{load_car, CarReader};
 use ipld_traversal::blockstore::Blockstore;
-use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams, Ipld};
+use libipld::{cbor::DagCborCodec, ipld, multihash::Code, Block, Cid, DefaultParams, Ipld};
 use libp2p::kad::{BootstrapOk, KademliaEvent, QueryResult};
 use libp2p::request_response::RequestResponseEvent;
 use libp2p::{

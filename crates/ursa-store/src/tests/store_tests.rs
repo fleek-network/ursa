@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
     use async_fs::File;
-    use cid::Cid;
     use futures::io::BufReader;
     use fvm_ipld_car::{load_car, CarReader};
+    use libipld::Cid;
     use std::path::Path;
     use std::sync::Arc;
 

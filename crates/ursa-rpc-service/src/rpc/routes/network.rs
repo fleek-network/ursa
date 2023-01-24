@@ -3,7 +3,7 @@ use axum::{
     routing::{post, put},
     Router,
 };
-use cid::Cid;
+use libipld::Cid;
 use std::{str::FromStr, sync::Arc};
 use ursa_metrics::middleware::track_metrics;
 

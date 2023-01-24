@@ -1,8 +1,4 @@
 use anyhow::anyhow;
-use cid::{
-    multihash::{Code, MultihashDigest},
-    Cid,
-};
 use db::Store;
 use fnv::FnvHashSet;
 use fvm_ipld_blockstore::Blockstore;
@@ -10,7 +6,12 @@ use fvm_ipld_car::CarHeader;
 use fvm_ipld_encoding::{de::DeserializeOwned, from_slice, ser::Serialize, to_vec, DAG_CBOR};
 use integer_encoding::VarInt;
 use ipld_traversal::blockstore::Blockstore as GSBlockstore;
-use libipld::{store::DefaultParams, Block, Result};
+use libipld::{
+    cid,
+    multihash::{Code, MultihashDigest},
+    store::DefaultParams,
+    Block, Cid, Result,
+};
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 

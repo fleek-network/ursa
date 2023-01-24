@@ -13,7 +13,6 @@ async-fs.workspace = true
 async-trait.workspace = true
 bincode.workspace = true
 bytes.workspace = true
-cid.workspace = true
 db.workspace = true
 dirs.workspace = true
 fastmurmur3.workspace = true

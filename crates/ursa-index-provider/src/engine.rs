@@ -16,10 +16,10 @@ use ursa_network::{GossipsubMessage, NetworkCommand};
 use anyhow::{anyhow, Error, Result};
 
 use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
-use cid::Cid;
 
 use crate::provider::ProviderError;
 use fvm_ipld_blockstore::Blockstore;
+use libipld::Cid;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};

@@ -1,7 +1,7 @@
 use crate::utils::cache_summary::CacheSummary;
 use async_trait::async_trait;
-use cid::Cid;
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use libipld::Cid;
 use libp2p::{
     core::{
         upgrade::{read_length_prefixed, write_length_prefixed},

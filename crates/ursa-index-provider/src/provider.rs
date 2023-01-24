@@ -8,10 +8,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use cid::{multihash::Code, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::Cbor;
-use libipld::codec::Encode;
+use libipld::{codec::Encode, multihash::Code, Cid};
 use libipld_cbor::DagCborCodec;
 use libipld_core::{ipld::Ipld, serde::to_ipld};
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
