@@ -108,6 +108,7 @@ async fn main() -> Result<()> {
                     provider_config,
                     service.command_sender(),
                     server_address,
+                    server_config.domain.clone(),
                 );
                 let index_provider_router = index_provider_engine.router();
 

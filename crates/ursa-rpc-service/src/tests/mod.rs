@@ -53,6 +53,7 @@ pub fn init() -> InitResult {
         ProviderConfig::default(),
         service.command_sender(),
         server_address,
+        "/ip4/127.0.0.1/tcp/4069".parse().unwrap(),
     );
 
     Ok((service, provider_engine, store))
