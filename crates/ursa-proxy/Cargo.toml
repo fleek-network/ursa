@@ -9,8 +9,11 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 axum-server.workspace = true
+bytes.workspace = true
+moka.workspace = true
 toml.workspace = true
 tower = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["full"] }

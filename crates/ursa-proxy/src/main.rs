@@ -7,6 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
+mod cache;
 mod cli;
 mod config;
 mod core;

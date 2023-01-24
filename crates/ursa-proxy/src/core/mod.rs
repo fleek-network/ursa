@@ -1,4 +1,5 @@
 mod handler;
+mod worker;
 
 use crate::{config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{Context, Result};
