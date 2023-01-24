@@ -1,13 +1,16 @@
 #[cfg(test)]
 mod tests {
     use crate::api::{NetworkInterface, NodeNetworkInterface};
-    use crate::tests::{init, setup_logger};
+    use crate::config::OriginConfig;
+    use crate::tests::{dummy_ipfs, init, setup_logger};
     use anyhow::Result;
     use async_fs::{remove_file, File};
     use futures::io::BufReader;
     use fvm_ipld_car::load_car;
     use std::path::Path;
     use std::sync::Arc;
+    use tokio::task;
+    use tracing::error;
 
     #[tokio::test]
     async fn test_put_and_get() -> Result<()> {
@@ -50,6 +53,12 @@ mod tests {
     #[tokio::test]
     async fn test_origin_fallback() -> Result<()> {
         setup_logger();
+        task::spawn(async {
+            if let Err(e) = dummy_ipfs().await {
+                error!("dummy ipfs server failed: {}", e);
+            }
+        });
+
         const IPFS_CID: &str = "bafkreihwcrnsi2tqozwq22k4vl7flutu43jlxgb3tenewysm2xvfuej5i4";
         const IPFS_LEN: usize = 26849;
 
@@ -64,7 +73,10 @@ mod tests {
             Arc::clone(&store),
             command_sender,
             provider.command_sender(),
-            Default::default(),
+            OriginConfig {
+                ipfs_gateway: "127.0.0.1:9682".to_string(),
+                use_https: Some(false),
+            },
         ));
 
         // since we have no peers, get will fallback to origin

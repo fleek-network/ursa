@@ -312,13 +312,16 @@ where
 
         // we are the first concurrent request for this cid
         let client = self.client.clone();
+
+        let https = self
+            .origin_config
+            .use_https
+            .map(|v| if v { "https://" } else { "http://" })
+            .unwrap_or("https://");
+
         let req = RequestBuilder::new(
             Method::Get,
-            format!(
-                "https://{}/ipfs/{root_cid}",
-                self.origin_config.ipfs_gateway
-            )
-            .parse()?,
+            format!("{https}{}/ipfs/{root_cid}", self.origin_config.ipfs_gateway).parse()?,
         )
         .header("Accept", "application/vnd.ipld.car")
         .build();
