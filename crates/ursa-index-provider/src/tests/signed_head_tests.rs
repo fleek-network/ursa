@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use cid::Cid;
+    use libipld::Cid;
     use libp2p::identity::Keypair;
 
     use crate::signed_head::SignedHead;

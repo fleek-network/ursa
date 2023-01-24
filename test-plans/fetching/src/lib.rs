@@ -1,6 +1,5 @@
-use cid::multihash::Code;
 use ipld_traversal::blockstore::Blockstore as GSBlockstore;
-use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams};
+use libipld::{multihash::Code, cbor::DagCborCodec, ipld, Block, DefaultParams};
 use libp2p_bitswap::BitswapStore;
 use std::time::Duration;
 use testground::client::Client;
@@ -47,11 +46,6 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
             .unwrap();
 
         let mut bitswap_store = BitswapStorage(node.store.clone());
-        if bitswap_store.contains(block.cid()).unwrap() {
-            client.record_message("[before] BLOCK CONTAINED");
-        } else {
-            client.record_message("[before] BLOCK NOT CONTAINED");
-        }
         // Remove the block from the store so that it has to be retrieved from
         // the peers for the bitswap get request
         node.store.db.delete(block.cid().to_bytes().as_slice()).unwrap();

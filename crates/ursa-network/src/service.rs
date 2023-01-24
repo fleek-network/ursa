@@ -13,14 +13,13 @@
 
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
-use cid::Cid;
 use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
-use libipld::DefaultParams;
+use libipld::{Cid, DefaultParams};
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
     gossipsub::{

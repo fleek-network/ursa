@@ -1,7 +1,6 @@
 use crate::node::Node;
-use cid::multihash::Code;
 use ipld_traversal::blockstore::Blockstore;
-use libipld::{cbor::DagCborCodec, ipld, Block, DefaultParams};
+use libipld::{multihash::Code, cbor::DagCborCodec, ipld, Block, DefaultParams};
 use std::time::Duration;
 use testground::client::Client;
 use tokio::{sync::oneshot, time::Instant};

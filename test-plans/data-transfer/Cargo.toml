@@ -4,7 +4,6 @@ name = "data-transfer"
 version = "0.1.0"
 
 [dependencies]
-cid = "0.8.6"
 env_logger = "0.9.0"
 if-addrs = "0.7.0"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }

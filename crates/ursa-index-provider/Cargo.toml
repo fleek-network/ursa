@@ -16,7 +16,6 @@ tracing-subscriber.workspace = true
 base64.workspace = true
 bincode.workspace = true
 bytes.workspace = true
-cid.workspace = true
 db.workspace = true
 dirs.workspace = true
 futures.workspace = true
