@@ -13,14 +13,13 @@
 
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
-use cid::Cid;
 use db::Store;
 use fnv::FnvHashMap;
 use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
-use libipld::DefaultParams;
+use libipld::{Cid, DefaultParams};
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
     gossipsub::{
@@ -61,7 +60,7 @@ use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
 use crate::transport::build_transport;
-use crate::utils::bloom_filter::CountingBloomFilter;
+use crate::utils::cache_summary::CacheSummary;
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
     codec::protocol::{UrsaExchangeRequest, UrsaExchangeResponse},
@@ -172,7 +171,7 @@ pub enum NetworkCommand {
 
     SendRequest {
         peer_id: PeerId,
-        request: UrsaExchangeRequest,
+        request: Box<UrsaExchangeRequest>,
         channel: oneshot::Sender<Result<UrsaExchangeResponse>>,
     },
 
@@ -183,7 +182,7 @@ pub enum NetworkCommand {
 
     #[cfg(test)]
     GetPeerContent {
-        sender: oneshot::Sender<HashMap<PeerId, CountingBloomFilter>>,
+        sender: oneshot::Sender<HashMap<PeerId, CacheSummary>>,
     },
 }
 
@@ -216,9 +215,9 @@ where
     /// Bootstrap multiaddrs.
     bootstraps: Vec<Multiaddr>,
     /// Summarizes the cached content.
-    cached_content: CountingBloomFilter,
+    cached_content: CacheSummary,
     /// Content summaries from other nodes.
-    peer_cached_content: HashMap<PeerId, CountingBloomFilter>,
+    peer_cached_content: HashMap<PeerId, CacheSummary>,
 }
 
 impl<S> UrsaService<S>
@@ -312,7 +311,7 @@ where
             pending_responses: HashMap::default(),
             peers,
             bootstraps: config.bootstrap_nodes.clone(),
-            cached_content: CountingBloomFilter::default(),
+            cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
         })
     }
@@ -465,7 +464,7 @@ where
                                 }
                                 Err(_) => {
                                     if chan.send(Err(anyhow!("The requested block with cid {cid:?} is not found with any peers"))).is_err() {
-                                    error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
+                                        error!("[BitswapEvent::Complete] - Bitswap response channel send failed");
                                     }
                                 }
                             }
@@ -602,7 +601,7 @@ where
                             }
                         }
                         RequestType::StoreSummary(cache_summary) => {
-                            self.peer_cached_content.insert(peer, cache_summary);
+                            self.peer_cached_content.insert(peer, *cache_summary);
                             if self
                                 .swarm
                                 .behaviour_mut()
@@ -758,7 +757,7 @@ where
                         .iter()
                         .filter(|peer| {
                             if let Some(cache_summary) = self.peer_cached_content.get(*peer) {
-                                return cache_summary.contains(&cid.to_bytes());
+                                return cache_summary.contains(cid.to_bytes());
                             }
                             true
                         })
@@ -791,8 +790,9 @@ where
                 self.cached_content.insert(&cid.to_bytes());
                 let swarm = self.swarm.behaviour_mut();
                 for peer in &self.peers {
-                    let request =
-                        UrsaExchangeRequest(RequestType::StoreSummary(self.cached_content.clone()));
+                    let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
+                        self.cached_content.clone(),
+                    )));
                     swarm.request_response.send_request(peer, request);
                 }
 
@@ -823,7 +823,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .request_response
-                    .send_request(&peer_id, request);
+                    .send_request(&peer_id, *request);
                 self.pending_responses.insert(request_id, channel);
 
                 self.emit_event(NetworkEvent::RequestMessage { request_id });

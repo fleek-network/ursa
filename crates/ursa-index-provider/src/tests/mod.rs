@@ -54,6 +54,7 @@ pub fn provider_engine_init(
         ProviderConfig::default(),
         service.command_sender(),
         server_address,
+        "/ip4/127.0.0.1/tcp/4069".parse().unwrap(),
     );
 
     let router = provider_engine.router();

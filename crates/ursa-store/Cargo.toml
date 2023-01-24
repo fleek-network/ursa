@@ -12,7 +12,6 @@ repository.workspace = true
 anyhow.workspace = true
 async-fs = "1.6.0"
 async-trait.workspace = true
-cid.workspace = true
 db.workspace = true
 fnv.workspace = true
 futures.workspace = true
@@ -26,6 +25,7 @@ serde.workspace = true
 simple_logger.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+integer-encoding.workspace = true
 
 [features]
 default = ["rocksdb"]

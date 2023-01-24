@@ -9,15 +9,17 @@ use std::{
 
 use anyhow::{Context, Result};
 use axum::{
+    body::Body,
     extract::Extension,
-    http::{Method, StatusCode},
+    headers::HeaderName,
+    http::{HeaderValue, Method, Request, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router, ServiceExt,
 };
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
-use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
+use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
@@ -31,6 +33,7 @@ use tower_http::{
     cors::{Any, CorsLayer},
     normalize_path::NormalizePath,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    set_header::SetRequestHeaderLayer,
     timeout::TimeoutLayer,
     trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer},
 };
@@ -81,12 +84,14 @@ pub async fn start<Cache: ServerCache>(
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
-            .route("/ping", get(|| async { "pong" }))
             .route("/:cid", get(get_car_handler::<Cache>))
-            .route("/metrics", get(|| async move { metric_handle.render() }))
             .layer(Extension(config))
             .layer(Extension(cache))
             .layer(CatchPanicLayer::custom(recover))
+            .layer(PropagateRequestIdLayer::new(HeaderName::from_static(
+                "trace_id",
+            )))
+            .layer(PropagateRequestIdLayer::x_request_id())
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
@@ -98,8 +103,14 @@ pub async fn start<Cache: ServerCache>(
                             .latency_unit(tower_http::LatencyUnit::Micros),
                     ),
             )
-            .layer(PropagateRequestIdLayer::x_request_id())
-            .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid {}))
+            .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+            .layer(SetRequestHeaderLayer::overriding(
+                HeaderName::from_static("trace_id"),
+                |_: &Request<Body>| {
+                    find_current_trace_id()
+                        .map(|trace_id| HeaderValue::from_str(&trace_id).unwrap())
+                },
+            ))
             .layer(opentelemetry_tracing_layer())
             .layer(
                 CorsLayer::new()
@@ -109,7 +120,10 @@ pub async fn start<Cache: ServerCache>(
             .layer(CompressionLayer::new())
             .layer(TimeoutLayer::new(Duration::from_millis(*request_timeout)))
             .layer(prometheus_layer)
-            .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize)),
+            .layer(ConcurrencyLimitLayer::new(*concurrency_limit as usize))
+            // put trivial route first to prevent annoying log and trace
+            .route("/metrics", get(|| async move { metric_handle.render() }))
+            .route("/ping", get(|| async { "pong" })),
     );
 
     info!("Server listening on {addr}");

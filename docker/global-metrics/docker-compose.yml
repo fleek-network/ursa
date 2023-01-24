@@ -1,6 +1,6 @@
 version: '3'
 
-services: 
+services:
   nginx:
     image: nginx:latest
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
   nginxexporter:
     image: fish/nginx-exporter
     command:
-    - '-nginx.scrape_uri=http://nginx:80/stub_status'
+      - '-nginx.scrape_uri=http://nginx:80/stub_status'
     expose:
       - 9113
     depends_on:
@@ -42,11 +42,14 @@ services:
     restart: always
     ports:
       - "9090:9090"
-    expose: 
+    expose:
       - "9090"
     volumes:
       - ./data/prom:/etc/prometheus
-    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    command:
+      - '--web.enable-lifecycle'
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=200h'
     depends_on:
       - ursa-tracker
 
@@ -55,7 +58,7 @@ services:
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./data/grafana/provisioning:/etc/grafana/provisioning
-      - ./data/grafana/dashboards:/etc/dashboards
+      - ./data/grafana/dashboards:/etc/grafana/dashboards
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false

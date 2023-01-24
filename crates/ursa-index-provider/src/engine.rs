@@ -16,14 +16,14 @@ use ursa_network::{GossipsubMessage, NetworkCommand};
 use anyhow::{anyhow, Error, Result};
 
 use axum::{body::Body, extract::Path, response::Response, routing::get, Extension, Json, Router};
-use cid::Cid;
 
 use crate::provider::ProviderError;
 use fvm_ipld_blockstore::Blockstore;
+use libipld::Cid;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
-use ursa_store::{Dag, UrsaStore};
+use ursa_store::UrsaStore;
 
 type CommandOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type CommandOneShotReceiver<T> = oneshot::Receiver<Result<T, Error>>;
@@ -93,6 +93,7 @@ pub struct ProviderEngine<S> {
     network_command_sender: Sender<NetworkCommand>,
     /// Server from which advertised content is retrievable.
     server_address: Multiaddr,
+    domain: Multiaddr,
 }
 
 impl<S> ProviderEngine<S>
@@ -106,6 +107,7 @@ where
         config: ProviderConfig,
         network_command_sender: Sender<NetworkCommand>,
         server_address: Multiaddr,
+        domain: Multiaddr,
     ) -> Self {
         let (command_sender, command_receiver) = unbounded_channel();
         ProviderEngine {
@@ -116,6 +118,7 @@ where
             provider: Provider::new(keypair, provider_store),
             store,
             server_address,
+            domain,
         }
     }
     pub fn command_sender(&self) -> Sender<ProviderCommand> {
@@ -163,7 +166,7 @@ where
                         } else {
                             match self
                                 .provider
-                                .create_announce_message(peer_id, self.config.domain.clone())
+                                .create_announce_message(peer_id, self.domain.clone())
                             {
                                 Ok(announce_message) => {
                                     if let Err(e) = self

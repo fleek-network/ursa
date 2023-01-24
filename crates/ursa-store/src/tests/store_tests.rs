@@ -1,16 +1,13 @@
 #[cfg(test)]
 mod tests {
     use async_fs::File;
-    use cid::Cid;
     use futures::io::BufReader;
     use fvm_ipld_car::{load_car, CarReader};
+    use libipld::Cid;
     use std::path::Path;
     use std::sync::Arc;
 
-    use crate::{
-        tests::{get_store, setup_logger},
-        Dag,
-    };
+    use crate::tests::{get_store, setup_logger};
 
     #[tokio::test]
     async fn test_dag_traversal() -> anyhow::Result<()> {

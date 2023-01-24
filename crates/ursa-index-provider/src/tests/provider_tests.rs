@@ -6,7 +6,7 @@ mod tests {
     };
 
     use anyhow::Error;
-    use cid::multihash::{Code, MultihashDigest};
+    use libipld::multihash::{Code, MultihashDigest};
     use libipld_core::ipld::Ipld;
     use surf::Error as SurfError;
     use tokio::task;

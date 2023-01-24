@@ -1,6 +1,8 @@
 mod api_test;
 mod server_test;
 
+use anyhow::Result;
+use axum::{headers::HeaderMap, routing::get, Router};
 use db::MemoryDB;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
@@ -27,7 +29,7 @@ pub fn get_store() -> Arc<UrsaStore<MemoryDB>> {
     Arc::new(UrsaStore::new(Arc::clone(&db)))
 }
 
-type InitResult = anyhow::Result<(
+type InitResult = Result<(
     UrsaService<MemoryDB>,
     ProviderEngine<MemoryDB>,
     Arc<UrsaStore<MemoryDB>>,
@@ -37,6 +39,7 @@ pub fn init() -> InitResult {
     let store = get_store();
     let network_config = NetworkConfig {
         swarm_addrs: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        bootstrap_nodes: vec![],
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
@@ -50,7 +53,26 @@ pub fn init() -> InitResult {
         ProviderConfig::default(),
         service.command_sender(),
         server_address,
+        "/ip4/127.0.0.1/tcp/4069".parse().unwrap(),
     );
 
     Ok((service, provider_engine, store))
+}
+
+pub async fn dummy_ipfs() -> Result<()> {
+    let file: Vec<u8> = std::fs::read("../../test_files/test.car")?;
+
+    let router = Router::new().route(
+        "/ipfs/:cid",
+        get(|| async move {
+            let mut headers = HeaderMap::new();
+            headers.insert("Content-Type", "application/vnd.ipfs.car".parse().unwrap());
+            (headers, file.clone())
+        }),
+    );
+
+    axum::Server::bind(&"0.0.0.0:9682".parse().unwrap())
+        .serve(router.into_make_service())
+        .await
+        .map_err(|e| e.into())
 }

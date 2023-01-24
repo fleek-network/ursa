@@ -8,12 +8,12 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use cid::{multihash::Code, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::Cbor;
-use libipld::codec::Encode;
+use libipld::{codec::Encode, multihash::Code, Cid};
 use libipld_cbor::DagCborCodec;
 use libipld_core::{ipld::Ipld, serde::to_ipld};
+use libp2p::multiaddr::Protocol;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use rand;
 use rand::Rng;
@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     io::Write,
-    str::FromStr,
     sync::{Arc, RwLock},
 };
 use tracing::{info, trace};
@@ -104,7 +103,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
     fn create(&mut self, ad: Advertisement) -> Result<usize>;
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
     fn publish(&mut self, id: usize) -> Result<Advertisement>;
-    fn create_announce_message(&mut self, peer_id: PeerId, domain: String) -> Result<Vec<u8>>;
+    fn create_announce_message(&mut self, peer_id: PeerId, domain: Multiaddr) -> Result<Vec<u8>>;
 }
 
 impl<S> ProviderInterface for Provider<S>
@@ -158,17 +157,15 @@ where
         Err(anyhow!("ad not found"))
     }
 
-    fn create_announce_message(&mut self, peer_id: PeerId, mut domain: String) -> Result<Vec<u8>> {
-        if domain.is_empty() {
-            domain = "/ip4/127.0.0.1/tcp/4069".to_string();
-        }
-        let mut multiaddrs = Multiaddr::from_str(&domain)?;
-        multiaddrs = Multiaddr::try_from(format!("{multiaddrs}/http/p2p/{peer_id}"))?;
-        let message_addrs = [multiaddrs].to_vec();
+    fn create_announce_message(&mut self, peer_id: PeerId, domain: Multiaddr) -> Result<Vec<u8>> {
+        let mut multiaddr = domain;
+        multiaddr.push(Protocol::Http);
+        multiaddr.push(Protocol::P2p(peer_id.into()));
+
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {
                 Cid: head_cid,
-                Addrs: message_addrs,
+                Addrs: vec![multiaddr],
                 ExtraData: *b"",
             };
 

@@ -1,15 +1,18 @@
 [package]
 edition = "2021"
-name = "data-transfer"
+name = "fetching"
 version = "0.1.0"
 
 [dependencies]
 env_logger = "0.9.0"
 if-addrs = "0.7.0"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
-libipld = "0.14.0"
+fvm_ipld_blockstore = "0.1.1"
+libipld = { version = "0.14.0", features = ["serde-codec"] }
 futures = "0.3.1"
+fvm_ipld_car = "0.6.0"
 libp2p = { version = "0.50", features = ["websocket", "mplex", "yamux", "tcp", "async-std", "ping", "noise", "dns", "rsa", "macros"]}
+libp2p-bitswap = "0.25.0"
 serde_json = "1"
 testground = "0.4"
 tokio = { version = "1.23", default-features = false, features = ["sync", "rt-multi-thread", "macros", "net"] }

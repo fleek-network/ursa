@@ -35,7 +35,7 @@ jobs:
         id: vars
         run: |-
           cat > pipeline.auto.tfvars <<EOF
-          k8s_ursa_docker_image = "ghcr.io/fleek-network/ursa:main"
+          k8s_ursa_docker_image = "ghcr.io/fleek-network/ursa:latest"
           EOF
 
       - name: Terraform Init

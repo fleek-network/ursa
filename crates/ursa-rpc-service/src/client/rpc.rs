@@ -46,7 +46,7 @@ where
             .with_id(1)
             .finish();
 
-        let ServerConfig { port, addr } = ServerConfig::default();
+        let ServerConfig { port, addr, .. } = ServerConfig::default();
         let api_url = format!("http://{addr}:{port}/rpc/v0");
 
         info!("Using JSON-RPC v2 HTTP URL: {api_url}");

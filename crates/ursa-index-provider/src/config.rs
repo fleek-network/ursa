@@ -3,9 +3,10 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProviderConfig {
-    /// a domain where the node is listening, eg. `dns/test-node.ursa.earth`
+    /// ! Deprecated ! Moved to `ursa-rpc-service` config.
+    /// Left here for backwards compatability; so that configs can be migrated
     #[serde(default)]
-    pub domain: String,
+    pub domain: Option<String>,
     /// indexer url to point to, eg. https://dev.cid.contact
     #[serde(default = "ProviderConfig::default_indexer_url")]
     pub indexer_url: String,
@@ -26,7 +27,7 @@ impl ProviderConfig {
 impl Default for ProviderConfig {
     fn default() -> Self {
         Self {
-            domain: "".to_string(),
+            domain: None,
             indexer_url: Self::default_indexer_url(),
             database_path: Self::default_database_path(),
         }

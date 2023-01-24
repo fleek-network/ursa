@@ -1,7 +1,7 @@
 // https://github.com/MarcoPolo/http-index-provider-example/blob/main/src/signed_head.rs
 
 use base64;
-use cid::Cid;
+use libipld::{cid, Cid};
 use libp2p::{
     core::{identity::Keypair, PublicKey},
     identity::error::SigningError,

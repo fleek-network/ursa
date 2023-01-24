@@ -108,15 +108,17 @@ async fn main() -> Result<()> {
                     provider_config,
                     service.command_sender(),
                     server_address,
+                    server_config.domain.clone(),
                 );
                 let index_provider_router = index_provider_engine.router();
 
                 // server setup
-                let interface = Arc::new(NodeNetworkInterface {
+                let interface = Arc::new(NodeNetworkInterface::new(
                     store,
-                    network_send: service.command_sender(),
-                    provider_send: index_provider_engine.command_sender(),
-                });
+                    service.command_sender(),
+                    index_provider_engine.command_sender(),
+                    server_config.origin.clone(),
+                ));
                 let server = Server::new(interface);
 
                 // Start libp2p service

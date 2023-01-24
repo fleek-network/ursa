@@ -2,28 +2,36 @@ use anyhow::{anyhow, Result};
 use async_fs::{create_dir_all, File};
 use async_trait::async_trait;
 use axum::body::StreamBody;
-use cid::Cid;
 use db::Store;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::{load_car, CarHeader};
+use fvm_ipld_car::{load_car, CarHeader, CarReader};
+use libipld::Cid;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{
+    hash_map::{Entry, HashMap},
+    HashSet,
+};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::UnboundedSender as Sender;
-use tokio::sync::{oneshot, RwLock};
+use surf::{http::Method, Client, RequestBuilder};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedSender as Sender},
+    oneshot, RwLock,
+};
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
-use ursa_store::{Dag, UrsaStore};
+use ursa_store::UrsaStore;
+
+use crate::config::OriginConfig;
 
 pub const MAX_BLOCK_SIZE: usize = 1048576;
 pub const MAX_CHUNK_SIZE: usize = 104857600;
@@ -63,14 +71,15 @@ pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
     /// Get a bitswap block from the network
-    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>>;
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>>;
 
+    /// Get content under a cid
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>>;
 
     /// get the file locally via cli
     async fn get_file(&self, path: String, cid: Cid) -> Result<()>;
 
-    // stream the car file from server
+    /// Stream the car file from server
     async fn stream(
         &self,
         root_cid: Cid,
@@ -79,15 +88,17 @@ pub trait NetworkInterface: Sync + Send + 'static {
     /// Put a car file and start providing to the network
     async fn put_car<R: AsyncRead + Send + Unpin>(&self, file: Car<R>) -> Result<Vec<Cid>>;
 
-    // Put a file using a local path
+    /// Put a file using a local path
     async fn put_file(&self, path: String) -> Result<Vec<Cid>>;
 
-    // get peers from the network
+    /// Get peers from the network
     async fn get_peers(&self) -> Result<HashSet<PeerId>>;
 
-    // get the addrresses that p2p node is listening on
+    /// Get the addresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 }
+
+type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<u64>>>>>>;
 
 #[derive(Clone)]
 pub struct NodeNetworkInterface<S>
@@ -97,6 +108,9 @@ where
     pub store: Arc<UrsaStore<S>>,
     pub network_send: Sender<NetworkCommand>,
     pub provider_send: Sender<ProviderCommand>,
+    pending_requests: PendingRequests,
+    client: Arc<Client>,
+    origin_config: OriginConfig,
 }
 
 #[async_trait]
@@ -104,44 +118,19 @@ impl<S> NetworkInterface for NodeNetworkInterface<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
-    async fn get(&self, cid: Cid) -> Result<Option<Vec<u8>>> {
-        if !self.store.blockstore().has(&cid)? {
-            info!("Requesting block with the cid {cid:?}");
-            let (sender, receiver) = oneshot::channel();
-            let request = NetworkCommand::GetBitswap { cid, sender };
-
-            // use network sender to send command
-            self.network_send.send(request)?;
-            if let Err(e) = receiver.await? {
-                return Err(anyhow!(
-                    "The bitswap failed, please check server logs {:?}",
-                    e
-                ));
-            }
-        }
-        self.store.blockstore().get(&cid)
+    async fn get(&self, cid: Cid) -> Result<Vec<u8>> {
+        self.sync_content(cid).await?;
+        let content =
+            self.store.blockstore().get(&cid)?.ok_or_else(|| {
+                anyhow!("content was fetched but could not be found in blockstore")
+            })?;
+        Ok(content)
     }
 
     async fn get_data(&self, root_cid: Cid) -> Result<Vec<(Cid, Vec<u8>)>> {
-        if !self.store.blockstore().has(&root_cid)? {
-            let (sender, receiver) = oneshot::channel();
-            let request = NetworkCommand::GetBitswap {
-                cid: root_cid,
-                sender,
-            };
-
-            // use network sender to send command
-            self.network_send.send(request)?;
-            if let Err(e) = receiver.await? {
-                return Err(anyhow!(
-                    "The bitswap failed, please check server logs {:?}",
-                    e
-                ));
-            }
-        }
+        self.sync_content(root_cid).await?;
         let dag = self.store.dag_traversal(&root_cid)?;
         info!("Dag traversal done, now streaming the file");
-
         Ok(dag)
     }
 
@@ -217,39 +206,8 @@ where
         let size = car.size;
         let cids = load_car(self.store.blockstore(), car).await?;
         let root_cid = cids[0];
-
         info!("The inserted cids are: {cids:?}");
-
-        let (sender, receiver) = oneshot::channel();
-        let request = NetworkCommand::Put {
-            cid: root_cid,
-            sender,
-        };
-        if let Err(e) = self.network_send.send(request) {
-            error!("There was an error while sending NetworkCommand::Put: {e}");
-        } else if let Err(e) = receiver.await {
-            return Err(anyhow!(format!(
-                "The PUT failed, please check server logs {e:?}"
-            )));
-        }
-
-        let (sender, receiver) = oneshot::channel();
-        let request = ProviderCommand::Put {
-            context_id: root_cid.to_bytes(),
-            size,
-            sender,
-        };
-        if let Err(e) = self.provider_send.send(request) {
-            // this error can be ignored for test_put_and_get test case
-            error!("there was an error while sending provider command {e}");
-            return Ok(cids);
-        }
-        match receiver.await {
-            Ok(_) => Ok(cids),
-            Err(e) => Err(anyhow!(format!(
-                "The PUT failed, please check server logs {e:?}"
-            ))),
-        }
+        self.provide_cid(root_cid, size).await.map(|_| cids)
     }
 
     /// Used through CLI
@@ -280,6 +238,184 @@ where
                 "GetListenerAddresses NetworkCommand failed {e:?}"
             ))),
         }
+    }
+}
+
+impl<S> NodeNetworkInterface<S>
+where
+    S: Blockstore + Store + Send + Sync + 'static,
+{
+    pub fn new(
+        store: Arc<UrsaStore<S>>,
+        network_send: Sender<NetworkCommand>,
+        provider_send: Sender<ProviderCommand>,
+        origin_config: OriginConfig,
+    ) -> Self {
+        Self {
+            store,
+            network_send,
+            provider_send,
+            origin_config,
+            pending_requests: Arc::new(RwLock::new(HashMap::new())),
+            client: Arc::new(Client::new()),
+        }
+    }
+
+    /// Ensure a root cid is synced to the blockstore
+    async fn sync_content(&self, cid: Cid) -> Result<()> {
+        if !self.store.blockstore().has(&cid)? {
+            info!("Requesting block with the cid {cid:?}");
+
+            let size = match self.get_network(cid).await {
+                Ok(_) => self.store.car_size(&cid)?,
+                Err(e) => {
+                    info!("Failed to get content from network: {}", e);
+                    self.get_origin(cid).await?
+                }
+            };
+            self.provide_cid(cid, size).await
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Fetch content from the network
+    async fn get_network(&self, root_cid: Cid) -> Result<()> {
+        info!("Fetching cid {root_cid} from network");
+        let (send, recv) = oneshot::channel();
+        self.network_send.send(NetworkCommand::GetBitswap {
+            cid: root_cid,
+            sender: send,
+        })?;
+        recv.await?
+    }
+
+    /// Fetch content from the origin.
+    /// Returns the size of the car file received
+    async fn get_origin(&self, root_cid: Cid) -> Result<u64> {
+        info!("Fetching cid {root_cid} from origin (ipfs)");
+        let pending = self.pending_requests.clone();
+        let (tx, mut rx) = unbounded_channel();
+        match self.pending_requests.write().await.entry(root_cid) {
+            Entry::Occupied(mut e) => {
+                // there is a concurrent request for this cid, just wait for the first one and return
+                e.get_mut().push(tx);
+                return rx
+                    .recv()
+                    .await
+                    .ok_or_else(|| anyhow!("Failed to receive status from channel"))?;
+            }
+            Entry::Vacant(e) => {
+                e.insert(vec![tx]);
+            }
+        }
+
+        // we are the first concurrent request for this cid
+        let client = self.client.clone();
+
+        let https = self
+            .origin_config
+            .use_https
+            .map(|v| if v { "https://" } else { "http://" })
+            .unwrap_or("https://");
+
+        let req = RequestBuilder::new(
+            Method::Get,
+            format!("{https}{}/ipfs/{root_cid}", self.origin_config.ipfs_gateway).parse()?,
+        )
+        .header("Accept", "application/vnd.ipld.car")
+        .build();
+
+        let store = self.store.db.clone();
+        task::spawn(async move {
+            // send the request
+            let result: Result<u64, String> = async {
+                let mut res = client.send(req).await.map_err(|e| {
+                    format!("Error getting content for cid {root_cid} from origin: {e}")
+                })?;
+
+                let body = res.body_bytes().await.map_err(|e| {
+                    format!("Error receiving content for cid {root_cid} from origin: {e}")
+                })?;
+                let len = body.len() as u64;
+
+                let car = CarReader::new(body.as_slice()).await.map_err(|e| {
+                    format!("Error reading car file for cid {root_cid} from origin: {e}")
+                })?;
+
+                if car.header.roots.contains(&root_cid) {
+                    car.read_into(store.as_ref())
+                        .await
+                        .map_err(|e| format!("Error storing cid {root_cid} from origin: {e}"))?;
+                    Ok(len)
+                } else {
+                    Err(format!(
+                        "Error: cid {root_cid} not found in the origin response car file"
+                    ))
+                }
+            }
+            .await;
+
+            // notify pending requests for cids
+            let mut pending = pending.write().await;
+            match result {
+                Ok(len) => {
+                    if let Some(senders) = pending.remove(&root_cid) {
+                        for sender in senders {
+                            if sender.send(Ok(len)).is_err() {
+                                debug!("Failed to send origin status to channel");
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(e);
+                    if let Some(senders) = pending.remove(&root_cid) {
+                        for sender in senders {
+                            if sender.send(Err(anyhow!(e.clone()))).is_err() {
+                                debug!("Failed to send origin status to channel");
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        rx.recv()
+            .await
+            .ok_or_else(|| anyhow!("Failed to receive status from channel"))?
+    }
+
+    /// Trigger the network and provider to start providing the content id.
+    /// If the size is not provided, it will be calculated from the blockstore
+    async fn provide_cid(&self, cid: Cid, size: u64) -> Result<()> {
+        // network content replication
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.network_send.send(NetworkCommand::Put { cid, sender }) {
+            error!("Failed to send network command: {}", e);
+        } else {
+            match receiver.await {
+                Ok(res) => res?,
+                Err(e) => error!("Error receiving network put status for {cid}: {e}"),
+            }
+        }
+
+        // provider announcement
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.provider_send.send(ProviderCommand::Put {
+            context_id: cid.to_bytes(),
+            size,
+            sender,
+        }) {
+            error!("Failed to announce content with cid {cid}: {e}");
+        } else {
+            match receiver.await {
+                Ok(r) => return r,
+                Err(e) => error!("Error receiving provider put status for {cid}: {e}"),
+            };
+        }
+
+        Ok(())
     }
 }
 

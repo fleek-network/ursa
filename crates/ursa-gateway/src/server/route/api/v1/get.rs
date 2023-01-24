@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json, TypedHeader,
 };
-use cid::Cid;
+use libipld::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tracing::{info_span, Instrument};

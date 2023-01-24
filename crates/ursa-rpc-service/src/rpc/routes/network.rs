@@ -3,7 +3,7 @@ use axum::{
     routing::{post, put},
     Router,
 };
-use cid::Cid;
+use libipld::Cid;
 use std::{str::FromStr, sync::Arc};
 use ursa_metrics::middleware::track_metrics;
 
@@ -37,7 +37,7 @@ where
     if let Ok(cid) = Cid::from_str(&params.cid) {
         match data.0.get(cid).await {
             Err(err) => Err(Error::internal(err)),
-            Ok(res) => Ok(res.unwrap()),
+            Ok(res) => Ok(res),
         }
     } else {
         error!("Invalid Cid String, Cannot Parse {} to CID", &params.cid);
