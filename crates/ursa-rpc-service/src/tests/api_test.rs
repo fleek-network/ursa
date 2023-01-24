@@ -73,7 +73,10 @@ mod tests {
             Arc::clone(&store),
             command_sender,
             provider.command_sender(),
-            Default::default(),
+            OriginConfig {
+                ipfs_gateway: "127.0.0.1:9682".to_string(),
+                use_https: Some(false),
+            },
         ));
 
         // since we have no peers, get will fallback to origin

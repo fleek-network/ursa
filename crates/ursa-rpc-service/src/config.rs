@@ -33,6 +33,8 @@ impl Default for ServerConfig {
 pub struct OriginConfig {
     #[serde(default = "OriginConfig::default_ipfs_gateway")]
     pub ipfs_gateway: String,
+    /// Intended for testing purposes
+    pub use_https: Option<bool>,
 }
 
 impl OriginConfig {
@@ -45,6 +47,7 @@ impl Default for OriginConfig {
     fn default() -> Self {
         Self {
             ipfs_gateway: Self::default_ipfs_gateway(),
+            use_https: None,
         }
     }
 }
