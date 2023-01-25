@@ -7,7 +7,12 @@ use axum::{
 use hyper::HeaderMap;
 use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{
+    env,
+    net::SocketAddr,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -105,12 +110,17 @@ async fn registration_handler(
 
 /// Prometheus HTTP Service Discovery
 async fn http_sd_handler(db: Extension<Arc<DB>>) -> (StatusCode, Json<Value>) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
     let services: Vec<PrometheusDiscoveryChunk> = db
         .iterator(IteratorMode::Start)
         .filter_map(|res| {
             if let Ok((_, v)) = res {
                 let node: Node = serde_json::from_slice(&v).unwrap();
-                if node.telemetry {
+                // only return registrations in the last 1 month
+                if now - node.last_registered < 2629800000 {
                     Some(node.into())
                 } else {
                     None
