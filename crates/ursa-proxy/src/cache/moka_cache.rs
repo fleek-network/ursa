@@ -5,7 +5,7 @@ use axum::{async_trait, response::Response};
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, UnboundedReceiver};
 
 #[derive(Clone)]
 pub struct MokaCache(Moka<String, Arc<Bytes>>);
@@ -54,11 +54,17 @@ impl Cache for MokaCache {
 
 #[async_trait]
 impl CacheClient for MokaCache {
+    type Command = ();
+
     async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>> {
         todo!()
     }
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {
+        todo!()
+    }
+
+    async fn command_receiver(&mut self) -> UnboundedReceiver<Self::Command> {
         todo!()
     }
 }

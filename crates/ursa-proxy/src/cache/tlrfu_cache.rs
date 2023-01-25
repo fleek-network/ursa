@@ -15,6 +15,7 @@ use crate::cache::{
     Cache, CacheClient,
 };
 use crate::core::event::ProxyEvent;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::sync::{mpsc::UnboundedSender, oneshot, oneshot::Sender, RwLock};
 use tracing::{error, info, warn};
 
@@ -27,22 +28,19 @@ pub enum TlrfuCacheCommand {
 
 pub struct TlrfuCache {
     tlrfu: Tlrfu<Bytes>,
+    rx: Option<UnboundedReceiver<TlrfuCacheCommand>>,
     tx: UnboundedSender<TlrfuCacheCommand>,
     stream_buf: u64,
     cache_control_max_size: u64,
 }
 
 impl TlrfuCache {
-    pub fn new(
-        max_size: u64,
-        ttl_buf: u128,
-        tx: UnboundedSender<TlrfuCacheCommand>,
-        stream_buf: u64,
-        cache_control_max_size: u64,
-    ) -> Self {
+    pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64, cache_control_max_size: u64) -> Self {
+        let (tx, rx) = unbounded_channel();
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
+            rx: Some(rx),
             stream_buf,
             cache_control_max_size,
         }
@@ -119,6 +117,8 @@ impl Cache for TCache {
 
 #[async_trait]
 impl CacheClient for TCache {
+    type Command = TlrfuCacheCommand;
+
     async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
         let cache = self.0.read().await;
         if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {
@@ -155,5 +155,9 @@ impl CacheClient for TCache {
                 };
             });
         }
+    }
+
+    async fn command_receiver(&mut self) -> UnboundedReceiver<Self::Command> {
+        self.0.write().await.rx.take().expect("To be called once")
     }
 }
