@@ -16,6 +16,7 @@ impl MokaCache {
     }
 }
 
+#[derive(Debug)]
 pub enum MokaCacheCmd {
     Get {
         key: String,

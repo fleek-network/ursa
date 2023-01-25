@@ -3,6 +3,7 @@ mod handler;
 mod worker;
 
 use crate::cache::moka_cache::MokaCache;
+use crate::cache::CacheClient;
 use crate::{config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{Context, Result};
 use axum::{routing::get, Extension, Router, Server};
@@ -14,30 +15,28 @@ use tokio::spawn;
 use tokio::task::JoinSet;
 use tracing::info;
 
-// We want to generically pass_proxy
-// We want to allow users to pass their own logic instead of generic pass_proxy
-// We want each of the handlers above to get the config needed to make decisions
-pub struct Proxy {
+pub struct Proxy<C> {
     config: ProxyConfig,
-    cache: Arc<MokaCache>,
+    cache: C,
 }
 
-impl Proxy {
-    pub fn new(config: ProxyConfig) -> Self {
-        Self {
-            config,
-            cache: Arc::new(MokaCache::new()),
-        }
+impl<C: CacheClient> Proxy<C> {
+    pub fn new(config: ProxyConfig, cache: C) -> Self {
+        Self { config, cache }
     }
 
-    pub async fn start(self) -> Result<()> {
+    pub async fn start(mut self) -> Result<()> {
+        let cache_rx = self.cache.command_receiver().await;
+        spawn(worker::start(cache_rx, self.cache.clone()));
         let mut servers = JoinSet::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
-            let app = Router::new()
-                .route("/*path", get(proxy_pass::<Arc<MokaCache>>))
-                .layer(Extension(server_config.clone()))
-                .layer(Extension(self.cache.clone()));
+            let mut app = Router::new().layer(Extension(server_config.clone()));
+            if server_config.cache {
+                app = app
+                    .route("/*path", get(proxy_pass::<Arc<MokaCache>>))
+                    .layer(Extension(self.cache.clone()));
+            }
             let bind_addr = SocketAddr::from((
                 server_config
                     .listen_addr

@@ -5,13 +5,14 @@ mod tlrfu_cache;
 use crate::core::event::ProxyEvent;
 use anyhow::Result;
 use axum::{async_trait, response::Response};
+use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 /// Trait that handles caching commands from CacheClient.
 #[async_trait]
 pub trait Cache: Clone + Send + Sync + 'static {
-    type Command: Send;
+    type Command: Debug + Send;
     async fn handle(&mut self, cmd: Self::Command);
 }
 

@@ -1,3 +1,4 @@
+use crate::cache::moka_cache::MokaCache;
 use crate::core::Proxy;
 use crate::{
     cli::{Cli, Commands},
@@ -18,6 +19,7 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
-    Proxy::new(config).start().await.unwrap();
+    let cache = MokaCache::new();
+    Proxy::new(config, cache).start().await.unwrap();
     Ok(())
 }

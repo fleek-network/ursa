@@ -22,4 +22,5 @@ pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: Option<String>,
     pub listen_port: Option<u16>,
+    pub cache: bool,
 }
