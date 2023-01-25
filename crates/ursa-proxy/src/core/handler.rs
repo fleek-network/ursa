@@ -61,7 +61,7 @@ pub async fn proxy_pass<C: CacheClient>(
                         }
                     }
                     cache_client
-                        .handle_proxy_event(ProxyEvent::UpstreamData(bytes))
+                        .handle_proxy_event(ProxyEvent::UpstreamData(path, bytes))
                         .await
                 });
                 reader

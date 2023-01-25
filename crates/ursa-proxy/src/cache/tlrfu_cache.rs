@@ -145,7 +145,17 @@ impl CacheClient for TCache {
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {
         match event {
-            ProxyEvent::UpstreamData(_) => {}
+            ProxyEvent::UpstreamData(key, data) => {
+                let cache = self.clone();
+                spawn(async move {
+                    if let Err(e) = cache.0.read().await.tx.send(TlrfuCacheCommand::InsertSync {
+                        key,
+                        value: Arc::new(data.into()),
+                    }) {
+                        error!("Failed to dispatch InsertSync command: {e:?}");
+                    };
+                });
+            }
             ProxyEvent::Error(_) => {}
         }
     }
