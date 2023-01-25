@@ -1,4 +1,6 @@
 mod moka_cache;
+mod tlrfu;
+mod tlrfu_cache;
 
 use axum::{async_trait, response::Response};
 
@@ -6,7 +8,7 @@ use axum::{async_trait, response::Response};
 #[async_trait]
 trait Cache: Send + Sync + 'static {
     type Command;
-    async fn handle(&self, cmd: Self::Command) -> Result<(), String>;
+    async fn handle(&mut self, cmd: Self::Command) -> Result<(), String>;
 }
 
 /// Cache client trait.

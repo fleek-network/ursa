@@ -25,7 +25,7 @@ pub enum MokaCacheCmd {
 impl Cache for MokaCache {
     type Command = MokaCacheCmd;
 
-    async fn handle(&self, cmd: Self::Command) -> Result<(), String> {
+    async fn handle(&mut self, cmd: Self::Command) -> Result<(), String> {
         match cmd {
             MokaCacheCmd::Get { key, sender } => {
                 if let Some(value) = self.0.get(&key) {
