@@ -41,7 +41,7 @@
 - Generate Certificates for your domain and restart nginx
 
   ```sh
-  DOMAINS="node.ursa.earth alt.node.ursa.earth" bash infra/ursa/init-letsencrypt.sh
+  EMAIL="ops@fleek.xyz" DOMAINS="node.ursa.earth alt.node.ursa.earth" bash infra/ursa/init-letsencrypt.sh
   ```
 
 - If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.

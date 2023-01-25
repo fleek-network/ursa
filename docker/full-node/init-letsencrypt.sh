@@ -5,9 +5,9 @@ if ! [ -x "$(command -v docker-compose)" ]; then
   exit 1
 fi
 
-if [ -z "$DOMAINS" ]; then
-    echo "Error: No domains provided."
-    echo "Example usage: \`DOMAINS=\"node.ursa.earth www.node.ursa.earth\" ./init-letsencrypt.sh\`"
+if [ -z "$DOMAINS" ] || [ -z "$EMAIL" ]; then
+    echo "Error: No email or domains provided."
+    echo "Example usage: \`EMAIL=\"ops@fleek.xyz\" DOMAINS=\"node.ursa.earth www.node.ursa.earth\" ./init-letsencrypt.sh\`"
     exit 1
 else
     # split string into array by spaces
@@ -24,7 +24,7 @@ fi
 
 rsa_key_size=4096
 data_path="./data/certbot"
-email="major@ursa.earth" # Adding a valid address is strongly recommended
+email="$EMAIL" # Adding a valid address is strongly recommended
 staging=0 # Set to 1 if you're testing your setup to avoid hitting request limits
 
 if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/ssl-dhparams.pem" ]; then
