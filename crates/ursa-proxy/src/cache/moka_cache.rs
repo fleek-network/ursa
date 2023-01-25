@@ -25,16 +25,20 @@ pub enum MokaCacheCmd {
 impl Cache for MokaCache {
     type Command = MokaCacheCmd;
 
-    async fn handle(&mut self, cmd: Self::Command) -> Result<(), String> {
+    async fn handle(&mut self, cmd: Self::Command) {
         match cmd {
             MokaCacheCmd::Get { key, sender } => {
                 if let Some(value) = self.0.get(&key) {
-                    sender.send(Ok(value)).await.map_err(|e| e.to_string())?;
+                    // TODO: Handle error.
+                    sender
+                        .send(Ok(value))
+                        .await
+                        .map_err(|e| e.to_string())
+                        .unwrap();
                 }
             }
             MokaCacheCmd::Insert { key, value } => self.0.insert(key, value),
             MokaCacheCmd::Invalidate { key } => self.0.invalidate(&key),
         }
-        Ok(())
     }
 }

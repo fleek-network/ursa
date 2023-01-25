@@ -14,6 +14,7 @@ use crate::cache::{
     tlrfu::{ByteSize, Tlrfu},
     Cache, CacheClient,
 };
+use crate::core::event::ProxyEvent;
 use tokio::sync::{mpsc::UnboundedSender, oneshot, oneshot::Sender, RwLock};
 use tracing::{error, info, warn};
 
@@ -82,7 +83,7 @@ pub struct TCache(Arc<RwLock<TlrfuCache>>);
 impl Cache for TCache {
     type Command = TlrfuCacheCommand;
 
-    async fn handle(&mut self, cmd: Self::Command) -> Result<(), String> {
+    async fn handle(&mut self, cmd: Self::Command) {
         let cache = self.0.clone();
         match cmd {
             TlrfuCacheCommand::GetSync { key } => {
@@ -112,13 +113,12 @@ impl Cache for TCache {
                 });
             }
         }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl CacheClient for TlrfuCache {
-    async fn get_announce(&self, k: &str, _: bool) -> Result<Response, String> {
+    async fn query_cache(&self, k: &str, _: bool) -> Result<Response, String> {
         if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
             let (mut w, r) = duplex(self.stream_buf as usize);
             let data = Arc::clone(data);
@@ -139,5 +139,12 @@ impl CacheClient for TlrfuCache {
             return Ok(StreamBody::new(ReaderStream::new(r)).into_response());
         }
         Ok((StatusCode::NOT_FOUND, "Not found").into_response())
+    }
+
+    async fn handle_proxy_event(&self, event: ProxyEvent) {
+        match event {
+            ProxyEvent::Upstream(_) => {}
+            ProxyEvent::Error(_) => {}
+        }
     }
 }
