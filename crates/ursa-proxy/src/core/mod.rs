@@ -4,6 +4,7 @@ mod worker;
 
 use crate::cache::moka_cache::MokaCache;
 use crate::cache::{Cache, CacheWorker};
+use crate::core::handler::proxy_pass_no_cache;
 use crate::{config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{anyhow, Context, Result};
 use axum::{routing::get, Extension, Router, Server};
@@ -44,6 +45,8 @@ impl<C: Cache> Proxy<C> {
                 app = app
                     .route("/*path", get(proxy_pass::<Arc<MokaCache>>))
                     .layer(Extension(self.cache.clone()));
+            } else {
+                app = app.route("/*path", get(proxy_pass_no_cache))
             }
             let bind_addr = SocketAddr::from((
                 server_config
