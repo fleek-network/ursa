@@ -1,6 +1,6 @@
 [package]
 name = "ursa-proxy"
-authors = ["Miguel Guarniz <miguel@fleek.xyz>"]
+authors = ["Miguel Guarniz <miguel@fleek.xyz>", "Scott <scott@fleek.xyz>"]
 description = "Ursa's proxy"
 version.workspace = true
 edition.workspace = true
