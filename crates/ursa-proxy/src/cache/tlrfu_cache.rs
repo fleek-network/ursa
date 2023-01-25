@@ -77,6 +77,7 @@ impl ByteSize for Bytes {
     }
 }
 
+#[derive(Clone)]
 pub struct TCache(Arc<RwLock<TlrfuCache>>);
 
 #[async_trait]
@@ -117,12 +118,14 @@ impl Cache for TCache {
 }
 
 #[async_trait]
-impl CacheClient for TlrfuCache {
+impl CacheClient for TCache {
     async fn query_cache(&self, k: &str, _: bool) -> Result<Response, String> {
-        if let Some(data) = self.tlrfu.dirty_get(&String::from(k)) {
-            let (mut w, r) = duplex(self.stream_buf as usize);
+        let cache = self.0.read().await;
+        if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {
+            let (mut w, r) = duplex(cache.stream_buf as usize);
             let data = Arc::clone(data);
-            self.tx
+            cache
+                .tx
                 .send(TlrfuCacheCommand::GetSync {
                     key: String::from(k),
                 })
@@ -143,7 +146,7 @@ impl CacheClient for TlrfuCache {
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {
         match event {
-            ProxyEvent::Upstream(_) => {}
+            ProxyEvent::UpstreamData(_) => {}
             ProxyEvent::Error(_) => {}
         }
     }

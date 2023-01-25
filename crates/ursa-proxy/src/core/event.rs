@@ -1,6 +1,6 @@
 use axum::{body::Body, http::Response};
 
 pub enum ProxyEvent {
-    Upstream(Response<Body>),
+    UpstreamData(Vec<u8>),
     Error(String),
 }

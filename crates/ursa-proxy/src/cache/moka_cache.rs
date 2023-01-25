@@ -1,11 +1,19 @@
-use crate::cache::Cache;
+use crate::cache::{Cache, CacheClient};
+use crate::core::event::ProxyEvent;
 use axum::{async_trait, response::Response};
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
+#[derive(Clone)]
 pub struct MokaCache(Moka<String, Arc<Bytes>>);
+
+impl MokaCache {
+    pub fn new() -> Self {
+        Self(Moka::new(100_000))
+    }
+}
 
 pub enum MokaCacheCmd {
     Get {
@@ -40,5 +48,16 @@ impl Cache for MokaCache {
             MokaCacheCmd::Insert { key, value } => self.0.insert(key, value),
             MokaCacheCmd::Invalidate { key } => self.0.invalidate(&key),
         }
+    }
+}
+
+#[async_trait]
+impl CacheClient for MokaCache {
+    async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Response, String> {
+        todo!()
+    }
+
+    async fn handle_proxy_event(&self, event: ProxyEvent) {
+        todo!()
     }
 }

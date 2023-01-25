@@ -8,7 +8,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod cache;
-mod cli;
+pub mod cli;
 mod config;
 mod core;
 
