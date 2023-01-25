@@ -54,8 +54,6 @@ impl Cache for MokaCache {
 
 #[async_trait]
 impl CacheClient for MokaCache {
-    type Command = ();
-
     async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>> {
         todo!()
     }

@@ -10,18 +10,19 @@ use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
 };
+use tokio::spawn;
 use tokio::task::JoinSet;
 use tracing::info;
 
 // We want to generically pass_proxy
 // We want to allow users to pass their own logic instead of generic pass_proxy
 // We want each of the handlers above to get the config needed to make decisions
-pub struct ProxyCore {
+pub struct Proxy {
     config: ProxyConfig,
     cache: Arc<MokaCache>,
 }
 
-impl ProxyCore {
+impl Proxy {
     pub fn new(config: ProxyConfig) -> Self {
         Self {
             config,
@@ -30,10 +31,6 @@ impl ProxyCore {
     }
 
     pub async fn start(self) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn start_servers(self) -> Result<()> {
         let mut servers = JoinSet::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);

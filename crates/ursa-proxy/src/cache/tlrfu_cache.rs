@@ -117,8 +117,6 @@ impl Cache for TCache {
 
 #[async_trait]
 impl CacheClient for TCache {
-    type Command = TlrfuCacheCommand;
-
     async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
         let cache = self.0.read().await;
         if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {

@@ -1,4 +1,4 @@
-use crate::core::ProxyCore;
+use crate::core::Proxy;
 use crate::{
     cli::{Cli, Commands},
     config::load_config,
@@ -18,6 +18,6 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
-    ProxyCore::new(config).start_servers().await.unwrap();
+    Proxy::new(config).start().await.unwrap();
     Ok(())
 }
