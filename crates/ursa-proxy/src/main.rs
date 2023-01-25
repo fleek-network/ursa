@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
-    let cache = MokaCache::new();
+    let cache = MokaCache::new(100_000);
     Proxy::new(config, cache).start().await.unwrap();
     Ok(())
 }

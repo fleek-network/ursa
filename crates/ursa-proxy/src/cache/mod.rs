@@ -11,7 +11,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 /// Trait that handles caching commands from CacheClient.
 #[async_trait]
-pub trait Cache: Clone + Send + Sync + 'static {
+pub trait CacheWorker: Clone + Send + Sync + 'static {
     type Command: Debug + Send;
     async fn handle(&mut self, cmd: Self::Command);
 }
@@ -20,15 +20,18 @@ pub trait Cache: Clone + Send + Sync + 'static {
 ///
 /// Implement this trait to send commands to your Cache implementation.
 #[async_trait]
-pub trait CacheClient: Cache {
+pub trait Cache: Clone + Send + Sync + 'static {
+    type Command: Debug + Send;
     async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>>;
     async fn handle_proxy_event(&self, event: ProxyEvent);
     /// This method is only called once.
-    async fn command_receiver(&mut self) -> UnboundedReceiver<Self::Command>;
+    async fn command_receiver(&mut self) -> Option<UnboundedReceiver<Self::Command>> {
+        None
+    }
 }
 
 #[async_trait]
-impl<T: Cache> Cache for Arc<T> {
+impl<T: CacheWorker> CacheWorker for Arc<T> {
     type Command = T::Command;
 
     async fn handle(&mut self, cmd: Self::Command) {
@@ -37,7 +40,9 @@ impl<T: Cache> Cache for Arc<T> {
 }
 
 #[async_trait]
-impl<T: CacheClient> CacheClient for Arc<T> {
+impl<T: Cache> Cache for Arc<T> {
+    type Command = T::Command;
+
     async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>> {
         self.query_cache(k, no_cache).await
     }
@@ -46,7 +51,7 @@ impl<T: CacheClient> CacheClient for Arc<T> {
         self.handle_proxy_event(event).await;
     }
 
-    async fn command_receiver(&mut self) -> UnboundedReceiver<Self::Command> {
+    async fn command_receiver(&mut self) -> Option<UnboundedReceiver<Self::Command>> {
         self.command_receiver().await
     }
 }

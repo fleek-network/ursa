@@ -1,4 +1,4 @@
-use crate::cache::CacheClient;
+use crate::cache::Cache;
 use crate::config::ServerConfig;
 use crate::core::event::ProxyEvent;
 use axum::body::{BoxBody, HttpBody};
@@ -17,7 +17,7 @@ use tokio::spawn;
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
 
-pub async fn proxy_pass<C: CacheClient>(
+pub async fn proxy_pass<C: Cache>(
     Path(path): Path<String>,
     Extension(config): Extension<Arc<ServerConfig>>,
     Extension(cache_client): Extension<C>,

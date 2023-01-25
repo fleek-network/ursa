@@ -1,4 +1,4 @@
-use crate::cache::Cache;
+use crate::cache::CacheWorker;
 use std::fmt::Debug;
 use tokio::sync::mpsc::channel;
 use tokio::{select, spawn, sync::mpsc::UnboundedReceiver, task::JoinHandle};
@@ -6,7 +6,7 @@ use tracing::info;
 
 pub async fn start<
     Cmd: Debug + Send + 'static,
-    C: Cache + Cache<Command = Cmd> + Clone + 'static,
+    C: CacheWorker + Clone + 'static + CacheWorker<Command = Cmd>,
 >(
     mut worker_rx: UnboundedReceiver<Cmd>,
     cache: C,

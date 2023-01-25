@@ -3,9 +3,9 @@ mod handler;
 mod worker;
 
 use crate::cache::moka_cache::MokaCache;
-use crate::cache::CacheClient;
+use crate::cache::{Cache, CacheWorker};
 use crate::{config::ProxyConfig, core::handler::proxy_pass};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{routing::get, Extension, Router, Server};
 use std::{
     net::{IpAddr, SocketAddr},
@@ -20,14 +20,22 @@ pub struct Proxy<C> {
     cache: C,
 }
 
-impl<C: CacheClient> Proxy<C> {
+impl<C: Cache> Proxy<C> {
     pub fn new(config: ProxyConfig, cache: C) -> Self {
         Self { config, cache }
     }
 
+    pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
+        mut self,
+        cache_worker: W,
+    ) -> Result<()> {
+        if let Some(cache_cmd_rx) = self.cache.command_receiver().await {
+            spawn(worker::start(cache_cmd_rx, cache_worker.clone()));
+        }
+        self.start().await
+    }
+
     pub async fn start(mut self) -> Result<()> {
-        let cache_rx = self.cache.command_receiver().await;
-        spawn(worker::start(cache_rx, self.cache.clone()));
         let mut servers = JoinSet::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);

@@ -12,7 +12,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::cache::{
     tlrfu::{ByteSize, Tlrfu},
-    Cache, CacheClient,
+    Cache, CacheWorker,
 };
 use crate::core::event::ProxyEvent;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
@@ -79,7 +79,7 @@ impl ByteSize for Bytes {
 pub struct TCache(Arc<RwLock<TlrfuCache>>);
 
 #[async_trait]
-impl Cache for TCache {
+impl CacheWorker for TCache {
     type Command = TlrfuCacheCommand;
 
     async fn handle(&mut self, cmd: Self::Command) {
@@ -116,7 +116,9 @@ impl Cache for TCache {
 }
 
 #[async_trait]
-impl CacheClient for TCache {
+impl Cache for TCache {
+    type Command = TlrfuCacheCommand;
+
     async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
         let cache = self.0.read().await;
         if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {
@@ -155,7 +157,7 @@ impl CacheClient for TCache {
         }
     }
 
-    async fn command_receiver(&mut self) -> UnboundedReceiver<Self::Command> {
-        self.0.write().await.rx.take().expect("To be called once")
+    async fn command_receiver(&mut self) -> Option<UnboundedReceiver<Self::Command>> {
+        self.0.write().await.rx.take()
     }
 }
