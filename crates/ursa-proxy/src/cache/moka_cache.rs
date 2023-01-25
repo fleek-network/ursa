@@ -1,5 +1,6 @@
 use crate::cache::{Cache, CacheClient};
 use crate::core::event::ProxyEvent;
+use anyhow::Result;
 use axum::{async_trait, response::Response};
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
@@ -53,7 +54,7 @@ impl Cache for MokaCache {
 
 #[async_trait]
 impl CacheClient for MokaCache {
-    async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Response, String> {
+    async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>> {
         todo!()
     }
 

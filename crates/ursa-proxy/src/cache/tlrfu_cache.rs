@@ -119,7 +119,7 @@ impl Cache for TCache {
 
 #[async_trait]
 impl CacheClient for TCache {
-    async fn query_cache(&self, k: &str, _: bool) -> Result<Response, String> {
+    async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
         let cache = self.0.read().await;
         if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {
             let (mut w, r) = duplex(cache.stream_buf as usize);
@@ -131,17 +131,16 @@ impl CacheClient for TCache {
                 })
                 .map_err(|e| {
                     error!("Failed to dispatch GetSync command: {e:?}");
-                    "Failed to dispatch GetSync command".to_string()
+                    anyhow!("Failed to dispatch GetSync command")
                 })?;
-            let stream_writer = async move {
+            spawn(async move {
                 if let Err(e) = w.write_all(data.as_ref()).await {
                     warn!("Failed to write to stream: {e:?}");
                 }
-            };
-            spawn(stream_writer);
-            return Ok(StreamBody::new(ReaderStream::new(r)).into_response());
+            });
+            return Ok(Some(StreamBody::new(ReaderStream::new(r)).into_response()));
         }
-        Ok((StatusCode::NOT_FOUND, "Not found").into_response())
+        Ok(None)
     }
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {

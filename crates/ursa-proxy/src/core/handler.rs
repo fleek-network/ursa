@@ -22,7 +22,7 @@ pub async fn proxy_pass<C: CacheClient>(
     Extension(config): Extension<Arc<ServerConfig>>,
     Extension(cache_client): Extension<C>,
 ) -> Response {
-    if let Ok(resp) = cache_client.query_cache(&path, false).await {
+    if let Ok(Some(resp)) = cache_client.query_cache(&path, false).await {
         info!("Cache hit");
         return resp;
     }
