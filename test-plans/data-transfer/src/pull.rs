@@ -3,7 +3,7 @@ use ipld_traversal::blockstore::Blockstore;
 use libipld::{multihash::Code, cbor::DagCborCodec, ipld, Block, DefaultParams};
 use std::time::Duration;
 use testground::client::Client;
-use tokio::{sync::oneshot, time::Instant};
+use tokio::{sync::oneshot, time::{Instant, timeout}};
 use ursa_network::NetworkCommand;
 use ursa_store::GraphSyncStorage;
 
@@ -14,14 +14,13 @@ fn create_block(content: &[u8]) -> Block<DefaultParams> {
 pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Duration), String> {
     // Let's wait until all nodes are ready to begin.
     let num_nodes = client.run_parameters().test_instance_count - 1;
-    client
-        .signal_and_wait("pull-test-ready", num_nodes)
-        .await
-        .unwrap();
+    let seq = client.global_seq();
+    if let Err(_) = timeout(Duration::from_secs(60), client.signal_and_wait("pull-test-ready", num_nodes)).await {
+        return Err(format!("[Pull] timeout at `pull-test-ready` barrier (seq={}).", seq));
+    }
 
     let block = create_block(&b"hello world"[..]);
     // Pick random node for now.
-    let seq = client.global_seq();
     let start = Instant::now();
     let result = if seq == 2 {
         // Send PUT request and trigger CacheRequest.
@@ -59,10 +58,9 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
     };
     let duration = Instant::now().duration_since(start);
     // Let's wait until everyone is done.
-    client
-        .signal_and_wait("pull-test-done", num_nodes)
-        .await
-        .unwrap();
+    if let Err(_) = timeout(Duration::from_secs(60), client.signal_and_wait("pull-test-done", num_nodes)).await {
+        return Err(format!("[Pull] timeout at `pull-test-done` barrier (seq={}).", seq));
+    }
 
     result.map(|_| (format!("[Pull] Results for node {seq}"), duration))
 }
