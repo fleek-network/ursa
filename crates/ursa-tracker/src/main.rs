@@ -7,8 +7,12 @@ use axum::{
 use hyper::HeaderMap;
 use rocksdb::{IteratorMode, WriteBatch, DB};
 use serde_json::{json, Value};
-use std::{env, net::SocketAddr, sync::Arc};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    env,
+    net::SocketAddr,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
