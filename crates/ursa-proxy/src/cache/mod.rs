@@ -1,6 +1,6 @@
 pub mod moka_cache;
 mod tlrfu;
-mod tlrfu_cache;
+pub mod tlrfu_cache;
 
 use crate::core::event::ProxyEvent;
 use anyhow::Result;

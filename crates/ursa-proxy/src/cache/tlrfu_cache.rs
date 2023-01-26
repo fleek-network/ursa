@@ -31,18 +31,16 @@ pub struct TlrfuCache {
     rx: Option<UnboundedReceiver<TlrfuCacheCommand>>,
     tx: UnboundedSender<TlrfuCacheCommand>,
     stream_buf: u64,
-    cache_control_max_size: u64,
 }
 
 impl TlrfuCache {
-    pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64, cache_control_max_size: u64) -> Self {
+    pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64) -> Self {
         let (tx, rx) = unbounded_channel();
         Self {
             tlrfu: Tlrfu::new(max_size, ttl_buf),
             tx,
             rx: Some(rx),
             stream_buf,
-            cache_control_max_size,
         }
     }
 }
@@ -77,6 +75,14 @@ impl ByteSize for Bytes {
 
 #[derive(Clone)]
 pub struct TCache(Arc<RwLock<TlrfuCache>>);
+
+impl TCache {
+    pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64) -> Self {
+        Self(Arc::new(RwLock::new(TlrfuCache::new(
+            max_size, ttl_buf, stream_buf,
+        ))))
+    }
+}
 
 #[async_trait]
 impl CacheWorker for TCache {

@@ -1,4 +1,5 @@
 use crate::cache::moka_cache::MokaCache;
+use crate::cache::tlrfu_cache::TCache;
 use crate::core::Proxy;
 use crate::{
     cli::{Cli, Commands},
@@ -19,7 +20,10 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
-    let cache = MokaCache::new(100_000);
-    Proxy::new(config, cache).start().await.unwrap();
+    let cache = TCache::new(200_000_000, 5 * 60 * 1000, 2_000_000);
+    Proxy::new(config, cache.clone())
+        .start_with_cache_worker(cache)
+        .await
+        .unwrap();
     Ok(())
 }
