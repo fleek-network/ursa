@@ -37,29 +37,3 @@ pub trait Cache: Clone + Send + Sync + 'static {
         None
     }
 }
-
-#[async_trait]
-impl<T: CacheWorker> CacheWorker for Arc<T> {
-    type Command = T::Command;
-
-    async fn handle(&mut self, cmd: Self::Command) {
-        self.handle(cmd).await;
-    }
-}
-
-#[async_trait]
-impl<T: Cache> Cache for Arc<T> {
-    type Command = T::Command;
-
-    async fn query_cache(&self, k: &str, no_cache: bool) -> Result<Option<Response>> {
-        self.query_cache(k, no_cache).await
-    }
-
-    async fn handle_proxy_event(&self, event: ProxyEvent) {
-        self.handle_proxy_event(event).await;
-    }
-
-    async fn command_receiver(&mut self) -> Option<UnboundedReceiver<Self::Command>> {
-        self.command_receiver().await
-    }
-}

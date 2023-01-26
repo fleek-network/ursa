@@ -43,7 +43,7 @@ impl<C: Cache> Proxy<C> {
             let mut app = Router::new().layer(Extension(server_config.clone()));
             if server_config.cache {
                 app = app
-                    .route("/*path", get(proxy_pass::<Arc<MokaCache>>))
+                    .route("/*path", get(proxy_pass::<MokaCache>))
                     .layer(Extension(self.cache.clone()));
             } else {
                 app = app.route("/*path", get(proxy_pass_no_cache))
