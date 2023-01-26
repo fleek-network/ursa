@@ -8,7 +8,7 @@ use crate::{
     core::handler::proxy_pass,
     core::{event::ProxyEvent, handler::proxy_pass_no_cache},
 };
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use axum::{routing::get, Extension, Router, Server};
 use std::{
     net::{IpAddr, SocketAddr},
@@ -32,9 +32,10 @@ impl<C: Cache> Proxy<C> {
         mut self,
         cache_worker: W,
     ) -> Result<()> {
-        if let Some(cache_cmd_rx) = self.cache.command_receiver().await {
-            spawn(worker::start(cache_cmd_rx, cache_worker.clone()));
-        }
+        match self.cache.command_receiver().await {
+            Some(cache_cmd_rx) => spawn(worker::start(cache_cmd_rx, cache_worker.clone())),
+            None => bail!("Cache::command_receiver must return a command receiver"),
+        };
         self.start().await
     }
 
