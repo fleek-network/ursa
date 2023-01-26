@@ -31,14 +31,14 @@ pub enum TlrfuCacheCommand {
     TtlCleanUp,
 }
 
-pub struct TlrfuCache {
+pub struct InnerTlrfuCache {
     tlrfu: Tlrfu<Bytes>,
     rx: Option<UnboundedReceiver<TlrfuCacheCommand>>,
     tx: UnboundedSender<TlrfuCacheCommand>,
     stream_buf: u64,
 }
 
-impl TlrfuCache {
+impl InnerTlrfuCache {
     pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64) -> Self {
         let (tx, rx) = unbounded_channel();
         Self {
@@ -50,7 +50,7 @@ impl TlrfuCache {
     }
 }
 
-impl TlrfuCache {
+impl InnerTlrfuCache {
     async fn get(&mut self, k: &str) -> Result<()> {
         self.tlrfu.get(&String::from(k)).await?;
         Ok(())
@@ -79,18 +79,18 @@ impl ByteSize for Bytes {
 }
 
 #[derive(Clone)]
-pub struct TCache(Arc<RwLock<TlrfuCache>>);
+pub struct TlrfuCache(Arc<RwLock<InnerTlrfuCache>>);
 
-impl TCache {
+impl TlrfuCache {
     pub fn new(max_size: u64, ttl_buf: u128, stream_buf: u64) -> Self {
-        Self(Arc::new(RwLock::new(TlrfuCache::new(
+        Self(Arc::new(RwLock::new(InnerTlrfuCache::new(
             max_size, ttl_buf, stream_buf,
         ))))
     }
 }
 
 #[async_trait]
-impl CacheWorker for TCache {
+impl CacheWorker for TlrfuCache {
     type Command = TlrfuCacheCommand;
 
     async fn handle(&mut self, cmd: Self::Command) {
@@ -127,7 +127,7 @@ impl CacheWorker for TCache {
 }
 
 #[async_trait]
-impl Cache for TCache {
+impl Cache for TlrfuCache {
     type Command = TlrfuCacheCommand;
 
     async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
