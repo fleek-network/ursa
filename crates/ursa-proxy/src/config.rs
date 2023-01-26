@@ -15,6 +15,7 @@ pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {
 #[derive(Deserialize, Serialize, Default)]
 pub struct ProxyConfig {
     pub server: Vec<ServerConfig>,
+    pub tlrfu: Option<TlrfuConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -22,5 +23,22 @@ pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: Option<String>,
     pub listen_port: Option<u16>,
-    pub cache: bool,
+    pub no_cache: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TlrfuConfig {
+    pub max_size: u64,
+    pub ttl_buf: u128,
+    pub stream_buf: u64,
+}
+
+impl Default for TlrfuConfig {
+    fn default() -> Self {
+        Self {
+            max_size: 200_000_000,  // 200MB
+            ttl_buf: 5 * 60 * 1000, // 5 mins
+            stream_buf: 2_000_000,  // 2MB
+        }
+    }
 }

@@ -18,7 +18,12 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
-    let cache = TlrfuCache::new(200_000_000, 5 * 60 * 1000, 2_000_000);
+    let tlfru_config = config.tlrfu.clone().unwrap_or_default();
+    let cache = TlrfuCache::new(
+        tlfru_config.max_size,
+        tlfru_config.ttl_buf,
+        tlfru_config.stream_buf,
+    );
     Proxy::new(config, cache.clone())
         .start_with_cache_worker(cache)
         .await

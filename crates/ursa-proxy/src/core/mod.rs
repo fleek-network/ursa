@@ -52,7 +52,7 @@ impl<C: Cache> Proxy<C> {
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
             let mut app = Router::new().layer(Extension(server_config.clone()));
-            if server_config.cache {
+            if server_config.no_cache {
                 app = app
                     .route("/*path", get(proxy_pass::<MokaCache>))
                     .layer(Extension(self.cache.clone()));
