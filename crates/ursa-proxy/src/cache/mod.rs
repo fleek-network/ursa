@@ -6,7 +6,6 @@ use crate::core::event::ProxyEvent;
 use anyhow::Result;
 use axum::{async_trait, response::Response};
 use std::fmt::Debug;
-use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 /// Trait that handles caching commands from Cache.

@@ -182,11 +182,4 @@ impl<T: ByteSize> Tlrfu<T> {
             count += 1;
         }
     }
-
-    pub fn purge(&mut self) {
-        self.store = HashMap::new();
-        self.freq = BTreeMap::new();
-        self.ttl = BTreeMap::new();
-        self.used_size = 0;
-    }
 }

@@ -1,19 +1,18 @@
-use crate::cache::Cache;
-use crate::config::ServerConfig;
-use crate::core::event::ProxyEvent;
-use axum::body::{BoxBody, HttpBody};
+use crate::{cache::Cache, config::ServerConfig, core::event::ProxyEvent};
 use axum::{
-    body::StreamBody,
+    body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
     http::{response::Parts, StatusCode, Uri},
     response::{IntoResponse, Response},
     Extension,
 };
-use bytes::{BufMut, Bytes};
-use hyper::{Client, Error};
+use bytes::BufMut;
+use hyper::Client;
 use std::sync::Arc;
-use tokio::io::{duplex, AsyncWriteExt};
-use tokio::spawn;
+use tokio::{
+    io::{duplex, AsyncWriteExt},
+    spawn,
+};
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
 

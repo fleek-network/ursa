@@ -1,6 +1,5 @@
 use crate::cache::CacheWorker;
 use std::fmt::Debug;
-use tokio::sync::mpsc::channel;
 use tokio::{select, spawn, sync::mpsc::UnboundedReceiver, task::JoinHandle};
 use tracing::info;
 

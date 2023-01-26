@@ -1,22 +1,27 @@
+use crate::{
+    cache::{
+        tlrfu::{ByteSize, Tlrfu},
+        Cache, CacheWorker,
+    },
+    core::event::ProxyEvent,
+};
 use anyhow::{anyhow, Result};
-use axum::async_trait;
-use axum::body::StreamBody;
-use axum::http::response::Parts;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::{
+    async_trait,
+    body::StreamBody,
+    response::{IntoResponse, Response},
+};
 use bytes::Bytes;
 use std::sync::Arc;
-use tokio::io::{duplex, AsyncWriteExt};
-use tokio::spawn;
-use tokio_util::io::ReaderStream;
-
-use crate::cache::{
-    tlrfu::{ByteSize, Tlrfu},
-    Cache, CacheWorker,
+use tokio::{
+    io::{duplex, AsyncWriteExt},
+    spawn,
+    sync::{
+        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+        RwLock,
+    },
 };
-use crate::core::event::ProxyEvent;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
-use tokio::sync::{mpsc::UnboundedSender, oneshot, oneshot::Sender, RwLock};
+use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
 
 #[derive(Debug)]
@@ -113,7 +118,7 @@ impl CacheWorker for TCache {
                 spawn(async move {
                     info!("Process TtlCleanUp command");
                     if let Err(e) = cache.write().await.ttl_cleanup().await {
-                        error!("Process TtlCleanUp command error");
+                        error!("Process TtlCleanUp command error {e:?}");
                     };
                 });
             }

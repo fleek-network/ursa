@@ -2,21 +2,21 @@ pub mod event;
 mod handler;
 mod worker;
 
-use crate::cache::moka_cache::MokaCache;
-use crate::cache::{Cache, CacheWorker};
-use crate::core::event::ProxyEvent;
-use crate::core::handler::proxy_pass_no_cache;
-use crate::{config::ProxyConfig, core::handler::proxy_pass};
-use anyhow::{anyhow, Context, Result};
+use crate::{
+    cache::{moka_cache::MokaCache, Cache, CacheWorker},
+    config::ProxyConfig,
+    core::handler::proxy_pass,
+    core::{event::ProxyEvent, handler::proxy_pass_no_cache},
+};
+use anyhow::{Context, Result};
 use axum::{routing::get, Extension, Router, Server};
-use std::time::Duration;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
-use tokio::task::JoinSet;
-use tokio::{select, spawn};
-use tracing::{error, info};
+use tokio::{spawn, task::JoinSet};
+use tracing::info;
 
 pub struct Proxy<C> {
     config: ProxyConfig,
@@ -38,7 +38,7 @@ impl<C: Cache> Proxy<C> {
         self.start().await
     }
 
-    pub async fn start(mut self) -> Result<()> {
+    pub async fn start(self) -> Result<()> {
         let cache = self.cache.clone();
         spawn(async move {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);

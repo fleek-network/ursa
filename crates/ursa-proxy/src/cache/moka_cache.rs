@@ -1,18 +1,16 @@
-use crate::cache::{Cache, CacheWorker};
+use crate::cache::Cache;
 use crate::core::event::ProxyEvent;
-use anyhow::{anyhow, Result};
-use axum::body::StreamBody;
-use axum::response::IntoResponse;
-use axum::{async_trait, response::Response};
+use anyhow::Result;
+use axum::{async_trait, body::StreamBody, response::IntoResponse, response::Response};
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
 use std::sync::Arc;
-use tokio::io::{duplex, AsyncWriteExt};
-use tokio::spawn;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{unbounded_channel, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::{
+    io::{duplex, AsyncWriteExt},
+    spawn,
+};
 use tokio_util::io::ReaderStream;
-use tracing::{error, info, warn};
+use tracing::warn;
 
 #[derive(Clone)]
 pub struct MokaCache {
@@ -21,6 +19,7 @@ pub struct MokaCache {
 }
 
 impl MokaCache {
+    #[allow(unused)]
     pub fn new(stream_buf: u64) -> Self {
         Self {
             inner: Moka::new(100_000),

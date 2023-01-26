@@ -1,18 +1,16 @@
-use crate::cache::moka_cache::MokaCache;
-use crate::cache::tlrfu_cache::TCache;
-use crate::core::Proxy;
-use crate::{
-    cli::{Cli, Commands},
-    config::load_config,
-};
-use anyhow::Result;
-use clap::Parser;
-use std::path::PathBuf;
-
 mod cache;
 pub mod cli;
 mod config;
 mod core;
+
+use crate::{
+    cli::{Cli, Commands},
+    config::load_config,
+    {cache::tlrfu_cache::TCache, core::Proxy},
+};
+use anyhow::Result;
+use clap::Parser;
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<()> {
