@@ -18,7 +18,7 @@ pub async fn start<
                     // TODO: Handle error.
                     let mut cache = cache.clone();
                     spawn(async move {
-                        cache.handle(cmd).await
+                        cache.handle_command(cmd).await
                     });
                 }
             }

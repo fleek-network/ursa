@@ -89,7 +89,7 @@ impl TlrfuCache {
 impl CacheWorker for TlrfuCache {
     type Command = TlrfuCacheCommand;
 
-    async fn handle(&mut self, cmd: Self::Command) {
+    async fn handle_command(&mut self, cmd: Self::Command) {
         let cache = self.0.clone();
         match cmd {
             TlrfuCacheCommand::GetSync { key } => {

@@ -27,5 +27,5 @@ pub trait Cache: Clone + Send + Sync + 'static {
 #[async_trait]
 pub trait CacheWorker: Clone + Send + Sync + 'static {
     type Command: Debug + Send;
-    async fn handle(&mut self, cmd: Self::Command);
+    async fn handle_command(&mut self, cmd: Self::Command);
 }
