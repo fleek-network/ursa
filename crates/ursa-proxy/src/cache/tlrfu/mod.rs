@@ -29,7 +29,6 @@ pub trait ByteSize {
     fn len(&self) -> usize;
 }
 
-#[cfg(not(test))]
 pub fn now() -> SystemTime {
     SystemTime::now()
 }
