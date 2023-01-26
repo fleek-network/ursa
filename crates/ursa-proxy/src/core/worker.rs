@@ -3,10 +3,7 @@ use std::fmt::Debug;
 use tokio::{select, spawn, sync::mpsc::UnboundedReceiver, task::JoinHandle};
 use tracing::info;
 
-pub async fn start<
-    Cmd: Debug + Send + 'static,
-    C: CacheWorker + Clone + 'static + CacheWorker<Command = Cmd>,
->(
+pub async fn start<Cmd: Debug + Send + 'static, C: CacheWorker + CacheWorker<Command = Cmd>>(
     mut worker_rx: UnboundedReceiver<Cmd>,
     cache: C,
 ) -> JoinHandle<()> {
