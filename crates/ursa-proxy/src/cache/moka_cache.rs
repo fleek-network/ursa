@@ -8,7 +8,7 @@ use tokio::{
     spawn,
 };
 use tokio_util::io::ReaderStream;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 pub struct MokaCache {
@@ -49,6 +49,10 @@ impl Cache for MokaCache {
             }
             ProxyEvent::UpstreamData { key, value } => {
                 self.inner.insert(key, Arc::new(Bytes::from(value)))
+            }
+            ProxyEvent::Timer => {
+                info!("Invalidating data");
+                self.inner.invalidate_all()
             }
             _ => {}
         }
