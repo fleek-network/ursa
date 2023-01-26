@@ -20,6 +20,7 @@ use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
 use libipld::{Cid, DefaultParams};
+use libp2p::kad::BootstrapError;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
     gossipsub::{
@@ -218,6 +219,8 @@ where
     cached_content: CacheSummary,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CacheSummary>,
+    /// Number of attempted bootstraps
+    bootstrap_attempts: usize,
 }
 
 impl<S> UrsaService<S>
@@ -313,6 +316,7 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
+            bootstrap_attempts: 0,
         })
     }
 
@@ -518,7 +522,7 @@ where
                         peer,
                         num_remaining,
                     }) => {
-                        debug!(
+                        info!(
                             "[KademliaEvent::Bootstrap] - Received peer: {peer:?}, {}",
                             match num_remaining {
                                 0 => "bootstrap complete!".into(),
@@ -526,8 +530,23 @@ where
                             }
                         );
                     }
-                    Err(e) => {
-                        error!("[KademliaEvent::Bootstrap] - Bootstrap failed: {e:?}");
+                    Err(BootstrapError::Timeout { num_remaining, .. }) => {
+                        if num_remaining.unwrap_or(0) != 0 {
+                            if self.bootstrap_attempts < 10 {
+                                self.bootstrap_attempts += 1;
+                                warn!(
+                                "[KademliaEvent::Bootstrap] - Bootstrap timeout, retrying ({}/10)",
+                                self.bootstrap_attempts
+                            );
+                                if let Err(e) = self.swarm.behaviour_mut().bootstrap() {
+                                    error!("[KademliaEvent::Bootstrap] - Failed to retry bootstrap, {e:?}");
+                                }
+                            } else {
+                                error!(
+                                    "[KademliaEvent::Bootstrap] - Max bootstrap timeouts, giving up"
+                                );
+                            }
+                        }
                     }
                 },
                 other => debug!("[KademliaEvent::OutboundQueryProgressed] - {id:?}: {other:?}"),
@@ -708,7 +727,7 @@ where
             },
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 if self.peers.insert(peer_id) {
-                    debug!("Peer connected: {peer_id}");
+                    info!("New peer connected: {peer_id}");
                     self.emit_event(NetworkEvent::PeerConnected(peer_id));
                 };
                 Ok(())

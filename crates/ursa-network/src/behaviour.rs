@@ -18,6 +18,7 @@ use db::Store;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::GraphSync;
 use libipld::{store::StoreParams, Cid};
+use libp2p::kad::{NoKnownPeers, QueryId};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
@@ -249,6 +250,10 @@ where
         self.kad.add_address(peer_id, addr.clone());
         self.request_response.add_address(peer_id, addr.clone());
         self.graphsync.add_address(peer_id, addr);
+    }
+
+    pub fn bootstrap(&mut self) -> Result<QueryId, NoKnownPeers> {
+        self.kad.bootstrap()
     }
 
     pub fn publish(
