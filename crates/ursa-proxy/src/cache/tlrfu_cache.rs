@@ -113,7 +113,7 @@ impl CacheWorker for TCache {
                 spawn(async move {
                     info!("Process TtlCleanUp command");
                     if let Err(e) = cache.write().await.ttl_cleanup().await {
-                        error!("Process TtlCleanUp command error {e:?}");
+                        error!("Process TtlCleanUp command error");
                     };
                 });
             }
@@ -150,16 +150,25 @@ impl Cache for TCache {
     }
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {
-        if let ProxyEvent::UpstreamData(key, data) = event {
-            let cache = self.clone();
-            spawn(async move {
-                if let Err(e) = cache.0.read().await.tx.send(TlrfuCacheCommand::InsertSync {
-                    key,
-                    value: Arc::new(data.into()),
-                }) {
-                    error!("Failed to dispatch InsertSync command: {e:?}");
-                };
-            });
+        match event {
+            ProxyEvent::UpstreamData(key, data) => {
+                let cache = self.clone();
+                spawn(async move {
+                    if let Err(e) = cache.0.read().await.tx.send(TlrfuCacheCommand::InsertSync {
+                        key,
+                        value: Arc::new(data.into()),
+                    }) {
+                        error!("Failed to dispatch InsertSync command: {e:?}");
+                    };
+                });
+            }
+            ProxyEvent::Timer => {
+                let cache = self.0.read().await;
+                if cache.tx.send(TlrfuCacheCommand::TtlCleanUp).is_err() {
+                    error!("Failed to dispatch TtlCleanUp command");
+                }
+            }
+            _ => {}
         }
     }
 
