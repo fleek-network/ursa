@@ -1,7 +1,5 @@
-use crate::cache::Cache;
-use crate::core::event::ProxyEvent;
-use anyhow::Result;
-use axum::{async_trait, body::StreamBody, response::IntoResponse, response::Response};
+use crate::{cache::Cache, core::event::ProxyEvent};
+use axum::{async_trait, body::StreamBody, response::IntoResponse};
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
 use std::sync::Arc;
@@ -10,7 +8,7 @@ use tokio::{
     spawn,
 };
 use tokio_util::io::ReaderStream;
-use tracing::warn;
+use tracing::{error, warn};
 
 #[derive(Clone)]
 pub struct MokaCache {
@@ -31,22 +29,28 @@ impl MokaCache {
 #[async_trait]
 impl Cache for MokaCache {
     type Command = ();
-    async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
-        if let Some(data) = self.inner.get(&String::from(k)) {
-            let (mut w, r) = duplex(self.stream_buf as usize);
-            spawn(async move {
-                if let Err(e) = w.write_all(data.as_ref()).await {
-                    warn!("Failed to write to stream: {e:?}");
-                }
-            });
-            return Ok(Some(StreamBody::new(ReaderStream::new(r)).into_response()));
-        }
-        Ok(None)
-    }
 
     async fn handle_proxy_event(&self, event: ProxyEvent) {
-        if let ProxyEvent::UpstreamData(key, data) = event {
-            self.inner.insert(key, Arc::new(Bytes::from(data)));
+        match event {
+            ProxyEvent::GetRequest { key, sender } => {
+                let mut response = None;
+                if let Some(data) = self.inner.get(&key) {
+                    let (mut w, r) = duplex(self.stream_buf as usize);
+                    spawn(async move {
+                        if let Err(e) = w.write_all(data.as_ref()).await {
+                            warn!("Failed to write to stream: {e:?}");
+                        }
+                    });
+                    response = Some(StreamBody::new(ReaderStream::new(r)).into_response());
+                }
+                if sender.send(response).is_err() {
+                    error!("Failed to send response");
+                }
+            }
+            ProxyEvent::UpstreamData { key, value } => {
+                self.inner.insert(key, Arc::new(Bytes::from(value)))
+            }
+            _ => {}
         }
     }
 }

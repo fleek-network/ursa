@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
     spawn,
+    sync::oneshot,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
@@ -21,17 +22,30 @@ pub async fn proxy_pass<C: Cache>(
     Extension(config): Extension<Arc<ServerConfig>>,
     Extension(cache_client): Extension<C>,
 ) -> Response {
-    if let Ok(Some(resp)) = cache_client.query_cache(&path, false).await {
-        info!("Cache hit");
-        return resp;
+    let (tx, rx) = oneshot::channel();
+    cache_client
+        .handle_proxy_event(ProxyEvent::GetRequest {
+            key: path.clone(),
+            sender: tx,
+        })
+        .await;
+    match rx.await {
+        Ok(Some(resp)) => {
+            info!("Cache hit");
+            return resp;
+        }
+        Err(e) => {
+            error!("Failed to receive {e:?}");
+        }
+        _ => {}
     }
     info!("Cache miss for {path}");
     let endpoint = format!("http://{}/{}", config.proxy_pass, path);
-    info!("Sending request to {endpoint}");
     let uri = match endpoint.parse::<Uri>() {
         Ok(uri) => uri,
         Err(e) => return e.to_string().into_response(),
     };
+    info!("Sending request to {endpoint}");
     let client = Client::new();
     let reader = match client.get(uri).await {
         Ok(resp) => match resp.into_parts() {
@@ -60,7 +74,10 @@ pub async fn proxy_pass<C: Cache>(
                         }
                     }
                     cache_client
-                        .handle_proxy_event(ProxyEvent::UpstreamData(path, bytes))
+                        .handle_proxy_event(ProxyEvent::UpstreamData {
+                            key: path,
+                            value: bytes,
+                        })
                         .await
                 });
                 reader

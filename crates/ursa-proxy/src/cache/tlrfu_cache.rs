@@ -5,12 +5,8 @@ use crate::{
     },
     core::event::ProxyEvent,
 };
-use anyhow::{anyhow, Result};
-use axum::{
-    async_trait,
-    body::StreamBody,
-    response::{IntoResponse, Response},
-};
+use anyhow::Result;
+use axum::{async_trait, body::StreamBody, response::IntoResponse};
 use bytes::Bytes;
 use std::sync::Arc;
 use tokio::{
@@ -130,38 +126,38 @@ impl CacheWorker for TlrfuCache {
 impl Cache for TlrfuCache {
     type Command = TlrfuCacheCommand;
 
-    async fn query_cache(&self, k: &str, _: bool) -> Result<Option<Response>> {
-        let cache = self.0.read().await;
-        if let Some(data) = cache.tlrfu.dirty_get(&String::from(k)) {
-            let (mut w, r) = duplex(cache.stream_buf as usize);
-            let data = Arc::clone(data);
-            cache
-                .tx
-                .send(TlrfuCacheCommand::GetSync {
-                    key: String::from(k),
-                })
-                .map_err(|e| {
-                    error!("Failed to dispatch GetSync command: {e:?}");
-                    anyhow!("Failed to dispatch GetSync command")
-                })?;
-            spawn(async move {
-                if let Err(e) = w.write_all(data.as_ref()).await {
-                    warn!("Failed to write to stream: {e:?}");
-                }
-            });
-            return Ok(Some(StreamBody::new(ReaderStream::new(r)).into_response()));
-        }
-        Ok(None)
-    }
-
     async fn handle_proxy_event(&self, event: ProxyEvent) {
         match event {
-            ProxyEvent::UpstreamData(key, data) => {
+            ProxyEvent::GetRequest { key, sender } => {
+                let mut response = None;
+                let cache = self.0.read().await;
+                if let Some(data) = cache.tlrfu.dirty_get(&key) {
+                    let (mut w, r) = duplex(cache.stream_buf as usize);
+                    let data = Arc::clone(data);
+                    match cache.tx.send(TlrfuCacheCommand::GetSync { key }) {
+                        Ok(_) => {
+                            spawn(async move {
+                                if let Err(e) = w.write_all(data.as_ref()).await {
+                                    warn!("Failed to write to stream: {e:?}");
+                                }
+                            });
+                            response = Some(StreamBody::new(ReaderStream::new(r)).into_response());
+                        }
+                        Err(e) => {
+                            error!("Failed to dispatch GetSync command: {e:?}");
+                        }
+                    }
+                }
+                if sender.send(response).is_err() {
+                    error!("Failed to send response");
+                }
+            }
+            ProxyEvent::UpstreamData { key, value } => {
                 let cache = self.clone();
                 spawn(async move {
                     if let Err(e) = cache.0.read().await.tx.send(TlrfuCacheCommand::InsertSync {
                         key,
-                        value: Arc::new(data.into()),
+                        value: Arc::new(value.into()),
                     }) {
                         error!("Failed to dispatch InsertSync command: {e:?}");
                     };
