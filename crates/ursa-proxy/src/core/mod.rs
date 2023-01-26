@@ -53,11 +53,11 @@ impl<C: Cache> Proxy<C> {
             let server_config = Arc::new(server_config);
             let mut app = Router::new().layer(Extension(server_config.clone()));
             if server_config.no_cache {
+                app = app.route("/*path", get(proxy_pass_no_cache))
+            } else {
                 app = app
                     .route("/*path", get(proxy_pass::<MokaCache>))
                     .layer(Extension(self.cache.clone()));
-            } else {
-                app = app.route("/*path", get(proxy_pass_no_cache))
             }
             let bind_addr = SocketAddr::from((
                 server_config
