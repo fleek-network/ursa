@@ -7,11 +7,11 @@ pub async fn start<Cmd: Debug + Send + 'static, C: CacheWorker + CacheWorker<Com
     mut worker_rx: UnboundedReceiver<Cmd>,
     cache: C,
 ) -> JoinHandle<()> {
+    // TODO: Implement safe shutdown.
     spawn(async move {
         loop {
             while let Some(cmd) = worker_rx.recv().await {
                 info!("[Worker] Received command {cmd:?}");
-                // TODO: Handle error.
                 let mut cache = cache.clone();
                 spawn(async move { cache.handle_command(cmd).await });
             }
