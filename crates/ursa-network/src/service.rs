@@ -40,11 +40,12 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
-use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     num::{NonZeroU8, NonZeroUsize},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{
     select,
@@ -52,6 +53,7 @@ use tokio::{
         mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
         oneshot,
     },
+    time::{sleep, Instant},
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
@@ -218,6 +220,8 @@ where
     cached_content: CacheSummary,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CacheSummary>,
+    /// Interval for random Kademlia walks
+    kad_walk_interval: u64,
 }
 
 impl<S> UrsaService<S>
@@ -313,6 +317,7 @@ where
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
+            kad_walk_interval: config.kad_walk_interval,
         })
     }
 
@@ -927,6 +932,9 @@ where
             self.swarm.local_peer_id()
         );
 
+        let kad_walk_delay = sleep(Duration::from_secs(self.kad_walk_interval));
+        tokio::pin!(kad_walk_delay);
+
         loop {
             select! {
                 event = self.swarm.next() => {
@@ -937,6 +945,11 @@ where
                     let command = command.ok_or_else(|| anyhow!("Command invalid!"))?;
                     self.handle_command(command).expect("Handle rpc command.");
                 },
+                _ = &mut kad_walk_delay => {
+                    info!("Starting random kademlia walk");
+                    self.swarm.behaviour_mut().kad.get_closest_peers(PeerId::random());
+                    kad_walk_delay.as_mut().reset(Instant::now() + Duration::from_secs(self.kad_walk_interval));
+                }
             }
         }
     }
