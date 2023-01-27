@@ -532,7 +532,7 @@ where
                         );
                     }
                     Err(e) => {
-                        error!("[KademliaEvent::Bootstrap] - Bootstrap failed: {e:?}");
+                        warn!("[KademliaEvent::Bootstrap] - Bootstrap failed: {e:?}");
                     }
                 },
                 other => debug!("[KademliaEvent::OutboundQueryProgressed] - {id:?}: {other:?}"),
