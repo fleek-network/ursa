@@ -57,7 +57,7 @@ impl<C: Cache> Proxy<C> {
                 app = app.route("/*path", get(proxy_pass_no_cache))
             } else {
                 app = app
-                    .route("/*path", get(proxy_pass::<TlrfuCache>))
+                    .route("/*path", get(proxy_pass::<C>))
                     .layer(Extension(self.cache.clone()));
             }
             app = app.layer(Extension(server_config.clone()));
