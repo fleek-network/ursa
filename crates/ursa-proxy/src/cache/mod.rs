@@ -1,6 +1,4 @@
 pub mod moka_cache;
-mod tlrfu;
-pub mod tlrfu_cache;
 
 use crate::core::event::ProxyEvent;
 use axum::async_trait;

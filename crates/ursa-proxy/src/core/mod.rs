@@ -3,7 +3,7 @@ mod handler;
 mod worker;
 
 use crate::{
-    cache::{tlrfu_cache::TlrfuCache, Cache, CacheWorker},
+    cache::{Cache, CacheWorker},
     config::ProxyConfig,
     core::handler::proxy_pass,
     core::{event::ProxyEvent, handler::proxy_pass_no_cache},
@@ -29,6 +29,8 @@ impl<C: Cache> Proxy<C> {
         Self { config, cache }
     }
 
+    // TODO: Implement test for this.
+    #[allow(unused)]
     pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
         mut self,
         cache_worker: W,

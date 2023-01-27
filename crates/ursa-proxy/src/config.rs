@@ -15,7 +15,7 @@ pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {
 #[derive(Deserialize, Serialize, Default)]
 pub struct ProxyConfig {
     pub server: Vec<ServerConfig>,
-    pub tlrfu: Option<TlrfuConfig>,
+    pub moka: Option<MokaConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -29,18 +29,14 @@ pub struct ServerConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct TlrfuConfig {
-    pub max_size: u64,
-    pub ttl_buf: u128,
+pub struct MokaConfig {
     pub stream_buf: u64,
 }
 
-impl Default for TlrfuConfig {
+impl Default for MokaConfig {
     fn default() -> Self {
         Self {
-            max_size: 200_000_000,  // 200MB
-            ttl_buf: 5 * 60 * 1000, // 5 mins
-            stream_buf: 2_000_000,  // 2MB
+            stream_buf: 2_000_000, // 2MB
         }
     }
 }
