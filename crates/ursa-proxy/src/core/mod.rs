@@ -3,13 +3,14 @@ mod handler;
 mod worker;
 
 use crate::{
-    cache::{moka_cache::MokaCache, Cache, CacheWorker},
+    cache::{tlrfu_cache::TlrfuCache, Cache, CacheWorker},
     config::ProxyConfig,
     core::handler::proxy_pass,
     core::{event::ProxyEvent, handler::proxy_pass_no_cache},
 };
 use anyhow::{bail, Context, Result};
-use axum::{routing::get, Extension, Router, Server};
+use axum::{routing::get, Extension, Router};
+use axum_server::tls_rustls::RustlsConfig;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -51,14 +52,15 @@ impl<C: Cache> Proxy<C> {
         let mut servers = JoinSet::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
-            let mut app = Router::new().layer(Extension(server_config.clone()));
+            let mut app = Router::new();
             if server_config.no_cache {
                 app = app.route("/*path", get(proxy_pass_no_cache))
             } else {
                 app = app
-                    .route("/*path", get(proxy_pass::<MokaCache>))
+                    .route("/*path", get(proxy_pass::<TlrfuCache>))
                     .layer(Extension(self.cache.clone()));
             }
+            app = app.layer(Extension(server_config.clone()));
             let bind_addr = SocketAddr::from((
                 server_config
                     .listen_addr
@@ -69,7 +71,13 @@ impl<C: Cache> Proxy<C> {
                 server_config.listen_port.unwrap_or(0),
             ));
             info!("Listening on {bind_addr:?}");
-            servers.spawn(Server::bind(&bind_addr).serve(app.into_make_service()));
+            let rustls_config =
+                RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)
+                    .await
+                    .unwrap();
+            servers.spawn(
+                axum_server::bind_rustls(bind_addr, rustls_config).serve(app.into_make_service()),
+            );
         }
         // TODO: Implement safe cancel.
         while servers.join_next().await.is_some() {}
