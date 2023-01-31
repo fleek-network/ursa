@@ -3,7 +3,7 @@ use libipld::{multihash::Code, cbor::DagCborCodec, ipld, Block, DefaultParams};
 use libp2p_bitswap::BitswapStore;
 use std::time::Duration;
 use testground::client::Client;
-use tokio::{sync::oneshot, time::Instant};
+use tokio::{sync::oneshot, time::{Instant, timeout}};
 use ursa_network::NetworkCommand;
 use ursa_store::{BitswapStorage, GraphSyncStorage};
 use db::Store;
@@ -21,10 +21,9 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
     let num_nodes = client.run_parameters().test_instance_count - 1;
 
     let seq = client.global_seq();
-    client
-        .signal_and_wait("fetching-test-ready", num_nodes)
-        .await
-        .unwrap();
+    if let Err(_) = timeout(Duration::from_secs(60), client.signal_and_wait("fetching-test-ready", num_nodes)).await {
+        return Err(format!("[Pull] timeout at `fetching-test-ready` barrier (seq={}).", seq));
+    }
 
     let block = create_block(&b"some data"[..]);
     let (info, duration) = if seq == 2 {
@@ -40,10 +39,9 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
         receiver.await.unwrap().expect("Receiving PUT response failed.");
 
         // Wait for the data transfer to succeed before removing the block from the store
-        client
-            .barrier("data-transfer-done", num_nodes - 1)
-            .await
-            .unwrap();
+        if let Err(_) = timeout(Duration::from_secs(60), client.barrier("data-transfer-done", num_nodes - 1)).await {
+            return Err(format!("[Pull] timeout at `data-transfer-done` barrier (seq={}).", seq));
+        }
 
         let mut bitswap_store = BitswapStorage(node.store.clone());
         // Remove the block from the store so that it has to be retrieved from
@@ -95,10 +93,9 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
                     .unwrap();
             }
             Err(e) => {
-                client
-                    .signal_and_wait("fetching-test-done", num_nodes)
-                    .await
-                    .unwrap();
+                if let Err(_) = timeout(Duration::from_secs(60), client.signal_and_wait("fetching-test-done", num_nodes)).await {
+                    return Err(format!("[Pull] timeout at `data-transfer-done` barrier (seq={}).", seq));
+                }
                 return Err(e);
             }
         }
@@ -107,10 +104,9 @@ pub async fn run_test(client: &mut Client, node: Node) -> Result<(String, Durati
     };
 
     // Wait until everyone is done.
-    client
-        .signal_and_wait("fetching-test-done", num_nodes)
-        .await
-        .unwrap();
+    if let Err(_) = timeout(Duration::from_secs(60), client.signal_and_wait("fetching-test-done", num_nodes)).await {
+        return Err(format!("[Pull] timeout at `data-transfer-done` barrier (seq={}).", seq));
+    }
 
     Ok((info, duration))
 }
