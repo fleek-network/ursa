@@ -1,9 +1,6 @@
 DOCKER_BUILDKIT=1
 COMPOSE_DOCKER_CLI_BUILD=1
 
-fix-deps:
-	cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
-
 version:
 	cargo --version
 	rustc --version

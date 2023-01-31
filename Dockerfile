@@ -14,11 +14,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY . .
 ENV RUST_BACKTRACE=1
 
-# fix https://github.com/mcginty/snow/issues/146
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/ursa/target \
-    cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
-
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/ursa/target \
     cargo build --profile $PROFILE --bin ursa \
