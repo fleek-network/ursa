@@ -20,6 +20,5 @@ async fn main() -> Result<()> {
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
     let moka_config = config.moka.clone().unwrap_or_default();
     let cache = MokaCache::new(moka_config.stream_buf);
-    Proxy::new(config, cache.clone()).start().await.unwrap();
-    Ok(())
+    Proxy::new(config, cache.clone()).start().await
 }
