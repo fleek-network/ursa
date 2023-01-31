@@ -62,136 +62,9 @@
         "content": "# Ursa Network\n---\n[![badge](https://img.shields.io/badge/website-000?style=for-the-badge)](https://fleek.network)&nbsp;\n[![badge](https://img.shields.io/badge/discord-333?style=for-the-badge)](https://discord.gg/fleekxyz)&nbsp;\n[![badge](https://img.shields.io/badge/twitter-666?style=for-the-badge)](https://twitter.com/fleek_net)&nbsp;\n[![badge](https://img.shields.io/badge/github-999?style=for-the-badge)](https://github.com/fleek-network)&nbsp;\n---",
         "mode": "markdown"
       },
-      "pluginVersion": "9.3.2",
+      "pluginVersion": "9.3.6",
       "transparent": true,
       "type": "text"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 13,
-        "w": 24,
-        "x": 0,
-        "y": 4
-      },
-      "id": 50,
-      "options": {
-        "basemap": {
-          "config": {},
-          "name": "Layer 0",
-          "type": "default"
-        },
-        "controls": {
-          "mouseWheelZoom": true,
-          "showAttribution": true,
-          "showDebug": false,
-          "showMeasure": false,
-          "showScale": false,
-          "showZoom": true
-        },
-        "layers": [
-          {
-            "config": {
-              "showLegend": true,
-              "style": {
-                "color": {
-                  "fixed": "dark-green"
-                },
-                "opacity": 0.4,
-                "rotation": {
-                  "fixed": 0,
-                  "max": 360,
-                  "min": -360,
-                  "mode": "mod"
-                },
-                "size": {
-                  "fixed": 5,
-                  "max": 15,
-                  "min": 2
-                },
-                "symbol": {
-                  "fixed": "img/icons/marker/circle.svg",
-                  "mode": "fixed"
-                },
-                "textConfig": {
-                  "fontSize": 12,
-                  "offsetX": 0,
-                  "offsetY": 0,
-                  "textAlign": "center",
-                  "textBaseline": "middle"
-                }
-              }
-            },
-            "location": {
-              "geohash": "geohash",
-              "mode": "geohash"
-            },
-            "name": "Layer 1",
-            "tooltip": true,
-            "type": "markers"
-          }
-        ],
-        "tooltip": {
-          "mode": "details"
-        },
-        "view": {
-          "allLayers": true,
-          "id": "coords",
-          "lat": 47.986857,
-          "lon": 3.111855,
-          "zoom": 2.27
-        }
-      },
-      "pluginVersion": "9.3.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "count by(geohash, instance) (swarm_connected_peers)",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "type": "geomap"
     },
     {
       "collapsed": true,
@@ -199,7 +72,243 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 4
+      },
+      "id": 53,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 13,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "id": 50,
+          "options": {
+            "basemap": {
+              "config": {},
+              "name": "Layer 0",
+              "type": "default"
+            },
+            "controls": {
+              "mouseWheelZoom": true,
+              "showAttribution": true,
+              "showDebug": false,
+              "showMeasure": false,
+              "showScale": false,
+              "showZoom": true
+            },
+            "layers": [
+              {
+                "config": {
+                  "showLegend": true,
+                  "style": {
+                    "color": {
+                      "fixed": "dark-green"
+                    },
+                    "opacity": 0.4,
+                    "rotation": {
+                      "fixed": 0,
+                      "max": 360,
+                      "min": -360,
+                      "mode": "mod"
+                    },
+                    "size": {
+                      "fixed": 5,
+                      "max": 15,
+                      "min": 2
+                    },
+                    "symbol": {
+                      "fixed": "img/icons/marker/circle.svg",
+                      "mode": "fixed"
+                    },
+                    "textConfig": {
+                      "fontSize": 12,
+                      "offsetX": 0,
+                      "offsetY": 0,
+                      "textAlign": "center",
+                      "textBaseline": "middle"
+                    }
+                  }
+                },
+                "location": {
+                  "geohash": "geohash",
+                  "mode": "geohash"
+                },
+                "name": "Layer 1",
+                "tooltip": true,
+                "type": "markers"
+              }
+            ],
+            "tooltip": {
+              "mode": "details"
+            },
+            "view": {
+              "allLayers": true,
+              "id": "coords",
+              "lat": 47.986857,
+              "lon": 3.111855,
+              "zoom": 2.27
+            }
+          },
+          "pluginVersion": "9.3.6",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count by(geohash, instance) (swarm_connected_peers)",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "__auto",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "type": "geomap"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "id": 51,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count(up > 0)",
+              "instant": false,
+              "key": "Q-fe3ab187-b9c8-4bca-b78e-02c1745c620a-0",
+              "legendFormat": "Node Count",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Active Nodes",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
       },
       "id": 46,
       "panels": [
@@ -244,7 +353,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 18
+            "y": 26
           },
           "id": 34,
           "options": {
@@ -315,7 +424,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 18
+            "y": 26
           },
           "id": 18,
           "options": {
@@ -357,7 +466,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 6
       },
       "id": 48,
       "panels": [
@@ -407,7 +516,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 19
+            "y": 27
           },
           "id": 8,
           "options": {
@@ -481,7 +590,7 @@
             "h": 13,
             "w": 12,
             "x": 12,
-            "y": 19
+            "y": 27
           },
           "id": 16,
           "options": {
@@ -574,7 +683,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 27
+            "y": 35
           },
           "id": 22,
           "options": {
@@ -668,7 +777,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 32
+            "y": 40
           },
           "id": 32,
           "options": {
@@ -760,7 +869,7 @@
             "h": 5,
             "w": 12,
             "x": 12,
-            "y": 32
+            "y": 40
           },
           "id": 20,
           "options": {
@@ -852,7 +961,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 37
+            "y": 45
           },
           "id": 28,
           "options": {
@@ -946,7 +1055,7 @@
             "h": 5,
             "w": 12,
             "x": 12,
-            "y": 37
+            "y": 45
           },
           "id": 30,
           "options": {
@@ -987,7 +1096,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 7
       },
       "id": 44,
       "panels": [
@@ -1052,7 +1161,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 20
+            "y": 28
           },
           "id": 40,
           "options": {
@@ -1144,7 +1253,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 20
+            "y": 28
           },
           "id": 42,
           "options": {
@@ -1185,7 +1294,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 8
       },
       "id": 12,
       "panels": [
@@ -1249,7 +1358,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 21
+            "y": 29
           },
           "id": 4,
           "options": {
@@ -1344,7 +1453,7 @@
             "h": 6,
             "w": 12,
             "x": 12,
-            "y": 21
+            "y": 29
           },
           "id": 6,
           "options": {
@@ -1395,6 +1504,6 @@
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 11,
+  "version": 14,
   "weekStart": ""
 }
