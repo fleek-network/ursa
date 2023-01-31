@@ -18,7 +18,7 @@
     - install [docker](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04)
         -  Setup [buildkit](https://docs.docker.com/develop/develop-images/build_enhancements/)
 
-2. Point your Domain nameservers to Digital ocean.
+2. Point your domain to your machine
 
 3. Clone the repo and build with docker-compose
   ```sh
