@@ -74,6 +74,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      # https://github.com/mcginty/snow/issues/146
+      - name: fix snow
+        run: cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
+
       - run: cargo test --workspace --all-features
       - run: cargo test --workspace --no-default-features
 
@@ -120,6 +124,10 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      # https://github.com/mcginty/snow/issues/146
+      - name: fix snow
+        run: cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
 
       - run: cargo test --workspace --all-features
       - run: cargo test --workspace --no-default-features
@@ -175,6 +183,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      # https://github.com/mcginty/snow/issues/146
+      - name: fix snow
+        run: cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
+
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -218,5 +230,9 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      # https://github.com/mcginty/snow/issues/146
+      - name: fix snow
+        run: cargo update -p curve25519-dalek@4.0.0-rc.0 --precise 4.0.0-pre.5
 
       - run: cargo fmt --all -- --check
