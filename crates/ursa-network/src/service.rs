@@ -220,7 +220,7 @@ where
     cached_content: CacheSummary,
     /// Content summaries from other nodes.
     peer_cached_content: HashMap<PeerId, CacheSummary>,
-    /// Interval for random Kademlia walks
+    /// Interval for random Kademlia walks.
     kad_walk_interval: u64,
 }
 
