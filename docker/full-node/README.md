@@ -18,7 +18,7 @@
     - install [docker](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04)
         -  Setup [buildkit](https://docs.docker.com/develop/develop-images/build_enhancements/)
 
-2. Point your Domain nameservers to Digital ocean.
+2. Point your domain to your machine
 
 3. Clone the repo and build with docker-compose
   ```sh
@@ -26,10 +26,10 @@
 
   # or
 
-  docker-compose -f infra/ursa/docker-compose.yml up
+  docker-compose -f docker/full-node/docker-compose.yml up
 
   # if build kit isn't installed
-  COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose up -d
+  COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f docker/full-node/docker-compose.yml up -d
   
   # helper to rebuild the image
   make compose-build
@@ -37,25 +37,39 @@
 
 4. Setup TLS.
 
-- Find and Replace all domain instances in `data/nginx/app.conf` with your domain.
+- Find and Replace all domain instances in `docker/full-node/data/nginx/app.conf` with your domain.
 - Generate Certificates for your domain and restart nginx
 
   ```sh
-  EMAIL="ops@fleek.xyz" DOMAINS="node.ursa.earth alt.node.ursa.earth" bash infra/ursa/init-letsencrypt.sh
+  cd docker/full-node
+  
+  EMAIL="ops@fleek.xyz" DOMAINS="node.ursa.earth alt.node.ursa.earth" bash init-letsencrypt.sh
   ```
 
 - If you have problems during the setup, you can try installing `certbot` locally and then run `sudo certbot certonly --standalone -d domain.com -d www.domain.com` and then move cert and privkey to the correct place.
 
 ### Test your endpoint
 
-You can test locally by replacing `<HOSTNAME>` by `localhost` and `<PORT>` as `4069`. Replace The `<VALID-CID-HERE>` with a valid [CID](https://docs.ipfs.tech/concepts/content-addressing/) (content identifier). The flag `-o` refers to `output` to a custom filename.
+You can test locally by replacing `<HOSTNAME>` by `localhost` and `<PORT>` as `4069`. 
 
+```sh
+curl -X GET http://<HOSTNAME>:<PORT>/ping
 ```
+
+For example:
+
+```sh
+curl -X GET http://localhost:4069/ping
+```
+
+For testing content retrieval, replace The `<VALID-CID-HERE>` with a valid [CID](https://docs.ipfs.tech/concepts/content-addressing/) (content identifier). The flag `-o` refers to `output` to a custom filename.
+
+```sh
 curl -X GET http://<HOSTNAME>:<PORT>/ursa/v0/<VALID-CID-HERE> -o <FILENAME>
 ```
 
 Here is an example
 
-```
+```sh
 curl -X GET http://localhost:4069/ursa/v0/bafybeifyjj2bjhtxmp235vlfeeiy7sz6rzyx3lervfk3ap2nyn4rggqgei -o my_file.car
 ```
