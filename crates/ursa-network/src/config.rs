@@ -43,6 +43,9 @@ pub struct NetworkConfig {
     /// Determines the number of closest peers to which a record is replicated
     #[serde(default = "NetworkConfig::default_kad_replication_factor")]
     pub kad_replication_factor: usize,
+    /// Interval to run random kademlia walks to refresh the routing table. Defaults to 5 minutes
+    #[serde(default = "NetworkConfig::default_kad_walk_interval")]
+    pub kad_walk_interval: u64,
 }
 
 impl NetworkConfig {
@@ -88,6 +91,9 @@ impl NetworkConfig {
     fn default_kad_replication_factor() -> usize {
         8
     }
+    fn default_kad_walk_interval() -> u64 {
+        300
+    }
 }
 
 impl Default for NetworkConfig {
@@ -105,6 +111,7 @@ impl Default for NetworkConfig {
             tracker: Self::default_tracker(),
             keystore_path: Self::default_keystore_path(),
             kad_replication_factor: Self::default_kad_replication_factor(),
+            kad_walk_interval: Self::default_kad_walk_interval(),
         }
     }
 }
