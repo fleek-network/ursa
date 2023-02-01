@@ -1,6 +1,6 @@
 [package]
 name = "ursa-proxy"
-authors = ["Miguel Guarniz <miguel@fleek.xyz>"]
+authors = ["Miguel Guarniz <miguel@fleek.xyz>", "Scott <scott@fleek.xyz>"]
 description = "Ursa's proxy"
 version.workspace = true
 edition.workspace = true
@@ -9,8 +9,11 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 axum-server.workspace = true
+bytes.workspace = true
+moka.workspace = true
 toml.workspace = true
 tower = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["full"] }
@@ -19,3 +22,4 @@ clap.workspace = true
 hyper.workspace = true
 serde.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
