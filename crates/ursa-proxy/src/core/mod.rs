@@ -28,8 +28,6 @@ impl<C: Cache> Proxy<C> {
         Self { config, cache }
     }
 
-    // TODO: Implement test for this.
-    #[allow(unused)]
     pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
         mut self,
         cache_worker: W,
