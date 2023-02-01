@@ -5,8 +5,7 @@ mod worker;
 use crate::{
     cache::{Cache, CacheWorker},
     config::ProxyConfig,
-    core::handler::proxy_pass,
-    core::{event::ProxyEvent, handler::proxy_pass_no_cache},
+    core::{event::ProxyEvent, handler::proxy_pass},
 };
 use anyhow::{bail, Context, Result};
 use axum::{routing::get, Extension, Router};
@@ -29,8 +28,6 @@ impl<C: Cache> Proxy<C> {
         Self { config, cache }
     }
 
-    // TODO: Implement test for this.
-    #[allow(unused)]
     pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
         mut self,
         cache_worker: W,
@@ -54,15 +51,10 @@ impl<C: Cache> Proxy<C> {
         let mut servers = JoinSet::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
-            let mut app = Router::new();
-            if server_config.no_cache {
-                app = app.route("/*path", get(proxy_pass_no_cache))
-            } else {
-                app = app
-                    .route("/*path", get(proxy_pass::<C>))
-                    .layer(Extension(self.cache.clone()));
-            }
-            app = app.layer(Extension(server_config.clone()));
+            let app = Router::new()
+                .route("/*path", get(proxy_pass::<C>))
+                .layer(Extension(self.cache.clone()))
+                .layer(Extension(server_config.clone()));
             let bind_addr = SocketAddr::from((
                 server_config
                     .listen_addr
