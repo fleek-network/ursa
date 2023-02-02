@@ -42,9 +42,9 @@ impl<C: Cache> Proxy<C> {
     }
 
     pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
-        let mut servers = JoinSet::new();
+        let mut workers = JoinSet::new();
         let cache = self.cache.clone();
-        servers.spawn(async move {
+        workers.spawn(async move {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);
             loop {
                 tokio::time::sleep(duration_ms).await;
@@ -73,7 +73,7 @@ impl<C: Cache> Proxy<C> {
                 RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)
                     .await
                     .unwrap();
-            servers.spawn(
+            workers.spawn(
                 axum_server::bind_rustls(bind_addr, rustls_config)
                     .handle(handle.clone())
                     .serve(app.into_make_service()),
@@ -81,19 +81,19 @@ impl<C: Cache> Proxy<C> {
         }
 
         select! {
-            _ = servers.join_next() => {
-                graceful_shutdown(servers, handle).await;
+            _ = workers.join_next() => {
+                graceful_shutdown(workers, handle).await;
             }
             _ = shutdown_rx.recv() => {
-                graceful_shutdown(servers, handle).await;
+                graceful_shutdown(workers, handle).await;
             }
         }
         Ok(())
     }
 }
 
-async fn graceful_shutdown(mut servers: JoinSet<IOResult<()>>, handle: Handle) {
+async fn graceful_shutdown(mut workers: JoinSet<IOResult<()>>, handle: Handle) {
     info!("Shutting down servers");
     handle.graceful_shutdown(Some(Duration::from_secs(30)));
-    servers.shutdown().await;
+    workers.shutdown().await;
 }
