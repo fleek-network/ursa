@@ -9,13 +9,14 @@ use crate::{
 };
 use anyhow::{bail, Context, Result};
 use axum::{routing::get, Extension, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use std::{
+    io::Result as IOResult,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     time::Duration,
 };
-use tokio::{spawn, task::JoinSet};
+use tokio::{select, spawn, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
 pub struct Proxy<C> {
@@ -31,15 +32,16 @@ impl<C: Cache> Proxy<C> {
     pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
         mut self,
         cache_worker: W,
+        shutdown_rx: Receiver<()>,
     ) -> Result<()> {
         match self.cache.command_receiver().await {
             Some(cache_cmd_rx) => spawn(worker::start(cache_cmd_rx, cache_worker.clone())),
             None => bail!("Cache::command_receiver must return a command receiver"),
         };
-        self.start().await
+        self.start(shutdown_rx).await
     }
 
-    pub async fn start(self) -> Result<()> {
+    pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
         let cache = self.cache.clone();
         spawn(async move {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);
@@ -49,6 +51,7 @@ impl<C: Cache> Proxy<C> {
             }
         });
         let mut servers = JoinSet::new();
+        let handle = Handle::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
             let app = Router::new()
@@ -70,11 +73,26 @@ impl<C: Cache> Proxy<C> {
                     .await
                     .unwrap();
             servers.spawn(
-                axum_server::bind_rustls(bind_addr, rustls_config).serve(app.into_make_service()),
+                axum_server::bind_rustls(bind_addr, rustls_config)
+                    .handle(handle.clone())
+                    .serve(app.into_make_service()),
             );
         }
-        // TODO: Implement safe cancel.
-        while servers.join_next().await.is_some() {}
+
+        select! {
+            _ = servers.join_next() => {
+                graceful_shutdown(servers, handle).await;
+            }
+            _ = shutdown_rx.recv() => {
+                graceful_shutdown(servers, handle).await;
+            }
+        }
         Ok(())
     }
+}
+
+async fn graceful_shutdown(mut servers: JoinSet<IOResult<()>>, handle: Handle) {
+    info!("Shutting down servers");
+    handle.graceful_shutdown(Some(Duration::from_secs(30)));
+    servers.shutdown().await;
 }
