@@ -14,7 +14,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::error;
+use tracing::{error, info};
 use ursa_proxy::{
     cache::moka_cache::MokaCache,
     cli::{Cli, Commands},
@@ -65,6 +65,7 @@ async fn main() -> Result<()> {
             graceful_shutdown(proxy, signal_shutdown_tx).await;
         }
     }
+    info!("Proxy shut down successfully");
     Ok(())
 }
 
