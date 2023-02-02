@@ -42,15 +42,16 @@ impl<C: Cache> Proxy<C> {
     }
 
     pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
+        let mut servers = JoinSet::new();
         let cache = self.cache.clone();
-        spawn(async move {
+        servers.spawn(async move {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);
             loop {
                 tokio::time::sleep(duration_ms).await;
                 cache.handle_proxy_event(ProxyEvent::Timer).await;
             }
         });
-        let mut servers = JoinSet::new();
+
         let handle = Handle::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
