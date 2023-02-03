@@ -8,7 +8,11 @@ use crate::{
     core::{event::ProxyEvent, handler::proxy_pass},
 };
 use anyhow::{bail, Context, Result};
-use axum::{routing::get, Extension, Router};
+use axum::http::StatusCode;
+use axum::{
+    routing::{get, post},
+    Extension, Router,
+};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use std::{
     io::Result as IOResult,
@@ -53,6 +57,22 @@ impl<C: Cache> Proxy<C> {
         });
 
         let handle = Handle::new();
+        let admin_handle = handle.clone();
+        let cache = self.cache.clone();
+        let admin_addr = self
+            .config
+            .admin
+            .map_or_else(|| "0.0.0.0:8881".parse(), |config| config.addr.parse())?;
+        workers.spawn(async move {
+            let app = Router::new()
+                .route("/purge", post(purge_cache_handler::<C>))
+                .layer(Extension(cache));
+            axum_server::bind(admin_addr)
+                .handle(admin_handle)
+                .serve(app.into_make_service())
+                .await
+        });
+
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
             let app = Router::new()
@@ -96,4 +116,9 @@ async fn graceful_shutdown(mut workers: JoinSet<IOResult<()>>, handle: Handle) {
     info!("Shutting down servers");
     handle.graceful_shutdown(Some(Duration::from_secs(30)));
     workers.shutdown().await;
+}
+
+pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {
+    cache.handle_proxy_event(ProxyEvent::Purge).await;
+    StatusCode::OK
 }

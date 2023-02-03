@@ -50,7 +50,7 @@ impl Cache for MokaCache {
             ProxyEvent::UpstreamData { key, value } => {
                 self.inner.insert(key, Arc::new(Bytes::from(value)))
             }
-            ProxyEvent::Timer => {
+            ProxyEvent::Timer | ProxyEvent::Purge => {
                 info!("Invalidating data");
                 self.inner.invalidate_all()
             }

@@ -14,4 +14,6 @@ pub enum ProxyEvent {
     Timer,
     /// Proxy is informing the Cache about a failure while handling a request.
     Error(String),
+    /// Proxy is requesting cache to purge.
+    Purge,
 }
