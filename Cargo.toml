@@ -66,7 +66,7 @@ opentelemetry = "0.18.0"
 opentelemetry-jaeger = "0.17.0"
 prometheus = "0.13.3"
 pem = "1.1.0"
-prometheus-client = "0.18.0"
+prometheus-client = "0.19.0"
 rand = "0.8.5"
 resolve-path = "0.1.0"
 scalable_cuckoo_filter = { git = "https://github.com/matthias-wright/scalable_cuckoo_filter", features = ["serde_support"] }
