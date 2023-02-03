@@ -92,12 +92,7 @@ pub async fn proxy_pass<C: Cache>(
                 return Response::from_parts(parts, BoxBody::new(StreamBody::new(body)))
             }
         },
-        Err(e) => {
-            cache_client
-                .handle_proxy_event(ProxyEvent::Error(e.to_string()))
-                .await;
-            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
-        }
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
     StreamBody::new(ReaderStream::new(reader)).into_response()
 }
