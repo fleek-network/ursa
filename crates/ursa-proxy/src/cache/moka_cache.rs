@@ -54,7 +54,6 @@ impl Cache for MokaCache {
                 info!("Invalidating data");
                 self.inner.invalidate_all()
             }
-            _ => {}
         }
     }
 }

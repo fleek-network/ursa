@@ -12,8 +12,6 @@ pub enum ProxyEvent {
     UpstreamData { key: String, value: Vec<u8> },
     /// Proxy is informing the Cache about timer event.
     Timer,
-    /// Proxy is informing the Cache about a failure while handling a request.
-    Error(String),
     /// Proxy is requesting cache to purge.
     Purge,
 }

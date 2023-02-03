@@ -1,13 +1,12 @@
 pub mod event;
 mod handler;
-mod worker;
 
 use crate::{
-    cache::{Cache, CacheWorker},
+    cache::Cache,
     config::ProxyConfig,
     core::{event::ProxyEvent, handler::proxy_pass},
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use axum::http::StatusCode;
 use axum::{
     routing::{get, post},
@@ -20,7 +19,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{select, spawn, sync::mpsc::Receiver, task::JoinSet};
+use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
 pub struct Proxy<C> {
@@ -31,18 +30,6 @@ pub struct Proxy<C> {
 impl<C: Cache> Proxy<C> {
     pub fn new(config: ProxyConfig, cache: C) -> Self {
         Self { config, cache }
-    }
-
-    pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
-        mut self,
-        cache_worker: W,
-        shutdown_rx: Receiver<()>,
-    ) -> Result<()> {
-        match self.cache.command_receiver().await {
-            Some(cache_cmd_rx) => spawn(worker::start(cache_cmd_rx, cache_worker.clone())),
-            None => bail!("Cache::command_receiver must return a command receiver"),
-        };
-        self.start(shutdown_rx).await
     }
 
     pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
