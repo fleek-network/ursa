@@ -52,19 +52,13 @@ impl<TBvEv, THandleErr> Recorder for SwarmEvent<TBvEv, THandleErr> {
             SwarmEvent::IncomingConnection { .. } => {
                 increment_counter!("swarm_connections_incoming");
             }
-            SwarmEvent::IncomingConnectionError { error, .. } => {
-                increment_counter!(
-                    "swarm_connections_incoming_error",
-                    vec![Label::new("error", error.to_string()),]
-                );
+            SwarmEvent::IncomingConnectionError { .. } => {
+                increment_counter!("swarm_connections_incoming_error",);
             }
-            SwarmEvent::OutgoingConnectionError { error, peer_id } => {
+            SwarmEvent::OutgoingConnectionError { peer_id, .. } => {
                 increment_counter!(
                     "swarm_outgoing_connection_error",
-                    vec![
-                        Label::new("error", error.to_string()),
-                        PeerStatus::from(peer_id).into()
-                    ]
+                    vec![PeerStatus::from(peer_id).into()]
                 );
             }
             SwarmEvent::BannedPeer { .. } => {
