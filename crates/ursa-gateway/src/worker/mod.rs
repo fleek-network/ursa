@@ -59,9 +59,6 @@ pub fn start<Cache: WorkerCache>(
                             span.set_parent(ctx);
                             spawn(async move {
                                 info!("Process FetchAnnounce command with cid: {cid:?}");
-                                if let Err(e) = sender.send(resolver.resolve_content(&cid).await) {
-                                    warn!("Process FetchAnnounce command error with cid: {cid:?}. Receiver stopped\n{e:?}");
-                                }
                             }.instrument(span));
                         },
                         CacheCommand::TtlCleanUp => {

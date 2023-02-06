@@ -44,7 +44,7 @@ impl Resolver {
         }
     }
 
-    pub async fn resolve_content(&self, cid: &str) -> Result<NodeResponse, Error> {
+    pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
         let endpoint = format!("{}/{cid}", self.indexer_cid_url);
 
         let uri = endpoint.parse::<Uri>().map_err(|e| {
@@ -179,10 +179,7 @@ impl Resolver {
             };
             match self.client.get(uri).await {
                 Ok(resp) => {
-                    return Ok(NodeResponse {
-                        resp,
-                        size: metadata.size,
-                    })
+                    return Ok(resp);
                 }
                 Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };

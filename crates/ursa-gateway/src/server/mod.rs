@@ -20,6 +20,7 @@ use axum::{
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
+use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
@@ -39,6 +40,8 @@ use tower_http::{
 };
 use tracing::{error, info, Level};
 
+use crate::config::IndexerConfig;
+use crate::resolver::Resolver;
 use crate::{
     config::{GatewayConfig, ServerConfig},
     server::model::HttpResponse,
@@ -62,6 +65,7 @@ pub async fn start<Cache: ServerCache>(
                 request_timeout,
                 ..
             },
+        indexer: IndexerConfig { cid_url },
         ..
     } = &(*config_reader.read().await);
 
@@ -82,11 +86,16 @@ pub async fn start<Cache: ServerCache>(
         .with_default_metrics()
         .build_pair();
 
+    let resolver = Arc::new(Resolver::new(
+        String::from(cid_url),
+        hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
+    ));
+
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
-            .route("/:cid", get(get_car_handler::<Cache>))
+            .route("/:cid", get(get_car_handler))
             .layer(Extension(config))
-            .layer(Extension(cache))
+            .layer(Extension(resolver))
             .layer(CatchPanicLayer::custom(recover))
             .layer(PropagateRequestIdLayer::new(HeaderName::from_static(
                 "trace_id",

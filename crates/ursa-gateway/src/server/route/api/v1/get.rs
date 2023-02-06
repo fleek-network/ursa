@@ -1,5 +1,7 @@
 use std::{str::FromStr, sync::Arc};
 
+use axum::body::StreamBody;
+use axum::http::response::Parts;
 use axum::{
     extract::Path,
     headers::CacheControl,
@@ -7,20 +9,21 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json, TypedHeader,
 };
+use hyper::Body;
 use libipld::Cid;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
-use tracing::{info_span, Instrument};
+use tracing::{error, info_span, Instrument};
 
+use crate::resolver::Resolver;
 use crate::{
     config::GatewayConfig, server::model::HttpResponse, util::error::Error,
     worker::cache::server::ServerCache,
 };
 
-pub async fn get_car_handler<Cache: ServerCache>(
+pub async fn get_car_handler(
     Path(cid): Path<String>,
-    cache_control: Option<TypedHeader<CacheControl>>,
-    Extension(cache): Extension<Arc<RwLock<Cache>>>,
+    Extension(resolver): Extension<Arc<Resolver>>,
     Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
 ) -> Response {
     let span = info_span!("Get car handler");
@@ -31,44 +34,45 @@ pub async fn get_car_handler<Cache: ServerCache>(
         )
         .into_response();
     };
-    let no_cache = cache_control.map_or(false, |c| c.no_cache());
-    match cache
-        .read()
-        .await
-        .get_announce(&cid, no_cache)
-        .instrument(span)
-        .await
-    {
-        Ok(stream) => (
-            [
-                (
-                    header::CONTENT_TYPE,
-                    "application/vnd.curl.car; charset=utf-8",
-                ),
-                (
-                    header::CONTENT_DISPOSITION,
-                    &format!("attachment; filename=\"{cid}.car\""),
-                ),
-                (
-                    header::CACHE_CONTROL,
-                    &(if no_cache {
-                        "no-cache".into()
-                    } else {
-                        format!(
-                            "public, max-age={}, immutable",
-                            config.read().await.server.cache_control_max_age
-                        )
-                    }),
-                ),
-            ],
-            stream,
-        )
-            .into_response(),
-        Err(Error::Upstream(status, message)) => error_handler(status, message).into_response(),
-        Err(Error::Internal(message)) => {
-            error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
+
+    let body = match resolver.resolve_content(&cid).instrument(span).await {
+        Ok(resp) => match resp.into_parts() {
+            (
+                Parts {
+                    status: StatusCode::OK,
+                    ..
+                },
+                body,
+            ) => body,
+            (parts, body) => {
+                error!("Error requested provider with parts: {parts:?} and body: {body:?}");
+                return error_handler(parts.status, "Error requested provider".to_string())
+                    .into_response();
+            }
+        },
+        Err(_) => {
+            return error_handler(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "There was an error".to_string(),
+            )
+            .into_response()
         }
-    }
+    };
+
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/vnd.curl.car; charset=utf-8",
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                &format!("attachment; filename=\"{cid}.car\""),
+            ),
+        ],
+        StreamBody::new(body),
+    )
+        .into_response()
 }
 
 fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
