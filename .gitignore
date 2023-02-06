@@ -11,6 +11,7 @@
 
 # rust
 **/target/
+test-plans/*/crates
 Cargo.lock
 
 # ursa configs and databases

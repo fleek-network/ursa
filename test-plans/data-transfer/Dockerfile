@@ -10,10 +10,13 @@ RUN apt-get update && apt-get install -y cmake protobuf-compiler libclang-dev li
 RUN mkdir -p ./plan/src/
 RUN echo "fn main() {}" > ./plan/src/main.rs
 COPY ./plan/Cargo.toml ./plan/
-RUN cd ./plan/  && cargo build --release
+COPY ./plan/crates ./plan/crates
+RUN cd ./plan/ && cargo build --release
 
 COPY . .
 
+RUN ls -l plan
+RUN ls -l plan/crates
 RUN cd ./plan/  \
     && cargo build --release \
     && mv /usr/src/testplan/plan/target/release/data-transfer /usr/local/bin/testplan

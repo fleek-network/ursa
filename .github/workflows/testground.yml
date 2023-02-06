@@ -1,0 +1,73 @@
+name: testground-ci
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "crates/**"
+      - "test-plans/**"
+      - "Cargo.toml"
+      - ".github/workflows/testground.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "crates/**"
+      - "test-plans/**"
+      - "Cargo.toml"
+      - ".github/workflows/testground.yml"
+
+jobs:
+  tests:
+    name: test plan ${{ matrix.plan }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plan: ["data-transfer", "fetching"]
+
+    steps:
+      - uses: actions/checkout@master
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '>=1.17.0'
+      - name: Create crates dir
+        run: mkdir -p test-plans/${{ matrix.plan }}/crates
+      - name: Copy ursa Cargo.toml 
+        run: cp Cargo.toml test-plans/${{ matrix.plan }}/crates
+      - name: Copy ursa-network source code into test plan
+        run: cp -r crates/ursa-network test-plans/${{ matrix.plan }}/crates
+      - name: Copy ursa-store source code into test plan
+        run: cp -r crates/ursa-store test-plans/${{ matrix.plan }}/crates
+      - name: Copy ursa-index-provider source code into test plan
+        run: cp -r crates/ursa-index-provider test-plans/${{ matrix.plan }}/crates
+      - name: Copy ursa-metrics source code into test plan
+        run: cp -r crates/ursa-metrics test-plans/${{ matrix.plan }}/crates
+      - name: Use ursa-network from current commit
+        run: |
+            sed -i \
+            's|ursa-network = { git = "https://github.com/fleek-network/ursa" }|ursa-network = { path = "crates/ursa-network" }|g' \
+            test-plans/${{ matrix.plan }}/Cargo.toml
+      - name: Use ursa-store from current commit
+        run: |
+            sed -i \
+            's|ursa-store = { git = "https://github.com/fleek-network/ursa" }|ursa-store = { path = "crates/ursa-store" }|g' \
+            test-plans/${{ matrix.plan }}/Cargo.toml
+      - name: Use ursa-index-provider from current commit
+        run: |
+            sed -i \
+            's|ursa-index-provider = { git = "https://github.com/fleek-network/ursa" }|ursa-index-provider = { path = "crates/ursa-index-provider" }|g' \
+            test-plans/${{ matrix.plan }}/Cargo.toml
+
+      - name: Clone testground
+        run: git clone https://github.com/testground/testground.git
+      - name: Install testground
+        run: cd testground && make install && cd ..
+      - name: Append to path
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+      - name: Import test plans
+        run: testground plan import --from ./test-plans/ --name ursa
+      - name: Run test plan 
+        run: testground daemon & sleep 5 && testground run composition -f test-plans/${{ matrix.plan }}/_compositions/rust.toml --wait
+      - name: Kill testground daemon
+        run: kill $!
+

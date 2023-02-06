@@ -17,7 +17,7 @@ serde_json = "1"
 testground = "0.4"
 tokio = { version = "1.23", default-features = false, features = ["sync", "rt-multi-thread", "macros", "net"] }
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
-ursa-network = { git = "https://github.com/fleek-network/ursa" }
-ursa-store = { git = "https://github.com/fleek-network/ursa" }
-ursa-index-provider = { git = "https://github.com/fleek-network/ursa" }
+ursa-network = { path = "crates/ursa-network" }
+ursa-store = { path = "crates/ursa-store" }
+ursa-index-provider = { path = "crates/ursa-index-provider" }
 rand = "0.8.5"
