@@ -46,10 +46,7 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
-    pub admin_server: AdminConfig,
     pub indexer: IndexerConfig,
-    pub cache: CacheConfig,
-    pub worker: WorkerConfig,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -66,25 +63,8 @@ pub struct ServerConfig {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct AdminConfig {
-    pub port: u16,
-    pub addr: String,
-}
-
-#[derive(Deserialize, Serialize)]
 pub struct IndexerConfig {
     pub cid_url: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct CacheConfig {
-    pub max_size: u64,
-    pub ttl_buf: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct WorkerConfig {
-    pub ttl_cache_interval: u64,
 }
 
 impl Default for GatewayConfig {
@@ -106,19 +86,8 @@ impl Default for GatewayConfig {
                 cache_control_max_age: 604_800,        // one week
                 cache_control_max_size: 1_000_000_000, // 1GB
             },
-            admin_server: AdminConfig {
-                addr: "0.0.0.0".into(),
-                port: 5001,
-            },
             indexer: IndexerConfig {
                 cid_url: "https://cid.contact/cid".into(),
-            },
-            cache: CacheConfig {
-                max_size: 200_000_000,  // 200MB
-                ttl_buf: 5 * 60 * 1000, // 5 mins
-            },
-            worker: WorkerConfig {
-                ttl_cache_interval: 5 * 60 * 1000, // 5 mins
             },
         }
     }
@@ -156,26 +125,8 @@ impl GatewayConfig {
         if let Some(cache_control_max_age) = config.cache_control_max_age {
             self.server.cache_control_max_age = cache_control_max_age;
         }
-        if let Some(port) = config.admin_port {
-            self.admin_server.port = port;
-        }
-        if let Some(addr) = config.admin_addr {
-            self.admin_server.addr = addr;
-        }
         if let Some(indexer_cid_url) = config.indexer_cid_url {
             self.indexer.cid_url = indexer_cid_url;
-        }
-        if let Some(max_cache_size) = config.max_cache_size {
-            self.cache.max_size = max_cache_size;
-        }
-        if let Some(ttl_buf) = config.ttl_buf {
-            self.cache.ttl_buf = ttl_buf;
-        }
-        if let Some(ttl_cache_interval) = config.ttl_cache_interval {
-            self.worker.ttl_cache_interval = ttl_cache_interval;
-        }
-        if let Some(cache_control_max_size) = config.cache_control_max_size {
-            self.server.cache_control_max_size = cache_control_max_size;
         }
     }
 }

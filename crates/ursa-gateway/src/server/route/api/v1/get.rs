@@ -4,27 +4,20 @@ use axum::body::StreamBody;
 use axum::http::response::Parts;
 use axum::{
     extract::Path,
-    headers::CacheControl,
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Extension, Json, TypedHeader,
+    Extension, Json,
 };
-use hyper::Body;
 use libipld::Cid;
 use serde_json::{json, Value};
-use tokio::sync::RwLock;
 use tracing::{error, info_span, Instrument};
 
 use crate::resolver::Resolver;
-use crate::{
-    config::GatewayConfig, server::model::HttpResponse, util::error::Error,
-    worker::cache::server::ServerCache,
-};
+use crate::server::model::HttpResponse;
 
 pub async fn get_car_handler(
     Path(cid): Path<String>,
     Extension(resolver): Extension<Arc<Resolver>>,
-    Extension(config): Extension<Arc<RwLock<GatewayConfig>>>,
 ) -> Response {
     let span = info_span!("Get car handler");
     if Cid::from_str(&cid).is_err() {

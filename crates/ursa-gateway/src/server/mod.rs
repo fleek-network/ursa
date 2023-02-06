@@ -45,12 +45,10 @@ use crate::resolver::Resolver;
 use crate::{
     config::{GatewayConfig, ServerConfig},
     server::model::HttpResponse,
-    worker::cache::server::ServerCache,
 };
 
-pub async fn start<Cache: ServerCache>(
+pub async fn start(
     config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<Cache>>,
     shutdown_rx: Receiver<()>,
 ) -> Result<()> {
     let config_reader = Arc::clone(&config);

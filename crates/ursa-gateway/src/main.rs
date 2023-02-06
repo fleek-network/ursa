@@ -1,11 +1,8 @@
-mod admin;
-mod cache;
 mod cli;
 mod config;
 mod resolver;
 mod server;
 mod util;
-mod worker;
 
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
@@ -29,7 +26,6 @@ use tokio::{
 };
 use tracing::{error, info, info_span, Instrument, Level};
 use ursa_telemetry::TelemetryConfig;
-use worker::cache::Cache;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -64,15 +60,6 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let (worker_tx, _) = mpsc::unbounded_channel();
-            let cache = Arc::new(RwLock::new(Cache::new(
-                gateway_config.cache.max_size,
-                gateway_config.cache.ttl_buf as u128 * 1_000_000, // ms to ns
-                worker_tx.clone(),                                // cache command producer
-                gateway_config.server.stream_buf,
-                gateway_config.server.cache_control_max_size,
-            )));
-
             let server_config = Arc::new(RwLock::new(gateway_config));
 
             let (shutdown_tx, shutdown_rx) = broadcast::channel(3);
@@ -80,7 +67,7 @@ async fn main() -> Result<()> {
             let (server_worker, mut server_worker_signal_rx) = {
                 let (signal_tx, signal_rx) = mpsc::channel(1);
                 let worker = async move {
-                    if let Err(e) = server::start(server_config, cache, shutdown_rx).await {
+                    if let Err(e) = server::start(server_config, shutdown_rx).await {
                         error!("[Server]: {e:?}");
                         signal_tx.send(()).await.expect("Send signal successfully");
                     };
