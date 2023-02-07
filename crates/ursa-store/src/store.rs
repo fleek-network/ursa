@@ -20,7 +20,6 @@ pub struct UrsaStore<S> {
     pub db: Arc<S>,
 }
 
-
 impl<S> UrsaStore<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
@@ -206,7 +205,7 @@ where
     }
 }
 
-impl<S> GSBlockstore for UrsaStore<S>
+impl<S> GSBlockstore for GraphSyncStorage<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
 {
