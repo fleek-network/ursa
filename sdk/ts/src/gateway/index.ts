@@ -8,10 +8,10 @@ export const DEFAULT_GATEWAY = 'https://gateway.ursa.earth'
 
 /// Gateway provides a simple interface to the Ursa Gateway API.
 export class Gateway {
+    public url: string = DEFAULT_GATEWAY
     constructor(url?: URL | string) {
         if (url) {
-            const urlStr =
-                typeof url === 'string' ? url : url.toString().slice(0, -1)
+            const urlStr = typeof url === 'string' ? url : url.toString()
             if (urlStr.endsWith('/')) {
                 this.url = urlStr.slice(0, -1)
             } else {
@@ -19,8 +19,6 @@ export class Gateway {
             }
         }
     }
-
-    url = 'https://gateway.ursa.earth'
 
     // Fetch a car file with a given root cid from the gateway
     async get(
