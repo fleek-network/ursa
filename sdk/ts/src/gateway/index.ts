@@ -42,8 +42,7 @@ export class Gateway {
         })
 
         if (!roots.includes(cid.toString())) {
-            console.log(roots)
-            throw new Error('Root CID not found in car file')
+            throw new Error(`${cid} not found in car file`)
         }
 
         if (verify)
