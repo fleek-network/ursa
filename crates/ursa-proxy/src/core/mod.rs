@@ -1,11 +1,6 @@
-pub mod event;
 mod handler;
 
-use crate::{
-    cache::Cache,
-    config::ProxyConfig,
-    core::{event::ProxyEvent, handler::proxy_pass},
-};
+use crate::{cache::Cache, config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{Context, Result};
 use axum::http::StatusCode;
 use axum::{
@@ -39,7 +34,7 @@ impl<C: Cache> Proxy<C> {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);
             loop {
                 tokio::time::sleep(duration_ms).await;
-                cache.handle_proxy_event(ProxyEvent::Timer).await;
+                cache.purge();
             }
         });
 
@@ -106,6 +101,6 @@ async fn graceful_shutdown(mut workers: JoinSet<IOResult<()>>, handle: Handle) {
 }
 
 pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {
-    cache.handle_proxy_event(ProxyEvent::Purge).await;
+    cache.purge();
     StatusCode::OK
 }

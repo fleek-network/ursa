@@ -1,4 +1,4 @@
-use crate::{cache::Cache, config::ServerConfig, core::event::ProxyEvent};
+use crate::{cache::Cache, config::ServerConfig};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
@@ -13,7 +13,6 @@ use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
     spawn,
-    sync::oneshot,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
@@ -26,22 +25,9 @@ pub async fn proxy_pass<C: Cache>(
 ) -> Response {
     let no_cache = cache_control.map_or(false, |c| c.no_cache());
     if !no_cache {
-        let (tx, rx) = oneshot::channel();
-        cache_client
-            .handle_proxy_event(ProxyEvent::GetRequest {
-                key: path.clone(),
-                sender: tx,
-            })
-            .await;
-        match rx.await {
-            Ok(Some(resp)) => {
-                info!("Cache hit");
-                return resp;
-            }
-            Err(e) => {
-                error!("Failed to receive {e:?}");
-            }
-            _ => {}
+        if let Some(resp) = cache_client.get(path.clone()) {
+            info!("Cache hit");
+            return resp;
         }
         info!("Cache miss for {path}");
     }
@@ -79,12 +65,7 @@ pub async fn proxy_pass<C: Cache>(
                             }
                         }
                     }
-                    cache_client
-                        .handle_proxy_event(ProxyEvent::UpstreamData {
-                            key: path,
-                            value: bytes,
-                        })
-                        .await
+                    cache_client.insert(path, bytes);
                 });
                 reader
             }
