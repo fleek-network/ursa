@@ -1,15 +1,14 @@
 use std::{str::FromStr, sync::Arc};
 
-use axum::body::StreamBody;
 use axum::{
     extract::Path,
-    http::{header, response::Parts, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use libipld::Cid;
 use serde_json::{json, Value};
-use tracing::{error, info_span, Instrument};
+use tracing::{info_span, Instrument};
 
 use crate::{resolver::Resolver, server::model::HttpResponse, util::error::Error};
 
@@ -26,41 +25,13 @@ pub async fn get_car_handler(
         .into_response();
     };
 
-    let body = match resolver.resolve_content(&cid).instrument(span).await {
-        Ok(resp) => match resp.into_parts() {
-            (
-                Parts {
-                    status: StatusCode::OK,
-                    ..
-                },
-                body,
-            ) => body,
-            (parts, body) => {
-                error!("Error requested provider with parts: {parts:?} and body: {body:?}");
-                return error_handler(parts.status, "Error requested provider".to_string())
-                    .into_response();
-            }
-        },
+    match resolver.resolve_content(&cid).instrument(span).await {
+        Ok(resp) => resp.into_response(),
         Err(Error::Internal(message)) => {
-            return error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
+            error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
         }
-        Err(Error::Upstream(status, message)) => return (status, message).into_response(),
-    };
-
-    (
-        [
-            (
-                header::CONTENT_TYPE,
-                "application/vnd.curl.car; charset=utf-8",
-            ),
-            (
-                header::CONTENT_DISPOSITION,
-                &format!("attachment; filename=\"{cid}.car\""),
-            ),
-        ],
-        StreamBody::new(body),
-    )
-        .into_response()
+        Err(Error::Upstream(status, message)) => (status, message).into_response(),
+    }
 }
 
 fn error_handler(status_code: StatusCode, message: String) -> (StatusCode, Json<Value>) {
