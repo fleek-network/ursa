@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "target": "esnext",
+        "module": "es2020",
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "allowSyntheticDefaultImports": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "outDir": "lib",
+        "typeRoots": ["node_modules/@types"]
+    },
+    "include": ["src"]
+}
