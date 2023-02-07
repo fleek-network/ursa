@@ -19,7 +19,7 @@ use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
-use libipld::{Cid};
+use libipld::Cid;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
     gossipsub::{
