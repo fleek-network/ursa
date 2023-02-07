@@ -13,12 +13,6 @@
 **/target/
 Cargo.lock
 
-# js/ts
-**/node_modules
-**/coverage
-**/package-lock.json
-**/dist
-
 # ursa configs and databases
 config.toml
 index_provider_db*
