@@ -51,12 +51,6 @@ pub struct DaemonCmdOpts {
     /// server stream buffer
     #[arg(long)]
     pub server_stream_buffer: Option<u64>,
-    /// cache control max age response (second)
-    #[arg(long)]
-    pub cache_control_max_age: Option<u64>,
-    /// cache control max size response
-    #[arg(long)]
-    pub cache_control_max_size: Option<u64>,
     /// admin port
     #[arg(long)]
     pub admin_port: Option<u16>,
