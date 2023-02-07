@@ -30,12 +30,6 @@ pub struct Resolver {
     client: Client,
 }
 
-#[derive(Debug)]
-pub struct NodeResponse {
-    pub resp: Response<Body>,
-    pub size: u64,
-}
-
 impl Resolver {
     pub fn new(indexer_cid_url: String, client: Client) -> Self {
         Self {
