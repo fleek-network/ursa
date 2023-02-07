@@ -48,19 +48,14 @@ export class Gateway {
             throw new Error('Root CID not found in car file')
         }
 
-        const content = []
-        for await (const block of reader.blocks()) {
-            if (verify) {
-                try {
-                    await verify_block(block.cid, block.bytes)
-                } catch (e) {
-                    throw new Error(`Block verification failed: ${e}`)
-                }
-            }
-            content.push(block)
-        }
+        if (verify)
+            await Promise.all(
+                reader._blocks.map((block) =>
+                    verify_block(block.cid, block.bytes)
+                )
+            )
 
-        return content
+        return reader._blocks
     }
 
     // todo: put(carFile, origins) once gateway supports it
