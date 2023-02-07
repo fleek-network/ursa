@@ -6,28 +6,29 @@ The typescript sdk provides an easy interface for interacting with the Ursa netw
 
 ### Prerequisites
 
--   [npm](https://www.npmjs.com/get-npm)
+- [node](https://nodejs.org/en/download/)
+- [yarn](https://yarnpkg.com/en/docs/install) or [npm](https://www.npmjs.com/get-npm)
 
-### Setup
+### Install dependencies
 
 ```bash
-npm i
+yarn
 ```
 
 ### Test
 
 ```bash
-npm test
+yarn test
 ```
 
 ### Lint
 
 ```bash
-npm run lint
+yarn lint
 ```
 
 ### Format
 
 ```bash
-npm run format
+yarn format
 ```
