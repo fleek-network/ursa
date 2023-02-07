@@ -1,22 +1,25 @@
 pub mod event;
 mod handler;
-mod worker;
 
 use crate::{
-    cache::{Cache, CacheWorker},
+    cache::Cache,
     config::ProxyConfig,
-    core::handler::proxy_pass,
-    core::{event::ProxyEvent, handler::proxy_pass_no_cache},
+    core::{event::ProxyEvent, handler::proxy_pass},
 };
-use anyhow::{bail, Context, Result};
-use axum::{routing::get, Extension, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use anyhow::{Context, Result};
+use axum::http::StatusCode;
+use axum::{
+    routing::{get, post},
+    Extension, Router,
+};
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use std::{
+    io::Result as IOResult,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     time::Duration,
 };
-use tokio::{spawn, task::JoinSet};
+use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
 pub struct Proxy<C> {
@@ -29,40 +32,40 @@ impl<C: Cache> Proxy<C> {
         Self { config, cache }
     }
 
-    // TODO: Implement test for this.
-    #[allow(unused)]
-    pub async fn start_with_cache_worker<W: CacheWorker<Command = C::Command>>(
-        mut self,
-        cache_worker: W,
-    ) -> Result<()> {
-        match self.cache.command_receiver().await {
-            Some(cache_cmd_rx) => spawn(worker::start(cache_cmd_rx, cache_worker.clone())),
-            None => bail!("Cache::command_receiver must return a command receiver"),
-        };
-        self.start().await
-    }
-
-    pub async fn start(self) -> Result<()> {
+    pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
+        let mut workers = JoinSet::new();
         let cache = self.cache.clone();
-        spawn(async move {
+        workers.spawn(async move {
             let duration_ms = Duration::from_millis(5 * 60 * 1000);
             loop {
                 tokio::time::sleep(duration_ms).await;
                 cache.handle_proxy_event(ProxyEvent::Timer).await;
             }
         });
-        let mut servers = JoinSet::new();
+
+        let handle = Handle::new();
+        let admin_handle = handle.clone();
+        let cache = self.cache.clone();
+        let admin_addr = self
+            .config
+            .admin
+            .map_or_else(|| "0.0.0.0:8881".parse(), |config| config.addr.parse())?;
+        workers.spawn(async move {
+            let app = Router::new()
+                .route("/purge", post(purge_cache_handler::<C>))
+                .layer(Extension(cache));
+            axum_server::bind(admin_addr)
+                .handle(admin_handle)
+                .serve(app.into_make_service())
+                .await
+        });
+
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
-            let mut app = Router::new();
-            if server_config.no_cache {
-                app = app.route("/*path", get(proxy_pass_no_cache))
-            } else {
-                app = app
-                    .route("/*path", get(proxy_pass::<C>))
-                    .layer(Extension(self.cache.clone()));
-            }
-            app = app.layer(Extension(server_config.clone()));
+            let app = Router::new()
+                .route("/*path", get(proxy_pass::<C>))
+                .layer(Extension(self.cache.clone()))
+                .layer(Extension(server_config.clone()));
             let bind_addr = SocketAddr::from((
                 server_config
                     .listen_addr
@@ -77,12 +80,32 @@ impl<C: Cache> Proxy<C> {
                 RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)
                     .await
                     .unwrap();
-            servers.spawn(
-                axum_server::bind_rustls(bind_addr, rustls_config).serve(app.into_make_service()),
+            workers.spawn(
+                axum_server::bind_rustls(bind_addr, rustls_config)
+                    .handle(handle.clone())
+                    .serve(app.into_make_service()),
             );
         }
-        // TODO: Implement safe cancel.
-        while servers.join_next().await.is_some() {}
+
+        select! {
+            _ = workers.join_next() => {
+                graceful_shutdown(workers, handle).await;
+            }
+            _ = shutdown_rx.recv() => {
+                graceful_shutdown(workers, handle).await;
+            }
+        }
         Ok(())
     }
+}
+
+async fn graceful_shutdown(mut workers: JoinSet<IOResult<()>>, handle: Handle) {
+    info!("Shutting down servers");
+    handle.graceful_shutdown(Some(Duration::from_secs(30)));
+    workers.shutdown().await;
+}
+
+pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {
+    cache.handle_proxy_event(ProxyEvent::Purge).await;
+    StatusCode::OK
 }

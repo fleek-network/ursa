@@ -16,6 +16,7 @@ pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {
 pub struct ProxyConfig {
     pub server: Vec<ServerConfig>,
     pub moka: Option<MokaConfig>,
+    pub admin: Option<AdminConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -23,7 +24,6 @@ pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: Option<String>,
     pub listen_port: Option<u16>,
-    pub no_cache: bool,
     pub cert_path: String,
     pub key_path: String,
 }
@@ -39,4 +39,9 @@ impl Default for MokaConfig {
             stream_buf: 2_000_000, // 2MB
         }
     }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct AdminConfig {
+    pub addr: String,
 }
