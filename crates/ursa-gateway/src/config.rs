@@ -13,21 +13,41 @@ use crate::cli::DaemonCmdOpts;
 pub const DEFAULT_URSA_GATEWAY_PATH: &str = ".ursa/gateway";
 pub const DEFAULT_URSA_GATEWAY_CONFIG_PATH: &str = ".ursa/gateway/config.toml";
 
+const CERT_PEM_CONTENT: &str = include_str!("../self_signed_certs/cert.pem");
+const KEY_PEM_CONTENT: &str = include_str!("../self_signed_certs/key.pem");
+
+fn create_cert(cert_pem: &PathBuf, key_pem: &PathBuf) -> Result<()> {
+    let mut cert = File::create(cert_pem)?;
+    cert.write_all(CERT_PEM_CONTENT.as_bytes())?;
+    let mut key = File::create(key_pem)?;
+    key.write_all(KEY_PEM_CONTENT.as_bytes())?;
+    Ok(())
+}
+
 pub fn init_config(path: &PathBuf) -> Result<()> {
     // privilege log
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .finish();
     if !path.exists() {
-        tracing::subscriber::with_default(subscriber, || info!("Create config at: {path:?}"));
-        let parent_dir = path
-            .parent()
-            .with_context(|| format!("Couldn't get parent dir from: {path:?}"))?;
-        create_dir_all(parent_dir)?;
-        let gateway_config = GatewayConfig::default();
-        let mut file = File::create(path)?;
-        let toml = toml::to_string(&gateway_config)?;
-        file.write_all(toml.as_bytes())?;
+        return tracing::subscriber::with_default(subscriber, || {
+            info!("Create config at: {path:?}");
+            let parent_dir = path
+                .parent()
+                .with_context(|| format!("Couldn't get parent dir from: {path:?}"))?;
+            create_dir_all(parent_dir)?;
+            let gateway_config = GatewayConfig::default();
+            let mut file = File::create(path)?;
+            let toml = toml::to_string(&gateway_config)?;
+            file.write_all(toml.as_bytes())?;
+            info!("Init default self signed tls");
+            create_cert(
+                &gateway_config.server.cert_path,
+                &gateway_config.server.key_path,
+            )
+            .context("Failed to ensure tls")?;
+            Ok(())
+        });
     }
     Ok(())
 }
