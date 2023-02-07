@@ -17,7 +17,7 @@ use anyhow::Result;
 use db::Store;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::GraphSync;
-use libipld::{store::StoreParams, Cid};
+use libipld::{Cid, DefaultParams};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{
     autonat::{Behaviour as Autonat, Config as AutonatConfig},
@@ -45,10 +45,11 @@ use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use std::{collections::HashSet, iter};
+use std::sync::Arc;
 
 use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
-use ursa_store::UrsaStore;
+use ursa_store::{BitswapStorage, UrsaStore};
 
 use crate::gossipsub::build_gossipsub;
 use crate::{
@@ -65,9 +66,8 @@ fn ursa_agent() -> String {
 
 /// Composes protocols for the behaviour of the node in the network.
 #[derive(NetworkBehaviour)]
-pub struct Behaviour<P, S>
+pub struct Behaviour<S>
 where
-    P: StoreParams,
     S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
     /// Alive checks.
@@ -95,7 +95,7 @@ where
     pub(crate) kad: Kademlia<MemoryStore>,
 
     /// Bitswap for exchanging data between blocks between peers.
-    pub(crate) bitswap: Bitswap<P>,
+    pub(crate) bitswap: Bitswap<DefaultParams>,
 
     /// Ursa's gossiping protocol for message propagation.
     pub(crate) gossipsub: Gossipsub,
@@ -107,15 +107,13 @@ where
     pub(crate) graphsync: GraphSync<UrsaStore<S>>,
 }
 
-impl<P, S> Behaviour<P, S>
+impl<S> Behaviour<S>
 where
-    P: StoreParams,
     S: Blockstore + Clone + Store + Send + Sync + 'static,
 {
-    pub fn new<B: BitswapStore<Params = P>>(
+    pub fn new(
         keypair: &Keypair,
         config: &NetworkConfig,
-        bitswap_store: B,
         store: UrsaStore<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
@@ -133,6 +131,7 @@ where
             .expect("PeerScoreParams and PeerScoreThresholds");
 
         // Setup the bitswap behaviour
+        let bitswap_store = BitswapStorage(Arc::new(store.clone()));
         let bitswap = Bitswap::new(BitswapConfig::default(), bitswap_store);
 
         if let Err(e) = bitswap.register_metrics(&BITSWAP_REGISTRY) {
