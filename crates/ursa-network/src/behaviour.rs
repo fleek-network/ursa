@@ -48,7 +48,7 @@ use std::{collections::HashSet, iter};
 
 use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
-use ursa_store::GraphSyncStorage;
+use ursa_store::UrsaStore;
 
 use crate::gossipsub::build_gossipsub;
 use crate::{
@@ -104,7 +104,7 @@ where
     pub(crate) request_response: RequestResponse<UrsaExchangeCodec>,
 
     /// Graphsync for efficiently exchanging data between blocks between peers.
-    pub(crate) graphsync: GraphSync<GraphSyncStorage<S>>,
+    pub(crate) graphsync: GraphSync<UrsaStore<S>>,
 }
 
 impl<P, S> Behaviour<P, S>
@@ -116,7 +116,7 @@ where
         keypair: &Keypair,
         config: &NetworkConfig,
         bitswap_store: B,
-        graphsync_store: GraphSyncStorage<S>,
+        store: UrsaStore<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
     ) -> Self {
@@ -204,7 +204,7 @@ where
         };
 
         // Set up the Graphsync behaviour.
-        let graphsync = GraphSync::new(graphsync_store);
+        let graphsync = GraphSync::new(store);
 
         // init bootstraps
         for addr in config.bootstrap_nodes.iter() {

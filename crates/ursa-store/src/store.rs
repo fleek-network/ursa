@@ -20,6 +20,14 @@ pub struct UrsaStore<S> {
     pub db: Arc<S>,
 }
 
+impl<S> Clone for UrsaStore<S> {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+        }
+    }
+}
+
 impl<S> UrsaStore<S>
 where
     S: Blockstore + Store + Send + Sync + 'static,
@@ -142,6 +150,23 @@ pub trait BlockstoreExt: Blockstore {
     }
 }
 
+impl<S> GSBlockstore for UrsaStore<S>
+where
+    S: Blockstore + Store + Send + Sync + 'static,
+{
+    fn get(&self, k: &cid::Cid) -> Result<Option<Vec<u8>>> {
+        self.db.get(k)
+    }
+
+    fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
+        self.db.put_keyed(k, block)
+    }
+
+    fn delete_block(&self, k: &Cid) -> Result<()> {
+        self.db.delete(k.to_bytes()).map_err(|e| e.into())
+    }
+}
+
 impl<T: Blockstore> BlockstoreExt for T {}
 
 pub struct BitswapStorage<P>(pub Arc<UrsaStore<P>>)
@@ -182,46 +207,6 @@ where
         }
 
         Ok(missing)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GraphSyncStorage<P>(pub Arc<UrsaStore<P>>)
-where
-    P: Blockstore + Store + Send + Sync + 'static;
-
-impl<S> GraphSyncStorage<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
-    pub fn insert(&mut self, block: &Block<DefaultParams>) -> Result<()> {
-        self.0.db.put_keyed(block.cid(), block.data()).unwrap();
-
-        Ok(())
-    }
-
-    pub fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.db.get(cid).unwrap())
-    }
-}
-
-impl<S> GSBlockstore for GraphSyncStorage<S>
-where
-    S: Blockstore + Store + Send + Sync + 'static,
-{
-    fn get(&self, k: &cid::Cid) -> Result<Option<Vec<u8>>> {
-        self.0.blockstore().get(k)
-    }
-
-    fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
-        self.0.blockstore().put_keyed(k, block)
-    }
-
-    fn delete_block(&self, k: &Cid) -> Result<()> {
-        self.0
-            .blockstore()
-            .delete(k.to_bytes())
-            .map_err(|e| e.into())
     }
 }
 

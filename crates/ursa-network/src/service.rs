@@ -57,7 +57,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
+use ursa_store::{BitswapStorage, UrsaStore};
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
@@ -257,14 +257,13 @@ where
         };
 
         let bitswap_store = BitswapStorage(store.clone());
-        let graphsync_store = GraphSyncStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
         let mut peers = HashSet::new();
         let behaviour = Behaviour::new(
             &keypair,
             config,
             bitswap_store,
-            graphsync_store,
+            store.as_ref().clone(),
             relay_client,
             &mut peers,
         );
