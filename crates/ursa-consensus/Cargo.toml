@@ -10,8 +10,10 @@ arc-swap     = { version = "1.6.0", features = ["serde"] }
 async-trait  = "0.1"
 bytes = "1.3.0"
 
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "f451422b7f15e75e055a1830cbe5d1547fa87b74" }
-fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "f451422b7f15e75e055a1830cbe5d1547fa87b74", package = "fastcrypto-zkp" } 
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e" }
+fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e", package = "fastcrypto-zkp" }
+fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e", package = "fastcrypto-tbls" }
+
 futures      = "0.3.23"
 multiaddr = "0.17.0"
 mysten-metrics = { git = "https://github.com/MystenLabs/sui.git", branch = "main", package = "mysten-metrics" }
