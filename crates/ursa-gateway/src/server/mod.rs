@@ -25,7 +25,7 @@ use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
     select, spawn,
-    sync::{broadcast::Receiver, RwLock},
+    sync::{oneshot::Receiver, RwLock},
 };
 use tower::limit::concurrency::ConcurrencyLimitLayer;
 use tower_http::{
@@ -142,9 +142,9 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
     Ok(())
 }
 
-async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
+async fn graceful_shutdown(handle: Handle, shutdown_rx: Receiver<()>) {
     select! {
-        _ = shutdown_rx.recv() => {
+        _ = shutdown_rx => {
             handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;

@@ -18,8 +18,8 @@ use tokio::{
     },
     spawn,
     sync::{
-        broadcast::{self, Sender},
         mpsc::{self},
+        oneshot::{self, Sender},
         RwLock,
     },
     task::JoinHandle,
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
 
             let server_config = Arc::new(RwLock::new(gateway_config));
 
-            let (shutdown_tx, shutdown_rx) = broadcast::channel(3);
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
             let (server_worker, mut server_worker_signal_rx) = {
                 let (signal_tx, signal_rx) = mpsc::channel(1);
