@@ -18,11 +18,7 @@ RUN --mount=type=cache,target=/ursa/target \
     set -eux; \
 	rustup install stable; \
     cargo build --profile $PROFILE --bin ursa-gateway; \
-    objcopy --compress-debug-sections target/release/ursa-gateway ./ursa-gateway \
-    # For local dev
-    && mv /ursa/crates/ursa-gateway/example/local.toml ./ \
-    && mv /ursa/crates/ursa-gateway/self_signed_certs/cert.pem ./server_cert.pem \
-    && mv /ursa/crates/ursa-gateway/self_signed_certs/key.pem ./server_key.pem
+    objcopy --compress-debug-sections target/release/ursa-gateway ./ursa-gateway
 
 FROM debian:bullseye-slim
 
