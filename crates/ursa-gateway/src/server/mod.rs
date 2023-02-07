@@ -88,7 +88,6 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
             .route("/:cid", get(get_car_handler))
-            .layer(Extension(config))
             .layer(Extension(resolver))
             .layer(CatchPanicLayer::custom(recover))
             .layer(PropagateRequestIdLayer::new(HeaderName::from_static(
