@@ -40,10 +40,9 @@ use tower_http::{
 };
 use tracing::{error, info, Level};
 
-use crate::config::IndexerConfig;
-use crate::resolver::Resolver;
 use crate::{
-    config::{GatewayConfig, ServerConfig},
+    config::{GatewayConfig, IndexerConfig, ServerConfig},
+    resolver::Resolver,
     server::model::HttpResponse,
 };
 

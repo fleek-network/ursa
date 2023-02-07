@@ -1,10 +1,9 @@
 use std::{str::FromStr, sync::Arc};
 
 use axum::body::StreamBody;
-use axum::http::response::Parts;
 use axum::{
     extract::Path,
-    http::{header, StatusCode},
+    http::{header, response::Parts, StatusCode},
     response::{IntoResponse, Response},
     Extension, Json,
 };
@@ -12,9 +11,7 @@ use libipld::Cid;
 use serde_json::{json, Value};
 use tracing::{error, info_span, Instrument};
 
-use crate::resolver::Resolver;
-use crate::server::model::HttpResponse;
-use crate::util::error::Error;
+use crate::{resolver::Resolver, server::model::HttpResponse, util::error::Error};
 
 pub async fn get_car_handler(
     Path(cid): Path<String>,
