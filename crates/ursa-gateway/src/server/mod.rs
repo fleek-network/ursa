@@ -47,10 +47,7 @@ use crate::{
     server::model::HttpResponse,
 };
 
-pub async fn start(
-    config: Arc<RwLock<GatewayConfig>>,
-    shutdown_rx: Receiver<()>,
-) -> Result<()> {
+pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         server:

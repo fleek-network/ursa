@@ -14,6 +14,7 @@ use tracing::{error, info_span, Instrument};
 
 use crate::resolver::Resolver;
 use crate::server::model::HttpResponse;
+use crate::util::error::Error;
 
 pub async fn get_car_handler(
     Path(cid): Path<String>,
@@ -43,13 +44,10 @@ pub async fn get_car_handler(
                     .into_response();
             }
         },
-        Err(_) => {
-            return error_handler(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "There was an error".to_string(),
-            )
-            .into_response()
+        Err(Error::Internal(message)) => {
+            return error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
         }
+        Err(Error::Upstream(status, message)) => return (status, message).into_response(),
     };
 
     (
