@@ -40,7 +40,7 @@ use libp2p::{
     swarm::NetworkBehaviour,
     Multiaddr, PeerId,
 };
-use libp2p_bitswap::{Bitswap, BitswapConfig, BitswapStore};
+use libp2p_bitswap::{Bitswap, BitswapConfig};
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::sync::Arc;

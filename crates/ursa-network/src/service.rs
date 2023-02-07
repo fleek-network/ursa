@@ -57,7 +57,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, UrsaStore};
+use ursa_store::UrsaStore;
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
