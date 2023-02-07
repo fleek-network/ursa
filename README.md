@@ -6,7 +6,7 @@
 [![rust-ci](https://img.shields.io/github/actions/workflow/status/fleek-network/ursa/rust.yml?branch=main&label=Tests&style=for-the-badge)](https://github.com/fleek-network/ursa/actions/workflows/rust.yml)&nbsp;
 [![docker-build](https://img.shields.io/github/actions/workflow/status/fleek-network/ursa/docker-publish.yml?branch=main&label=Docker%20Build&style=for-the-badge)](https://github.com/fleek-network/ursa/pkgs/container/ursa)&nbsp;
 
-Ursa, a decentralized content delivery network.
+> Ursa, a decentralized content delivery network.
 
 ## Run a node
 

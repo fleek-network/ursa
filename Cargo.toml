@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/ursa",
+  "crates/ursa-consensus",
   "crates/ursa-gateway",
   "crates/ursa-index-provider",
   "crates/ursa-metrics",
@@ -47,7 +48,7 @@ futures-util = "0.3.25"
 fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_encoding = "=0.3.2"
-graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git",  branch = "downgrade-cid" }
+graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", branch = "downgrade-cid" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 imara-diff = "0.1.5"
