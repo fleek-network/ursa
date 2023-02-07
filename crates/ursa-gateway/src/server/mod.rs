@@ -20,11 +20,12 @@ use axum::{
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
+use hyper_tls::HttpsConnector;
 use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
     select, spawn,
-    sync::{broadcast::Receiver, RwLock},
+    sync::{oneshot::Receiver, RwLock},
 };
 use tower::limit::concurrency::ConcurrencyLimitLayer;
 use tower_http::{
@@ -40,16 +41,12 @@ use tower_http::{
 use tracing::{error, info, Level};
 
 use crate::{
-    config::{GatewayConfig, ServerConfig},
+    config::{GatewayConfig, IndexerConfig, ServerConfig},
+    resolver::Resolver,
     server::model::HttpResponse,
-    worker::cache::server::ServerCache,
 };
 
-pub async fn start<Cache: ServerCache>(
-    config: Arc<RwLock<GatewayConfig>>,
-    cache: Arc<RwLock<Cache>>,
-    shutdown_rx: Receiver<()>,
-) -> Result<()> {
+pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
     let config_reader = Arc::clone(&config);
     let GatewayConfig {
         server:
@@ -62,6 +59,7 @@ pub async fn start<Cache: ServerCache>(
                 request_timeout,
                 ..
             },
+        indexer: IndexerConfig { cid_url },
         ..
     } = &(*config_reader.read().await);
 
@@ -82,11 +80,15 @@ pub async fn start<Cache: ServerCache>(
         .with_default_metrics()
         .build_pair();
 
+    let resolver = Arc::new(Resolver::new(
+        String::from(cid_url),
+        hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
+    ));
+
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
-            .route("/:cid", get(get_car_handler::<Cache>))
-            .layer(Extension(config))
-            .layer(Extension(cache))
+            .route("/:cid", get(get_car_handler))
+            .layer(Extension(resolver))
             .layer(CatchPanicLayer::custom(recover))
             .layer(PropagateRequestIdLayer::new(HeaderName::from_static(
                 "trace_id",
@@ -140,9 +142,9 @@ pub async fn start<Cache: ServerCache>(
     Ok(())
 }
 
-async fn graceful_shutdown(handle: Handle, mut shutdown_rx: Receiver<()>) {
+async fn graceful_shutdown(handle: Handle, shutdown_rx: Receiver<()>) {
     select! {
-        _ = shutdown_rx.recv() => {
+        _ = shutdown_rx => {
             handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;

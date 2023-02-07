@@ -8,19 +8,6 @@ concurrency_limit = 100000
 cert_path = ".ursa/gateway/cert.pem"
 key_path = ".ursa/gateway/key.pem"
 stream_buf = 2000000 # 2mb
-cache_control_max_age = 604800 # one week in second
-cache_control_max_size = 1000000000 # 1GB
-
-[admin_server]
-port = 5001
-addr = "0.0.0.0"
 
 [indexer]
 cid_url = "http://0.0.0.0:3000/cid"
-
-[cache]
-max_size = 200000000 # 200mb
-ttl_buf = 300000 # 5mins
-
-[worker]
-ttl_cache_interval = 300000 # 5mins
