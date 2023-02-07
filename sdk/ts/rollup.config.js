@@ -24,7 +24,6 @@ export default {
             extensions: ['.ts', '.tsx']
         }),
         nodeResolve({
-            jsnext: true,
             extensions: ['.ts', '.js', '.json']
         }),
         commonjs(),

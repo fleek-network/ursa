@@ -20,25 +20,25 @@ export class Gateway {
         }
     }
 
-    url: string = 'https://gateway.ursa.earth'
+    url = 'https://gateway.ursa.earth'
 
     // Fetch a car file with a given root cid from the gateway
     async get(
         cid: CID,
-        verify: boolean = true,
+        verify = true,
         _origins?: [string]
     ): Promise<Block[] | undefined> {
-        let res = await fetch(`${this.url}/${cid.toString()}`, {
+        const res = await fetch(`${this.url}/${cid.toString()}`, {
             method: 'GET',
             headers: {
                 Accept: 'application/vnd.ipfs.car'
             }
         })
 
-        let carFile = await res.arrayBuffer()
+        const carFile = await res.arrayBuffer()
 
         // https://github.com/ipld/js-car/#async-carreaderfrombytesbytes
-        let reader = await CarReader.fromBytes(new Uint8Array(carFile))
+        const reader = await CarReader.fromBytes(new Uint8Array(carFile))
         const roots = (await reader.getRoots()).map((cid) => {
             return cid.toString()
         })
@@ -48,12 +48,14 @@ export class Gateway {
             throw new Error('Root CID not found in car file')
         }
 
-        let content = []
+        const content = []
         for await (const block of reader.blocks()) {
-            try {
-                await verify_block(block.cid, block.bytes)
-            } catch (e) {
-                throw new Error(`Block verification failed: ${e}`)
+            if (verify) {
+                try {
+                    await verify_block(block.cid, block.bytes)
+                } catch (e) {
+                    throw new Error(`Block verification failed: ${e}`)
+                }
             }
             content.push(block)
         }

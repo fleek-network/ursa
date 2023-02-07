@@ -10,7 +10,7 @@ import { blake2b256 } from '@multiformats/blake2/blake2b'
 
 const { toHex } = bytes
 
-const codecs = new Map<number, any>([
+const codecs = new Map<number, object>([
     [dagCbor.code, dagCbor],
     [dagPb.code, dagPb],
     [dagJson.code, dagJson],
