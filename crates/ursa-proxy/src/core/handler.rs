@@ -15,7 +15,7 @@ use hyper::{
 use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
-    spawn,
+    task,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
@@ -55,7 +55,7 @@ pub async fn proxy_pass<C: Cache>(
                 mut body,
             ) => {
                 let (mut writer, reader) = duplex(100);
-                spawn(async move {
+                task::spawn(async move {
                     let mut bytes = Vec::new();
                     while let Some(buf) = body.data().await {
                         match buf {

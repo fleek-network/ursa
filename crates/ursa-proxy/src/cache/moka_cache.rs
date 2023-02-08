@@ -9,7 +9,7 @@ use moka::sync::Cache as Moka;
 use std::{sync::Arc, time::Duration};
 use tokio::{
     io::{duplex, AsyncWriteExt},
-    spawn,
+    task,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{info, warn};
@@ -40,7 +40,7 @@ impl Cache for MokaCache {
         let mut response = None;
         if let Some(data) = self.inner.get(&key) {
             let (mut w, r) = duplex(self.stream_buf as usize);
-            spawn(async move {
+            task::spawn(async move {
                 if let Err(e) = w.write_all(data.as_ref()).await {
                     warn!("Failed to write to stream: {e:?}");
                 }

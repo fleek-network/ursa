@@ -7,12 +7,11 @@ use tokio::{
         ctrl_c,
         unix::{signal, SignalKind},
     },
-    spawn,
     sync::{
         mpsc::{self, Sender},
         oneshot,
     },
-    task::JoinHandle,
+    task::{self, JoinHandle},
 };
 use tracing::{error, info};
 use ursa_proxy::{
@@ -32,7 +31,7 @@ async fn main() -> Result<()> {
     let cache = MokaCache::new(moka_config);
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
     let (proxy_error_tx, proxy_error_rx) = oneshot::channel();
-    let proxy = spawn(async move {
+    let proxy = task::spawn(async move {
         if let Err(e) = Proxy::new(config, cache.clone())
             .start(signal_shutdown_rx)
             .await
