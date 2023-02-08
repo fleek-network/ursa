@@ -29,9 +29,8 @@ async fn main() -> Result<()> {
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
     let moka_config = config.moka.clone().unwrap_or_default();
-    let cache = MokaCache::new(moka_config.stream_buf);
+    let cache = MokaCache::new(moka_config);
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
-
     let (proxy_error_tx, proxy_error_rx) = oneshot::channel();
     let proxy = spawn(async move {
         if let Err(e) = Proxy::new(config, cache.clone())

@@ -2,8 +2,8 @@ mod handler;
 
 use crate::{cache::Cache, config::ProxyConfig, core::handler::proxy_pass};
 use anyhow::{Context, Result};
-use axum::http::StatusCode;
 use axum::{
+    http::StatusCode,
     routing::{get, post},
     Extension, Router,
 };
@@ -25,15 +25,6 @@ impl<C: Cache> Proxy<C> {
 
     pub async fn start(self, mut shutdown_rx: Receiver<()>) -> Result<()> {
         let mut workers = JoinSet::new();
-        let cache = self.cache.clone();
-        workers.spawn(async move {
-            let duration_ms = Duration::from_millis(5 * 60 * 1000);
-            loop {
-                tokio::time::sleep(duration_ms).await;
-                cache.purge();
-            }
-        });
-
         let handle = Handle::new();
         let admin_handle = handle.clone();
         let cache = self.cache.clone();

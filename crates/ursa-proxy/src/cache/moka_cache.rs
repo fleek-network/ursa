@@ -1,4 +1,4 @@
-use crate::cache::Cache;
+use crate::{cache::Cache, config::MokaConfig};
 use axum::{
     async_trait,
     body::StreamBody,
@@ -6,7 +6,7 @@ use axum::{
 };
 use bytes::Bytes;
 use moka::sync::Cache as Moka;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     spawn,
@@ -22,10 +22,14 @@ pub struct MokaCache {
 
 impl MokaCache {
     #[allow(unused)]
-    pub fn new(stream_buf: u64) -> Self {
+    pub fn new(config: MokaConfig) -> Self {
         Self {
-            inner: Moka::new(100_000),
-            stream_buf,
+            inner: Moka::builder()
+                .max_capacity(config.max_capacity)
+                .time_to_idle(Duration::from_millis(config.time_to_idle))
+                .time_to_live(Duration::from_millis(config.time_to_live))
+                .build(),
+            stream_buf: config.stream_buf,
         }
     }
 }
