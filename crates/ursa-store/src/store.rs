@@ -15,17 +15,9 @@ use libipld::{
 use libp2p_bitswap::BitswapStore;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UrsaStore<S> {
     pub db: Arc<S>,
-}
-
-impl<S> Clone for UrsaStore<S> {
-    fn clone(&self) -> Self {
-        Self {
-            db: self.db.clone(),
-        }
-    }
 }
 
 impl<S> UrsaStore<S>
