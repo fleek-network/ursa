@@ -1,6 +1,5 @@
 use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
 use anyhow::Result;
-use compile_time_run::run_command_str;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
@@ -13,7 +12,7 @@ use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_network::UrsaService;
+use ursa_network::{ursa_agent, UrsaService};
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_telemetry::TelemetryConfig;
@@ -21,8 +20,6 @@ use ursa_tracker::TrackerRegistration;
 
 pub mod config;
 mod ursa;
-
-const GIT_COMMIT_HASH: &str = run_command_str!("git", "rev-parse", "--short", "HEAD");
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -63,11 +60,10 @@ async fn main() -> Result<()> {
                 };
 
                 let keypair = im.current();
-                let agent_version = format!("ursa/{GIT_COMMIT_HASH}");
 
                 let registration = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
-                    agent: agent_version.clone(),
+                    agent: ursa_agent(),
                     addr: None, // if we have a dns address, we can set it here
                     p2p_port: network_config
                         .swarm_addrs
@@ -89,12 +85,8 @@ async fn main() -> Result<()> {
                 let db = RocksDb::open(db_path, &RocksDbConfig::default())
                     .expect("Opening blockstore RocksDB must succeed");
                 let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-                let service = UrsaService::new(
-                    keypair.clone(),
-                    &network_config,
-                    Arc::clone(&store),
-                    agent_version,
-                )?;
+                let service =
+                    UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
 
                 let provider_db = RocksDb::open(
                     provider_config.database_path.resolve(),

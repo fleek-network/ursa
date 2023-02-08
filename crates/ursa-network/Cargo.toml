@@ -15,6 +15,7 @@ bincode.workspace = true
 bytes.workspace = true
 db.workspace = true
 dirs.workspace = true
+compile-time-run.workspace = true
 fastmurmur3.workspace = true
 fnv.workspace = true
 futures.workspace = true

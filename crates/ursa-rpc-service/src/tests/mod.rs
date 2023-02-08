@@ -43,12 +43,7 @@ pub fn init() -> InitResult {
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
-    let service = UrsaService::new(
-        keypair.clone(),
-        &network_config,
-        Arc::clone(&store),
-        "ursa/test",
-    )?;
+    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
     let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
 
     let provider_engine = ProviderEngine::new(

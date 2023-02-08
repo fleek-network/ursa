@@ -1,7 +1,4 @@
-use crate::{
-    config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR},
-    GIT_COMMIT_HASH,
-};
+use crate::config::{UrsaConfig, DEFAULT_CONFIG_PATH_STR};
 use anyhow::Result;
 use dirs::home_dir;
 use resolve_path::PathResolveExt;
@@ -27,7 +24,7 @@ mod rpc_commands;
 #[derive(StructOpt)]
 #[structopt(
     name = option_env!("CARGO_PKG_NAME").unwrap_or("ursa"),
-    version = option_env!("URSA_VERSION").unwrap_or(GIT_COMMIT_HASH),
+    version = option_env!("URSA_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     about = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("The Great Bear"),
     author = option_env!("CARGO_PKG_AUTHORS").unwrap_or("Fleek")
 )]
