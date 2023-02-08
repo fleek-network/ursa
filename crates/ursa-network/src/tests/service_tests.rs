@@ -26,7 +26,7 @@ use std::{sync::Arc, time::Duration, vec};
 use tokio::{select, sync::oneshot, time::timeout};
 use tracing::warn;
 use tracing::{error, info, log::LevelFilter};
-use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
+use ursa_store::{BitswapStorage, UrsaStore};
 
 fn create_block(ipld: Ipld) -> Block<DefaultParams> {
     Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
@@ -450,11 +450,10 @@ async fn test_put_command() -> Result<()> {
     .await?;
 
     // Store some data in node 1's store.
-    let mut graphsync_store_1 = GraphSyncStorage(store_1.clone());
     let block = get_block(&b"hello world"[..]);
     info!("inserting block into Graphsync store for node 1");
-    graphsync_store_1.insert(&block).unwrap();
-    assert!(graphsync_store_1.has(block.cid()).unwrap());
+    store_1.put_keyed(block.cid(), block.data()).unwrap();
+    assert!(store_1.has(block.cid()).unwrap());
 
     let node_1_sender = node_1.command_sender();
 
@@ -477,9 +476,8 @@ async fn test_put_command() -> Result<()> {
     let (mut node_2, .., store_2) =
         network_init(&mut NetworkConfig::default(), Some(bootstrap_addr), None).await?;
 
-    let graphsync_store_2 = GraphSyncStorage(store_2.clone());
     // Node 2 does not have blocks in its store.
-    assert!(!graphsync_store_2.has(block.cid()).unwrap());
+    assert!(!store_2.has(block.cid()).unwrap());
 
     // Wait for node 2 to connect with node 1 through kad peer discovery then start it up.
     loop {
@@ -523,7 +521,7 @@ async fn test_put_command() -> Result<()> {
     for s in (3..5).rev() {
         tokio::time::sleep(Duration::from_secs(s)).await;
 
-        let store_1_block = graphsync_store_2.get(block.cid()).unwrap();
+        let store_1_block = store_2.get(block.cid()).unwrap();
         info!("Block received {store_1_block:?}");
 
         if store_1_block.is_some() {

@@ -19,7 +19,7 @@ use futures_util::stream::StreamExt;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::{GraphSyncEvent, Request};
 use ipld_traversal::{selector::RecursionLimit, Selector};
-use libipld::{Cid, DefaultParams};
+use libipld::Cid;
 use libp2p::{
     autonat::{Event as AutonatEvent, NatStatus},
     gossipsub::{
@@ -57,7 +57,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn};
 use ursa_metrics::Recorder;
-use ursa_store::{BitswapStorage, GraphSyncStorage, UrsaStore};
+use ursa_store::UrsaStore;
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
@@ -74,11 +74,11 @@ pub const MESSAGE_PROTOCOL: &[u8] = b"/ursa/message/0.0.1";
 
 type BlockOneShotSender<T> = oneshot::Sender<Result<T, Error>>;
 type SwarmEventType<S> = SwarmEvent<
-<Behaviour<DefaultParams, S> as NetworkBehaviour>::OutEvent,
+<Behaviour<S> as NetworkBehaviour>::OutEvent,
 <
     <
         <
-            Behaviour<DefaultParams, S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
+            Behaviour<S> as NetworkBehaviour>::ConnectionHandler as IntoConnectionHandler
         >::Handler as ConnectionHandler
     >::Error
 >;
@@ -195,7 +195,7 @@ where
     /// Store.
     pub store: Arc<UrsaStore<S>>,
     /// The main libp2p swarm emitting events.
-    swarm: Swarm<Behaviour<DefaultParams, S>>,
+    swarm: Swarm<Behaviour<S>>,
     /// Handles outbound messages to peers.
     command_sender: Sender<NetworkCommand>,
     /// Handles inbound messages from peers.
@@ -256,15 +256,12 @@ where
             (None, None)
         };
 
-        let bitswap_store = BitswapStorage(store.clone());
-        let graphsync_store = GraphSyncStorage(store.clone());
         let transport = build_transport(&keypair, config, relay_transport);
         let mut peers = HashSet::new();
         let behaviour = Behaviour::new(
             &keypair,
             config,
-            bitswap_store,
-            graphsync_store,
+            store.as_ref().clone(),
             relay_client,
             &mut peers,
         );
