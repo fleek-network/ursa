@@ -40,6 +40,7 @@ use libp2p::{
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
 use rand::prelude::SliceRandom;
+use std::fmt::Display;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -241,7 +242,12 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
+    pub fn new<A: Display>(
+        keypair: Keypair,
+        config: &NetworkConfig,
+        store: Arc<UrsaStore<S>>,
+        agent_version: A,
+    ) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -267,6 +273,7 @@ where
             graphsync_store,
             relay_client,
             &mut peers,
+            agent_version.to_string(),
         );
 
         let limits = ConnectionLimits::default()

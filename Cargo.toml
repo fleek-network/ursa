@@ -69,6 +69,7 @@ pem = "1.1.0"
 prometheus-client = "0.19.0"
 rand = "0.8.5"
 resolve-path = "0.1.0"
+compile-time-run = "0.2.12"
 scalable_cuckoo_filter = { git = "https://github.com/matthias-wright/scalable_cuckoo_filter", features = ["serde_support"] }
 serde_derive = "1.0.147"
 serde = { version = "1.0.151", features = ["derive"] }

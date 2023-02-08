@@ -43,7 +43,12 @@ pub fn provider_engine_init(
     let store = get_store();
     let index_store = get_store();
 
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let service = UrsaService::new(
+        keypair.clone(),
+        &network_config,
+        Arc::clone(&store),
+        "ursa/test",
+    )?;
 
     let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
 

@@ -59,10 +59,6 @@ use crate::{
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 pub const KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
 
-fn ursa_agent() -> String {
-    format!("ursa/{}", env!("CARGO_PKG_VERSION"))
-}
-
 /// Composes protocols for the behaviour of the node in the network.
 #[derive(NetworkBehaviour)]
 pub struct Behaviour<P, S>
@@ -119,6 +115,7 @@ where
         graphsync_store: GraphSyncStorage<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
         peers: &mut HashSet<PeerId>,
+        agent_version: String,
     ) -> Self {
         let local_public_key = keypair.public();
         let local_peer_id = PeerId::from(local_public_key.clone());
@@ -143,7 +140,7 @@ where
         // Setup the identify behaviour
         let identify = Identify::new(
             IdentifyConfig::new(IPFS_PROTOCOL.into(), keypair.public())
-                .with_agent_version(ursa_agent()),
+                .with_agent_version(agent_version),
         );
 
         let request_response = {
