@@ -9,12 +9,7 @@ use axum::{
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
-use std::{
-    io::Result as IOResult,
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::Duration,
-};
+use std::{io::Result as IOResult, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
@@ -42,10 +37,7 @@ impl<C: Cache> Proxy<C> {
         let handle = Handle::new();
         let admin_handle = handle.clone();
         let cache = self.cache.clone();
-        let admin_addr = self
-            .config
-            .admin
-            .map_or_else(|| "0.0.0.0:8881".parse(), |config| config.addr.parse())?;
+        let admin_addr = self.config.admin.unwrap_or_default().addr.parse()?;
         workers.spawn(async move {
             let app = Router::new()
                 .route("/purge", post(purge_cache_handler::<C>))
@@ -64,15 +56,11 @@ impl<C: Cache> Proxy<C> {
                 .layer(Extension(self.cache.clone()))
                 .layer(Extension(client.clone()))
                 .layer(Extension(server_config.clone()));
-            let bind_addr = SocketAddr::from((
-                server_config
-                    .listen_addr
-                    .clone()
-                    .unwrap_or_else(|| "0.0.0.0".to_string())
-                    .parse::<IpAddr>()
-                    .context("Invalid binding address")?,
-                server_config.listen_port.unwrap_or(0),
-            ));
+            let bind_addr = server_config
+                .listen_addr
+                .clone()
+                .parse::<SocketAddr>()
+                .context("Invalid binding address")?;
             info!("Listening on {bind_addr:?}");
             let rustls_config =
                 RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)

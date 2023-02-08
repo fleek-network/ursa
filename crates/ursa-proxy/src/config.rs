@@ -22,8 +22,7 @@ pub struct ProxyConfig {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ServerConfig {
     pub proxy_pass: String,
-    pub listen_addr: Option<String>,
-    pub listen_port: Option<u16>,
+    pub listen_addr: String,
     pub cert_path: String,
     pub key_path: String,
 }
@@ -44,4 +43,12 @@ impl Default for MokaConfig {
 #[derive(Deserialize, Serialize)]
 pub struct AdminConfig {
     pub addr: String,
+}
+
+impl Default for AdminConfig {
+    fn default() -> Self {
+        Self {
+            addr: "0.0.0.0:8881".to_string(),
+        }
+    }
 }
