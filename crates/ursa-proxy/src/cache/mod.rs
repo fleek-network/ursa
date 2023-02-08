@@ -1,13 +1,10 @@
 pub mod moka_cache;
 
-use crate::core::event::ProxyEvent;
-use axum::async_trait;
-use std::fmt::Debug;
+use axum::{async_trait, response::Response};
 
-/// Cache trait.
 #[async_trait]
 pub trait Cache: Clone + Send + Sync + 'static {
-    type Command: Debug + Send;
-    /// Handle events passed from the proxy.
-    async fn handle_proxy_event(&self, event: ProxyEvent);
+    fn get(&self, key: String) -> Option<Response>;
+    fn insert(&self, key: String, value: Vec<u8>);
+    fn purge(&self);
 }

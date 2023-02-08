@@ -7,19 +7,18 @@ use tokio::{
         ctrl_c,
         unix::{signal, SignalKind},
     },
-    spawn,
     sync::{
         mpsc::{self, Sender},
         oneshot,
     },
-    task::JoinHandle,
+    task::{self, JoinHandle},
 };
 use tracing::{error, info};
 use ursa_proxy::{
     cache::moka_cache::MokaCache,
     cli::{Cli, Commands},
     config::load_config,
-    core::Proxy,
+    core::start,
 };
 
 #[tokio::main]
@@ -29,15 +28,11 @@ async fn main() -> Result<()> {
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
     let moka_config = config.moka.clone().unwrap_or_default();
-    let cache = MokaCache::new(moka_config.stream_buf);
+    let cache = MokaCache::new(moka_config);
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
-
     let (proxy_error_tx, proxy_error_rx) = oneshot::channel();
-    let proxy = spawn(async move {
-        if let Err(e) = Proxy::new(config, cache.clone())
-            .start(signal_shutdown_rx)
-            .await
-        {
+    let proxy = task::spawn(async move {
+        if let Err(e) = start(config, cache, signal_shutdown_rx).await {
             proxy_error_tx.send(e).expect("Sending to succeed");
         }
     });
@@ -62,7 +57,7 @@ async fn main() -> Result<()> {
         }
         e = proxy_error_rx => {
             error!("Proxy error {e:?}");
-            graceful_shutdown(proxy, signal_shutdown_tx).await;
+            proxy.await.expect("Proxy to shut down successfully");
         }
     }
     info!("Proxy shut down successfully");

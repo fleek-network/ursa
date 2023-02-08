@@ -1,4 +1,4 @@
-use crate::{cache::Cache, config::ServerConfig, core::event::ProxyEvent};
+use crate::{cache::Cache, config::ServerConfig};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
@@ -8,40 +8,32 @@ use axum::{
     Extension, TypedHeader,
 };
 use bytes::BufMut;
-use hyper::Client;
+use hyper::{
+    client::{self, HttpConnector},
+    Body,
+};
 use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
-    spawn,
-    sync::oneshot,
+    task,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
+
+type Client = client::Client<HttpConnector, Body>;
 
 pub async fn proxy_pass<C: Cache>(
     Path(path): Path<String>,
     cache_control: Option<TypedHeader<CacheControl>>,
     Extension(config): Extension<Arc<ServerConfig>>,
+    Extension(client): Extension<Client>,
     Extension(cache_client): Extension<C>,
 ) -> Response {
     let no_cache = cache_control.map_or(false, |c| c.no_cache());
     if !no_cache {
-        let (tx, rx) = oneshot::channel();
-        cache_client
-            .handle_proxy_event(ProxyEvent::GetRequest {
-                key: path.clone(),
-                sender: tx,
-            })
-            .await;
-        match rx.await {
-            Ok(Some(resp)) => {
-                info!("Cache hit");
-                return resp;
-            }
-            Err(e) => {
-                error!("Failed to receive {e:?}");
-            }
-            _ => {}
+        if let Some(resp) = cache_client.get(path.clone()) {
+            info!("Cache hit");
+            return resp;
         }
         info!("Cache miss for {path}");
     }
@@ -53,7 +45,7 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    let reader = match Client::new().get(uri).await {
+    let reader = match client.get(uri).await {
         Ok(resp) => match resp.into_parts() {
             (
                 Parts {
@@ -63,7 +55,7 @@ pub async fn proxy_pass<C: Cache>(
                 mut body,
             ) => {
                 let (mut writer, reader) = duplex(100);
-                spawn(async move {
+                task::spawn(async move {
                     let mut bytes = Vec::new();
                     while let Some(buf) = body.data().await {
                         match buf {
@@ -79,12 +71,7 @@ pub async fn proxy_pass<C: Cache>(
                             }
                         }
                     }
-                    cache_client
-                        .handle_proxy_event(ProxyEvent::UpstreamData {
-                            key: path,
-                            value: bytes,
-                        })
-                        .await
+                    cache_client.insert(path, bytes);
                 });
                 reader
             }
