@@ -8,7 +8,10 @@ use axum::{
     Extension, TypedHeader,
 };
 use bytes::BufMut;
-use hyper::Client;
+use hyper::{
+    client::{self, HttpConnector},
+    Body,
+};
 use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
@@ -17,10 +20,13 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
 
+type Client = client::Client<HttpConnector, Body>;
+
 pub async fn proxy_pass<C: Cache>(
     Path(path): Path<String>,
     cache_control: Option<TypedHeader<CacheControl>>,
     Extension(config): Extension<Arc<ServerConfig>>,
+    Extension(client): Extension<Client>,
     Extension(cache_client): Extension<C>,
 ) -> Response {
     let no_cache = cache_control.map_or(false, |c| c.no_cache());
@@ -39,7 +45,7 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    let reader = match Client::new().get(uri).await {
+    let reader = match client.get(uri).await {
         Ok(resp) => match resp.into_parts() {
             (
                 Parts {

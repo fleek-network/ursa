@@ -8,6 +8,7 @@ use axum::{
     Extension, Router,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle};
+use hyper::Client;
 use std::{
     io::Result as IOResult,
     net::{IpAddr, SocketAddr},
@@ -55,11 +56,13 @@ impl<C: Cache> Proxy<C> {
                 .await
         });
 
+        let client = Client::new();
         for server_config in self.config.server {
             let server_config = Arc::new(server_config);
             let app = Router::new()
                 .route("/*path", get(proxy_pass::<C>))
                 .layer(Extension(self.cache.clone()))
+                .layer(Extension(client.clone()))
                 .layer(Extension(server_config.clone()));
             let bind_addr = SocketAddr::from((
                 server_config
