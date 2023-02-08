@@ -39,9 +39,9 @@ impl Default for MokaConfig {
     fn default() -> Self {
         Self {
             max_capacity: 200_000_000,   //  Number of entries.
-            stream_buf: 1_000_000_000,   // 1GB.
-            time_to_idle: 5 * 60 * 1000, // 5 mins.
-            time_to_live: 5 * 60 * 1000, // 5 mins.
+            stream_buf: 1_000_000_000,   //  1GB.
+            time_to_idle: 5 * 60 * 1000, //  5 mins.
+            time_to_live: 5 * 60 * 1000, //  5 mins.
         }
     }
 }

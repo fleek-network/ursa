@@ -18,7 +18,7 @@ use ursa_proxy::{
     cache::moka_cache::MokaCache,
     cli::{Cli, Commands},
     config::load_config,
-    core::Proxy,
+    core::start,
 };
 
 #[tokio::main]
@@ -32,10 +32,7 @@ async fn main() -> Result<()> {
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
     let (proxy_error_tx, proxy_error_rx) = oneshot::channel();
     let proxy = task::spawn(async move {
-        if let Err(e) = Proxy::new(config, cache.clone())
-            .start(signal_shutdown_rx)
-            .await
-        {
+        if let Err(e) = start(config, cache, signal_shutdown_rx).await {
             proxy_error_tx.send(e).expect("Sending to succeed");
         }
     });
