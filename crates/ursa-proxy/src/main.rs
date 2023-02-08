@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
         }
         e = proxy_error_rx => {
             error!("Proxy error {e:?}");
-            graceful_shutdown(proxy, signal_shutdown_tx).await;
+            proxy.await.expect("Proxy to shut down successfully");
         }
     }
     info!("Proxy shut down successfully");
