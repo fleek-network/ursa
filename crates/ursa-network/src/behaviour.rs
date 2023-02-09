@@ -14,6 +14,7 @@
 //!   sent over a new substream on a connection.
 
 use anyhow::Result;
+use compile_time_run::run_command_str;
 use db::Store;
 use fvm_ipld_blockstore::Blockstore;
 use graphsync::GraphSync;
@@ -59,9 +60,10 @@ use crate::{
 
 pub const IPFS_PROTOCOL: &str = "ipfs/0.1.0";
 pub const KAD_PROTOCOL: &[u8] = b"/ursa/kad/0.0.1";
+pub const COMMIT_HASH: &str = run_command_str!("git", "rev-parse", "--short", "HEAD");
 
-fn ursa_agent() -> String {
-    format!("ursa/{}", env!("CARGO_PKG_VERSION"))
+pub fn ursa_agent() -> String {
+    format!("ursa/{COMMIT_HASH}")
 }
 
 /// Composes protocols for the behaviour of the node in the network.

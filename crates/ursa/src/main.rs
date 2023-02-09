@@ -12,7 +12,7 @@ use tokio::task;
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_network::UrsaService;
+use ursa_network::{ursa_agent, UrsaService};
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_telemetry::TelemetryConfig;
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
 
                 let registration = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
-                    agent: format!("ursa/{}", env!("CARGO_PKG_VERSION")),
+                    agent: ursa_agent(),
                     addr: None, // if we have a dns address, we can set it here
                     p2p_port: network_config
                         .swarm_addrs
