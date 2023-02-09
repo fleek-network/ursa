@@ -8,7 +8,7 @@ use crate::{
     api::NodeNetworkInterface,
     config::ServerConfig,
     http,
-    rpc::{routes, RpcServer},
+    rpc::{self, RpcServer},
     service::MultiplexService,
 };
 use tracing::info;
@@ -56,7 +56,7 @@ where
 
     pub fn rpc_app(&self) -> Router {
         Router::new()
-            .merge(routes::network::init())
+            .merge(rpc::routes::network::init())
             .layer(Extension(self.rpc_server.clone()))
     }
 

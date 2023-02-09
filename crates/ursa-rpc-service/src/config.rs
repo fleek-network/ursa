@@ -18,7 +18,7 @@ pub struct ServerConfig {
 
 impl ServerConfig {
     fn default_domain() -> Multiaddr {
-        "/ip4/127.0.0.1/tcp/4069".parse().unwrap()
+        "/ip4/127.0.0.1".parse().unwrap()
     }
     fn default_port() -> u16 {
         4069

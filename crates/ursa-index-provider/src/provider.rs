@@ -165,7 +165,7 @@ where
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {
                 Cid: head_cid,
-                Addrs: vec![multiaddr],
+                Addresses: vec![multiaddr],
                 ExtraData: *b"",
             };
 
@@ -181,9 +181,10 @@ where
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
     pub Cid: Cid,
-    pub Addrs: Vec<Multiaddr>,
+    pub Addresses: Vec<Multiaddr>,
     pub ExtraData: [u8; 0],
 }
+
 impl Cbor for Message {
     fn marshal_cbor(&self) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
         const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];
@@ -192,7 +193,7 @@ impl Cbor for Message {
         let _encoded_cid = self.Cid.encode(DagCborCodec, &mut bytes);
 
         let encoded_addrs =
-            fvm_ipld_encoding::to_vec(&self.Addrs).expect("addresses serialization cannot fail");
+            fvm_ipld_encoding::to_vec(&self.Addresses).expect("addresses serialization cannot fail");
         bytes
             .write_all(&encoded_addrs)
             .expect("writing encoded address to bytes should not fail");

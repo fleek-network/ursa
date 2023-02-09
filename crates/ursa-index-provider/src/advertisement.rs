@@ -48,6 +48,7 @@ pub struct Advertisement {
     /// IsRm specifies whether this advertisement represents the content are no longer retrievable fom the provider.
     pub IsRm: bool,
 }
+
 impl Advertisement {
     pub fn new(
         context_id: Vec<u8>,
