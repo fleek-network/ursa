@@ -5,7 +5,7 @@ use axum::{
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Extension, Router, TypedHeader,
 };
 use bytes::BufMut;
@@ -34,6 +34,14 @@ pub async fn init_server_app<C: Cache>(
         .layer(Extension(cache.clone()))
         .layer(Extension(client.clone()))
         .layer(Extension(Arc::new(server_config.clone())))
+}
+
+pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
+    Router::new()
+        .route("/purge", post(purge_cache_handler::<C>))
+        .route("/reload-tls-config", post(reload_tls_config))
+        .layer(Extension(cache))
+        .layer(Extension(servers))
 }
 
 #[derive(Deserialize, Debug)]

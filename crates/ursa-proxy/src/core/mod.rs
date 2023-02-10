@@ -3,10 +3,9 @@ mod handler;
 use crate::{
     cache::Cache,
     config::{ProxyConfig, ServerConfig},
-    core::handler::{init_server_app, purge_cache_handler, reload_tls_config},
+    core::handler::{init_admin_app, init_server_app},
 };
 use anyhow::{Context, Result};
-use axum::{routing::post, Extension, Router};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
 use std::{collections::HashMap, io::Result as IOResult, net::SocketAddr, time::Duration};
@@ -57,17 +56,12 @@ pub async fn start<C: Cache>(
     }
 
     let admin_handle = handle.clone();
-    let cache_clone = cache.clone();
     let admin_addr = config.admin.unwrap_or_default().addr.parse()?;
     workers.spawn(async move {
-        let app = Router::new()
-            .route("/purge", post(purge_cache_handler::<C>))
-            .route("/reload-tls-config", post(reload_tls_config))
-            .layer(Extension(cache_clone))
-            .layer(Extension(servers));
+        let admin_app = init_admin_app(cache.clone(), servers);
         axum_server::bind(admin_addr)
             .handle(admin_handle)
-            .serve(app.into_make_service())
+            .serve(admin_app.into_make_service())
             .await
     });
 
