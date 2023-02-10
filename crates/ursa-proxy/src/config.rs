@@ -19,7 +19,7 @@ pub struct ProxyConfig {
     pub admin: Option<AdminConfig>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,

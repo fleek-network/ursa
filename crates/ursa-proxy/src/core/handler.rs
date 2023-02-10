@@ -1,18 +1,21 @@
 use crate::{cache::Cache, config::ServerConfig};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
-    extract::Path,
+    extract::{self, Path},
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
     response::{IntoResponse, Response},
-    Extension, TypedHeader,
+    routing::get,
+    Extension, Router, TypedHeader,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use bytes::BufMut;
 use hyper::{
     client::{self, HttpConnector},
     Body,
 };
-use std::sync::Arc;
+use serde::Deserialize;
+use std::{collections::HashMap, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
@@ -21,6 +24,50 @@ use tokio_util::io::ReaderStream;
 use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
+
+pub struct ServerApp {
+    pub app: Router,
+    pub tls_config: Option<RustlsConfig>,
+}
+
+pub async fn init_server_app<C: Cache>(
+    server_config: ServerConfig,
+    cache: C,
+    client: Client,
+) -> ServerApp {
+    let config = Arc::new(server_config);
+    let app = Router::new()
+        .route("/*path", get(proxy_pass::<C>))
+        .layer(Extension(cache.clone()))
+        .layer(Extension(client.clone()))
+        .layer(Extension(config.clone()));
+    let tls_config = RustlsConfig::from_pem_file(&config.cert_path, &config.key_path)
+        .await
+        .unwrap();
+    ServerApp {
+        app,
+        tls_config: Some(tls_config),
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ReloadTlsPayload {
+    _name: String,
+}
+
+pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {
+    cache.purge();
+    StatusCode::OK
+}
+
+pub async fn reload_tls(
+    Extension(tls_configs): Extension<HashMap<String, RustlsConfig>>,
+    payload: extract::Json<ReloadTlsPayload>,
+) -> StatusCode {
+    println!("Here it is {payload:?}");
+    println!("Here it is {tls_configs:?}");
+    StatusCode::OK
+}
 
 pub async fn proxy_pass<C: Cache>(
     Path(path): Path<String>,
