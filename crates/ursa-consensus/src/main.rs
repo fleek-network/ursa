@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     let network_keypair = NarwhalNetworkKeyPair::generate(&mut rng);
 
     let primary_address: Multiaddr = "/ip4/127.0.0.1/udp/0".parse().unwrap();
-    let network_address: Multiaddr = "/ip4/127.0.0.1/tcp/0/http".parse().unwrap();
+    let network_address: Multiaddr = "/ip4/127.0.0.1/udp/0/http".parse().unwrap();
 
     let config = NodeConfig {
         keypair: ValidatorKeyPair::new(keypair),
