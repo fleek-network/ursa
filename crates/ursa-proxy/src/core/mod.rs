@@ -3,7 +3,7 @@ mod handler;
 use crate::{
     cache::Cache,
     config::{ProxyConfig, ServerConfig},
-    core::handler::{init_server_app, purge_cache_handler, reload_tls},
+    core::handler::{init_server_app, purge_cache_handler, reload_tls_config},
 };
 use anyhow::{Context, Result};
 use axum::{routing::post, Extension, Router};
@@ -62,7 +62,7 @@ pub async fn start<C: Cache>(
     workers.spawn(async move {
         let app = Router::new()
             .route("/purge", post(purge_cache_handler::<C>))
-            .route("/reload-tls", post(reload_tls))
+            .route("/reload-tls-config", post(reload_tls_config))
             .layer(Extension(cache_clone))
             .layer(Extension(servers));
         axum_server::bind(admin_addr)

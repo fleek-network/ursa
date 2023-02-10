@@ -37,13 +37,13 @@ pub async fn init_server_app<C: Cache>(
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ReloadTlsPayload {
+pub struct ReloadTlsConfigPayload {
     name: String,
 }
 
-pub async fn reload_tls(
+pub async fn reload_tls_config(
     Extension(servers): Extension<HashMap<String, Server>>,
-    payload: extract::Json<ReloadTlsPayload>,
+    payload: extract::Json<ReloadTlsConfigPayload>,
 ) -> Response {
     match servers.get(payload.name.as_str()) {
         None => (
@@ -55,20 +55,22 @@ pub async fn reload_tls(
             if server.config.reload_cert_path.is_none() || server.config.reload_key_path.is_none() {
                 return StatusCode::OK.into_response();
             }
+            let cert_path = server.config.reload_cert_path.as_ref().unwrap();
+            let key_path = server.config.reload_key_path.as_ref().unwrap();
             if server
                 .tls_config
                 .as_ref()
                 .unwrap()
-                .reload_from_pem_file(
-                    server.config.reload_cert_path.as_ref().unwrap(),
-                    server.config.reload_key_path.as_ref().unwrap(),
-                )
+                .reload_from_pem_file(cert_path, key_path)
                 .await
                 .is_err()
             {
                 return (
                     StatusCode::BAD_REQUEST,
-                    "Failed to reload from path".to_string(),
+                    format!(
+                        "Failed to reload from cert_path: {} and key_path: {}",
+                        cert_path, key_path
+                    ),
                 )
                     .into_response();
             }
