@@ -103,7 +103,7 @@ impl Default for GatewayConfig {
                 stream_buf: 2_000_000, // 2MB
             },
             indexer: IndexerConfig {
-                cid_url: "https://cid.contact/cid".into(),
+                cid_url: "https://dev.cid.contact/cid".into(),
             },
         }
     }
