@@ -31,9 +31,9 @@ pub async fn init_server_app<C: Cache>(
 ) -> Router {
     Router::new()
         .route("/*path", get(proxy_pass::<C>))
-        .layer(Extension(cache.clone()))
-        .layer(Extension(client.clone()))
-        .layer(Extension(Arc::new(server_config.clone())))
+        .layer(Extension(cache))
+        .layer(Extension(client))
+        .layer(Extension(Arc::new(server_config)))
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
