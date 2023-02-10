@@ -207,7 +207,7 @@ impl Service {
         let narwhal = Narwhal::new(narwhal_config, validators);
         let (tx, _rx) = channel(1);
         let shared_worker_cache = SharedWorkerCache::from(worker_cache);
-        let execution_state = Arc::new(Execution::new(unimplemented!(), Epoch::default(), tx));
+        let execution_state = Arc::new(Execution::new(Epoch::default(), tx));
 
         let tx_validator = Validator::new();
 
