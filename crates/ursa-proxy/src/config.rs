@@ -25,6 +25,7 @@ pub struct ServerConfig {
     pub listen_addr: String,
     pub cert_path: String,
     pub key_path: String,
+    pub server_name: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

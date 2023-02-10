@@ -26,7 +26,7 @@ pub async fn start<C: Cache>(
     for server_config in config.server {
         let server_app =
             init_server_app(server_config.clone(), cache.clone(), client.clone()).await;
-        let server_name = server_config.listen_addr.clone();
+        let server_name = server_config.server_name.clone();
         let bind_addr = server_config
             .listen_addr
             .clone()
