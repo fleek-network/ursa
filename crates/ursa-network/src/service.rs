@@ -421,7 +421,7 @@ where
                     if self.swarm.behaviour().relay_client.is_enabled() {
                         if let Some(addr) = self.bootstraps.choose(&mut rand::thread_rng()) {
                             let circuit_addr = addr.clone().with(Protocol::P2pCircuit);
-                            error!(
+                            warn!(
                                 "Private NAT detected. Nodes should be publically accessable on 4890(udp) and 6009(tcp), as well as standard http(80) and https(443)! Falling back temporarily to public relay address on bootstrap node {}",
                                 circuit_addr
                                     .clone()
