@@ -1,4 +1,4 @@
-use crate::{cache::Cache, config::ServerConfig};
+use crate::{cache::Cache, config::ServerConfig, core::Server};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::{self, Path},
@@ -8,7 +8,6 @@ use axum::{
     routing::get,
     Extension, Router, TypedHeader,
 };
-use axum_server::tls_rustls::RustlsConfig;
 use bytes::BufMut;
 use hyper::{
     client::{self, HttpConnector},
@@ -25,47 +24,61 @@ use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
 
-pub struct ServerApp {
-    pub app: Router,
-    pub tls_config: Option<RustlsConfig>,
-}
-
 pub async fn init_server_app<C: Cache>(
     server_config: ServerConfig,
     cache: C,
     client: Client,
-) -> ServerApp {
-    let config = Arc::new(server_config);
-    let app = Router::new()
+) -> Router {
+    Router::new()
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache.clone()))
         .layer(Extension(client.clone()))
-        .layer(Extension(config.clone()));
-    let tls_config = RustlsConfig::from_pem_file(&config.cert_path, &config.key_path)
-        .await
-        .unwrap();
-    ServerApp {
-        app,
-        tls_config: Some(tls_config),
-    }
+        .layer(Extension(Arc::new(server_config.clone())))
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ReloadTlsPayload {
-    _name: String,
+    name: String,
+}
+
+pub async fn reload_tls(
+    Extension(servers): Extension<HashMap<String, Server>>,
+    payload: extract::Json<ReloadTlsPayload>,
+) -> Response {
+    match servers.get(payload.name.as_str()) {
+        None => (
+            StatusCode::BAD_REQUEST,
+            format!("Unknown server {}", payload.name),
+        )
+            .into_response(),
+        Some(server) => {
+            if server.config.reload_cert_path.is_none() || server.config.reload_key_path.is_none() {
+                return StatusCode::OK.into_response();
+            }
+            if server
+                .tls_config
+                .as_ref()
+                .unwrap()
+                .reload_from_pem_file(
+                    server.config.reload_cert_path.as_ref().unwrap(),
+                    server.config.reload_key_path.as_ref().unwrap(),
+                )
+                .await
+                .is_err()
+            {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "Failed to reload from path".to_string(),
+                )
+                    .into_response();
+            }
+            StatusCode::OK.into_response()
+        }
+    }
 }
 
 pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {
     cache.purge();
-    StatusCode::OK
-}
-
-pub async fn reload_tls(
-    Extension(tls_configs): Extension<HashMap<String, RustlsConfig>>,
-    payload: extract::Json<ReloadTlsPayload>,
-) -> StatusCode {
-    println!("Here it is {payload:?}");
-    println!("Here it is {tls_configs:?}");
     StatusCode::OK
 }
 

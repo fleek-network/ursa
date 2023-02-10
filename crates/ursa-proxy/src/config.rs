@@ -26,6 +26,8 @@ pub struct ServerConfig {
     pub cert_path: String,
     pub key_path: String,
     pub server_name: String,
+    pub reload_cert_path: Option<String>,
+    pub reload_key_path: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

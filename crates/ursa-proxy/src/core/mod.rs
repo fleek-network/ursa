@@ -2,17 +2,22 @@ mod handler;
 
 use crate::{
     cache::Cache,
-    config::ProxyConfig,
+    config::{ProxyConfig, ServerConfig},
     core::handler::{init_server_app, purge_cache_handler, reload_tls},
 };
 use anyhow::{Context, Result};
 use axum::{routing::post, Extension, Router};
-use axum_server::Handle;
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
-use std::collections::HashMap;
-use std::{io::Result as IOResult, net::SocketAddr, time::Duration};
+use std::{collections::HashMap, io::Result as IOResult, net::SocketAddr, time::Duration};
 use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
+
+#[derive(Clone)]
+pub struct Server {
+    pub tls_config: Option<RustlsConfig>,
+    pub config: ServerConfig,
+}
 
 pub async fn start<C: Cache>(
     config: ProxyConfig,
@@ -22,23 +27,32 @@ pub async fn start<C: Cache>(
     let mut workers = JoinSet::new();
     let handle = Handle::new();
     let client = Client::new();
-    let mut tls_configs = HashMap::new();
+    let mut servers = HashMap::new();
     for server_config in config.server {
+        let tls_config =
+            RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)
+                .await
+                .unwrap();
+        let server_name = server_config.server_name.clone();
+        servers.insert(
+            server_name,
+            Server {
+                tls_config: Some(tls_config.clone()),
+                config: server_config.clone(),
+            },
+        );
         let server_app =
             init_server_app(server_config.clone(), cache.clone(), client.clone()).await;
-        let server_name = server_config.server_name.clone();
         let bind_addr = server_config
             .listen_addr
             .clone()
             .parse::<SocketAddr>()
             .context("Invalid binding address")?;
         info!("Listening on {bind_addr:?}");
-        let tls_config = server_app.tls_config.unwrap();
-        tls_configs.insert(server_name, tls_config.clone());
         workers.spawn(
-            axum_server::bind_rustls(bind_addr, tls_config.clone())
+            axum_server::bind_rustls(bind_addr, tls_config)
                 .handle(handle.clone())
-                .serve(server_app.app.into_make_service()),
+                .serve(server_app.into_make_service()),
         );
     }
 
@@ -50,7 +64,7 @@ pub async fn start<C: Cache>(
             .route("/purge", post(purge_cache_handler::<C>))
             .route("/reload-tls", post(reload_tls))
             .layer(Extension(cache_clone))
-            .layer(Extension(tls_configs));
+            .layer(Extension(servers));
         axum_server::bind(admin_addr)
             .handle(admin_handle)
             .serve(app.into_make_service())
