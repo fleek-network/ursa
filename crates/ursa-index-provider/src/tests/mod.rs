@@ -50,7 +50,7 @@ pub fn provider_engine_init(
         index_store,
         ProviderConfig::default(),
         service.command_sender(),
-        vec!["/ip4/127.0.0.1".parse().unwrap()],
+        vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()],
     );
 
     let router = provider_engine.router();

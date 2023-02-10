@@ -50,7 +50,7 @@ pub fn init() -> InitResult {
         get_store(),
         ProviderConfig::default(),
         service.command_sender(),
-        vec!["/ip4/127.0.0.1".parse().unwrap()],
+        vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()],
     );
 
     Ok((service, provider_engine, store))

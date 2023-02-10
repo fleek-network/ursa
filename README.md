@@ -64,7 +64,7 @@ identity = "default"
 
 [provider_config]
 # Public IP address of the node
-addresses = ["/ip4/127.0.0.1"]
+addresses = ["/ip4/127.0.0.1/tcp/4069"]
 indexer_url = "https://dev.cid.contact"
 database_path = "~/.ursa/data/index_provider_db"
 

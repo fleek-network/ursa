@@ -18,7 +18,7 @@ pub struct ServerConfig {
 
 impl ServerConfig {
     fn default_addresses() -> Vec<Multiaddr> {
-        vec!["/ip4/127.0.0.1".parse().unwrap()]
+        vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()]
     }
     fn default_port() -> u16 {
         4069
