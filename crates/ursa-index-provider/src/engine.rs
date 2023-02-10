@@ -20,7 +20,7 @@ use axum::{body::Body, extract::Path, response::Response, routing::get, Extensio
 use crate::provider::ProviderError;
 use fvm_ipld_blockstore::Blockstore;
 use libipld::Cid;
-use libp2p::{gossipsub::TopicHash, identity::Keypair, multiaddr::Protocol, Multiaddr, PeerId};
+use libp2p::{gossipsub::TopicHash, identity::Keypair, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use ursa_store::UrsaStore;
@@ -91,9 +91,8 @@ pub struct ProviderEngine<S> {
     command_receiver: Receiver<ProviderCommand>,
     /// network command sender for communication with libp2p node
     network_command_sender: Sender<NetworkCommand>,
-    /// Server from which advertised content is retrievable.
-    server_address: Multiaddr,
-    domain: Multiaddr,
+    /// List of addresses to submit to indexer.
+    addresses: Vec<Multiaddr>,
 }
 
 impl<S> ProviderEngine<S>
@@ -106,8 +105,7 @@ where
         provider_store: Arc<UrsaStore<S>>,
         config: ProviderConfig,
         network_command_sender: Sender<NetworkCommand>,
-        server_address: Multiaddr,
-        domain: Multiaddr,
+        addresses: Vec<Multiaddr>,
     ) -> Self {
         let (command_sender, command_receiver) = unbounded_channel();
         ProviderEngine {
@@ -117,8 +115,7 @@ where
             network_command_sender,
             provider: Provider::new(keypair, provider_store),
             store,
-            server_address,
-            domain,
+            addresses,
         }
     }
     pub fn command_sender(&self) -> Sender<ProviderCommand> {
@@ -166,7 +163,7 @@ where
                         } else {
                             match self
                                 .provider
-                                .create_announce_message(peer_id, self.domain.clone())
+                                .create_announce_message(peer_id, &mut self.addresses)
                             {
                                 Ok(announce_message) => {
                                     if let Err(e) = self
@@ -192,40 +189,19 @@ where
     }
 
     pub async fn publish_local(&mut self, root_cid: Cid, file_size: u64) -> Result<()> {
-        let (listener_addresses_sender, listener_addresses_receiver) = oneshot::channel();
-        self.network_command_sender
-            .send(NetworkCommand::GetListenerAddresses {
-                sender: listener_addresses_sender,
-            })?;
-
         let context_id = root_cid.to_bytes();
         info!(
             "Creating advertisement for cids under root cid: {:?}.",
             root_cid
         );
         let peer_id = PeerId::from(self.provider.keypair().public());
+        let addresses = self
+            .addresses
+            .iter()
+            .map(|address| address.to_string())
+            .collect();
 
-        let listener_addresses = listener_addresses_receiver.await?;
-        let mut addresses = vec![self.server_address.to_string()];
-        for la in listener_addresses {
-            let mut address = Multiaddr::empty();
-            for protocol in la.into_iter() {
-                match protocol {
-                    Protocol::Ip6(ip) => address.push(Protocol::Ip6(ip)),
-                    Protocol::Ip4(ip) => address.push(Protocol::Ip4(ip)),
-                    Protocol::Tcp(port) => address.push(Protocol::Tcp(port)),
-                    _ => {}
-                }
-            }
-            addresses.push(address.to_string())
-        }
-        let advertisement = Advertisement::new(
-            context_id.clone(),
-            peer_id,
-            addresses.clone(),
-            false,
-            file_size,
-        );
+        let advertisement = Advertisement::new(context_id, peer_id, addresses, false, file_size);
         let provider_id = self.provider.create(advertisement)?;
 
         let dag = self.store.dag_traversal(&(root_cid))?;

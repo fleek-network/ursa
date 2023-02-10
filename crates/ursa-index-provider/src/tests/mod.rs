@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{config::ProviderConfig, engine::ProviderEngine};
 use db::MemoryDB;
-use libp2p::{identity::Keypair, Multiaddr, PeerId};
+use libp2p::{identity::Keypair, PeerId};
 use simple_logger::SimpleLogger;
 use tokio::task;
 use tracing::{info, log::LevelFilter};
@@ -44,17 +44,13 @@ pub fn provider_engine_init(
     let index_store = get_store();
 
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
-
-    let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
-
     let provider_engine = ProviderEngine::new(
         keypair,
         store,
         index_store,
         ProviderConfig::default(),
         service.command_sender(),
-        server_address,
-        "/ip4/127.0.0.1/tcp/4069".parse().unwrap(),
+        vec!["/ip4/127.0.0.1".parse().unwrap()],
     );
 
     let router = provider_engine.router();
