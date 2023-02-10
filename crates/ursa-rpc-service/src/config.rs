@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct ServerConfig {
     /// Public IP address of the node, eg. `/ip4/127.0.0.1`
     #[serde(default = "ServerConfig::default_addresses")]
-    pub addresss: Vec<Multiaddr>,
+    pub addresses: Vec<Multiaddr>,
     /// Port to listen on
     #[serde(default = "ServerConfig::default_port")]
     pub port: u16,
@@ -31,7 +31,7 @@ impl ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            addresss: Self::default_addresses(),
+            addresses: Self::default_addresses(),
             port: Self::default_port(),
             addr: Self::default_addr(),
             origin: Default::default(),

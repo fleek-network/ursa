@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
                     index_store,
                     provider_config,
                     service.command_sender(),
-                    server_config.addresss.clone(),
+                    server_config.addresses.clone(),
                 );
                 let index_provider_router = index_provider_engine.router();
 
