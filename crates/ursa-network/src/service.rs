@@ -222,6 +222,8 @@ where
     peer_cached_content: HashMap<PeerId, CacheSummary>,
     /// Interval for random Kademlia walks.
     kad_walk_interval: u64,
+    /// Public address reported from autonat
+    pub public_addr: Option<Multiaddr>,
 }
 
 impl<S> UrsaService<S>
@@ -315,6 +317,7 @@ where
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
             kad_walk_interval: config.kad_walk_interval,
+            public_addr: None,
         })
     }
 
@@ -418,8 +421,8 @@ where
                     if self.swarm.behaviour().relay_client.is_enabled() {
                         if let Some(addr) = self.bootstraps.choose(&mut rand::thread_rng()) {
                             let circuit_addr = addr.clone().with(Protocol::P2pCircuit);
-                            warn!(
-                                "Private NAT detected. Establishing public relay address on peer {}",
+                            error!(
+                                "Private NAT detected. Nodes should be publically accessable on 4890(udp) and 6009(tcp), as well as standard http(80) and https(443)! Falling back temporarily to public relay address on bootstrap node {}",
                                 circuit_addr
                                     .clone()
                                     .with(
@@ -436,6 +439,7 @@ where
                 }
                 (_, NatStatus::Public(addr)) => {
                     info!("Public Nat verified! Public listening address: {}", addr);
+                    self.public_addr = Some(addr);
                 }
                 (old, new) => {
                     warn!("NAT status changed from {:?} to {:?}", old, new);
@@ -809,7 +813,7 @@ where
             }
             NetworkCommand::GetListenerAddresses { sender } => {
                 let mut addresses: Vec<&Multiaddr> = self.swarm.listeners().collect();
-                if let Some(value) = self.swarm.behaviour().public_address() {
+                if let Some(value) = &self.public_addr {
                     addresses.push(value);
                 }
                 sender
