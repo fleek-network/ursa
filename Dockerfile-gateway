@@ -33,7 +33,5 @@ RUN set -eux; \
 WORKDIR ursa
 
 # Get compiled binaries from builder's cargo install directory
-
-# For local dev
 COPY --from=builder /ursa/ursa-gateway ./
-CMD ["./ursa-gateway", "--config", "local.toml", "daemon"]
+CMD ["./ursa-gateway", "daemon"]
