@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
                     network_config,
                     provider_config,
                     server_config,
+                    consensus_config: _,
                 } = config;
 
                 // ursa service setup
