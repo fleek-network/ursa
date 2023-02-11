@@ -28,6 +28,13 @@ pub struct ServerConfig {
     pub server_name: String,
     pub reload_cert_path: Option<String>,
     pub reload_key_path: Option<String>,
+    pub location: Vec<Location>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Location {
+    pub path: String,
+    pub root: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

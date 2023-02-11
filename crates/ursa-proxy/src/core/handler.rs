@@ -1,4 +1,5 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
+use axum::extract::OriginalUri;
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::{self, Path},
@@ -14,6 +15,8 @@ use hyper::{
     Body,
 };
 use serde::Deserialize;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
@@ -29,11 +32,22 @@ pub async fn init_server_app<C: Cache>(
     cache: C,
     client: Client,
 ) -> Router {
-    Router::new()
+    let mut user_apps = Router::new();
+    for location in server_config.clone().location {
+        let route_path = format!(
+            "/{}/*path",
+            location.path.trim_start_matches("/").trim_end_matches("/")
+        );
+        let user_app = Router::new()
+            .route(route_path.as_str(), get(serve_file_handler))
+            .layer(Extension(location.root));
+        user_apps = user_apps.merge(user_app);
+    }
+    user_apps
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(Arc::new(server_config)))
+        .layer(Extension(Arc::new(server_config.clone())))
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
@@ -152,4 +166,21 @@ pub async fn proxy_pass<C: Cache>(
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
     StreamBody::new(ReaderStream::new(reader)).into_response()
+}
+
+async fn serve_file_handler(
+    OriginalUri(uri): OriginalUri,
+    Extension(root): Extension<String>,
+) -> Response {
+    let mut file_path = PathBuf::from_str(root.as_str()).unwrap();
+    file_path.push(uri.path().trim_start_matches("/"));
+    let path_str = file_path.as_os_str().to_str().unwrap();
+    println!("{path_str}");
+    match tokio::fs::read(path_str).await {
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Ok(file) => Response::builder()
+            .status(StatusCode::OK)
+            .body(axum::body::boxed(axum::body::Full::from(file)))
+            .unwrap(),
+    }
 }
