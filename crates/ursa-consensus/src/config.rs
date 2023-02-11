@@ -1,73 +1,64 @@
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{path::PathBuf, sync::Arc};
-
-use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, ed25519::Ed25519KeyPair};
 use multiaddr::Multiaddr;
-use mysten_metrics::RegistryService;
-use narwhal_config::{Parameters, WorkerId};
-use narwhal_crypto::NetworkKeyPair as NarwhalNetworkKeyPair;
 use serde::{Deserialize, Serialize};
-use tokio::sync::OnceCell;
+use std::path::PathBuf;
 
-pub type KeyPair = Ed25519KeyPair;
-pub type AuthorityKeyPair = BLS12381KeyPair;
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ValidatorKeyPair {
-    #[serde(skip)]
-    keypair: OnceCell<Arc<AuthorityKeyPair>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct NetworkKeyPair {
-    #[serde(skip)]
-    keypair: OnceCell<Arc<KeyPair>>,
-}
-
-impl ValidatorKeyPair {
-    pub fn new(keypair: AuthorityKeyPair) -> Self {
-        let cell = OnceCell::new();
-        cell.set(Arc::new(keypair))
-            .expect("Failed to set authority keypair");
-        Self { keypair: cell }
-    }
-
-    pub fn authority_keypair(&self) -> &AuthorityKeyPair {
-        self.keypair.get().as_ref().unwrap()
-    }
-}
-
-impl NetworkKeyPair {
-    pub fn new(keypair: KeyPair) -> Self {
-        let cell = OnceCell::new();
-        cell.set(Arc::new(keypair))
-            .expect("Failed to set authority keypair");
-        Self { keypair: cell }
-    }
-
-    pub fn keypair(&self) -> &KeyPair {
-        self.keypair.get().as_ref().unwrap()
-    }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+// When deserializing the config file, use the default from the Default instance
+// to fill any missing field.
+#[serde(default)]
+pub struct ConsensusConfig {
+    /// The address in which the primary will listen for incoming requests on. This MUST
+    /// be a UDP address.
+    address: Multiaddr,
+    /// Path to the BLS12381 private key for the primary.
+    keypair: PathBuf,
+    /// Path to the Ed25519 networking private key for the primary.
+    // TODO(qti3e) We should probably use the same Ed25519 key that ursa/identity.rs provides.
+    network_keypair: PathBuf,
+    /// Path to the database used by the narwhal implementation.
+    store_path: PathBuf,
+    /// Configuration of the consensus worker.
+    // Ideally we want to keep the possibility of 'allowing' future extending of the
+    // implementation, so that we may support more than one worker, for this reason
+    // we want the worker section of the config to be an array.
+    // At the same time, currently as part of the implementation we want to enforce
+    // the presence of one and only one worker.
+    // This is the reason we are using a fixed size array of size one for now. So the
+    // config will stay backward compatible, and at the same time we will have a verification
+    // on the array size to ensure the length of one item.
+    worker: [WorkerConfig; 1],
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NodeConfig {
-    pub keypair: ValidatorKeyPair,
-    pub worker_keypair: NetworkKeyPair,
-    pub account_keypair: NetworkKeyPair,
-    pub network_keypair: NetworkKeyPair,
-    pub network_address: Multiaddr,
-    pub db_path: PathBuf,
+pub struct WorkerConfig {
+    /// UDP address which the worker is using to connect with the other workers and the primary.
+    pub address: Multiaddr,
+    /// UDP address which the worker is listening on to receive transactions from user space.
+    pub transaction: Multiaddr,
+    /// The path to the network key pair (Ed25519) for the worker.
+    pub keypair: PathBuf,
 }
 
-pub struct NarwhalConfig {
-    pub keypair: ValidatorKeyPair,
-    pub network_keypair: NetworkKeyPair,
-    pub registry_service: RegistryService,
-    pub ids_and_keypairs: Vec<(WorkerId, NarwhalNetworkKeyPair)>,
-    pub internal_consensus: bool,
-    pub parameters: Parameters,
-    pub storage_base_path: PathBuf,
+impl Default for ConsensusConfig {
+    fn default() -> Self {
+        // TODO(qti3e) We should decide on the default ports. I used the following format:
+        // reserve 6xxx for consensus layer in the entire ursa project.
+        // 6000 for primary
+        // 6x01 for worker `x` address
+        // 6x02 for worker `x` transaction address
+        Self {
+            address: "/ip4/0.0.0.0/udp/6000".parse().unwrap(),
+            keypair: "~/.ursa/keystore/consensus/primary.key".into(),
+            network_keypair: "~/.ursa/keystore/consensus/network.key".into(),
+            store_path: "~/.ursa/data/narwhal_db".into(),
+            worker: [WorkerConfig {
+                address: "/ip4/0.0.0.0/udp/6101".parse().unwrap(),
+                transaction: "/ip4/0.0.0.0/udp/6102".parse().unwrap(),
+                keypair: "~/.ursa/keystore/consensus/worker-01.key".into(),
+            }],
+        }
+    }
 }
