@@ -33,11 +33,15 @@ pub struct Resolver {
 }
 
 impl Resolver {
-    pub fn new(indexer_cid_url: String, client: Client, max_capacity: u64) -> Self {
+    pub fn new(
+        indexer_cid_url: String,
+        client: Client,
+        cache: Cache<String, Vec<MultihashResult>>,
+    ) -> Self {
         Self {
             indexer_cid_url,
             client,
-            cache: Cache::new(max_capacity),
+            cache,
         }
     }
 
