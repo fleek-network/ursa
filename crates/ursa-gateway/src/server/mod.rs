@@ -83,6 +83,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
     let resolver = Arc::new(Resolver::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
+        100_000,
     ));
 
     let app = NormalizePath::trim_trailing_slash(
