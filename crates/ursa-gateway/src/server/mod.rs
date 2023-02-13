@@ -14,7 +14,7 @@ use axum::{
     headers::HeaderName,
     http::{HeaderValue, Method, Request, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, head},
     Json, Router, ServiceExt,
 };
 use axum_prometheus::PrometheusMetricLayerBuilder;
@@ -44,7 +44,10 @@ use tracing::{error, info, Level};
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
     resolver::Resolver,
-    server::model::HttpResponse,
+    server::{
+        model::HttpResponse,
+        route::api::v1::get::{check_car_handler, get_car_handler},
+    },
 };
 
 pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
@@ -98,7 +101,9 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
-            .route("/:cid", get(get_car_handler))
+            .route("/:cid", get(get_car_handler)) // ursa gateway
+            .route("/ipfs/:cid", get(get_car_handler)) // ipfs gateway specs
+            .route("/ipfs/:cid", head(check_car_handler)) // ipfs gateway specs
             .layer(Extension(resolver))
             .layer(CatchPanicLayer::custom(recover))
             .layer(PropagateRequestIdLayer::new(HeaderName::from_static(
