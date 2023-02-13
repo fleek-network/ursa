@@ -74,7 +74,7 @@ pub struct GenesisAuthority {
 impl Default for ConsensusConfig {
     fn default() -> Self {
         // TODO(qti3e) We should decide on the default ports. I used the following format:
-        // reserve 6xxx for consensus layer in the entire ursa project.
+        // reserve 8xxx for consensus layer in the entire ursa project.
         // 8000 for primary
         // 8x01 for worker `x` address
         // 8x02 for worker `x` transaction address

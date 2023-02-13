@@ -2,7 +2,7 @@
 name = "ursa-consensus"
 version = "0.1.0"
 edition = "2021"
-authors = ["b0xtch <mahmoud@fleek.co>"]
+authors = ["b0xtch <mahmoud@fleek.co>", "Parsa Ghadimi <parsa@fleek.co>"]
 
 [dependencies]
 anyhow       = "1.0"
@@ -36,5 +36,3 @@ tokio-stream = { version = "0.1.11", features = ["net"] }
 tracing = "0.1.37"
 
 workspace-hack = { git = "https://github.com/MystenLabs/sui.git", branch = "main", package = "workspace-hack" }
-
-humantime-serde = "1.1.1"
