@@ -34,15 +34,7 @@ impl UrsaConfig {
             let mut raw = String::new();
             file.read_to_string(&mut raw)?;
 
-            let mut config: UrsaConfig =
-                toml::from_str(&raw).context("Failed to parse config file")?;
-
-            // TEMP: remove this after some time
-            if let Some(domain) = config.provider_config.domain.clone() {
-                warn!("Config `provider_config.domain` depreciated, moving value to `server_config.domain`");
-                config.server_config.domain = domain.parse().unwrap();
-                config.provider_config.domain = None;
-            }
+            let config: UrsaConfig = toml::from_str(&raw).context("Failed to parse config file")?;
 
             // check if we modified the config at all
             let config_str = toml::to_string(&config)?;

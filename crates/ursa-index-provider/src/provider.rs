@@ -103,7 +103,11 @@ pub trait ProviderInterface: Sync + Send + 'static {
     fn create(&mut self, ad: Advertisement) -> Result<usize>;
     fn add_chunk(&mut self, bytes: Vec<u8>, id: usize) -> Result<()>;
     fn publish(&mut self, id: usize) -> Result<Advertisement>;
-    fn create_announce_message(&mut self, peer_id: PeerId, domain: Multiaddr) -> Result<Vec<u8>>;
+    fn create_announce_message(
+        &mut self,
+        peer_id: PeerId,
+        addresses: &mut Vec<Multiaddr>,
+    ) -> Result<Vec<u8>>;
 }
 
 impl<S> ProviderInterface for Provider<S>
@@ -157,15 +161,24 @@ where
         Err(anyhow!("ad not found"))
     }
 
-    fn create_announce_message(&mut self, peer_id: PeerId, domain: Multiaddr) -> Result<Vec<u8>> {
-        let mut multiaddr = domain;
-        multiaddr.push(Protocol::Http);
-        multiaddr.push(Protocol::P2p(peer_id.into()));
+    fn create_announce_message(
+        &mut self,
+        peer_id: PeerId,
+        addresses: &mut Vec<Multiaddr>,
+    ) -> Result<Vec<u8>> {
+        let multiaddrs = addresses
+            .iter_mut()
+            .map(|address| {
+                address.push(Protocol::Http);
+                address.push(Protocol::P2p(peer_id.into()));
+                address.clone()
+            })
+            .collect::<Vec<Multiaddr>>();
 
         if let Some(head_cid) = *self.head.read().unwrap() {
             let message = Message {
                 Cid: head_cid,
-                Addrs: vec![multiaddr],
+                Addrs: multiaddrs,
                 ExtraData: *b"",
             };
 
@@ -184,6 +197,7 @@ pub struct Message {
     pub Addrs: Vec<Multiaddr>,
     pub ExtraData: [u8; 0],
 }
+
 impl Cbor for Message {
     fn marshal_cbor(&self) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
         const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];

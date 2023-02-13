@@ -5,7 +5,6 @@ use anyhow::Result;
 use axum::{headers::HeaderMap, routing::get, Router};
 use db::MemoryDB;
 use libp2p::identity::Keypair;
-use libp2p::Multiaddr;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
 use tracing::{log::LevelFilter, warn};
@@ -44,7 +43,6 @@ pub fn init() -> InitResult {
     };
     let keypair = Keypair::generate_ed25519();
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
-    let server_address = Multiaddr::try_from("/ip4/0.0.0.0/tcp/0").unwrap();
 
     let provider_engine = ProviderEngine::new(
         keypair,
@@ -52,8 +50,7 @@ pub fn init() -> InitResult {
         get_store(),
         ProviderConfig::default(),
         service.command_sender(),
-        server_address,
-        "/ip4/127.0.0.1/tcp/4069".parse().unwrap(),
+        vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()],
     );
 
     Ok((service, provider_engine, store))
