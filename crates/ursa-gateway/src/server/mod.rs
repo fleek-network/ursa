@@ -21,6 +21,7 @@ use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use hyper_tls::HttpsConnector;
+use moka::sync::Cache;
 use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
@@ -57,6 +58,9 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
                 key_path,
                 concurrency_limit,
                 request_timeout,
+                cache_max_capacity,
+                cache_time_to_idle,
+                cache_time_to_live,
                 ..
             },
         indexer: IndexerConfig { cid_url },
@@ -80,9 +84,16 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         .with_default_metrics()
         .build_pair();
 
+    let cache = Cache::builder()
+        .max_capacity(*cache_max_capacity)
+        .time_to_idle(Duration::from_millis(*cache_time_to_idle))
+        .time_to_live(Duration::from_millis(*cache_time_to_live))
+        .build();
+
     let resolver = Arc::new(Resolver::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
+        cache,
     ));
 
     let app = NormalizePath::trim_trailing_slash(

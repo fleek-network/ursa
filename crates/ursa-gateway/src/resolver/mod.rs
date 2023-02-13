@@ -13,11 +13,12 @@ use hyper::{
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
 use model::IndexerResponse;
+use moka::sync::Cache;
 use serde_json::from_slice;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    resolver::model::{Metadata, ProviderResult},
+    resolver::model::{Metadata, MultihashResult, ProviderResult},
     util::error::Error,
 };
 
@@ -28,13 +29,19 @@ type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
+    cache: Cache<String, Vec<MultihashResult>>,
 }
 
 impl Resolver {
-    pub fn new(indexer_cid_url: String, client: Client) -> Self {
+    pub fn new(
+        indexer_cid_url: String,
+        client: Client,
+        cache: Cache<String, Vec<MultihashResult>>,
+    ) -> Self {
         Self {
             indexer_cid_url,
             client,
+            cache,
         }
     }
 
@@ -46,46 +53,55 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let body = match self
-            .client
-            .get(uri)
-            .await
-            .map_err(|e| {
-                error!("Error requested indexer: {endpoint} {e:?}");
-                anyhow!("Error requested indexer: {endpoint}")
-            })?
-            .into_parts()
-        {
-            (
-                Parts {
-                    status: StatusCode::OK,
-                    ..
-                },
-                body,
-            ) => body,
-            (parts, body) => {
-                error!("Error requested indexer {endpoint} with parts {parts:?} and body {body:?}");
-                return Err(Error::Upstream(
-                    parts.status,
-                    format!("Error requested indexer: {endpoint}"),
-                ));
+        let multihash_results = match self.cache.get(cid) {
+            None => {
+                let body = match self
+                    .client
+                    .get(uri)
+                    .await
+                    .map_err(|e| {
+                        error!("Error requested indexer: {endpoint} {e:?}");
+                        anyhow!("Error requested indexer: {endpoint}")
+                    })?
+                    .into_parts()
+                {
+                    (
+                        Parts {
+                            status: StatusCode::OK,
+                            ..
+                        },
+                        body,
+                    ) => body,
+                    (parts, body) => {
+                        error!("Error requested indexer {endpoint} with parts {parts:?} and body {body:?}");
+                        return Err(Error::Upstream(
+                            parts.status,
+                            format!("Error requested indexer: {endpoint}"),
+                        ));
+                    }
+                };
+
+                let bytes = to_bytes(body).await.map_err(|e| {
+                    error!("Error read data from indexer: {endpoint} {e:?}");
+                    anyhow!("Error read data from indexer {endpoint}")
+                })?;
+
+                let indexer_response: IndexerResponse = from_slice(&bytes).map_err(|e| {
+                    error!("Error parsed indexer response from indexer: {endpoint} {e:?}");
+                    anyhow!("Error parsed indexer response from indexer: {endpoint}")
+                })?;
+
+                debug!("Received indexer response for {cid}: {indexer_response:?}");
+
+                self.cache
+                    .insert(cid.to_string(), indexer_response.multihash_results.clone());
+
+                indexer_response.multihash_results
             }
+            Some(multihash_results) => multihash_results,
         };
 
-        let bytes = to_bytes(body).await.map_err(|e| {
-            error!("Error read data from indexer: {endpoint} {e:?}");
-            anyhow!("Error read data from indexer {endpoint}")
-        })?;
-
-        let indexer_response: IndexerResponse = from_slice(&bytes).map_err(|e| {
-            error!("Error parsed indexer response from indexer: {endpoint} {e:?}");
-            anyhow!("Error parsed indexer response from indexer: {endpoint}")
-        })?;
-
-        debug!("Received indexer response for {cid}: {indexer_response:?}");
-
-        let providers: Vec<(&ProviderResult, Metadata)> = indexer_response
-            .multihash_results
+        let providers: Vec<(&ProviderResult, Metadata)> = multihash_results
             .first()
             .context("Indexer result did not contain a multi-hash result")?
             .provider_results
