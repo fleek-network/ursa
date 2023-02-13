@@ -1,7 +1,7 @@
 log_level = "DEBUG"
 
 [server]
-port = 443
+port = 80
 addr = "0.0.0.0"
 request_timeout = 5000 # 5s
 concurrency_limit = 100000
@@ -10,4 +10,4 @@ key_path = ".ursa/gateway/key.pem"
 stream_buf = 2000000 # 2mb
 
 [indexer]
-cid_url = "http://0.0.0.0:3000/cid"
+cid_url = "https://dev.cid.contact/cid"
