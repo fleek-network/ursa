@@ -1,15 +1,23 @@
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::config::{GenesisAuthority, GenesisCommittee};
+use crate::keys::LoadOrCreate;
 use crate::{config::ConsensusConfig, validator::Validator};
+use anyhow::Context;
 use arc_swap::ArcSwap;
 use fastcrypto::traits::KeyPair as _;
 use multiaddr::Multiaddr;
 use mysten_metrics::RegistryService;
-use narwhal_config::{Committee, Parameters, WorkerCache};
+use narwhal_config::{Committee, Parameters, WorkerCache, WorkerInfo};
 use narwhal_crypto::{KeyPair, NetworkKeyPair};
 use narwhal_executor::ExecutionState;
 use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStorage};
+use prometheus::Registry;
+use rand::thread_rng;
+use resolve_path::PathResolveExt;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::{path::PathBuf, sync::Arc};
 use tokio::{sync::Mutex, time::Instant};
 use tracing::{error, info};
@@ -183,7 +191,85 @@ impl ConsensusService {
 
 impl ServiceArgs {
     /// Load a service arguments from a raw configuration.
-    pub fn load(_config: ConsensusConfig) -> anyhow::Result<Self> {
-        todo!()
+    pub fn load(config: ConsensusConfig) -> anyhow::Result<Self> {
+        // Load or create all of the keys.
+        let mut rng = thread_rng();
+        let primary_keypair = KeyPair::load_or_create(&mut rng, &config.keypair.resolve())?;
+        let primary_network_keypair =
+            NetworkKeyPair::load_or_create(&mut rng, &config.network_keypair.resolve())?;
+        let worker_keypair =
+            NetworkKeyPair::load_or_create(&mut rng, &config.worker[0].keypair.resolve())?;
+
+        // Load the committee.json file.
+        let genesis_committee: GenesisCommittee =
+            load_or_create_json(config.genesis_committee.resolve(), || GenesisCommittee {
+                authorities: [(
+                    primary_keypair.public().clone(),
+                    GenesisAuthority {
+                        stake: 1,
+                        primary_address: config.address.clone(),
+                        network_key: primary_network_keypair.public().clone(),
+                        workers: [WorkerInfo {
+                            name: worker_keypair.public().clone(),
+                            transactions: config.worker[0].transaction.clone(),
+                            worker_address: config.worker[0].address.clone(),
+                        }],
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            })
+            .context("Could not load the genesis committee.")?;
+
+        let committee = Arc::new(Committee::from(&genesis_committee));
+        let worker_cache = Arc::new(WorkerCache::from(&genesis_committee));
+
+        // create the directory for the store.
+        let store_path = config.store_path.resolve().into_owned();
+        std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
+
+        Ok(Self {
+            parameters: config.parameters,
+            primary_keypair,
+            primary_network_keypair,
+            worker_keypair,
+            primary_address: config.address,
+            worker_address: config.worker[0].address.clone(),
+            store_path,
+            committee: Arc::new(ArcSwap::new(committee)),
+            worker_cache: Arc::new(ArcSwap::new(worker_cache)),
+            registry_service: RegistryService::new(Registry::new()),
+        })
+    }
+}
+
+// TODO(qti3e) Move this to somewhere else.
+fn load_or_create_json<T, P: AsRef<std::path::Path>, F>(path: P, default_fn: F) -> anyhow::Result<T>
+where
+    F: Fn() -> T,
+    T: Serialize + DeserializeOwned,
+{
+    let path = path.as_ref();
+
+    if path.exists() {
+        let bytes = std::fs::read(path)
+            .with_context(|| format!("Could not read the file: '{:?}'", path))?;
+
+        serde_json::from_slice(bytes.as_slice())
+            .with_context(|| format!("Could not deserialize the file: '{:?}'", path))
+    } else {
+        let value = default_fn();
+        let bytes = serde_json::to_vec_pretty(&value).context("Serialization failed.")?;
+
+        let parent = path
+            .parent()
+            .context("Could not resolve the parent directory.")?;
+
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Could not create the directory: '{:?}'", parent))?;
+
+        std::fs::write(path, bytes).with_context(|| format!("Could not write to '{:?}'.", path))?;
+
+        Ok(value)
     }
 }
