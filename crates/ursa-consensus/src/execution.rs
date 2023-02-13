@@ -29,6 +29,8 @@ impl Execution {
 #[async_trait]
 impl ExecutionState for Execution {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
+        println!("Received batch!");
+
         for (_, batches) in consensus_output.batches {
             for batch in batches {
                 for transaction in batch.transactions.into_iter() {

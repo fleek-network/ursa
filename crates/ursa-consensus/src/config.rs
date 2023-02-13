@@ -7,6 +7,7 @@ use narwhal_config::{
 };
 use narwhal_crypto::{NetworkPublicKey, PublicKey};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -40,7 +41,7 @@ pub struct ConsensusConfig {
     // This is the reason we are using a fixed size array of size one for now. So the
     // config will stay backward compatible, and at the same time we will have a verification
     // on the array size to ensure the length of one item.
-    worker: [WorkerConfig; 1],
+    pub worker: [WorkerConfig; 1],
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -48,7 +49,7 @@ pub struct WorkerConfig {
     /// UDP address which the worker is using to connect with the other workers and the
     /// primary.
     pub address: Multiaddr,
-    /// UDP address which the worker is listening on to receive transactions from user space.
+    /// TCP address which the worker is listening on to receive transactions from user space.
     pub transaction: Multiaddr,
     /// The path to the network key pair (Ed25519) for the worker.
     pub keypair: PathBuf,
@@ -78,17 +79,25 @@ impl Default for ConsensusConfig {
         // 8000 for primary
         // 8x01 for worker `x` address
         // 8x02 for worker `x` transaction address
+
+        // Use increased delay values.
+        let parameters = Parameters {
+            max_header_delay: Duration::from_secs(1),
+            min_header_delay: Duration::from_secs(1),
+            max_batch_delay: Duration::from_secs(1),
+            ..Parameters::default()
+        };
+
         Self {
             address: "/ip4/0.0.0.0/udp/8000".parse().unwrap(),
             keypair: "~/.ursa/keystore/consensus/primary.key".into(),
             network_keypair: "~/.ursa/keystore/consensus/network.key".into(),
             store_path: "~/.ursa/data/narwhal_store".into(),
-            // default the committee.json location relative to the cwd of the current process.
-            genesis_committee: "./committee.json".into(),
-            parameters: Parameters::default(),
+            genesis_committee: "~/.ursa/genesis_committee.json".into(),
+            parameters,
             worker: [WorkerConfig {
-                address: "/ip4/0.0.0.0/udp/8101".parse().unwrap(),
-                transaction: "/ip4/0.0.0.0/udp/8102".parse().unwrap(),
+                address: "/ip4/0.0.0.0/udp/8101/http".parse().unwrap(),
+                transaction: "/ip4/0.0.0.0/tcp/8102/http".parse().unwrap(),
                 keypair: "~/.ursa/keystore/consensus/worker-01.key".into(),
             }],
         }
