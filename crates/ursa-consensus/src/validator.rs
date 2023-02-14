@@ -13,6 +13,12 @@ impl Validator {
     }
 }
 
+impl Default for Validator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransactionValidator for Validator {
     type Error = Error;
 
