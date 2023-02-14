@@ -22,7 +22,6 @@ use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use hyper_tls::HttpsConnector;
 use moka::sync::Cache;
-use route::api::v1::get::get_car_handler;
 use serde_json::json;
 use tokio::{
     select, spawn,
