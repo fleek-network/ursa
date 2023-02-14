@@ -33,4 +33,4 @@ ursa-telemetry = { path = "../ursa-telemetry" }
 ursa-tracker = { path = "../ursa-tracker" }
 imara-diff.workspace = true
 
-workspace-hack = { git = "https://github.com/MystenLabs/sui.git", branch = "main", package = "workspace-hack" }
+workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "workspace-hack" }
