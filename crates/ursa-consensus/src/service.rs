@@ -252,8 +252,8 @@ where
     let path = path.as_ref();
 
     if path.exists() {
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("Could not read the file: '{path:?}'"))?;
+        let bytes =
+            std::fs::read(path).with_context(|| format!("Could not read the file: '{path:?}'"))?;
 
         serde_json::from_slice(bytes.as_slice())
             .with_context(|| format!("Could not deserialize the file: '{path:?}'"))
