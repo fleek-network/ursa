@@ -17,15 +17,19 @@ pub struct ShutdownController {
 impl ShutdownController {
     /// Install the handler for control c to submit trigger this shutdown handler.
     pub fn install_ctrl_c_handler(&self) {
+        tracing::debug!("install_ctrl_c_handler");
+
         let notify = self.notify.clone();
         tokio::task::spawn(async move {
             ctrl_c().await.expect("Failed to setup control-c handler.");
+            tracing::info!("Received ctrl-c signal.");
             notify.notify_waiters();
         });
     }
 
     /// Manually send the shutdown signal.
     pub fn shutdown(&self) {
+        tracing::info!("Sending the shutdown signal.");
         // just forward the call to the notify_waiters which wakes up all of
         // the waiters.
         self.notify.notify_waiters();
@@ -33,6 +37,9 @@ impl ShutdownController {
 
     /// Wait for the shutdown signal to be sent.
     pub async fn wait_for_shutdown(self) {
-        self.notify.notified().await;
+        tracing::info!("waiting for shutdown...");
+        let future = self.notify.notified();
+        tokio::pin!(future);
+        future.as_mut().await;
     }
 }

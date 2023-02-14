@@ -9,7 +9,7 @@ use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
-use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
+use ursa::{cli_error_and_die, Cli, Subcommand};
 use ursa_consensus::{
     execution::Execution,
     service::{ConsensusService, ServiceArgs},
@@ -20,6 +20,7 @@ use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_telemetry::TelemetryConfig;
 use ursa_tracker::TrackerRegistration;
+use ursa_utils::shutdown::ShutdownController;
 
 pub mod config;
 mod ursa;
@@ -51,6 +52,13 @@ async fn main() -> Result<()> {
                     server_config,
                     consensus_config,
                 } = config;
+
+                // Construct a single instance of shutdown controller for the entire application.
+                // This instance should be cloned and passed down to whoever that needs it and not
+                // reconstructed.
+                let shutdown_controller = ShutdownController::default();
+                // register the shutdown controller to respect ctrl-c signal.
+                shutdown_controller.install_ctrl_c_handler();
 
                 // ursa service setup
                 let im = match network_config.identity.as_str() {
@@ -163,9 +171,11 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                wait_until_ctrlc();
+                // wait for the shutdown.
+                shutdown_controller.wait_for_shutdown().await;
 
                 // Gracefully shutdown node & rpc
+                // ^-- this is not graceful shutdown.
                 rpc_task.abort();
                 service_task.abort();
                 provider_task.abort();
