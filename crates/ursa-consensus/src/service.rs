@@ -253,10 +253,10 @@ where
 
     if path.exists() {
         let bytes = std::fs::read(path)
-            .with_context(|| format!("Could not read the file: '{:?}'", path))?;
+            .with_context(|| format!("Could not read the file: '{path:?}'"))?;
 
         serde_json::from_slice(bytes.as_slice())
-            .with_context(|| format!("Could not deserialize the file: '{:?}'", path))
+            .with_context(|| format!("Could not deserialize the file: '{path:?}'"))
     } else {
         let value = default_fn();
         let bytes = serde_json::to_vec_pretty(&value).context("Serialization failed.")?;
@@ -266,9 +266,9 @@ where
             .context("Could not resolve the parent directory.")?;
 
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("Could not create the directory: '{:?}'", parent))?;
+            .with_context(|| format!("Could not create the directory: '{parent:?}'"))?;
 
-        std::fs::write(path, bytes).with_context(|| format!("Could not write to '{:?}'.", path))?;
+        std::fs::write(path, bytes).with_context(|| format!("Could not write to '{path:?}'."))?;
 
         Ok(value)
     }

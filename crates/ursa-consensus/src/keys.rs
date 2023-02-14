@@ -35,7 +35,7 @@ impl<T: EncodeDecodeBase64 + Generate> LoadOrCreate for T {
             info!("Reading '{:?}' from file system.", path);
 
             let content = std::fs::read_to_string(path)
-                .with_context(|| format!("Could not read the file: '{:?}'", path))?;
+                .with_context(|| format!("Could not read the file: '{path:?}'"))?;
 
             Self::decode_base64(content.as_str())
                 .map_err(|e| anyhow::anyhow!("Could not decode the file as base64: {:?}", e))
@@ -49,10 +49,10 @@ impl<T: EncodeDecodeBase64 + Generate> LoadOrCreate for T {
                 .context("Could not resolve the parent directory.")?;
 
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Could not create the directory: '{:?}'", parent))?;
+                .with_context(|| format!("Could not create the directory: '{parent:?}'"))?;
 
             std::fs::write(path, value.encode_base64())
-                .with_context(|| format!("Could not write to '{:?}'.", path))?;
+                .with_context(|| format!("Could not write to '{path:?}'."))?;
 
             Ok(value)
         }
