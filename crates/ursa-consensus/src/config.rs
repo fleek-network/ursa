@@ -1,6 +1,8 @@
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+#![allow(clippy::mutable_key_type)]
+
 use multiaddr::Multiaddr;
 use narwhal_config::{
     Authority, Committee, Parameters, Stake, WorkerCache, WorkerId, WorkerIndex, WorkerInfo,
