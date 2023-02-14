@@ -3,9 +3,8 @@ use anyhow::Result;
 use dirs::home_dir;
 use resolve_path::PathResolveExt;
 use rpc_commands::RpcCommands;
-use std::{path::PathBuf, process};
+use std::path::PathBuf;
 use structopt::StructOpt;
-use tracing::error;
 
 pub mod identity;
 mod rpc_commands;
@@ -64,11 +63,4 @@ impl CliOpts {
 
         Ok(config)
     }
-}
-
-/// Print an error message and exit the program with an error code
-/// Used for handling high level errors such as invalid params
-pub(super) fn cli_error_and_die(msg: &str, code: i32) {
-    error!("Error: {}", msg);
-    process::exit(code);
 }
