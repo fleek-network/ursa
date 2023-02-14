@@ -11,6 +11,7 @@ members = [
   "crates/ursa-store",
   "crates/ursa-telemetry",
   "crates/ursa-tracker",
+  "crates/ursa-utils",
 ]
 
 exclude = [
