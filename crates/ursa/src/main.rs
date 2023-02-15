@@ -4,6 +4,7 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
+use scopeguard::defer;
 use std::env;
 use std::sync::Arc;
 use structopt::StructOpt;
@@ -26,34 +27,27 @@ pub mod config;
 mod ursa;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     dotenv().ok();
 
-    let cli = Cli::from_args();
+    if let Err(err) = run().await {
+        error!("Error running ursa: {err}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<()> {
+    let Cli { cmd, opts } = Cli::from_args();
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
 
     TelemetryConfig::new("ursa-cli")
         .with_pretty_log()
-        .with_log_level(cli.opts.log.as_ref().unwrap_or(&log_level))
+        .with_log_level(opts.log.as_ref().unwrap_or(&log_level))
         .init()?;
 
-    let res = run(cli).await;
+    // Make sure we run teardown no matter how we exit the run function.
+    defer! { TelemetryConfig::teardown(); };
 
-    TelemetryConfig::teardown();
-
-    if let Err(err) = res {
-        error!("Error running ursa: {err}");
-        std::process::exit(1);
-    }
-
-    Ok(())
-}
-
-// TODO(qti3e) The current function currently works and it tries to start every service, since
-// each service is from a different crate, the code ownership of this function is unclear, in
-// future each crate should only expose a function that performs everything from their side and
-// main.rs should handle the least amount of logic to actually perform anything.
-async fn run(Cli { opts, cmd }: Cli) -> Result<()> {
     // Construct a single instance of shutdown controller for the entire application.
     // This instance should be cloned and passed down to whoever that needs it and not
     // reconstructed.
