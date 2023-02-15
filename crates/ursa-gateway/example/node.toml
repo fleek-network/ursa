@@ -1,4 +1,5 @@
 log_level = "ERROR"
+maxminddb = "/usr/local/etc/GeoIP/GeoLite2-City.mmdb"
 
 [server]
 port = 443

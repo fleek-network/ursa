@@ -67,6 +67,7 @@ pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
     pub indexer: IndexerConfig,
+    pub maxminddb: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -111,6 +112,7 @@ impl Default for GatewayConfig {
             indexer: IndexerConfig {
                 cid_url: "https://dev.cid.contact/cid".into(),
             },
+            maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".to_string(),
         }
     }
 }
@@ -155,6 +157,9 @@ impl GatewayConfig {
         }
         if let Some(cache_time_to_idle) = config.cache_time_to_idle {
             self.server.cache_time_to_idle = cache_time_to_idle;
+        }
+        if let Some(maxminddb_path) = config.maxminddb {
+            self.maxminddb = maxminddb_path;
         }
     }
 }

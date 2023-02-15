@@ -31,3 +31,4 @@ ursa-telemetry = { path = "../ursa-telemetry" }
 tracing-opentelemetry.workspace = true
 axum-prometheus.workspace = true
 moka.workspace = true
+maxminddb.workspace = true
