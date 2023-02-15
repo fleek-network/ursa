@@ -5,6 +5,7 @@ use axum::{
     body::Body,
     http::response::{Parts, Response},
 };
+use geoutils::Location;
 use hyper::{
     body::to_bytes,
     client::{self, HttpConnector},
@@ -33,6 +34,7 @@ pub struct Picker {
     client: Client,
     cache: Cache<String, Vec<MultihashResult>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
+    location: Location,
 }
 
 impl Picker {
@@ -41,13 +43,19 @@ impl Picker {
         client: Client,
         cache: Cache<String, Vec<MultihashResult>>,
         maxminddb: Arc<Reader<Vec<u8>>>,
-    ) -> Self {
-        Self {
+        addr: IpAddr,
+    ) -> Result<Self, Error> {
+        let city = maxminddb
+            .lookup::<City>(addr)
+            .map_err(|e| anyhow!(e.to_string()))?;
+        let location = get_location(city)?;
+        Ok(Self {
             indexer_cid_url,
             client,
             cache,
             maxminddb,
-        }
+            location,
+        })
     }
 
     fn distance(&self, ip: IpAddr) {
@@ -213,4 +221,15 @@ impl Picker {
 
         Err(Error::Internal("Failed to get data".to_string()))
     }
+}
+
+fn get_location(city: City) -> Result<Location, Error> {
+    let location = city.location.ok_or_else(|| anyhow!("missing location"))?;
+    let latitude = location
+        .latitude
+        .ok_or_else(|| anyhow!("missing latitude"))?;
+    let longitude = location
+        .longitude
+        .ok_or_else(|| anyhow!("missing longitude"))?;
+    Ok(Location::new(latitude, longitude))
 }

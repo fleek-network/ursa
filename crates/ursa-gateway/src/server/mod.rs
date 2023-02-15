@@ -101,6 +101,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,
         maxmind_db,
+        addr.ip(),
     ));
 
     let app = NormalizePath::trim_trailing_slash(
