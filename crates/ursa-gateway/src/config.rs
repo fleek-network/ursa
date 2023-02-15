@@ -109,7 +109,7 @@ impl Default for GatewayConfig {
                 cache_time_to_live: 5 * 60 * 1000, //  5 mins.
             },
             indexer: IndexerConfig {
-                cid_url: "https://cid.contact/cid".into(),
+                cid_url: "https://dev.cid.contact/cid".into(),
             },
         }
     }
