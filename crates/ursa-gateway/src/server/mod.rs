@@ -21,6 +21,7 @@ use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use hyper_tls::HttpsConnector;
+use maxminddb::Reader;
 use moka::sync::Cache;
 use serde_json::json;
 use tokio::{
@@ -42,7 +43,7 @@ use tracing::{error, info, Level};
 
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
-    resolver::Resolver,
+    picker::Picker,
     server::{
         model::HttpResponse,
         route::api::v1::get::{check_car_handler, get_car_handler},
@@ -66,6 +67,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
                 ..
             },
         indexer: IndexerConfig { cid_url },
+        maxminddb,
         ..
     } = &(*config_reader.read().await);
 
@@ -92,10 +94,13 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         .time_to_live(Duration::from_millis(*cache_time_to_live))
         .build();
 
-    let resolver = Arc::new(Resolver::new(
+    let maxmind_db = Arc::new(Reader::open_readfile(maxminddb)?);
+
+    let resolver = Arc::new(Picker::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,
+        maxmind_db,
     ));
 
     let app = NormalizePath::trim_trailing_slash(

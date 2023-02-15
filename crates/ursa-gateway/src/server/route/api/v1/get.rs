@@ -10,11 +10,11 @@ use libipld::Cid;
 use serde_json::{json, Value};
 use tracing::{info_span, Instrument};
 
-use crate::{resolver::Resolver, server::model::HttpResponse, util::error::Error};
+use crate::{picker::Picker, server::model::HttpResponse, util::error::Error};
 
 pub async fn check_car_handler(
     Path(cid): Path<String>,
-    Extension(resolver): Extension<Arc<Resolver>>,
+    Extension(resolver): Extension<Arc<Picker>>,
 ) -> StatusCode {
     let span = info_span!("Check car handler");
     if Cid::from_str(&cid).is_err() {
@@ -29,7 +29,7 @@ pub async fn check_car_handler(
 
 pub async fn get_car_handler(
     Path(cid): Path<String>,
-    Extension(resolver): Extension<Arc<Resolver>>,
+    Extension(resolver): Extension<Arc<Picker>>,
 ) -> Response {
     let span = info_span!("Get car handler");
     if Cid::from_str(&cid).is_err() {

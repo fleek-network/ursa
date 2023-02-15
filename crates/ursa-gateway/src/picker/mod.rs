@@ -12,13 +12,15 @@ use hyper::{
 };
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
+use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
 use serde_json::from_slice;
+use std::{net::IpAddr, sync::Arc};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    resolver::model::{Metadata, MultihashResult, ProviderResult},
+    picker::model::{Metadata, MultihashResult, ProviderResult},
     util::error::Error,
 };
 
@@ -26,23 +28,33 @@ const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
-pub struct Resolver {
+pub struct Picker {
     indexer_cid_url: String,
     client: Client,
     cache: Cache<String, Vec<MultihashResult>>,
+    maxminddb: Arc<Reader<Vec<u8>>>,
 }
 
-impl Resolver {
+impl Picker {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
         cache: Cache<String, Vec<MultihashResult>>,
+        maxminddb: Arc<Reader<Vec<u8>>>,
     ) -> Self {
         Self {
             indexer_cid_url,
             client,
             cache,
+            maxminddb,
         }
+    }
+
+    fn distance(&self, ip: IpAddr) {
+        debug!(
+            "Distance to {ip:?} is {:?}",
+            self.maxminddb.lookup::<City>(ip).unwrap()
+        )
     }
 
     pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
@@ -147,9 +159,13 @@ impl Resolver {
                 for addr in m_addr.into_iter() {
                     match addr {
                         Protocol::Ip6(ip) => {
+                            // TODO: Remove.
+                            self.distance(ip.into());
                             host = ip.to_string();
                         }
                         Protocol::Ip4(ip) => {
+                            // TODO: Remove.
+                            self.distance(ip.into());
                             host = ip.to_string();
                         }
                         Protocol::Tcp(p) => {

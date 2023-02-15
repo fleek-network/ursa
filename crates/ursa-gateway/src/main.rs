@@ -1,6 +1,6 @@
 mod cli;
 mod config;
-mod resolver;
+mod picker;
 mod server;
 mod util;
 
