@@ -3,7 +3,6 @@
 //! services.
 
 use std::sync::Arc;
-use tokio::signal::ctrl_c;
 use tokio::sync::Notify;
 
 /// The shutdown controller can be used to be passed around in a program and provide
@@ -21,15 +20,14 @@ impl ShutdownController {
 
         let notify = self.notify.clone();
         tokio::task::spawn(async move {
-            ctrl_c().await.expect("Failed to setup control-c handler.");
-            tracing::info!("Received ctrl-c signal.");
+            shutdown_stream().await;
             notify.notify_waiters();
         });
     }
 
     /// Manually send the shutdown signal.
     pub fn shutdown(&self) {
-        tracing::info!("Sending the shutdown signal.");
+        tracing::info!("Shutting down URSA.");
         // just forward the call to the notify_waiters which wakes up all of
         // the waiters.
         self.notify.notify_waiters();
@@ -42,4 +40,42 @@ impl ShutdownController {
         tokio::pin!(future);
         future.as_mut().await;
     }
+}
+
+#[cfg(unix)]
+/// The shutdown controller for Unix that listens for:
+/// - SIGINT (Ctrl + C)
+/// - SIGQUIT (Ctrl + D)
+/// - SIGTERM (sent by `kill` by default)
+async fn shutdown_stream() {
+    use tokio::signal::unix::{signal, SignalKind};
+    // ctrl+c
+    let mut interrupt_signal =
+        signal(SignalKind::interrupt()).expect("Failed to setup INTERRUPT handler.");
+
+    let mut terminate_signal =
+        signal(SignalKind::terminate()).expect("Failed to setup TERMINATE handler.");
+
+    let mut quit_signal = signal(SignalKind::quit()).expect("Failed to setup QUIT handler.");
+
+    tokio::select! {
+        _ = interrupt_signal.recv() => {
+            tracing::info!("Received ctrl-c signal.");
+        }
+        _ = terminate_signal.recv() => {
+            tracing::info!("Received SIGTERM signal.");
+        }
+        _ = quit_signal.recv() => {
+            tracing::info!("Received SIGQUIT signal.");
+        }
+    }
+}
+
+#[cfg(windows)]
+/// On windows only listen for ctrl-c for now.
+async fn shutdown_stream() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to setup control-c handler.");
+    tracing::info!("Received ctrl-c signal.");
 }
