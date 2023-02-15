@@ -17,8 +17,9 @@ use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
 use serde_json::from_slice;
+use std::cmp::Ordering;
 use std::{net::IpAddr, sync::Arc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     picker::model::{Metadata, MultihashResult, ProviderResult},
@@ -58,11 +59,68 @@ impl Picker {
         })
     }
 
-    fn distance(&self, ip: IpAddr) {
-        debug!(
-            "Distance to {ip:?} is {:?}",
-            self.maxminddb.lookup::<City>(ip).unwrap()
-        )
+    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Vec<String> {
+        let mut provider_addresses = providers
+            .into_iter()
+            .flat_map(|provider_result| &provider_result.provider.addrs)
+            .filter_map(|multiaddr| {
+                let (mut protocol, mut host, mut port) = (String::from("http"), None, None);
+                for addr in multiaddr.into_iter() {
+                    match addr {
+                        Protocol::Ip6(ip) => {
+                            host = Some(IpAddr::from(ip));
+                        }
+                        Protocol::Ip4(ip) => {
+                            host = Some(IpAddr::from(ip));
+                        }
+                        Protocol::Tcp(p) => {
+                            port = Some(p);
+                        }
+                        Protocol::Https => {
+                            protocol = "https".to_string();
+                        }
+                        _ => {}
+                    };
+                }
+                if host.is_none() || port.is_none() {
+                    return None;
+                }
+                let host = host.unwrap();
+                let city = self
+                    .maxminddb
+                    .lookup::<City>(host)
+                    .map_err(|e| {
+                        debug!(
+                            "Failed to get location for ip {} with error {}",
+                            host,
+                            e.to_string()
+                        )
+                    })
+                    .ok();
+
+                let location = get_location(city?)
+                    .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
+                    .ok()?;
+
+                Some((location, protocol, host, port.unwrap()))
+            })
+            .collect::<Vec<(Location, String, IpAddr, u16)>>();
+        provider_addresses.sort_by(|(location1, _, _, _), (location2, _, _, _)| {
+            // Using `sorted_by` instead of `sorted_by_key` because f64 doesn't implement Ord.
+            let location1 = self.location.haversine_distance_to(location1).meters();
+            let location2 = self.location.haversine_distance_to(location2).meters();
+            if let Some(ord) = location1.partial_cmp(&location2) {
+                ord
+            } else {
+                Ordering::Equal
+            }
+        });
+
+        provider_addresses
+            .into_iter()
+            .rev()
+            .map(|(_, protocol, host, port)| format!("{protocol}://{host}:{port}"))
+            .collect()
     }
 
     pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
@@ -121,78 +179,35 @@ impl Picker {
             Some(multihash_results) => multihash_results,
         };
 
-        let providers: Vec<(&ProviderResult, Metadata)> = multihash_results
+        let providers: Vec<&ProviderResult> = multihash_results
             .first()
             .context("Indexer result did not contain a multi-hash result")?
             .provider_results
             .iter()
-            .filter_map(|provider| {
+            .filter(|provider| {
                 let metadata_bytes = match base64::decode(&provider.metadata) {
                     Ok(b) => b,
                     Err(e) => {
                         error!("Failed to decode metadata {e:?}");
-                        return None;
+                        return false;
                     }
                 };
                 let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
                     Ok(b) => b,
                     Err(e) => {
                         error!("Failed to deserialize metadata {e:?}");
-                        return None;
+                        return false;
                     }
                 };
                 if metadata.data == FLEEK_NETWORK_FILTER {
-                    return Some((provider, metadata));
+                    return true;
                 }
                 warn!("Invalid data in metadata {:?}", metadata.data);
-                None
+                false
             })
             .collect();
 
-        // TODO:
-        // cherry-pick closest node
-        let (provider, metadata) = providers
-            .first() // FIXME: temporary
-            .context("Multi-hash result did not contain a provider")?;
-
-        info!("File size received {}", metadata.size);
-
-        let provider_addresses: Vec<String> = provider
-            .provider
-            .addrs
-            .iter()
-            .map(|m_addr| {
-                let (mut protocol, mut host, mut port) =
-                    (String::from("http"), String::new(), String::new());
-                for addr in m_addr.into_iter() {
-                    match addr {
-                        Protocol::Ip6(ip) => {
-                            // TODO: Remove.
-                            self.distance(ip.into());
-                            host = ip.to_string();
-                        }
-                        Protocol::Ip4(ip) => {
-                            // TODO: Remove.
-                            self.distance(ip.into());
-                            host = ip.to_string();
-                        }
-                        Protocol::Tcp(p) => {
-                            port = p.to_string();
-                        }
-                        Protocol::Https => {
-                            protocol = "https".to_string();
-                        }
-                        _ => {}
-                    };
-                }
-                (
-                    format!("{protocol}://{host}:{port}"),
-                    host.is_empty() || port.is_empty(),
-                )
-            })
-            .filter(|(_, incomplete)| !incomplete)
-            .map(|(addr, _)| addr)
-            .collect();
+        let provider_addresses = self.provider_addresses(providers);
 
         if provider_addresses.is_empty() {
             return Err(Error::Internal(
