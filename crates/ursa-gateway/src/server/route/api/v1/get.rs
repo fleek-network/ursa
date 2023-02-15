@@ -12,6 +12,21 @@ use tracing::{info_span, Instrument};
 
 use crate::{resolver::Resolver, server::model::HttpResponse, util::error::Error};
 
+pub async fn check_car_handler(
+    Path(cid): Path<String>,
+    Extension(resolver): Extension<Arc<Resolver>>,
+) -> StatusCode {
+    let span = info_span!("Check car handler");
+    if Cid::from_str(&cid).is_err() {
+        return StatusCode::BAD_REQUEST;
+    };
+    match resolver.resolve_content(&cid).instrument(span).await {
+        Ok(resp) => resp.status(),
+        Err(Error::Internal(_)) => StatusCode::INTERNAL_SERVER_ERROR,
+        Err(Error::Upstream(status, _)) => status,
+    }
+}
+
 pub async fn get_car_handler(
     Path(cid): Path<String>,
     Extension(resolver): Extension<Arc<Resolver>>,
@@ -30,7 +45,7 @@ pub async fn get_car_handler(
         Err(Error::Internal(message)) => {
             error_handler(StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
         }
-        Err(Error::Upstream(status, message)) => (status, message).into_response(),
+        Err(Error::Upstream(status, message)) => error_handler(status, message).into_response(),
     }
 }
 

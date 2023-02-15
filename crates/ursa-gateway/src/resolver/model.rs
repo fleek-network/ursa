@@ -1,13 +1,13 @@
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct IndexerResponse {
     #[serde(rename = "MultihashResults")]
     pub multihash_results: Vec<MultihashResult>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct MultihashResult {
     #[serde(rename = "Multihash")]
     multihash: String,
@@ -15,7 +15,7 @@ pub struct MultihashResult {
     pub provider_results: Vec<ProviderResult>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ProviderResult {
     #[serde(rename = "ContextID")]
     context_id: String,
@@ -25,7 +25,7 @@ pub struct ProviderResult {
     pub provider: AddrInfo,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct AddrInfo {
     #[serde(rename = "ID")]
     id: String,

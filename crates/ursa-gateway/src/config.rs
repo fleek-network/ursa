@@ -78,6 +78,9 @@ pub struct ServerConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
     pub stream_buf: u64,
+    pub cache_max_capacity: u64,
+    pub cache_time_to_idle: u64,
+    pub cache_time_to_live: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -100,10 +103,13 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("key.pem"),
-                stream_buf: 2_000_000, // 2MB
+                stream_buf: 2_000_000,             // 2MB
+                cache_max_capacity: 100_000,       //  Number of entries.
+                cache_time_to_idle: 5 * 60 * 1000, //  5 mins.
+                cache_time_to_live: 5 * 60 * 1000, //  5 mins.
             },
             indexer: IndexerConfig {
-                cid_url: "https://cid.contact/cid".into(),
+                cid_url: "https://dev.cid.contact/cid".into(),
             },
         }
     }
@@ -140,6 +146,15 @@ impl GatewayConfig {
         }
         if let Some(indexer_cid_url) = config.indexer_cid_url {
             self.indexer.cid_url = indexer_cid_url;
+        }
+        if let Some(cache_max_capacity) = config.cache_max_capacity {
+            self.server.cache_max_capacity = cache_max_capacity;
+        }
+        if let Some(cache_time_to_live) = config.cache_time_to_live {
+            self.server.cache_time_to_live = cache_time_to_live;
+        }
+        if let Some(cache_time_to_idle) = config.cache_time_to_idle {
+            self.server.cache_time_to_idle = cache_time_to_idle;
         }
     }
 }

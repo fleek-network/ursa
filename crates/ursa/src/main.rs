@@ -3,14 +3,17 @@ use anyhow::Result;
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use libp2p::multiaddr::Protocol;
-use libp2p::Multiaddr;
 use resolve_path::PathResolveExt;
 use std::env;
 use std::sync::Arc;
 use structopt::StructOpt;
-use tokio::task;
+use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{cli_error_and_die, wait_until_ctrlc, Cli, Subcommand};
+use ursa_consensus::{
+    execution::Execution,
+    service::{ConsensusService, ServiceArgs},
+};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -46,6 +49,7 @@ async fn main() -> Result<()> {
                     network_config,
                     provider_config,
                     server_config,
+                    consensus_config,
                 } = config;
 
                 // ursa service setup
@@ -60,6 +64,8 @@ async fn main() -> Result<()> {
                 };
 
                 let keypair = im.current();
+
+                let consensus_args = ServiceArgs::load(consensus_config).unwrap();
 
                 let registration = TrackerRegistration {
                     id: keypair.clone().public().to_peer_id(),
@@ -94,12 +100,6 @@ async fn main() -> Result<()> {
                 )
                 .expect("Opening provider RocksDB must succeed");
 
-                let server_address = Multiaddr::try_from(format!(
-                    "/ip4/{}/tcp/{}",
-                    server_config.addr, server_config.port
-                ))
-                .expect("Server to have a valid address");
-
                 let index_store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(provider_db))));
                 let index_provider_engine = ProviderEngine::new(
                     keypair,
@@ -107,8 +107,7 @@ async fn main() -> Result<()> {
                     index_store,
                     provider_config,
                     service.command_sender(),
-                    server_address,
-                    server_config.domain.clone(),
+                    server_config.addresses.clone(),
                 );
                 let index_provider_router = index_provider_engine.router();
 
@@ -148,6 +147,12 @@ async fn main() -> Result<()> {
                     }
                 });
 
+                // Start the consensus service.
+                let consensus_service = ConsensusService::new(consensus_args);
+                let (tx_transactions, _rx_transactions) = channel(100);
+                let execution = Execution::new(0, tx_transactions);
+                consensus_service.start(execution).await;
+
                 // register with ursa node tracker
                 if !network_config.tracker.is_empty() {
                     match ursa_tracker::register_with_tracker(network_config.tracker, registration)
@@ -164,6 +169,7 @@ async fn main() -> Result<()> {
                 rpc_task.abort();
                 service_task.abort();
                 provider_task.abort();
+                consensus_service.shutdown().await;
             }
         }
         Err(e) => {

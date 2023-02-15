@@ -30,3 +30,4 @@ libp2p.workspace = true
 ursa-telemetry = { path = "../ursa-telemetry" }
 tracing-opentelemetry.workspace = true
 axum-prometheus.workspace = true
+moka.workspace = true

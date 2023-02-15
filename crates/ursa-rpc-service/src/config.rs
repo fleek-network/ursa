@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ServerConfig {
-    /// Domain Multiaddress of the node, eg. `/dns/test-node.ursa.earth`
-    #[serde(default = "ServerConfig::default_domain")]
-    pub domain: Multiaddr,
+    /// Public IP address of the node, eg. `/ip4/127.0.0.1`
+    #[serde(default = "ServerConfig::default_addresses")]
+    pub addresses: Vec<Multiaddr>,
     /// Port to listen on
     #[serde(default = "ServerConfig::default_port")]
     pub port: u16,
@@ -17,8 +17,8 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    fn default_domain() -> Multiaddr {
-        "/ip4/127.0.0.1/tcp/4069".parse().unwrap()
+    fn default_addresses() -> Vec<Multiaddr> {
+        vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()]
     }
     fn default_port() -> u16 {
         4069
@@ -31,7 +31,7 @@ impl ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            domain: Self::default_domain(),
+            addresses: Self::default_addresses(),
             port: Self::default_port(),
             addr: Self::default_addr(),
             origin: Default::default(),

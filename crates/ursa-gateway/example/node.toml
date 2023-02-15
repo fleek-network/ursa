@@ -11,4 +11,3 @@ stream_buf = 2000000 # 2mb
 
 [indexer]
 cid_url = "https://cid.contact/cid"
-
