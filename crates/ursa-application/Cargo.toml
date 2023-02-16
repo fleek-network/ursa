@@ -2,7 +2,7 @@
 name = "ursa-application"
 version = "0.1.0"
 edition = "2021"
-authors = ["b0xtch <mahmoud@fleek.co>"]
+authors = ["DontKillRobots <dalton@fleek.xyz>,"]
 
 [dependencies]
 anyhow.workspace = true
