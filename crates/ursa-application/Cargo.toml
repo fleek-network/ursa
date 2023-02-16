@@ -19,7 +19,7 @@ tracing-subscriber.workspace = true
 tracing-error.workspace = true
 
 abci-rs = { version = "0.11.3", features = ["async-api"] }
-ethers = { git = "https://github.com/gakonst/ethers-rs", rev="7da559bbedec67c034391f693a01b6a1b94d6a77" }
+ethers = { git = "https://github.com/gakonst/ethers-rs" }
 revm = { version = "3.0.0", features = [
     "serde",
 ] }

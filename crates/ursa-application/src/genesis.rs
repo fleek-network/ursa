@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
-use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Read, path::PathBuf};
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct Genesis {
@@ -24,6 +22,6 @@ impl Genesis {
     /// Load the genesis file
     pub fn load() -> Result<Genesis> {
         let raw = include_str!("../genesis.toml");
-        toml::from_str(&raw).context("Failed to parse genesis file")
+        toml::from_str(raw).context("Failed to parse genesis file")
     }
 }

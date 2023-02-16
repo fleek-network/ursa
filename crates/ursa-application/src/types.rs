@@ -165,7 +165,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
 
         //Commit here because there will be commits at the end of every execute in the next step
-        let _ = self.commit(RequestCommit {});
+        self.commit(RequestCommit {}).await;
 
         //Build the abis to encode the init call params
         let token_abi = BaseContract::from(
@@ -216,9 +216,9 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         };
 
         //Submit and commit the init txns to state
-        let token_res = state.execute(token_tx, false).await.unwrap();
-        let staking_res = state.execute(staking_tx, false).await.unwrap();
-        let registry_res = state.execute(registry_tx, false).await.unwrap();
+        let _token_res = state.execute(token_tx, false).await.unwrap();
+        let _staking_res = state.execute(staking_tx, false).await.unwrap();
+        let _registry_res = state.execute(registry_tx, false).await.unwrap();
 
         ResponseInitChain::default()
     }
