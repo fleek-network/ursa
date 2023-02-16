@@ -6,6 +6,7 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
+use std::net::IpAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
@@ -110,11 +111,32 @@ async fn run() -> Result<()> {
 
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
-
     let db = RocksDb::open(db_path, &RocksDbConfig::default())
         .expect("Opening blockstore RocksDB must succeed");
     let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+
+    let public_address: IpAddr = server_config
+        .addresses
+        .iter()
+        .filter_map(|addr| {
+            for comp in addr.iter() {
+                match comp {
+                    Protocol::Ip4(ip) => return Some(ip.into()),
+                    Protocol::Ip6(ip) => return Some(ip.into()),
+                    _ => {}
+                }
+            }
+            None
+        })
+        .next()
+        .ok_or_else(|| bail!())?;
+
+    let service = UrsaService::new(
+        keypair.clone(),
+        &network_config,
+        Arc::clone(&store),
+        public_address,
+    )?;
 
     let provider_db = RocksDb::open(
         provider_config.database_path.resolve(),

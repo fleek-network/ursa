@@ -49,6 +49,7 @@ futures-util = "0.3.25"
 fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_encoding = "=0.3.2"
+geoutils = "0.5"
 graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"

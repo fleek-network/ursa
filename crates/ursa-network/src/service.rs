@@ -39,7 +39,9 @@ use libp2p::{
     Multiaddr, PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
+use maxminddb::Reader;
 use rand::prelude::SliceRandom;
+use std::net::IpAddr;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -244,7 +246,12 @@ where
     /// We construct a [`Swarm`] with [`UrsaTransport`] and [`Behaviour`]
     /// listening on [`NetworkConfig`] `swarm_addr`.
     ///
-    pub fn new(keypair: Keypair, config: &NetworkConfig, store: Arc<UrsaStore<S>>) -> Result<Self> {
+    pub fn new(
+        keypair: Keypair,
+        config: &NetworkConfig,
+        store: Arc<UrsaStore<S>>,
+        public_address: Option<IpAddr>,
+    ) -> Result<Self> {
         let local_peer_id = PeerId::from(keypair.public());
 
         let (relay_transport, relay_client) = if config.relay_client {
@@ -302,6 +309,18 @@ where
         let (event_sender, _event_receiver) = unbounded_channel();
         let (command_sender, command_receiver) = unbounded_channel();
 
+        let mut manager = match Reader::open_readfile(config.maxminddb.clone()) {
+            Ok(maxmind_db) if public_address.is_some() => {
+                Manager::new_public_network_manager(public_address.unwrap(), maxmind_db)?
+            }
+            e => {
+                if e.is_err() {
+                    warn!("Failed to open maxmind db {}", e.err().unwrap());
+                }
+                Manager::new_private_network_manager()
+            }
+        };
+
         Ok(UrsaService {
             swarm,
             store,
@@ -313,7 +332,7 @@ where
             bitswap_queries: Default::default(),
             _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
-            peers: Manager::new(),
+            peers: manager,
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),

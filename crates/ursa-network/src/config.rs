@@ -46,6 +46,9 @@ pub struct NetworkConfig {
     /// Interval to run random kademlia walks to refresh the routing table. Defaults to 5 minutes
     #[serde(default = "NetworkConfig::default_kad_walk_interval")]
     pub kad_walk_interval: u64,
+    /// Path to maxminddb.
+    #[serde(default = "NetworkConfig::default_maxminddb")]
+    pub maxminddb: PathBuf,
 }
 
 impl NetworkConfig {
@@ -94,6 +97,9 @@ impl NetworkConfig {
     fn default_kad_walk_interval() -> u64 {
         300
     }
+    fn default_maxminddb() -> PathBuf {
+        "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".into()
+    }
 }
 
 impl Default for NetworkConfig {
@@ -112,6 +118,7 @@ impl Default for NetworkConfig {
             keystore_path: Self::default_keystore_path(),
             kad_replication_factor: Self::default_kad_replication_factor(),
             kad_walk_interval: Self::default_kad_walk_interval(),
+            maxminddb: Self::default_maxminddb(),
         }
     }
 }
