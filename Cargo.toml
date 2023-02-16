@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/ursa",
+  "crates/ursa-application",
   "crates/ursa-consensus",
   "crates/ursa-gateway",
   "crates/ursa-index-provider",
