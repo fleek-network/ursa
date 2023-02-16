@@ -51,7 +51,7 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=200h'
     depends_on:
-      - ursa-tracker
+      - ursa-exporter
 
   grafana:
     image: grafana/grafana
@@ -72,16 +72,17 @@ services:
       - prometheus
     user: "$UID:$GID"
 
-  ursa-tracker:
-    environment:
-      - IPINFO_TOKEN=${IPINFO_TOKEN}
-    build:
-      context: ../..
-      dockerfile: docker/global-metrics/Dockerfile
-    restart: on-failure
-    ports:
-      - "4000:4000"
-    expose:
-      - "4000"
+  ursa-exporter:
+    image: ghcr.io/fleek-network/ursa-exporter:http_sd
     volumes:
-      - ./data/tracker_db/:/root/tracker_db/:rw
+      - ./data:/data
+      - /var/lib/GeoIP:/var/lib/GeoIP
+    command: --config-file=/data/exporter.toml
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "6009:6009"
+      - "8048:8048"
+      - "8049:8049"
+    expose:
+      - 8080

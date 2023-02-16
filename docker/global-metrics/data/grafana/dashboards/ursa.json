@@ -24,7 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
+  "id": 1,
   "links": [
     {
       "asDropdown": false,
@@ -193,7 +193,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "count by(geohash, instance) (swarm_connected_peers)",
+              "expr": "up{job=\"nodes\"}",
               "format": "table",
               "instant": true,
               "legendFormat": "__auto",
@@ -202,6 +202,70 @@
             }
           ],
           "type": "geomap"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "id": 57,
+          "options": {
+            "displayMode": "basic",
+            "minVizHeight": 10,
+            "minVizWidth": 0,
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "pluginVersion": "9.3.6",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "sort_desc(sum(kademlia_exporter_nodes_seen_within{job=\"ursa-exporter\"}) by (last_seen_within))",
+              "format": "time_series",
+              "instant": true,
+              "legendFormat": "{{last_seen_within}}",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Number of Nodes Seen Within",
+          "type": "bargauge"
         },
         {
           "datasource": {
@@ -263,7 +327,7 @@
           "gridPos": {
             "h": 8,
             "w": 12,
-            "x": 0,
+            "x": 12,
             "y": 18
           },
           "id": 51,
@@ -295,8 +359,72 @@
               "refId": "A"
             }
           ],
-          "title": "Active Nodes",
+          "title": "Reachable Nodes (4069)",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 26
+          },
+          "id": 59,
+          "options": {
+            "displayMode": "gradient",
+            "minVizHeight": 10,
+            "minVizWidth": 0,
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "pluginVersion": "9.3.6",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "sort_desc(sum(kademlia_exporter_nodes_seen_within{last_seen_within=\"12h\", country!=\"unknown\"}) by (country))",
+              "format": "time_series",
+              "instant": true,
+              "legendFormat": "{{country}}",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Number of Nodes per Country (Seen Within 12hrs)",
+          "type": "bargauge"
         },
         {
           "datasource": {
@@ -356,7 +484,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 18
+            "y": 26
           },
           "id": 55,
           "options": {
@@ -444,7 +572,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 34
+            "y": 50
           },
           "id": 34,
           "options": {
@@ -515,7 +643,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 34
+            "y": 50
           },
           "id": 18,
           "options": {
@@ -586,8 +714,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               }
@@ -598,7 +725,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 23
           },
           "id": 8,
           "options": {
@@ -651,8 +778,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -667,7 +793,7 @@
             "h": 13,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 23
           },
           "id": 16,
           "options": {
@@ -745,8 +871,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -761,7 +886,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 15
+            "y": 31
           },
           "id": 22,
           "options": {
@@ -840,8 +965,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -856,7 +980,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 20
+            "y": 36
           },
           "id": 32,
           "options": {
@@ -933,8 +1057,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -949,7 +1072,7 @@
             "h": 5,
             "w": 12,
             "x": 12,
-            "y": 20
+            "y": 36
           },
           "id": 20,
           "options": {
@@ -1041,7 +1164,7 @@
             "h": 5,
             "w": 12,
             "x": 0,
-            "y": 25
+            "y": 41
           },
           "id": 28,
           "options": {
@@ -1135,7 +1258,7 @@
             "h": 5,
             "w": 12,
             "x": 12,
-            "y": 25
+            "y": 41
           },
           "id": 30,
           "options": {
@@ -1241,7 +1364,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 36
+            "y": 52
           },
           "id": 40,
           "options": {
@@ -1333,7 +1456,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 36
+            "y": 52
           },
           "id": 42,
           "options": {
@@ -1438,7 +1561,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 37
+            "y": 53
           },
           "id": 4,
           "options": {
@@ -1533,7 +1656,7 @@
             "h": 6,
             "w": 12,
             "x": 12,
-            "y": 37
+            "y": 53
           },
           "id": 6,
           "options": {
@@ -1584,6 +1707,6 @@
   "timezone": "",
   "title": "Ursa Network",
   "uid": "opc0hVd4k",
-  "version": 20,
+  "version": 0,
   "weekStart": ""
 }
