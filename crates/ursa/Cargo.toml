@@ -31,7 +31,6 @@ ursa-network = { path = "../ursa-network" }
 ursa-rpc-service = { path = "../ursa-rpc-service" }
 ursa-store = { path = "../ursa-store" }
 ursa-telemetry = { path = "../ursa-telemetry" }
-ursa-tracker = { path = "../ursa-tracker" }
 ursa-utils = { path = "../ursa-utils" }
 imara-diff.workspace = true
 
