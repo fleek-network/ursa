@@ -106,6 +106,7 @@ impl Picker {
             })
             .filter_map(|(distance, protocol, host, port)| {
                 if distance.is_finite() {
+                    debug!("{host} is {distance:?} meters from host");
                     Some((TotallyOrdered::new(distance), protocol, host, port))
                 } else {
                     debug!("Skipping {host} because distance could not be computed");
