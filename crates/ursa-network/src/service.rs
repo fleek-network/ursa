@@ -828,7 +828,7 @@ where
             }
             NetworkCommand::GetPeers { sender } => {
                 sender
-                    .send(self.peers.peers())
+                    .send(HashSet::from_iter(self.peers.peers().into_iter()))
                     .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
             }
             NetworkCommand::GetListenerAddresses { sender } => {

@@ -49,17 +49,17 @@ impl Manager {
         }
     }
 
-    pub fn peers(&self) -> HashSet<PeerId> {
+    pub fn peers(&self) -> Vec<PeerId> {
         match self {
-            Manager::PrivateNetwork(peers) => peers.clone(),
-            Manager::PublicNetwork(manager) => manager.peers.clone(),
+            Manager::PrivateNetwork(peers) => peers.clone().into_iter().collect(),
+            Manager::PublicNetwork(manager) => manager.peers.clone().into_iter().collect(),
         }
     }
 
-    pub fn ref_peers(&self) -> &HashSet<PeerId> {
+    pub fn ref_peers(&self) -> impl Iterator<Item = &PeerId> + '_ {
         match self {
-            Manager::PrivateNetwork(peers) => &peers,
-            Manager::PublicNetwork(manager) => &manager.peers,
+            Manager::PrivateNetwork(peers) => peers.iter(),
+            Manager::PublicNetwork(manager) => manager.peers.iter(),
         }
     }
 
