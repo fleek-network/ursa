@@ -17,8 +17,8 @@ use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
 use serde_json::from_slice;
-use std::cmp::Ordering;
 use std::{net::IpAddr, sync::Arc};
+use totally_ordered::TotallyOrdered;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -101,24 +101,25 @@ impl Picker {
                 let location = get_location(city?)
                     .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
                     .ok()?;
-
-                Some((location, protocol, host, port.unwrap()))
+                let distance = self.location.haversine_distance_to(&location).meters();
+                Some((distance, protocol, host, port.unwrap()))
             })
-            .collect::<Vec<(Location, String, IpAddr, u16)>>();
-        provider_addresses.sort_by(|(location1, _, _, _), (location2, _, _, _)| {
-            // Using `sorted_by` instead of `sorted_by_key` because f64 doesn't implement Ord.
-            let location1 = self.location.haversine_distance_to(location1).meters();
-            let location2 = self.location.haversine_distance_to(location2).meters();
-            if let Some(ord) = location1.partial_cmp(&location2) {
-                ord
-            } else {
-                Ordering::Equal
-            }
+            .filter_map(|(distance, protocol, host, port)| {
+                if distance.is_finite() {
+                    Some((TotallyOrdered::new(distance), protocol, host, port))
+                } else {
+                    debug!("Skipping {host} because distance could not be computed");
+                    None
+                }
+            })
+            .collect::<Vec<(TotallyOrdered<f64>, String, IpAddr, u16)>>();
+
+        provider_addresses.sort_by(|(totally_ordered1, _, _, _), (totally_ordered2, _, _, _)| {
+            totally_ordered1.cmp(totally_ordered2)
         });
 
         provider_addresses
             .into_iter()
-            .rev()
             .map(|(_, protocol, host, port)| format!("{protocol}://{host}:{port}"))
             .collect()
     }
