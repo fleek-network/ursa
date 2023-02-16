@@ -15,10 +15,8 @@ pub async fn application_start(config: ApplicationConfig) -> Result<()> {
     } = App::new();
     let server = Server::new(consensus, mempool, info, snapshot);
 
-    // let addr = args.host.strip_prefix("http://").unwrap_or(&args.host);
     let addr = domain.parse::<SocketAddr>().unwrap();
 
-    // let addr = SocketAddr::new(addr, args.port);
     server.run(addr).await?;
 
     Ok(())

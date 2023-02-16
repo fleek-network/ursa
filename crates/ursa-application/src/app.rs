@@ -26,8 +26,6 @@ impl App<CacheDB<EmptyDB>> {
             env: Default::default(),
         };
 
-        //   if demo {
-        // addr(pk = 78aaa1de82137f31ac551fd8e876a6930aadd51b28c25e8c3420100f8e51d5c6)
         state.db.insert_account_info(
             "0xDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 .parse()
@@ -37,7 +35,6 @@ impl App<CacheDB<EmptyDB>> {
                 ..Default::default()
             },
         );
-        // }
 
         let committed_state = Arc::new(Mutex::new(state.clone()));
         let current_state = Arc::new(Mutex::new(state));
