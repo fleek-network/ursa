@@ -13,7 +13,7 @@ use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_consensus::{
     execution::Execution,
-    narwhal::{NarwhalService, ServiceArgs},
+    narwhal::{NarwhalArgs, NarwhalService},
 };
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
@@ -88,7 +88,7 @@ async fn run() -> Result<()> {
 
     let keypair = im.current();
 
-    let consensus_args = ServiceArgs::load(consensus_config).unwrap();
+    let consensus_args = NarwhalArgs::load(consensus_config).unwrap();
 
     let registration = TrackerRegistration {
         id: keypair.clone().public().to_peer_id(),

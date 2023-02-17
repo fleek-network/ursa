@@ -16,7 +16,7 @@ use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStora
 use prometheus::Registry;
 use rand::thread_rng;
 use resolve_path::PathResolveExt;
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use tokio::{sync::Mutex, time::Instant};
 use tracing::{error, info};
 use ursa_utils::load_json::load_or_create_json;
@@ -26,24 +26,23 @@ const MAX_RETRIES: u32 = 2;
 
 /// Manages running the narwhal and bullshark as a service for an specific epoch.
 pub struct NarwhalService {
-    arguments: ServiceArgs,
+    arguments: NarwhalArgs,
     store: NodeStorage,
     primary: PrimaryNode,
     worker_node: WorkerNode,
+    committee: Arc<ArcSwap<Committee>>,
+    worker_cache: Arc<ArcSwap<WorkerCache>>,
     status: Mutex<Status>,
 }
 
 /// Arguments used to run a consensus service.
-pub struct ServiceArgs {
+pub struct NarwhalArgs {
     pub parameters: Parameters,
     pub primary_keypair: KeyPair,
     pub primary_network_keypair: NetworkKeyPair,
     pub worker_keypair: NetworkKeyPair,
     pub primary_address: Multiaddr,
     pub worker_address: Multiaddr,
-    pub store_path: PathBuf,
-    pub committee: Arc<ArcSwap<Committee>>,
-    pub worker_cache: Arc<ArcSwap<WorkerCache>>,
     pub registry_service: RegistryService,
 }
 
@@ -54,10 +53,13 @@ enum Status {
 }
 
 impl NarwhalService {
-    /// Create a new consensus service using the provided arguments.
-    pub fn new(arguments: ServiceArgs) -> Self {
-        let store = NodeStorage::reopen(&arguments.store_path);
-
+    /// Create a new narwhal service using the provided arguments.
+    pub fn new(
+        arguments: NarwhalArgs,
+        store: NodeStorage,
+        committee: Arc<ArcSwap<Committee>>,
+        worker_cache: Arc<ArcSwap<WorkerCache>>,
+    ) -> Self {
         let primary = PrimaryNode::new(
             arguments.parameters.clone(),
             true,
@@ -75,6 +77,8 @@ impl NarwhalService {
             store,
             primary,
             worker_node,
+            committee,
+            worker_cache,
             status: Mutex::new(Status::Stopped),
         }
     }
@@ -97,7 +101,7 @@ impl NarwhalService {
         let name = self.arguments.primary_keypair.public().clone();
         let execution_state = Arc::new(state);
 
-        let epoch = self.arguments.committee.load().epoch();
+        let epoch = self.committee.load().epoch();
         info!("Starting ConsensusService for epoch {}", epoch);
 
         let mut running = false;
@@ -172,7 +176,7 @@ impl NarwhalService {
         }
 
         let now = Instant::now();
-        let epoch = self.arguments.committee.load().epoch();
+        let epoch = self.committee.load().epoch();
         info!("Shutting down Narwhal epoch {:?}", epoch);
 
         self.worker_node.shutdown().await;
@@ -188,9 +192,9 @@ impl NarwhalService {
     }
 }
 
-impl ServiceArgs {
+impl NarwhalArgs {
     /// Load a service arguments from a raw configuration.
-    pub fn load(config: ConsensusConfig) -> anyhow::Result<Self> {
+    pub fn load(config: &ConsensusConfig) -> anyhow::Result<Self> {
         // Load or create all of the keys.
         let mut rng = thread_rng();
         let primary_keypair = KeyPair::load_or_create(&mut rng, &config.keypair.resolve())?;
@@ -224,8 +228,8 @@ impl ServiceArgs {
         let worker_cache = Arc::new(WorkerCache::from(&genesis_committee));
 
         // create the directory for the store.
-        let store_path = config.store_path.resolve().into_owned();
-        std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
+        // let store_path = config.store_path.resolve().into_owned();
+        // std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
 
         Ok(Self {
             parameters: config.parameters,
@@ -234,10 +238,25 @@ impl ServiceArgs {
             worker_keypair,
             primary_address: config.address,
             worker_address: config.worker[0].address.clone(),
-            store_path,
-            committee: Arc::new(ArcSwap::new(committee)),
-            worker_cache: Arc::new(ArcSwap::new(worker_cache)),
+            // store_path,
+            // committee: Arc::new(ArcSwap::new(committee)),
+            // worker_cache: Arc::new(ArcSwap::new(worker_cache)),
             registry_service: RegistryService::new(Registry::new()),
         })
+    }
+}
+
+// Manually implement clone because KeyPair and NetworkKeyPair do not implement clone.
+impl Clone for NarwhalArgs {
+    fn clone(&self) -> Self {
+        Self {
+            parameters: self.parameters.clone(),
+            primary_keypair: self.primary_keypair.copy(),
+            primary_network_keypair: self.primary_network_keypair.copy(),
+            worker_keypair: self.worker_keypair.copy(),
+            primary_address: self.primary_address.clone(),
+            worker_address: self.worker_address.clone(),
+            registry_service: self.registry_service.clone(),
+        }
     }
 }
