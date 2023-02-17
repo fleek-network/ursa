@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 pub mod config;
+pub mod consensus;
 pub mod execution;
 pub mod keys;
 pub mod narwhal;

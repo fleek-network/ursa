@@ -16,11 +16,10 @@ use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStora
 use prometheus::Registry;
 use rand::thread_rng;
 use resolve_path::PathResolveExt;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::{path::PathBuf, sync::Arc};
 use tokio::{sync::Mutex, time::Instant};
 use tracing::{error, info};
+use ursa_utils::load_json::load_or_create_json;
 
 /// Maximum number of times we retry to start the primary or the worker, before we panic.
 const MAX_RETRIES: u32 = 2;
@@ -240,36 +239,5 @@ impl ServiceArgs {
             worker_cache: Arc::new(ArcSwap::new(worker_cache)),
             registry_service: RegistryService::new(Registry::new()),
         })
-    }
-}
-
-// TODO(qti3e) Move this to somewhere else.
-fn load_or_create_json<T, P: AsRef<std::path::Path>, F>(path: P, default_fn: F) -> anyhow::Result<T>
-where
-    F: Fn() -> T,
-    T: Serialize + DeserializeOwned,
-{
-    let path = path.as_ref();
-
-    if path.exists() {
-        let bytes =
-            std::fs::read(path).with_context(|| format!("Could not read the file: '{path:?}'"))?;
-
-        serde_json::from_slice(bytes.as_slice())
-            .with_context(|| format!("Could not deserialize the file: '{path:?}'"))
-    } else {
-        let value = default_fn();
-        let bytes = serde_json::to_vec_pretty(&value).context("Serialization failed.")?;
-
-        let parent = path
-            .parent()
-            .context("Could not resolve the parent directory.")?;
-
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Could not create the directory: '{parent:?}'"))?;
-
-        std::fs::write(path, bytes).with_context(|| format!("Could not write to '{path:?}'."))?;
-
-        Ok(value)
     }
 }
