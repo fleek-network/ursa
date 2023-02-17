@@ -5,42 +5,16 @@ use libp2p::{Multiaddr, PeerId};
 use maxminddb::geoip2::City;
 use maxminddb::Reader;
 use ordered_float::OrderedFloat;
-use std::cmp::Ordering;
-use std::collections::hash_set::Iter;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::HashSet;
 use std::net::IpAddr;
-use tracing::warn;
 
-#[derive(Clone)]
-pub struct Connection {
-    peer: PeerId,
-    distance: OrderedFloat<f64>,
-}
-
-impl PartialEq<Self> for Connection {
-    fn eq(&self, other: &Self) -> bool {
-        self.distance.eq(&other.distance)
-    }
-}
-
-impl Eq for Connection {}
-
-impl PartialOrd<Self> for Connection {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.distance.partial_cmp(&other.distance)
-    }
-}
-
-impl Ord for Connection {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.distance.cmp(&other.distance)
-    }
-}
+const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(10000f64);
+const NEIGHBORHOOD_SIZE: usize = 3;
 
 /// Manages a node's connected peers.
 pub struct InnerManager {
-    peers: HashMap<PeerId, Option<Connection>>,
-    close_peers: Vec<Connection>,
+    peers: HashSet<PeerId>,
+    closest_peers: HashSet<PeerId>,
     location: Location,
     maxminddb: Reader<Vec<u8>>,
 }
@@ -69,8 +43,8 @@ impl Manager {
         let location = get_location(city)?;
 
         Ok(Self::PublicNetwork(InnerManager {
-            peers: HashMap::new(),
-            close_peers: Vec::new(),
+            peers: HashSet::new(),
+            closest_peers: HashSet::new(),
             location,
             maxminddb,
         }))
@@ -80,18 +54,19 @@ impl Manager {
         match self {
             Self::PrivateNetwork(peers) => peers.insert(peer),
             Self::PublicNetwork(manager) => {
-                let connection =
-                    get_ip(addr)
-                        .and_then(|ip| manager.get_distance(ip))
-                        .map(|distance| Connection {
-                            peer,
-                            distance: OrderedFloat(distance),
-                        });
-                if let Some(connection) = connection.clone() {
-                    manager.close_peers.push(connection);
-                    manager.close_peers.sort();
+                let distance = get_ip(addr)
+                    .map(|ip| manager.get_distance(ip))
+                    .flatten()
+                    .map(OrderedFloat);
+                if let Some(distance) = distance {
+                    if manager.closest_peers.len() < NEIGHBORHOOD_SIZE
+                        && distance.is_finite()
+                        && distance < MAX_DISTANCE
+                    {
+                        manager.closest_peers.insert(peer);
+                    }
                 }
-                manager.peers.insert(peer, connection).is_none()
+                manager.peers.insert(peer)
             }
         }
     }
@@ -99,14 +74,21 @@ impl Manager {
     pub fn contains(&self, peer: &PeerId) -> bool {
         match self {
             Self::PrivateNetwork(peers) => peers.contains(peer),
-            Self::PublicNetwork(manager) => manager.peers.contains_key(peer),
+            Self::PublicNetwork(manager) => manager.peers.contains(peer),
+        }
+    }
+
+    pub fn ref_peers(&self) -> impl Iterator<Item = &PeerId> + '_ {
+        match self {
+            Manager::PrivateNetwork(peers) => peers.iter(),
+            Manager::PublicNetwork(manager) => manager.peers.iter(),
         }
     }
 
     pub fn peers(&self) -> Vec<PeerId> {
         match self {
             Self::PrivateNetwork(peers) => peers.clone().into_iter().collect(),
-            Self::PublicNetwork(manager) => manager.peers.clone().into_keys().collect(),
+            Self::PublicNetwork(manager) => manager.peers.clone().into_iter().collect(),
         }
     }
 
@@ -114,15 +96,8 @@ impl Manager {
         match self {
             Self::PrivateNetwork(peers) => peers.remove(peer),
             Self::PublicNetwork(manager) => {
-                // TODO: replace by another.
-                manager.close_peers = manager
-                    .close_peers
-                    .clone()
-                    .into_iter()
-                    .filter(|c| c.peer != *peer)
-                    .collect();
-                manager.close_peers.sort();
-                manager.peers.remove(peer).is_some()
+                manager.closest_peers.remove(peer);
+                manager.peers.remove(peer)
             }
         }
     }

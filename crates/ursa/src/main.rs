@@ -115,7 +115,7 @@ async fn run() -> Result<()> {
         .expect("Opening blockstore RocksDB must succeed");
     let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
 
-    // TODO: Update.
+    // TODO: Should we just be picking any randomly?
     let public_address = server_config
         .addresses
         .iter()

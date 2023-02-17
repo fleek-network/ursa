@@ -309,7 +309,7 @@ where
         let (event_sender, _event_receiver) = unbounded_channel();
         let (command_sender, command_receiver) = unbounded_channel();
 
-        let mut manager = match Reader::open_readfile(config.maxminddb.clone()) {
+        let manager = match Reader::open_readfile(config.maxminddb.clone()) {
             Ok(maxmind_db) if public_address.is_some() => {
                 Manager::new_public_network_manager(public_address.unwrap(), maxmind_db)?
             }
@@ -809,20 +809,20 @@ where
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.peers() {
+                for peer in self.peers.ref_peers() {
                     info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
-                        .send_request(&peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
+                        .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
                 // update cache summary and share it with the connected peers
                 self.cached_content.insert(&cid.to_bytes());
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.peers() {
+                for peer in self.peers.ref_peers() {
                     let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
                         self.cached_content.clone(),
                     )));
-                    swarm.request_response.send_request(&peer, request);
+                    swarm.request_response.send_request(peer, request);
                 }
 
                 sender
