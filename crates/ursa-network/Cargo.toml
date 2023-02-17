@@ -30,6 +30,7 @@ libipld.workspace = true
 libp2p-bitswap.workspace = true
 maxminddb.workspace = true
 metrics.workspace = true
+ordered-float.workspace = true
 rand.workspace = true
 scalable_cuckoo_filter.workspace = true
 serde.workspace = true

@@ -115,7 +115,8 @@ async fn run() -> Result<()> {
         .expect("Opening blockstore RocksDB must succeed");
     let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
 
-    let public_address: IpAddr = server_config
+    // TODO: Update.
+    let public_address = server_config
         .addresses
         .iter()
         .filter_map(|addr| {
@@ -128,8 +129,7 @@ async fn run() -> Result<()> {
             }
             None
         })
-        .next()
-        .ok_or_else(|| bail!())?;
+        .next();
 
     let service = UrsaService::new(
         keypair.clone(),

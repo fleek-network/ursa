@@ -1,17 +1,57 @@
 use anyhow::{anyhow, Result};
 use geoutils::Location;
-use libp2p::PeerId;
+use libp2p::multiaddr::Protocol;
+use libp2p::{Multiaddr, PeerId};
 use maxminddb::geoip2::City;
 use maxminddb::Reader;
-use std::collections::HashSet;
+use ordered_float::OrderedFloat;
+use std::cmp::Ordering;
+use std::collections::hash_set::Iter;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::IpAddr;
 use tracing::warn;
 
+#[derive(Clone)]
+pub struct Connection {
+    peer: PeerId,
+    distance: OrderedFloat<f64>,
+}
+
+impl PartialEq<Self> for Connection {
+    fn eq(&self, other: &Self) -> bool {
+        self.distance.eq(&other.distance)
+    }
+}
+
+impl Eq for Connection {}
+
+impl PartialOrd<Self> for Connection {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.distance.partial_cmp(&other.distance)
+    }
+}
+
+impl Ord for Connection {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.distance.cmp(&other.distance)
+    }
+}
+
 /// Manages a node's connected peers.
 pub struct InnerManager {
-    peers: HashSet<PeerId>,
+    peers: HashMap<PeerId, Option<Connection>>,
+    close_peers: Vec<Connection>,
     location: Location,
     maxminddb: Reader<Vec<u8>>,
+}
+
+impl InnerManager {
+    fn get_distance(&self, addr: IpAddr) -> Option<f64> {
+        let city = self.maxminddb.lookup::<City>(addr).ok()?;
+        let location = get_location(city).ok()?;
+        let distance = self.location.haversine_distance_to(&location);
+        Some(distance.meters())
+    }
 }
 
 pub enum Manager {
@@ -29,46 +69,74 @@ impl Manager {
         let location = get_location(city)?;
 
         Ok(Self::PublicNetwork(InnerManager {
-            peers: HashSet::new(),
+            peers: HashMap::new(),
+            close_peers: Vec::new(),
             location,
             maxminddb,
         }))
     }
 
-    pub fn insert(&mut self, peer: PeerId) -> bool {
+    pub fn insert(&mut self, peer: PeerId, addr: Multiaddr) -> bool {
         match self {
-            Manager::PrivateNetwork(peers) => peers.insert(peer),
-            Manager::PublicNetwork(manager) => manager.peers.insert(peer),
+            Self::PrivateNetwork(peers) => peers.insert(peer),
+            Self::PublicNetwork(manager) => {
+                let connection =
+                    get_ip(addr)
+                        .and_then(|ip| manager.get_distance(ip))
+                        .map(|distance| Connection {
+                            peer,
+                            distance: OrderedFloat(distance),
+                        });
+                if let Some(connection) = connection.clone() {
+                    manager.close_peers.push(connection);
+                    manager.close_peers.sort();
+                }
+                manager.peers.insert(peer, connection).is_none()
+            }
         }
     }
 
     pub fn contains(&self, peer: &PeerId) -> bool {
         match self {
-            Manager::PrivateNetwork(peers) => peers.contains(peer),
-            Manager::PublicNetwork(manager) => manager.peers.contains(peer),
+            Self::PrivateNetwork(peers) => peers.contains(peer),
+            Self::PublicNetwork(manager) => manager.peers.contains_key(peer),
         }
     }
 
     pub fn peers(&self) -> Vec<PeerId> {
         match self {
-            Manager::PrivateNetwork(peers) => peers.clone().into_iter().collect(),
-            Manager::PublicNetwork(manager) => manager.peers.clone().into_iter().collect(),
-        }
-    }
-
-    pub fn ref_peers(&self) -> impl Iterator<Item = &PeerId> + '_ {
-        match self {
-            Manager::PrivateNetwork(peers) => peers.iter(),
-            Manager::PublicNetwork(manager) => manager.peers.iter(),
+            Self::PrivateNetwork(peers) => peers.clone().into_iter().collect(),
+            Self::PublicNetwork(manager) => manager.peers.clone().into_keys().collect(),
         }
     }
 
     pub fn remove(&mut self, peer: &PeerId) -> bool {
         match self {
-            Manager::PrivateNetwork(peers) => peers.remove(peer),
-            Manager::PublicNetwork(manager) => manager.peers.remove(peer),
+            Self::PrivateNetwork(peers) => peers.remove(peer),
+            Self::PublicNetwork(manager) => {
+                // TODO: replace by another.
+                manager.close_peers = manager
+                    .close_peers
+                    .clone()
+                    .into_iter()
+                    .filter(|c| c.peer != *peer)
+                    .collect();
+                manager.close_peers.sort();
+                manager.peers.remove(peer).is_some()
+            }
         }
     }
+}
+
+fn get_ip(multiaddr: Multiaddr) -> Option<IpAddr> {
+    for comp in multiaddr.iter() {
+        match comp {
+            Protocol::Ip4(ip) => return Some(ip.into()),
+            Protocol::Ip6(ip) => return Some(ip.into()),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn get_location(city: City) -> Result<Location> {

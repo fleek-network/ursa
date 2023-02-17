@@ -571,7 +571,7 @@ where
                         .behaviour_mut()
                         .add_address(&peer_id, address.clone());
 
-                    if self.peers.insert(peer_id) {
+                    if self.peers.insert(peer_id, address.clone()) {
                         match self.swarm.dial(address) {
                             Ok(_) => info!("Dialed new local peer: {peer_id:?}"),
                             Err(e) => error!("Failed to dial new local peer: {e:?}"),
@@ -732,8 +732,11 @@ where
                 BehaviourEvent::Dcutr(_) => Ok(()),
                 BehaviourEvent::Graphsync(event) => self.handle_graphsync(event),
             },
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                if self.peers.insert(peer_id) {
+            SwarmEvent::ConnectionEstablished {
+                peer_id, endpoint, ..
+            } => {
+                let addr = endpoint.get_remote_address();
+                if self.peers.insert(peer_id, addr.clone()) {
                     debug!("Peer connected: {peer_id}");
                     self.emit_event(NetworkEvent::PeerConnected(peer_id));
                 };
@@ -806,20 +809,20 @@ where
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.ref_peers() {
+                for peer in self.peers.peers() {
                     info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
-                        .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
+                        .send_request(&peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
                 // update cache summary and share it with the connected peers
                 self.cached_content.insert(&cid.to_bytes());
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.ref_peers() {
+                for peer in self.peers.peers() {
                     let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
                         self.cached_content.clone(),
                     )));
-                    swarm.request_response.send_request(peer, request);
+                    swarm.request_response.send_request(&peer, request);
                 }
 
                 sender
