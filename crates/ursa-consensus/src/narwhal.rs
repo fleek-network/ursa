@@ -25,8 +25,8 @@ use tracing::{error, info};
 /// Maximum number of times we retry to start the primary or the worker, before we panic.
 const MAX_RETRIES: u32 = 2;
 
-/// Manages running the narwhal and bullshark as a service.
-pub struct ConsensusService {
+/// Manages running the narwhal and bullshark as a service for an specific epoch.
+pub struct NarwhalService {
     arguments: ServiceArgs,
     store: NodeStorage,
     primary: PrimaryNode,
@@ -54,7 +54,7 @@ enum Status {
     Stopped,
 }
 
-impl ConsensusService {
+impl NarwhalService {
     /// Create a new consensus service using the provided arguments.
     pub fn new(arguments: ServiceArgs) -> Self {
         let store = NodeStorage::reopen(&arguments.store_path);

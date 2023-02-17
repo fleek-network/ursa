@@ -4,5 +4,5 @@
 pub mod config;
 pub mod execution;
 pub mod keys;
-pub mod service;
+pub mod narwhal;
 pub mod validator;

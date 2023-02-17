@@ -13,7 +13,7 @@ use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_consensus::{
     execution::Execution,
-    service::{ConsensusService, ServiceArgs},
+    narwhal::{NarwhalService, ServiceArgs},
 };
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
@@ -176,7 +176,7 @@ async fn run() -> Result<()> {
     });
 
     // Start the consensus service.
-    let consensus_service = ConsensusService::new(consensus_args);
+    let consensus_service = NarwhalService::new(consensus_args);
     let (tx_transactions, _rx_transactions) = channel(100);
     let execution = Execution::new(0, tx_transactions);
     consensus_service.start(execution).await;
