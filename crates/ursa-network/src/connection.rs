@@ -101,6 +101,14 @@ impl Manager {
             }
         }
     }
+
+    pub fn closest_peers(&self) -> Vec<PeerId> {
+        if let Self::PublicNetwork(manager) = self {
+            manager.closest_peers.clone().into_iter().collect()
+        } else {
+            self.peers()
+        }
+    }
 }
 
 fn get_ip(multiaddr: Multiaddr) -> Option<IpAddr> {

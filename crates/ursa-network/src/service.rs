@@ -809,11 +809,11 @@ where
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.ref_peers() {
+                for peer in self.peers.closest_peers() {
                     info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
-                        .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
+                        .send_request(&peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
                 // update cache summary and share it with the connected peers
                 self.cached_content.insert(&cid.to_bytes());
