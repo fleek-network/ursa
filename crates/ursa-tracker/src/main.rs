@@ -24,7 +24,7 @@ use crate::{
 mod ip_api;
 mod types;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tracing_subscriber::registry()
         .with(EnvFilter::new(

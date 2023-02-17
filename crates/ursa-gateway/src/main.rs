@@ -27,7 +27,7 @@ use tokio::{
 use tracing::{error, info, info_span, Instrument, Level};
 use ursa_telemetry::TelemetryConfig;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let Cli {
         log,

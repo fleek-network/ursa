@@ -21,7 +21,7 @@ use ursa_proxy::{
     core::start,
 };
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let Cli {
         command: Commands::Daemon(opts),

@@ -26,7 +26,7 @@ use ursa_utils::shutdown::ShutdownController;
 pub mod config;
 mod ursa;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     dotenv().ok();
 
