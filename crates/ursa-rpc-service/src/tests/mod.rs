@@ -42,7 +42,7 @@ pub fn init() -> InitResult {
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store), None)?;
 
     let provider_engine = ProviderEngine::new(
         keypair,

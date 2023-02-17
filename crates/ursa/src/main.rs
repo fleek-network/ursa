@@ -6,7 +6,6 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
-use std::net::IpAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};

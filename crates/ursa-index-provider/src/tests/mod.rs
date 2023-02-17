@@ -43,7 +43,7 @@ pub fn provider_engine_init(
     let store = get_store();
     let index_store = get_store();
 
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store), None)?;
     let provider_engine = ProviderEngine::new(
         keypair,
         store,
