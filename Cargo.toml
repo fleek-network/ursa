@@ -99,6 +99,9 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 axum-tracing-opentelemetry = "0.8.2"
 axum-prometheus = "0.3.0"
 
+[patch.'https://github.com/MystenLabs/sui.git']
+workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.git", rev = "d9224476db385706fd0822c0d6738bdb503542d3"}
+
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.
 debug = 1
