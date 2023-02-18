@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{
     body::Body,
     extract::Extension,
@@ -96,13 +96,15 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
 
     let maxmind_db = Arc::new(Reader::open_readfile(maxminddb)?);
 
-    let resolver = Arc::new(Picker::new(
+    let resolver = Picker::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,
         maxmind_db,
         addr.ip(),
-    ));
+    )
+    .map(Arc::new)
+    .map_err(|_| anyhow!("Failed to create cherry-picker"))?;
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
