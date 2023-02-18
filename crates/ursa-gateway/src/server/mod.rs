@@ -41,6 +41,7 @@ use tower_http::{
 };
 use tracing::{error, info, Level};
 
+use crate::util::error::Error;
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
     picker::Picker,
@@ -104,7 +105,13 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         addr.ip(),
     )
     .map(Arc::new)
-    .map_err(|_| anyhow!("Failed to create cherry-picker"))?;
+    .map_err(|e| {
+        if let Error::Internal(message) = e {
+            anyhow!("Failed to create cherry-picker {message:?}")
+        } else {
+            anyhow!("Failed to create cherry-picker")
+        }
+    })?;
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
