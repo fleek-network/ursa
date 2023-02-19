@@ -16,14 +16,11 @@ use ursa_rpc_service::config::ServerConfig;
 pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
 
 #[derive(Default, Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct UrsaConfig {
-    #[serde(default)]
     pub network_config: NetworkConfig,
-    #[serde(default)]
     pub provider_config: ProviderConfig,
-    #[serde(default)]
     pub server_config: ServerConfig,
-    #[serde(default)]
     pub consensus_config: ConsensusConfig,
 }
 
