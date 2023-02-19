@@ -56,7 +56,7 @@ impl Default for NetworkConfig {
             keystore_path: "~/.ursa/keystore".into(),
             identity: "default".into(), 
             tracker: "https://tracker.ursa.earth/register".into(),
-            kad_replication_factor: 8, 
+            kad_replication_factor: 8,
             kad_walk_interval: 300,
         }
     }
