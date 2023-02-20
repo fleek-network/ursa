@@ -163,7 +163,7 @@ where
                         } else {
                             match self
                                 .provider
-                                .create_announce_message(peer_id, &mut self.addresses)
+                                .create_announce_message(peer_id, self.addresses.clone())
                             {
                                 Ok(announce_message) => {
                                     if let Err(e) = self
