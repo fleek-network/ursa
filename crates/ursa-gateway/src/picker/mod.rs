@@ -22,7 +22,7 @@ use totally_ordered::TotallyOrdered;
 use tracing::{debug, error, warn};
 
 use crate::{
-    picker::model::{Metadata, MultihashResult, ProviderResult},
+    picker::model::{Metadata, ProviderResult},
     util::error::Error,
 };
 
@@ -33,7 +33,7 @@ type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Picker {
     indexer_cid_url: String,
     client: Client,
-    cache: Cache<String, Vec<MultihashResult>>,
+    cache: Cache<String, Vec<String>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
     location: Location,
 }
@@ -42,7 +42,7 @@ impl Picker {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
-        cache: Cache<String, Vec<MultihashResult>>,
+        cache: Cache<String, Vec<String>>,
         maxminddb: Arc<Reader<Vec<u8>>>,
         addr: IpAddr,
     ) -> Result<Self, Error> {
@@ -133,7 +133,7 @@ impl Picker {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let multihash_results = match self.cache.get(cid) {
+        let provider_addresses = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -173,51 +173,52 @@ impl Picker {
 
                 debug!("Received indexer response for {cid}: {indexer_response:?}");
 
-                self.cache
-                    .insert(cid.to_string(), indexer_response.multihash_results.clone());
+                let providers: Vec<&ProviderResult> = indexer_response
+                    .multihash_results
+                    .first()
+                    .context("Indexer result did not contain a multi-hash result")?
+                    .provider_results
+                    .iter()
+                    .filter(|provider| {
+                        let metadata_bytes = match base64::decode(&provider.metadata) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Failed to decode metadata {e:?}");
+                                return false;
+                            }
+                        };
+                        let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Failed to deserialize metadata {e:?}");
+                                return false;
+                            }
+                        };
+                        if metadata.data == FLEEK_NETWORK_FILTER {
+                            return true;
+                        }
+                        warn!("Invalid data in metadata {:?}", metadata.data);
+                        false
+                    })
+                    .collect();
 
-                indexer_response.multihash_results
-            }
-            Some(multihash_results) => multihash_results,
-        };
+                let provider_addresses = self.provider_addresses(providers);
 
-        let providers: Vec<&ProviderResult> = multihash_results
-            .first()
-            .context("Indexer result did not contain a multi-hash result")?
-            .provider_results
-            .iter()
-            .filter(|provider| {
-                let metadata_bytes = match base64::decode(&provider.metadata) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to decode metadata {e:?}");
-                        return false;
-                    }
-                };
-                let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to deserialize metadata {e:?}");
-                        return false;
-                    }
-                };
-                if metadata.data == FLEEK_NETWORK_FILTER {
-                    return true;
+                if provider_addresses.is_empty() {
+                    return Err(Error::Internal(
+                        "Failed to get a valid address for provider".to_string(),
+                    ));
                 }
-                warn!("Invalid data in metadata {:?}", metadata.data);
-                false
-            })
-            .collect();
 
-        let provider_addresses = self.provider_addresses(providers);
+                debug!("Provider addresses to query: {provider_addresses:?}");
 
-        if provider_addresses.is_empty() {
-            return Err(Error::Internal(
-                "Failed to get a valid address for provider".to_string(),
-            ));
-        }
+                self.cache
+                    .insert(cid.to_string(), provider_addresses.clone());
 
-        debug!("Provider addresses to query: {provider_addresses:?}");
+                provider_addresses
+            }
+            Some(provider_addresses) => provider_addresses,
+        };
 
         for addr in provider_addresses.into_iter() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
