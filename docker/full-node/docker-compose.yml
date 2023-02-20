@@ -27,7 +27,6 @@ services:
     depends_on:
       - nginx
 
-
   certbot:
     image: certbot/certbot
     restart: unless-stopped
@@ -35,6 +34,24 @@ services:
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
+
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+    expose:
+      - 9100
+    labels:
+      org.label-schema.group: "monitoring"
 
   prometheus:
     image: prom/prometheus
@@ -48,6 +65,7 @@ services:
     command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
     depends_on:
       - ursa
+      - node-exporter
 
   grafana:
     image: grafana/grafana
