@@ -59,6 +59,7 @@ impl Picker {
         })
     }
 
+    /// Returns a set of provider address sorted by their distance relative to the gateway.
     fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Vec<String> {
         let mut provider_addresses = providers
             .into_iter()
