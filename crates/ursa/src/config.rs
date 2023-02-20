@@ -12,6 +12,7 @@ use ursa_consensus::config::ConsensusConfig;
 use ursa_index_provider::config::ProviderConfig;
 use ursa_network::NetworkConfig;
 use ursa_rpc_service::config::ServerConfig;
+use ursa_application::ApplicationConfig;
 
 pub const DEFAULT_CONFIG_PATH_STR: &str = ".ursa/config.toml";
 
@@ -25,6 +26,8 @@ pub struct UrsaConfig {
     pub server_config: ServerConfig,
     #[serde(default)]
     pub consensus_config: ConsensusConfig,
+    #[serde(default)]
+    pub application_config: ApplicationConfig,
 }
 
 impl UrsaConfig {
