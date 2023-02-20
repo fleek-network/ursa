@@ -6,12 +6,13 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
+use ursa_application::application_start;
 use ursa_consensus::{AbciApi, Engine, execution::Execution, service::{ConsensusService, ServiceArgs}};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
@@ -188,15 +189,12 @@ async fn run() -> Result<()> {
 
     //TODO: This is temporary this shim should be merged with the ursa-rpc-service
     //Start the ABCI shim and engine
-    let (tx_abci_queries, rx_abci_queries) = channel(CHANNEL_CAPACITY);
+    let (tx_abci_queries, rx_abci_queries) = channel(1000);
+    let mempool_address = consensus_config.worker[0].transaction.clone();
 
     let abci_task = task::spawn(async move {
-        let mempool_address = consensus_config.worker.0.transactions;
         let api = AbciApi::new(mempool_address, tx_abci_queries);
-
-        let mut address = consensus_config.rpc_address.parse::<SocketAddr>().unwrap();
-        address.set_ip("0.0.0.0".parse().unwrap());
-
+        let address = consensus_config.rpc_domain.parse::<SocketAddr>().unwrap();
         warp::serve(api.routes()).run(address).await;
     });
 
@@ -210,7 +208,10 @@ async fn run() -> Result<()> {
         let app_address =  app_api.parse::<SocketAddr>().unwrap();
 
         let mut engine = Engine::new(app_address,rx_abci_queries);
-        engine.run(rx_transactions).await?;
+
+        if let Err(err) = engine.run(rx_transactions).await {
+            error!("[consensus_engine_task] - {:?}", err)
+        }
     });
 
 
@@ -230,6 +231,9 @@ async fn run() -> Result<()> {
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
+    consensus_engine_task.abort();
+    application_task.abort();
+    abci_task.abort();
     consensus_service.shutdown().await;
 
     Ok(())

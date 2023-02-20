@@ -10,6 +10,7 @@ use tracing::{error, warn};
 use warp::{Filter, Rejection, Reply};
 
 use std::net::SocketAddr;
+use multiaddr::{Multiaddr,Protocol};
 
 /// Simple HTTP API server which listens to messages on:
 /// * `broadcast_tx`: forwards them to Narwhal's mempool/worker socket, which will proceed to put
@@ -22,9 +23,17 @@ pub struct AbciApi<T> {
 
 impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
     pub fn new(
-        mempool_address: SocketAddr,
+        mempool_address: Multiaddr,
         tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
     ) -> Self {
+        let mempool_port= mempool_address.iter().find_map(|proto| match proto {
+            Protocol::Tcp(port) => Some(port),
+            Protocol::Udp(port) => Some(port),
+            _ => None,
+        }).unwrap();
+
+        let mempool_address= format!("0.0.0.0:{}", mempool_port).parse::<SocketAddr>().unwrap();
+
         Self {
             mempool_address,
             tx,

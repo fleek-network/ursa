@@ -13,6 +13,8 @@ pub use abci_engine::{Engine};
 mod server;
 pub use server::AbciApi;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastTxQuery {
     tx: String,

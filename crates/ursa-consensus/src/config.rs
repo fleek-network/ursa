@@ -21,7 +21,7 @@ pub struct ConsensusConfig {
     /// be a UDP address.
     pub address: Multiaddr,
     ///The address to receive ABCI connections to defaults too
-    pub rpc_domain: Multiaddr,
+    pub rpc_domain: String,
     /// Path to the BLS12381 private key for the primary.
     pub keypair: PathBuf,
     /// Path to the Ed25519 networking private key for the primary.
@@ -95,7 +95,7 @@ impl Default for ConsensusConfig {
 
         Self {
             address: "/ip4/0.0.0.0/udp/8000".parse().unwrap(),
-            rpc_domain: "/ip4/0.0.0.0/udp/8000".parse().unwrap(),
+            rpc_domain: "0.0.0.0:8003".into(),
             keypair: "~/.ursa/keystore/consensus/primary.key".into(),
             network_keypair: "~/.ursa/keystore/consensus/network.key".into(),
             store_path: "~/.ursa/data/narwhal_store".into(),
