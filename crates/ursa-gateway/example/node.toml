@@ -1,5 +1,4 @@
 log_level = "ERROR"
-maxminddb = "/usr/local/etc/GeoIP/GeoLite2-City.mmdb"
 
 [server]
 port = 443
@@ -9,6 +8,7 @@ concurrency_limit = 100000
 cert_path = ".ursa/gateway/cert.pem"
 key_path = ".ursa/gateway/key.pem"
 stream_buf = 2000000 # 2mb
+maxminddb = "/usr/local/etc/GeoIP/GeoLite2-City.mmdb"
 
 [indexer]
 cid_url = "https://cid.contact/cid"

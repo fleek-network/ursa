@@ -65,10 +65,10 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
                 cache_max_capacity,
                 cache_time_to_idle,
                 cache_time_to_live,
+                maxminddb,
                 ..
             },
         indexer: IndexerConfig { cid_url },
-        maxminddb,
         ..
     } = &(*config_reader.read().await);
 

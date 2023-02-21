@@ -67,7 +67,6 @@ pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
     pub indexer: IndexerConfig,
-    pub maxminddb: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -82,6 +81,7 @@ pub struct ServerConfig {
     pub cache_max_capacity: u64,
     pub cache_time_to_idle: u64,
     pub cache_time_to_live: u64,
+    pub maxminddb: PathBuf,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -108,11 +108,11 @@ impl Default for GatewayConfig {
                 cache_max_capacity: 100_000,       //  Number of entries.
                 cache_time_to_idle: 5 * 60 * 1000, //  5 mins.
                 cache_time_to_live: 5 * 60 * 1000, //  5 mins.
+                maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".into(),
             },
             indexer: IndexerConfig {
                 cid_url: "https://dev.cid.contact/cid".into(),
             },
-            maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".to_string(),
         }
     }
 }
@@ -159,7 +159,7 @@ impl GatewayConfig {
             self.server.cache_time_to_idle = cache_time_to_idle;
         }
         if let Some(maxminddb_path) = config.maxminddb {
-            self.maxminddb = maxminddb_path;
+            self.server.maxminddb = maxminddb_path;
         }
     }
 }
