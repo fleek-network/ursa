@@ -42,7 +42,6 @@ use tower_http::{
 };
 use tracing::{error, info, Level};
 
-use crate::util::error::Error;
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
     resolver::Picker,
@@ -50,6 +49,7 @@ use crate::{
         model::HttpResponse,
         route::api::v1::get::{check_car_handler, get_car_handler},
     },
+    util::error::Error,
 };
 
 pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
