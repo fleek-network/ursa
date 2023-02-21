@@ -11,6 +11,7 @@ run: version
 	cargo run --bin cli
 
 install: version build
+	mkdir -p ~/.cargo/bin/
 	cp ./target/release/ursa ~/.cargo/bin/
 
 build: version
