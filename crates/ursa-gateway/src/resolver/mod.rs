@@ -16,9 +16,9 @@ use libp2p::multiaddr::Protocol;
 use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
+use ordered_float::OrderedFloat;
 use serde_json::from_slice;
 use std::{net::IpAddr, sync::Arc};
-use totally_ordered::TotallyOrdered;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -108,13 +108,13 @@ impl Resolver {
             .filter_map(|(distance, protocol, host, port)| {
                 if distance.is_finite() {
                     debug!("{host} is {distance:?} meters from host");
-                    Some((TotallyOrdered::new(distance), protocol, host, port))
+                    Some((OrderedFloat(distance), protocol, host, port))
                 } else {
                     debug!("Skipping {host} because distance could not be computed");
                     None
                 }
             })
-            .collect::<Vec<(TotallyOrdered<f64>, String, IpAddr, u16)>>();
+            .collect::<Vec<(OrderedFloat<f64>, String, IpAddr, u16)>>();
 
         provider_addresses.sort_by(|(totally_ordered1, _, _, _), (totally_ordered2, _, _, _)| {
             totally_ordered1.cmp(totally_ordered2)
