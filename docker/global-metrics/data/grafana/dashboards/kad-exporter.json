@@ -27,7 +27,6 @@
   "gnetId": {},
   "graphTooltip": 0,
   "id": 1,
-  "iteration": 1676931374307,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -36,23 +35,133 @@
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
       },
-      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "gridPos": {
-        "h": 1,
-        "w": 6,
+        "h": 10,
+        "w": 24,
         "x": 0,
         "y": 0
       },
-      "id": 1009,
+      "id": 1011,
       "options": {
-        "content": "",
-        "mode": "markdown"
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "default"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": false,
+          "showScale": false,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "config": {
+              "showLegend": true,
+              "style": {
+                "color": {
+                  "fixed": "dark-green"
+                },
+                "opacity": 0.4,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "field": "Value",
+                  "fixed": 5,
+                  "max": 15,
+                  "min": 2
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "textConfig": {
+                  "fontSize": 12,
+                  "offsetX": 0,
+                  "offsetY": 0,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "lookup": "country",
+              "mode": "lookup"
+            },
+            "name": "Nodes",
+            "tooltip": true,
+            "type": "markers"
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "allLayers": true,
+          "id": "coords",
+          "lat": 48.522003,
+          "lon": 9.267496,
+          "zoom": 2.21
+        }
       },
-      "pluginVersion": "8.5.2",
-      "repeat": "instance",
-      "repeatDirection": "h",
-      "title": "${instance}",
-      "type": "text"
+      "pluginVersion": "9.3.6",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(kademlia_exporter_nodes_seen_within{last_seen_within=\"12h\"}) by (country)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transparent": true,
+      "type": "geomap"
     },
     {
       "collapsed": false,
@@ -64,7 +173,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 1
+        "y": 10
       },
       "id": 1000,
       "panels": [],
@@ -109,9 +218,9 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 6,
+        "w": 24,
         "x": 0,
-        "y": 2
+        "y": 11
       },
       "id": 7,
       "links": [],
@@ -130,7 +239,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "8.5.2",
+      "pluginVersion": "9.3.6",
       "repeat": "instance",
       "repeatDirection": "h",
       "targets": [
@@ -165,9 +274,9 @@
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
-        "w": 6,
+        "w": 24,
         "x": 0,
-        "y": 9
+        "y": 18
       },
       "hiddenSeries": false,
       "id": 6,
@@ -190,7 +299,7 @@
       },
       "paceLength": 10,
       "percentage": false,
-      "pluginVersion": "8.5.2",
+      "pluginVersion": "9.3.6",
       "pointradius": 5,
       "points": false,
       "renderer": "flot",
@@ -250,7 +359,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 25
       },
       "id": 1001,
       "panels": [],
@@ -279,10 +388,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 6,
+        "h": 9,
+        "w": 24,
         "x": 0,
-        "y": 17
+        "y": 26
       },
       "id": 1003,
       "links": [],
@@ -301,12 +410,17 @@
         "showUnfilled": true,
         "text": {}
       },
-      "pluginVersion": "8.5.2",
+      "pluginVersion": "9.3.6",
       "repeat": "instance",
       "repeatDirection": "h",
       "targets": [
         {
-          "expr": "sort_desc(sum(kademlia_exporter_nodes_up_since{instance=~\"$instance\"}) by (dht, up_since))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sort_desc(sum(kademlia_exporter_nodes_seen_within{instance=~\"$instance\"}) by (dht, last_seen_within))",
           "instant": true,
           "interval": "",
           "legendFormat": "{{up_since}}",
@@ -315,23 +429,6 @@
       ],
       "title": "# nodes up since",
       "type": "bargauge"
-    },
-    {
-      "collapsed": false,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 27
-      },
-      "id": 1002,
-      "panels": [],
-      "title": "Others",
-      "type": "row"
     },
     {
       "datasource": {
@@ -364,9 +461,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
+        "w": 24,
         "x": 0,
-        "y": 28
+        "y": 35
       },
       "id": 4,
       "links": [],
@@ -385,7 +482,7 @@
         "showUnfilled": true,
         "text": {}
       },
-      "pluginVersion": "8.5.2",
+      "pluginVersion": "9.3.6",
       "repeat": "instance",
       "repeatDirection": "h",
       "targets": [
@@ -403,78 +500,96 @@
       "type": "bargauge"
     },
     {
+      "collapsed": true,
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
       },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "#EAB839",
-                "value": 10
-              },
-              {
-                "color": "red",
-                "value": 20
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
       "gridPos": {
-        "h": 10,
-        "w": 6,
+        "h": 1,
+        "w": 24,
         "x": 0,
-        "y": 36
+        "y": 43
       },
-      "id": 1004,
-      "interval": "",
-      "links": [],
-      "options": {
-        "displayMode": "basic",
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "mean"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "text": {}
-      },
-      "pluginVersion": "8.5.2",
-      "repeat": "instance",
-      "repeatDirection": "h",
-      "targets": [
+      "id": 1002,
+      "panels": [
         {
-          "expr": "topk(10, sum(kademlia_exporter_nodes_seen_within{instance=~\"$instance\", last_seen_within=\"12h\", cloud_provider!=\"unknown\"}) by (cloud_provider))",
-          "format": "time_series",
-          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 10
+                  },
+                  {
+                    "color": "red",
+                    "value": 20
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 44
+          },
+          "id": 1004,
           "interval": "",
-          "intervalFactor": 1,
-          "legendFormat": "{{cloud_provider}}",
-          "refId": "A"
+          "links": [],
+          "options": {
+            "displayMode": "basic",
+            "minVizHeight": 10,
+            "minVizWidth": 0,
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "mean"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true,
+            "text": {}
+          },
+          "pluginVersion": "9.3.6",
+          "repeat": "instance",
+          "repeatDirection": "h",
+          "targets": [
+            {
+              "expr": "topk(10, sum(kademlia_exporter_nodes_seen_within{instance=~\"$instance\", last_seen_within=\"12h\", cloud_provider!=\"unknown\"}) by (cloud_provider))",
+              "format": "time_series",
+              "instant": true,
+              "interval": "",
+              "intervalFactor": 1,
+              "legendFormat": "{{cloud_provider}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Top 10 cloud providers by # of nodes within 12h",
+          "type": "bargauge"
         }
       ],
-      "title": "Top 10 cloud providers by # of nodes within 12h",
-      "type": "bargauge"
+      "title": "Others",
+      "type": "row"
     }
   ],
   "refresh": false,
-  "schemaVersion": 36,
+  "schemaVersion": 37,
   "style": "dark",
   "tags": [],
   "templating": {
@@ -546,6 +661,6 @@
   "timezone": "",
   "title": "Kademlia Exporter",
   "uid": "-avwMhsik",
-  "version": 1,
+  "version": 4,
   "weekStart": ""
 }
