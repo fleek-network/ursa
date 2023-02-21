@@ -1,13 +1,12 @@
 max_mind_db_path = "/var/lib/GeoIP/GeoLite2-City.mmdb"
-# cloud_provider_cidr_db_path = "<path to cidrs.csv>"
 
 name = "ursa"
 protocol_name = "/ursa/kad/0.0.1"
 bootnodes = [
-  "/dns/bootstrap0.ursa.earth/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p"
+  "/dns/bootstrap-node-0.ursa.earth/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p"
 ]
 disjoint_query_paths = false
 tcp_listen_address = "0.0.0.0:6009"
-quic_listen_address = "0.0.0.0:8048"
-quic_v1_listen_address = "0.0.0.0:8049"
+quic_listen_address = "0.0.0.0:4891"
+quic_v1_listen_address = "0.0.0.0:4890"
 noise_legacy = false
