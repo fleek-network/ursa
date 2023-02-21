@@ -25,7 +25,7 @@ use ursa_utils::shutdown::ShutdownController;
 pub mod config;
 mod ursa;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     dotenv().ok();
 
@@ -187,6 +187,8 @@ async fn run() -> Result<()> {
         }
     });
 
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
     //TODO: This is temporary this shim should be merged with the ursa-rpc-service
     //Start the ABCI shim and engine
     let (tx_abci_queries, rx_abci_queries) = channel(1000);
@@ -198,6 +200,8 @@ async fn run() -> Result<()> {
         warp::serve(api.routes()).run(address).await;
     });
 
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
     // Start the consensus service.
     let consensus_service = ConsensusService::new(consensus_args);
     let (tx_transactions, rx_transactions) = channel(1000);
@@ -205,8 +209,9 @@ async fn run() -> Result<()> {
     consensus_service.start(execution).await;
 
     let consensus_engine_task = task::spawn(async move {
-        let app_address =  app_api.parse::<SocketAddr>().unwrap();
-
+        let mut app_address =  app_api.parse::<SocketAddr>().unwrap();
+        app_address.set_ip("0.0.0.0".parse().unwrap());
+        error!("the app_address is {:?}", app_address);
         let mut engine = Engine::new(app_address,rx_abci_queries);
 
         if let Err(err) = engine.run(rx_transactions).await {

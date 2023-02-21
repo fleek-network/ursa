@@ -32,7 +32,9 @@ impl Execution {
 impl ExecutionState for Execution {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
         for (_, batches) in consensus_output.batches {
-
+            if let Err(err) = self.transactions.send(batches).await {
+                               error!("Failed to send txn: {}", err);
+            }
         //     for batch in batches {
         //         for transaction in batch.transactions.into_iter() {
         //             if let Err(err) = self.transactions.send(transaction).await {
