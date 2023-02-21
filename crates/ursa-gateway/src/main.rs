@@ -2,7 +2,7 @@ extern crate core;
 
 mod cli;
 mod config;
-mod picker;
+mod resolver;
 mod server;
 mod util;
 

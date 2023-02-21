@@ -44,7 +44,7 @@ use tracing::{error, info, Level};
 use crate::util::error::Error;
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
-    picker::Picker,
+    resolver::Picker,
     server::{
         model::HttpResponse,
         route::api::v1::get::{check_car_handler, get_car_handler},
@@ -107,9 +107,9 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
     .map(Arc::new)
     .map_err(|e| {
         if let Error::Internal(message) = e {
-            anyhow!("Failed to create cherry-picker {message:?}")
+            anyhow!("Failed to create cherry-resolver {message:?}")
         } else {
-            anyhow!("Failed to create cherry-picker")
+            anyhow!("Failed to create cherry-resolver")
         }
     })?;
 

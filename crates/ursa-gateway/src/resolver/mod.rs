@@ -22,7 +22,7 @@ use totally_ordered::TotallyOrdered;
 use tracing::{debug, error, warn};
 
 use crate::{
-    picker::model::{Metadata, ProviderResult},
+    resolver::model::{Metadata, ProviderResult},
     util::error::Error,
 };
 
