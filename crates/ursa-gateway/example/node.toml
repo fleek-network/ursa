@@ -3,6 +3,7 @@ log_level = "ERROR"
 [server]
 port = 443
 addr = "0.0.0.0"
+public_ip = "0.0.0.0" # Used for calculating our Geolocation.
 request_timeout = 5000 # 5s
 concurrency_limit = 100000
 cert_path = ".ursa/gateway/cert.pem"

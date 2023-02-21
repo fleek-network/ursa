@@ -72,4 +72,7 @@ pub struct DaemonCmdOpts {
     /// path to maxmind db (city)
     #[arg(long)]
     pub maxminddb: Option<PathBuf>,
+    /// public IP
+    #[arg(long)]
+    pub public_ip: Option<String>,
 }

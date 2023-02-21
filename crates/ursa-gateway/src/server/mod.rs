@@ -2,7 +2,8 @@ mod model;
 mod route;
 
 use std::{
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -58,6 +59,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
             ServerConfig {
                 addr,
                 port,
+                public_ip,
                 cert_path,
                 key_path,
                 concurrency_limit,
@@ -97,12 +99,14 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
 
     let maxmind_db = Arc::new(Reader::open_readfile(maxminddb)?);
 
+    let public_ip = IpAddr::from_str(public_ip)?;
+
     let resolver = Picker::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,
         maxmind_db,
-        addr.ip(),
+        public_ip,
     )
     .map(Arc::new)
     .map_err(|e| {

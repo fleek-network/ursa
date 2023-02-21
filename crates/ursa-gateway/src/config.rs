@@ -73,6 +73,7 @@ pub struct GatewayConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
+    pub public_ip: String,
     pub request_timeout: u64,
     pub concurrency_limit: u32,
     pub cert_path: PathBuf,
@@ -96,6 +97,7 @@ impl Default for GatewayConfig {
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 443,
+                public_ip: "0.0.0.0".into(),
                 request_timeout: 5_000, // 5s
                 concurrency_limit: 100_000,
                 cert_path: PathBuf::from(env!("HOME"))
@@ -160,6 +162,9 @@ impl GatewayConfig {
         }
         if let Some(maxminddb_path) = config.maxminddb {
             self.server.maxminddb = maxminddb_path;
+        }
+        if let Some(public_ip) = config.public_ip {
+            self.server.public_ip = public_ip;
         }
     }
 }
