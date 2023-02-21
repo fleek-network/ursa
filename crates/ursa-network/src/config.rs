@@ -43,7 +43,7 @@ impl Default for NetworkConfig {
             autonat: true,
             relay_client: true,
             relay_server: true,
-            bootstrapper: true,
+            bootstrapper: false,
             bootstrap_nodes: vec![
                 "/ip4/159.223.211.234/tcp/6009/p2p/12D3KooWDji7xMLia6GAsyr4oiEFD2dd3zSryqNhfxU3Grzs1r9p".parse().unwrap(),
                 "/ip4/146.190.232.131/tcp/6009/p2p/12D3KooWGw8vCj9XayJDMXUiox6pCUFm7oVuWkDJeE2H9SDQVEcM".parse().unwrap(),
