@@ -5,6 +5,7 @@ use axum::{
     body::Body,
     http::response::{Parts, Response},
 };
+use geoutils::Location;
 use hyper::{
     body::to_bytes,
     client::{self, HttpConnector},
@@ -12,13 +13,16 @@ use hyper::{
 };
 use hyper_tls::HttpsConnector;
 use libp2p::multiaddr::Protocol;
+use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
+use ordered_float::OrderedFloat;
 use serde_json::from_slice;
-use tracing::{debug, error, info, warn};
+use std::{net::IpAddr, sync::Arc};
+use tracing::{debug, error, warn};
 
 use crate::{
-    resolver::model::{Metadata, MultihashResult, ProviderResult},
+    resolver::model::{Metadata, ProviderResult},
     util::error::Error,
 };
 
@@ -29,20 +33,97 @@ type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
-    cache: Cache<String, Vec<MultihashResult>>,
+    cache: Cache<String, Vec<String>>,
+    maxminddb: Arc<Reader<Vec<u8>>>,
+    location: Location,
 }
 
 impl Resolver {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
-        cache: Cache<String, Vec<MultihashResult>>,
-    ) -> Self {
-        Self {
+        cache: Cache<String, Vec<String>>,
+        maxminddb: Arc<Reader<Vec<u8>>>,
+        addr: IpAddr,
+    ) -> Result<Self, Error> {
+        let city = maxminddb
+            .lookup::<City>(addr)
+            .map_err(|e| anyhow!(e.to_string()))?;
+        let location = get_location(city)?;
+        Ok(Self {
             indexer_cid_url,
             client,
             cache,
-        }
+            maxminddb,
+            location,
+        })
+    }
+
+    /// Returns a set of provider address sorted by their distance relative to the gateway.
+    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Vec<String> {
+        let mut provider_addresses = providers
+            .into_iter()
+            .flat_map(|provider_result| &provider_result.provider.addrs)
+            .filter_map(|multiaddr| {
+                let (mut protocol, mut host, mut port) = (String::from("http"), None, None);
+                for addr in multiaddr.into_iter() {
+                    match addr {
+                        Protocol::Ip6(ip) => {
+                            host = Some(IpAddr::from(ip));
+                        }
+                        Protocol::Ip4(ip) => {
+                            host = Some(IpAddr::from(ip));
+                        }
+                        Protocol::Tcp(p) => {
+                            port = Some(p);
+                        }
+                        Protocol::Https => {
+                            protocol = "https".to_string();
+                        }
+                        _ => {}
+                    };
+                }
+                if host.is_none() || port.is_none() {
+                    return None;
+                }
+                let host = host.unwrap();
+                let city = self
+                    .maxminddb
+                    .lookup::<City>(host)
+                    .map_err(|e| {
+                        debug!(
+                            "Failed to get location for ip {} with error {}",
+                            host,
+                            e.to_string()
+                        )
+                    })
+                    .ok();
+
+                let location = get_location(city?)
+                    .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
+                    .ok()?;
+                let distance = self.location.haversine_distance_to(&location).meters();
+                Some((distance, protocol, host, port.unwrap()))
+            })
+            .filter_map(|(distance, protocol, host, port)| {
+                if distance.is_finite() {
+                    debug!("{host} is {distance:?} meters from host");
+                    Some((OrderedFloat(distance), protocol, host, port))
+                } else {
+                    debug!("Skipping {host} because distance could not be computed");
+                    None
+                }
+            })
+            .collect::<Vec<(OrderedFloat<f64>, String, IpAddr, u16)>>();
+
+        provider_addresses.sort_by(|(totally_ordered1, _, _, _), (totally_ordered2, _, _, _)| {
+            totally_ordered1.cmp(totally_ordered2)
+        });
+
+        provider_addresses
+            .into_iter()
+            .map(|(_, protocol, host, port)| format!("{protocol}://{host}:{port}"))
+            .collect()
     }
 
     pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
@@ -53,7 +134,7 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let multihash_results = match self.cache.get(cid) {
+        let provider_addresses = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -93,90 +174,52 @@ impl Resolver {
 
                 debug!("Received indexer response for {cid}: {indexer_response:?}");
 
+                let providers: Vec<&ProviderResult> = indexer_response
+                    .multihash_results
+                    .first()
+                    .context("Indexer result did not contain a multi-hash result")?
+                    .provider_results
+                    .iter()
+                    .filter(|provider| {
+                        let metadata_bytes = match base64::decode(&provider.metadata) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Failed to decode metadata {e:?}");
+                                return false;
+                            }
+                        };
+                        let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Failed to deserialize metadata {e:?}");
+                                return false;
+                            }
+                        };
+                        if metadata.data == FLEEK_NETWORK_FILTER {
+                            return true;
+                        }
+                        warn!("Invalid data in metadata {:?}", metadata.data);
+                        false
+                    })
+                    .collect();
+
+                let provider_addresses = self.provider_addresses(providers);
+
+                if provider_addresses.is_empty() {
+                    return Err(Error::Internal(
+                        "Failed to get a valid address for provider".to_string(),
+                    ));
+                }
+
+                debug!("Provider addresses to query: {provider_addresses:?}");
+
                 self.cache
-                    .insert(cid.to_string(), indexer_response.multihash_results.clone());
+                    .insert(cid.to_string(), provider_addresses.clone());
 
-                indexer_response.multihash_results
+                provider_addresses
             }
-            Some(multihash_results) => multihash_results,
+            Some(provider_addresses) => provider_addresses,
         };
-
-        let providers: Vec<(&ProviderResult, Metadata)> = multihash_results
-            .first()
-            .context("Indexer result did not contain a multi-hash result")?
-            .provider_results
-            .iter()
-            .filter_map(|provider| {
-                let metadata_bytes = match base64::decode(&provider.metadata) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to decode metadata {e:?}");
-                        return None;
-                    }
-                };
-                let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to deserialize metadata {e:?}");
-                        return None;
-                    }
-                };
-                if metadata.data == FLEEK_NETWORK_FILTER {
-                    return Some((provider, metadata));
-                }
-                warn!("Invalid data in metadata {:?}", metadata.data);
-                None
-            })
-            .collect();
-
-        // TODO:
-        // cherry-pick closest node
-        let (provider, metadata) = providers
-            .first() // FIXME: temporary
-            .context("Multi-hash result did not contain a provider")?;
-
-        info!("File size received {}", metadata.size);
-
-        let provider_addresses: Vec<String> = provider
-            .provider
-            .addrs
-            .iter()
-            .map(|m_addr| {
-                let (mut protocol, mut host, mut port) =
-                    (String::from("http"), String::new(), String::new());
-                for addr in m_addr.into_iter() {
-                    match addr {
-                        Protocol::Ip6(ip) => {
-                            host = ip.to_string();
-                        }
-                        Protocol::Ip4(ip) => {
-                            host = ip.to_string();
-                        }
-                        Protocol::Tcp(p) => {
-                            port = p.to_string();
-                        }
-                        Protocol::Https => {
-                            protocol = "https".to_string();
-                        }
-                        _ => {}
-                    };
-                }
-                (
-                    format!("{protocol}://{host}:{port}"),
-                    host.is_empty() || port.is_empty(),
-                )
-            })
-            .filter(|(_, incomplete)| !incomplete)
-            .map(|(addr, _)| addr)
-            .collect();
-
-        if provider_addresses.is_empty() {
-            return Err(Error::Internal(
-                "Failed to get a valid address for provider".to_string(),
-            ));
-        }
-
-        debug!("Provider addresses to query: {provider_addresses:?}");
 
         for addr in provider_addresses.into_iter() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
@@ -197,4 +240,15 @@ impl Resolver {
 
         Err(Error::Internal("Failed to get data".to_string()))
     }
+}
+
+fn get_location(city: City) -> Result<Location, Error> {
+    let location = city.location.ok_or_else(|| anyhow!("missing location"))?;
+    let latitude = location
+        .latitude
+        .ok_or_else(|| anyhow!("missing latitude"))?;
+    let longitude = location
+        .longitude
+        .ok_or_else(|| anyhow!("missing longitude"))?;
+    Ok(Location::new(latitude, longitude))
 }
