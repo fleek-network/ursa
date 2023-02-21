@@ -44,7 +44,7 @@ use tracing::{error, info, Level};
 
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
-    resolver::Picker,
+    resolver::Resolver,
     server::{
         model::HttpResponse,
         route::api::v1::get::{check_car_handler, get_car_handler},
@@ -101,7 +101,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
 
     let public_ip = IpAddr::from_str(public_ip)?;
 
-    let resolver = Picker::new(
+    let resolver = Resolver::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,

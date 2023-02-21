@@ -30,7 +30,7 @@ const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
-pub struct Picker {
+pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
     cache: Cache<String, Vec<String>>,
@@ -38,7 +38,7 @@ pub struct Picker {
     location: Location,
 }
 
-impl Picker {
+impl Resolver {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
