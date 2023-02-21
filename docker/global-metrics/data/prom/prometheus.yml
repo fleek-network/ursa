@@ -5,7 +5,8 @@ scrape_configs:
   - job_name: 'bootstrap'
     static_configs:
       - targets: [
-        'bootstrap0.ursa.earth',
+        'bootstrap-node-0.ursa.earth',
+        'bootstrap-node-1.ursa.earth'
       ]
 
   - job_name: 'kad-exporter'
