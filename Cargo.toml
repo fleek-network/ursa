@@ -104,7 +104,7 @@ axum-tracing-opentelemetry = "0.8.2"
 axum-prometheus = "0.3.0"
 
 [patch.'https://github.com/MystenLabs/sui.git']
-workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.git", rev = "d9224476db385706fd0822c0d6738bdb503542d3"}
+workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.git", rev = "c07eb1e343a455d57a5481b50eada03c62b4f2c6"}
 
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.
