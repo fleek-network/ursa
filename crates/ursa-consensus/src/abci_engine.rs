@@ -1,19 +1,19 @@
 use anyhow::{bail, Result};
 use std::net::SocketAddr;
-use tokio::sync::mpsc::{Receiver};
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender as OneShotSender;
 use tracing::warn;
 
 use narwhal_types::{Batch, Transaction};
 
 // Tendermint Types
+use crate::AbciQueryQuery;
 use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
     RequestQuery, ResponseQuery,
 };
 use tendermint_proto::types::Header;
-use crate::AbciQueryQuery;
 
 pub struct Engine {
     /// The address of the ABCI app
@@ -117,9 +117,10 @@ impl Engine {
     fn deliver_batch(&mut self, batches: Vec<Batch>) -> Result<()> {
         // Deliver
         batches.into_iter().try_for_each(|batch| {
-            batch.transactions.into_iter().try_for_each(|txn| {
-                self.deliver_tx(txn)
-            })?;
+            batch
+                .transactions
+                .into_iter()
+                .try_for_each(|txn| self.deliver_tx(txn))?;
             Ok::<_, anyhow::Error>(())
         })?;
 
@@ -133,11 +134,10 @@ impl Engine {
     pub fn init_chain(&mut self) -> Result<()> {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
         match client.init_chain(RequestInitChain::default()) {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(err) => {
                 tracing::error!("{:?}", err);
-                 // ignore errors about the chain being uninitialized
+                // ignore errors about the chain being uninitialized
                 if err.to_string().contains("already initialized") {
                     warn!("{}", err);
                     return Ok(());
@@ -187,4 +187,3 @@ impl Engine {
         Ok(())
     }
 }
-

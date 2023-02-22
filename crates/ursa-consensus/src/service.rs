@@ -161,8 +161,6 @@ impl ConsensusService {
             panic!("Failed to start the Narwhal Worker after {MAX_RETRIES} tries",);
         }
 
-
-
         *status = Status::Running;
     }
 

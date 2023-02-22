@@ -1,11 +1,11 @@
 use crate::{AbciQueryQuery, BroadcastTxQuery};
+use multiaddr::{Multiaddr, Protocol};
+use narwhal_types::{TransactionProto, TransactionsClient};
 use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneShotSender};
-use tracing::{error,debug};
+use tracing::{debug, error};
 use warp::{Filter, Rejection, Reply};
-use multiaddr::{Multiaddr,Protocol};
-use narwhal_types::{TransactionProto, TransactionsClient};
 
 /// Simple HTTP API server which listens to messages on:
 /// * `broadcast_tx`: forwards them to Narwhal's mempool/worker socket, which will proceed to put
@@ -21,12 +21,15 @@ impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
         mempool_address: Multiaddr,
         tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
     ) -> Self {
-        let mempool_port= mempool_address.iter().find_map(|proto| match proto {
-            Protocol::Tcp(port) => Some(port),
-            _ => None,
-        }).expect("Expected tcp url for worker mempool");
+        let mempool_port = mempool_address
+            .iter()
+            .find_map(|proto| match proto {
+                Protocol::Tcp(port) => Some(port),
+                _ => None,
+            })
+            .expect("Expected tcp url for worker mempool");
 
-        let mempool_address= format!("http://0.0.0.0:{}", mempool_port);
+        let mempool_address = format!("http://0.0.0.0:{}", mempool_port);
 
         Self {
             mempool_address,
@@ -39,22 +42,25 @@ impl AbciApi<ResponseQuery> {
     pub fn routes(self) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
         let route_broadcast_tx = warp::path("broadcast_tx")
             .and(warp::query::<BroadcastTxQuery>())
-            .and_then( move |req: BroadcastTxQuery|{
+            .and_then(move |req: BroadcastTxQuery| {
                 let address = self.mempool_address.clone();
                 async move {
-                debug!("broadcast_tx: {:?}", req);
-                    let mut client = TransactionsClient::connect(address)
-                        .await.unwrap();
-                let request = TransactionProto {
-                    transaction: req.tx.clone().into()
-                };
+                    debug!("broadcast_tx: {:?}", req);
+                    let mut client = TransactionsClient::connect(address).await.unwrap();
+                    let request = TransactionProto {
+                        transaction: req.tx.clone().into(),
+                    };
 
-                if let Err(e) = client.submit_transaction(request).await {
-                    Ok::<_, Rejection>(format!("ERROR IN: broadcast_tx: {:?}. Err: {:?}", req, e))
-                } else {
-                    Ok::<_, Rejection>(format!("broadcast_tx: {:?}", req))
+                    if let Err(e) = client.submit_transaction(request).await {
+                        Ok::<_, Rejection>(format!(
+                            "ERROR IN: broadcast_tx: {:?}. Err: {:?}",
+                            req, e
+                        ))
+                    } else {
+                        Ok::<_, Rejection>(format!("broadcast_tx: {:?}", req))
+                    }
                 }
-            }});
+            });
 
         let route_abci_query = warp::path("abci_query")
             .and(warp::query::<AbciQueryQuery>())

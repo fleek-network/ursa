@@ -4,9 +4,8 @@
 use async_trait::async_trait;
 use narwhal_executor::ExecutionState;
 use narwhal_types::{Batch, ConsensusOutput};
-use tokio::sync::mpsc::{Sender};
+use tokio::sync::mpsc::Sender;
 use tracing::error;
-
 
 type Epoch = u64;
 
@@ -31,7 +30,7 @@ impl ExecutionState for Execution {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
         for (_, batches) in consensus_output.batches {
             if let Err(err) = self.transactions.send(batches).await {
-                               error!("Failed to send txn: {}", err);
+                error!("Failed to send txn: {}", err);
             }
         }
     }

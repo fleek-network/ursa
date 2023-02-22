@@ -8,7 +8,7 @@ pub mod service;
 pub mod validator;
 
 mod abci_engine;
-pub use abci_engine::{Engine};
+pub use abci_engine::Engine;
 
 mod server;
 pub use server::AbciApi;

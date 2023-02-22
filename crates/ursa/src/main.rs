@@ -6,14 +6,18 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
-use std::net::{ SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_application::application_start;
-use ursa_consensus::{AbciApi, Engine, execution::Execution, service::{ConsensusService, ServiceArgs}};
+use ursa_consensus::{
+    execution::Execution,
+    service::{ConsensusService, ServiceArgs},
+    AbciApi, Engine,
+};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -175,7 +179,6 @@ async fn run() -> Result<()> {
         }
     });
 
-
     // Start the application server
 
     //Store this to pass to consensus engine
@@ -204,19 +207,16 @@ async fn run() -> Result<()> {
     let execution = Execution::new(0, tx_transactions);
     consensus_service.start(execution).await;
 
-
     let consensus_engine_task = task::spawn(async move {
-            let mut app_address =  app_api.parse::<SocketAddr>().unwrap();
-            app_address.set_ip("0.0.0.0".parse().unwrap());
+        let mut app_address = app_api.parse::<SocketAddr>().unwrap();
+        app_address.set_ip("0.0.0.0".parse().unwrap());
 
-            let mut engine = Engine::new(app_address,rx_abci_queries);
+        let mut engine = Engine::new(app_address, rx_abci_queries);
 
-            if let Err(err) = engine.run(rx_transactions).await {
-                error!("[consensus_engine_task] - {:?}", err)
-            }
-        });
-
-
+        if let Err(err) = engine.run(rx_transactions).await {
+            error!("[consensus_engine_task] - {:?}", err)
+        }
+    });
 
     // register with ursa node tracker
     if !network_config.tracker.is_empty() {
