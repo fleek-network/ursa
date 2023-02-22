@@ -1,6 +1,7 @@
 pub mod model;
 
 use anyhow::{anyhow, Context};
+use axum::response::IntoResponse;
 use axum::{
     body::Body,
     http::response::{Parts, Response},
@@ -12,13 +13,18 @@ use hyper::{
     StatusCode, Uri,
 };
 use hyper_tls::HttpsConnector;
+use iroh::get::Options;
+use iroh::protocol::AuthToken;
+use iroh::{Hash, PeerId};
 use libp2p::multiaddr::Protocol;
 use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
+use std::str::FromStr;
 use std::{net::IpAddr, sync::Arc};
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -221,21 +227,52 @@ impl Resolver {
             Some(provider_addresses) => provider_addresses,
         };
 
-        for addr in provider_addresses.into_iter() {
-            let endpoint = format!("{addr}/ursa/v0/{cid}");
-            let uri = match endpoint.parse::<Uri>() {
-                Ok(uri) => uri,
+        // For testing.
+        let ADDR = "27.45.122.34".to_string();
+        let USE_IROH: bool = true;
+        let HASH: Hash = Hash::from_str("hash").unwrap();
+        let AUTH_TOKEN: AuthToken = AuthToken::from_str("auth token").unwrap();
+        let PEER_ID: PeerId = PeerId::from_str("perr id").unwrap();
+        let mut opts = Options {
+            peer_id: Some(PEER_ID),
+            ..Default::default()
+        };
+        let on_connected = || async { Ok(()) };
+        let on_collection = |collection: &iroh::blobs::Collection| async { Ok(()) };
+        let (tx, mut rx) = mpsc::channel(1);
+        let on_blob = |hash: Hash, mut reader, name: String| {
+            let txx = tx.clone();
+            async move {
+                let mut buf = vec![];
+                tokio::io::copy(&mut reader, &mut buf).await?;
+                txx.send(buf).await.expect("Sending to succeed");
+                Ok(reader)
+            }
+        };
+
+        if USE_IROH {
+            if let Err(e) =
+                iroh::get::run(HASH, AUTH_TOKEN, opts, on_connected, on_collection, on_blob).await
+            {
+                error!("There was an error {e}");
+            }
+            let data = rx.recv().await.expect("Receive to succeed");
+            return Ok(Response::new(Body::from(data)));
+        } else {
+            let endpoint = format!("{ADDR}/ursa/v0/{cid}");
+            match endpoint.parse::<Uri>() {
+                Ok(uri) => {
+                    match self.client.get(uri).await {
+                        Ok(resp) => {
+                            return Ok(resp);
+                        }
+                        Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
+                    };
+                }
                 Err(e) => {
                     error!("Error parsed uri: {endpoint} {e:?}");
-                    continue;
                 }
-            };
-            match self.client.get(uri).await {
-                Ok(resp) => {
-                    return Ok(resp);
-                }
-                Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
-            };
+            }
         }
 
         Err(Error::Internal("Failed to get data".to_string()))
