@@ -22,9 +22,9 @@ use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::{net::IpAddr, sync::Arc};
-use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, warn};
 
@@ -141,7 +141,7 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let provider_addresses = match self.cache.get(cid) {
+        let _ = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -231,12 +231,18 @@ impl Resolver {
         // For testing.
         let ADDR = "0.0.0.0".to_string();
         let USE_IROH: bool = true;
-        let HASH: Hash = Hash::from_str("bafkr4id753kjydlqfxhewvqtjxk4dku5hlhrdxhsr3ccj3snamxbvivxri").unwrap();
-        let AUTH_TOKEN: AuthToken = AuthToken::from_str("BtkFRgmVaCJGKIutITB3_bt1NoJf4Cp5AcRpo7HTATQ").unwrap();
-        let PEER_ID: PeerId = PeerId::from_str("3K9DH9KQGjfPbeNO5hCJNd5wc2Aodd2ekan0q1Ndi-k").unwrap();
+        let HASH: Hash = Hash::from([
+            127, 238, 212, 156, 13, 112, 45, 206, 75, 86, 19, 77, 213, 193, 170, 157, 58, 207, 17,
+            220, 242, 142, 196, 36, 238, 77, 3, 46, 26, 162, 183, 138,
+        ]);
+        let AUTH_TOKEN: AuthToken =
+            AuthToken::from_str("4_4v9BF7BK87fJkDkO_MO4prTNdg0zTtpRMR88CyrQE")
+                .context("Auth token failed")?;
+        let PEER_ID: PeerId = PeerId::from_str("ybRTLgbj9iF4TxWujNGt-B4hVAIrBTZjLXVXvgJ-Ywo")
+            .context("Peer id parsing failed")?;
         let mut opts = Options {
             peer_id: Some(PEER_ID),
-            addr: SocketAddr::from_str(&format!("{ADDR}:4433")).unwrap(),
+            // addr: SocketAddr::from_str(&format!("{ADDR}:4433")).unwrap(),
             ..Default::default()
         };
         let on_connected = || async { Ok(()) };
@@ -257,11 +263,12 @@ impl Resolver {
                 iroh::get::run(HASH, AUTH_TOKEN, opts, on_connected, on_collection, on_blob).await
             {
                 error!("There was an error {e}");
+                return Err(Error::Internal("Failed to get data".to_string()));
             }
             let data = rx.recv().await.expect("Receive to succeed");
             return Ok(Response::new(Body::from(data)));
         } else {
-            let endpoint = format!("{ADDR}/ursa/v0/{cid}");
+            let endpoint = format!("http://{ADDR}/ursa/v0/{cid}");
             match endpoint.parse::<Uri>() {
                 Ok(uri) => {
                     match self.client.get(uri).await {
