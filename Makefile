@@ -10,8 +10,9 @@ version:
 run: version
 	cargo run --bin cli
 
-install: version
-	cargo install --locked --path crates/ursa --force
+install: version build
+	mkdir -p ~/.cargo/bin/
+	cp ./target/release/ursa ~/.cargo/bin/
 
 build: version
 	cargo build --release --bin ursa
