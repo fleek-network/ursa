@@ -6,7 +6,7 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{ SocketAddr};
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
@@ -45,7 +45,7 @@ async fn run() -> Result<()> {
         .init()?;
 
     // Make sure we run teardown no matter how we exit the run function.
-    defer! { TelemetryConfig::teardown(); };
+    defer! { TelemetryConfig::teardown(); }
 
     // Construct a single instance of shutdown controller for the entire application.
     // This instance should be cloned and passed down to whoever that needs it and not
@@ -187,20 +187,16 @@ async fn run() -> Result<()> {
         }
     });
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-    //TODO: This is temporary this shim should be merged with the ursa-rpc-service
+    //TODO(dalton): This is temporary this shim should be merged with the ursa-rpc-service
     //Start the ABCI shim and engine
     let (tx_abci_queries, rx_abci_queries) = channel(1000);
     let mempool_address = consensus_config.worker[0].transaction.clone();
 
     let abci_task = task::spawn(async move {
-        let api = AbciApi::new(mempool_address, tx_abci_queries);
+        let api = AbciApi::new(mempool_address, tx_abci_queries).await;
         let address = consensus_config.rpc_domain.parse::<SocketAddr>().unwrap();
         warp::serve(api.routes()).run(address).await;
     });
-
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Start the consensus service.
     let consensus_service = ConsensusService::new(consensus_args);
@@ -208,16 +204,18 @@ async fn run() -> Result<()> {
     let execution = Execution::new(0, tx_transactions);
     consensus_service.start(execution).await;
 
-    let consensus_engine_task = task::spawn(async move {
-        let mut app_address =  app_api.parse::<SocketAddr>().unwrap();
-        app_address.set_ip("0.0.0.0".parse().unwrap());
-        error!("the app_address is {:?}", app_address);
-        let mut engine = Engine::new(app_address,rx_abci_queries);
 
-        if let Err(err) = engine.run(rx_transactions).await {
-            error!("[consensus_engine_task] - {:?}", err)
-        }
-    });
+    let consensus_engine_task = task::spawn(async move {
+            let mut app_address =  app_api.parse::<SocketAddr>().unwrap();
+            app_address.set_ip("0.0.0.0".parse().unwrap());
+
+            let mut engine = Engine::new(app_address,rx_abci_queries);
+
+            if let Err(err) = engine.run(rx_transactions).await {
+                error!("[consensus_engine_task] - {:?}", err)
+            }
+        });
+
 
 
     // register with ursa node tracker

@@ -1,6 +1,5 @@
-# Narwhal and Bullshark - Mempool and Consensus
+# Ursa application layer
 
-> Narwhal and Bullshark (N/B) - Fleek Network's consensus and ordering algorithms. A DAG based consensus with total ordering and reliable broadcast.
+> Ursa's evm based application layer. Bullshark certificates contain txns are forwarded to this layer via an ABCI engine and executed in the vm. 
 
-This code has been adapted from the [MystenLabs Sui](https://github.com/MystenLabs/sui)
 

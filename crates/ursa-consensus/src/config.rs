@@ -87,9 +87,9 @@ impl Default for ConsensusConfig {
 
         // Use increased delay values.
         let parameters = Parameters {
-            max_header_delay: Duration::from_secs(60),
-            min_header_delay: Duration::from_secs(60),
-            max_batch_delay: Duration::from_secs(60),
+            max_header_delay: Duration::from_secs(1),
+            min_header_delay: Duration::from_secs(1),
+            max_batch_delay: Duration::from_secs(1),
             ..Parameters::default()
         };
 

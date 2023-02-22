@@ -2,7 +2,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use ethers::abi::parse_abi;
 use ethers::contract::BaseContract;
-use ethers::prelude::{Address, TransactionRequest, U256};
+use ethers::prelude::{Address, TransactionRequest};
 use revm::primitives::{ExecutionResult, Output};
 use std::env;
 use ursa_application::types::{Query, QueryResponse};
@@ -11,12 +11,16 @@ use ursa_application::types::{Query, QueryResponse};
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    let contract_addr = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    let token_addr = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        .parse::<Address>()
+        .unwrap();
+
+    let hello_addr = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB"
         .parse::<Address>()
         .unwrap();
 
     // generate abi for the calldata from the human readable interface
-    let abi = BaseContract::from(parse_abi(&[
+    let hello_abi = BaseContract::from(parse_abi(&[
         "function helloWorld() public pure returns (string)",
         "function get() public view returns (uint256)",
         "function add() external returns (uint256)",
@@ -32,16 +36,16 @@ async fn main() -> Result<()> {
 
     match args[1].as_str() {
         "get" => {
-            let encoded = abi.encode("get", ())?;
+            let encoded = hello_abi.encode("get", ())?;
             let transaction_request = TransactionRequest::new()
-                .to(contract_addr)
+                .to(hello_addr)
                 .data(Bytes::from(hex::decode(hex::encode(&encoded))?));
             let query = Query::EthCall(transaction_request);
 
             let query = serde_json::to_string(&query)?;
             let client = reqwest::Client::new();
             let res = client
-                .get(format!("{}/abci_query", "http://192.168.1.237:3005"))
+                .get(format!("{}/abci_query", "http://127.0.0.1:8013"))
                 .query(&[("data", query), ("path", "".to_string())])
                 .send()
                 .await?;
@@ -56,21 +60,21 @@ async fn main() -> Result<()> {
                         Output::Call(bytes) => bytes,
                         _ => panic!("Output wrong"),
                     },
-                    _ => panic!("Txn was not succesful"),
+                    _ => panic!("Txn was not successful"),
                 },
                 _ => panic!("Error"),
             };
 
-            let readable_output: u64 = match abi.decode_output("get", val) {
+            let readable_output: u64 = match hello_abi.decode_output("get", val) {
                 Ok(output) => output,
                 Err(e) => panic!("{:?}", e),
             };
             println!("Counter is currently at: {}", readable_output);
         }
         "inc" => {
-            let encoded = abi.encode("add", ())?;
+            let encoded = hello_abi.encode("add", ())?;
             let transaction_request = TransactionRequest::new()
-                .to(contract_addr)
+                .to(hello_addr)
                 .data(Bytes::from(hex::decode(hex::encode(&encoded))?))
                 .gas(21000000)
                 .from(
@@ -83,7 +87,7 @@ async fn main() -> Result<()> {
 
             let client = reqwest::Client::new();
             client
-                .get(format!("{}/broadcast_tx", "http://127.0.0.1:8003"))
+                .get(format!("{}/broadcast_tx", "http://127.0.0.1:8023"))
                 .query(&[("tx", tx)])
                 .send()
                 .await?;
@@ -95,14 +99,14 @@ async fn main() -> Result<()> {
             let encoded = token_abi.encode(args[1].as_str(), ()).unwrap();
 
             let transaction_request = TransactionRequest::new()
-                .to(contract_addr)
+                .to(token_addr)
                 .data(Bytes::from(hex::decode(hex::encode(&encoded))?));
             let query = Query::EthCall(transaction_request);
 
             let query = serde_json::to_string(&query)?;
             let client = reqwest::Client::new();
             let res = client
-                .get(format!("{}/abci_query", "http://127.0.0.1:8003"))
+                .get(format!("{}/abci_query", "http://127.0.0.1:8013"))
                 .query(&[("data", query), ("path", "".to_string())])
                 .send()
                 .await?;
@@ -120,18 +124,17 @@ async fn main() -> Result<()> {
                             Output::Call(bytes) => bytes,
                             _ => panic!("Output wrong"),
                         },
-                        _ => panic!("Txn was not succesful"),
+                        _ => panic!("Txn was not successful"),
                     }
                 }
                 _ => panic!("Error"),
             };
 
-            let readable_output: String = match token_abi.decode_output(args[1].as_str(), val) {
+            let readable_output: u64 = match token_abi.decode_output(args[1].as_str(), val) {
                 Ok(output) => output,
                 Err(e) => panic!("{:?}", e),
             };
             println!("contract returned: {:?}", readable_output);
-            println!("U256: {:?}", U256::from_dec_str("1000000000"))
         }
     }
     Ok(())

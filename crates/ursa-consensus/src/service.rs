@@ -19,9 +19,7 @@ use resolve_path::PathResolveExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::{path::PathBuf, sync::Arc};
-use narwhal_types::Batch;
 use tokio::{sync::Mutex, time::Instant};
-use tokio::sync::mpsc::Receiver;
 use tracing::{error, info};
 
 /// Maximum number of times we retry to start the primary or the worker, before we panic.

@@ -124,7 +124,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let registry_bytes = hex::decode(genesis.registry.bytecode).unwrap();
         let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
 
-        //Parse addressess for contracts
+        //Parse addresses for contracts
         let token_address: Address = genesis.token.address.parse().unwrap();
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
@@ -163,9 +163,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         state
             .db
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
-
-        //Commit here because there will be commits at the end of every execute in the next step
-        self.commit(RequestCommit {}).await;
 
         //Build the abis to encode the init call params
         let token_abi = BaseContract::from(
@@ -219,6 +216,10 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let _token_res = state.execute(token_tx, false).await.unwrap();
         let _staking_res = state.execute(staking_tx, false).await.unwrap();
         let _registry_res = state.execute(registry_tx, false).await.unwrap();
+
+        drop(state);
+
+        self.commit(RequestCommit {}).await;
 
         ResponseInitChain::default()
     }
@@ -368,11 +369,12 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
                 };
 
                 let result = state.execute(tx, true).await.unwrap();
+
                 QueryResponse::Tx(result)
             }
             Query::Balance(address) => match state.db.basic(address.to_fixed_bytes().into()) {
                 Ok(info) => QueryResponse::Balance(info.unwrap_or_default().balance),
-                _ => panic!("error retrieveing balance"),
+                _ => panic!("error retrieving balance"),
             },
         };
 

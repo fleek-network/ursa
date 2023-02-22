@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use narwhal_executor::ExecutionState;
 use narwhal_types::{Batch, ConsensusOutput};
-use std::net::SocketAddr;
 use tokio::sync::mpsc::{Sender};
 use tracing::error;
 
@@ -35,13 +33,6 @@ impl ExecutionState for Execution {
             if let Err(err) = self.transactions.send(batches).await {
                                error!("Failed to send txn: {}", err);
             }
-        //     for batch in batches {
-        //         for transaction in batch.transactions.into_iter() {
-        //             if let Err(err) = self.transactions.send(transaction).await {
-        //                 error!("Failed to send txn: {}", err);
-        //             }
-        //         }
-        //     }
         }
     }
 

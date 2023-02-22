@@ -1,7 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use std::net::SocketAddr;
-use std::path::PathBuf;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::{Receiver};
 use tokio::sync::oneshot::Sender as OneShotSender;
 use tracing::warn;
 
@@ -32,7 +31,6 @@ impl Engine {
         app_address: SocketAddr,
         rx_abci_queries: Receiver<(OneShotSender<ResponseQuery>, AbciQueryQuery)>,
     ) -> Self {
-        tracing::error!("Makin engine");
         let mut client = ClientBuilder::default().connect(app_address).unwrap();
 
         let last_block_height = client
@@ -54,9 +52,8 @@ impl Engine {
 
     /// Receives an ordered list of certificates and apply any application-specific logic.
     pub async fn run(&mut self, mut rx_output: Receiver<Vec<Batch>>) -> Result<()> {
-        tracing::error!("before init");
         self.init_chain()?;
-        tracing::error!("after init");
+
         loop {
             tokio::select! {
                 Some(batches) = rx_output.recv() => {
@@ -137,7 +134,6 @@ impl Engine {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
         match client.init_chain(RequestInitChain::default()) {
             Ok(_) => {
-                tracing::error!("WE HAVE SUCCESFULLY INITED DA CHAIN");
             }
             Err(err) => {
                 tracing::error!("{:?}", err);
