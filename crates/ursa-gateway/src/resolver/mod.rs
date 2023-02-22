@@ -24,6 +24,7 @@ use ordered_float::OrderedFloat;
 use serde_json::from_slice;
 use std::str::FromStr;
 use std::{net::IpAddr, sync::Arc};
+use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, warn};
 
@@ -228,13 +229,14 @@ impl Resolver {
         };
 
         // For testing.
-        let ADDR = "27.45.122.34".to_string();
+        let ADDR = "0.0.0.0".to_string();
         let USE_IROH: bool = true;
-        let HASH: Hash = Hash::from_str("hash").unwrap();
-        let AUTH_TOKEN: AuthToken = AuthToken::from_str("auth token").unwrap();
-        let PEER_ID: PeerId = PeerId::from_str("perr id").unwrap();
+        let HASH: Hash = Hash::from_str("bafkr4id753kjydlqfxhewvqtjxk4dku5hlhrdxhsr3ccj3snamxbvivxri").unwrap();
+        let AUTH_TOKEN: AuthToken = AuthToken::from_str("BtkFRgmVaCJGKIutITB3_bt1NoJf4Cp5AcRpo7HTATQ").unwrap();
+        let PEER_ID: PeerId = PeerId::from_str("3K9DH9KQGjfPbeNO5hCJNd5wc2Aodd2ekan0q1Ndi-k").unwrap();
         let mut opts = Options {
             peer_id: Some(PEER_ID),
+            addr: SocketAddr::from_str(&format!("{ADDR}:4433")).unwrap(),
             ..Default::default()
         };
         let on_connected = || async { Ok(()) };
