@@ -1,6 +1,7 @@
 use crate::{AbciQueryQuery, BroadcastTxQuery};
 use multiaddr::{Multiaddr, Protocol};
 use narwhal_types::{TransactionProto, TransactionsClient};
+use std::fmt::Debug;
 use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneShotSender};
@@ -16,7 +17,7 @@ pub struct AbciApi<T> {
     tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
 }
 
-impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
+impl<T: Send + Sync + Debug> AbciApi<T> {
     pub async fn new(
         mempool_address: Multiaddr,
         tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
@@ -29,10 +30,10 @@ impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
             })
             .expect("Expected tcp url for worker mempool");
 
-        let mempool_address = format!("http://0.0.0.0:{}", mempool_port);
+        let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
 
         Self {
-            mempool_address,
+            mempool_address: mempool_address_string,
             tx,
         }
     }

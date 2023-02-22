@@ -179,11 +179,10 @@ async fn run() -> Result<()> {
         }
     });
 
-    // Start the application server
-
     //Store this to pass to consensus engine
     let app_api = application_config.domain.clone();
 
+    // Start the application server
     let application_task = task::spawn(async move {
         if let Err(err) = application_start(application_config).await {
             error!("[application_task] - {:?}", err)

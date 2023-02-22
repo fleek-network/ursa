@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use std::net::SocketAddr;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender as OneShotSender;
-use tracing::warn;
+use tracing::{error, warn};
 
 use narwhal_types::{Batch, Transaction};
 
@@ -133,17 +133,14 @@ impl Engine {
     /// Calls the `InitChain` hook on the app, ignores "already initialized" errors.
     pub fn init_chain(&mut self) -> Result<()> {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
-        match client.init_chain(RequestInitChain::default()) {
-            Ok(_) => {}
-            Err(err) => {
-                tracing::error!("{:?}", err);
-                // ignore errors about the chain being uninitialized
-                if err.to_string().contains("already initialized") {
-                    warn!("{}", err);
-                    return Ok(());
-                }
-                bail!(err)
+        if let Err(err) = client.init_chain(RequestInitChain::default()) {
+            error!("{:?}", err);
+            // ignore errors about the chain being uninitialized
+            if err.to_string().contains("already initialized") {
+                warn!("{}", err);
+                return Ok(());
             }
+            bail!(err)
         };
         Ok(())
     }
