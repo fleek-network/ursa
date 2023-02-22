@@ -9,7 +9,7 @@ pub struct ApplicationConfig {
 
 impl ApplicationConfig {
     fn default_domain() -> String {
-        "0.0.0.0:8003".into()
+        "0.0.0.0:8004".into()
     }
 }
 
