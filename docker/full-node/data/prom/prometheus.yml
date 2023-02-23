@@ -14,6 +14,10 @@ scrape_configs:
         labels:
           id: "local"
 
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
   - job_name: 'nginxexporter'
     static_configs:
     - targets: ['nginxexporter:9113']
