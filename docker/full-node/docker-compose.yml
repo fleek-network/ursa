@@ -110,7 +110,27 @@ services:
       - ${HOME}/.ursa/:/root/.ursa/:rw
     healthcheck:
       test: |
-        curl http://localhost:4069/ping || docker-compose restart ursa
+        curl http://localhost:4069/ping || (
+          config_path=./docker/full-node/docker-compose.yml
+
+          if [[ ! -f "$config_path" && -f "docker-compose.yml" ]]; then
+            printf "%s\n" "🤖 Found docker-compose.yml in the current path 
+            and will override the default path. If you find this is
+            incorrect, start the Docker Stack from the project root"
+
+            config_path="docker-compose.yml"
+          fi
+
+          if [[ ! -f "$config_path" ]]; then
+            printf "%s\n" "👹 Oops! The health-check failed and the Ursa service should be restarted 
+            but we couldn't locate the Stack configuration file. Have you started the Stack from the
+            project root?"
+
+            exit 1
+          fi
+
+          docker-compose -f "$config_path" restart ursa
+        )
       interval: 5m
       timeout: 10s
       retries: 3
