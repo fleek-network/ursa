@@ -17,8 +17,6 @@ services:
       - 80
     depends_on:
       - certbot
-      ursa:
-        condition: service_healthy
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -114,17 +112,13 @@ services:
           config_path=./docker/full-node/docker-compose.yml
 
           if [[ ! -f "$config_path" && -f "docker-compose.yml" ]]; then
-            printf "%s\n" "🤖 Found docker-compose.yml in the current path 
-            and will override the default path. If you find this is
-            incorrect, start the Docker Stack from the project root"
+            printf "%s\n" "🤖 Found docker-compose.yml in current work dir and will override the default path."
 
             config_path="docker-compose.yml"
           fi
 
           if [[ ! -f "$config_path" ]]; then
-            printf "%s\n" "👹 Oops! The health-check failed and the Ursa service should be restarted 
-            but we couldn't locate the Stack configuration file. Have you started the Stack from the
-            project root?"
+            printf "%s\n" "👹 Oops! The Ursa service should be restarted but we couldn't locate the Stack configuration file. Have you started the Stack from the project root?"
 
             exit 1
           fi
