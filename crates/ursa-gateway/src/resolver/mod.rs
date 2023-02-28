@@ -18,6 +18,7 @@ use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
+use std::net::SocketAddr;
 use std::{net::IpAddr, sync::Arc};
 use tracing::{debug, error, warn};
 
@@ -28,6 +29,9 @@ use crate::{
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
+const PROVIDER_ADDR: &str = "129.0.0.1";
+const USE_SAGA: bool = false;
+
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
 pub struct Resolver {
@@ -36,6 +40,7 @@ pub struct Resolver {
     cache: Cache<String, Vec<String>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
     location: Location,
+    saga_client: saga::client::Client,
 }
 
 impl Resolver {
@@ -56,6 +61,7 @@ impl Resolver {
             cache,
             maxminddb,
             location,
+            saga_client: saga::client::Client::new(SocketAddr::new(addr, 8089))?,
         })
     }
 
@@ -221,21 +227,37 @@ impl Resolver {
             Some(provider_addresses) => provider_addresses,
         };
 
-        for addr in provider_addresses.into_iter() {
-            let endpoint = format!("{addr}/ursa/v0/{cid}");
-            let uri = match endpoint.parse::<Uri>() {
-                Ok(uri) => uri,
-                Err(e) => {
-                    error!("Error parsed uri: {endpoint} {e:?}");
-                    continue;
-                }
-            };
-            match self.client.get(uri).await {
-                Ok(resp) => {
-                    return Ok(resp);
-                }
-                Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
-            };
+        if USE_SAGA {
+            for addr in provider_addresses.into_iter() {
+                let endpoint = format!("{addr}/ursa/v0/{cid}");
+                let uri = match endpoint.parse::<Uri>() {
+                    Ok(uri) => uri,
+                    Err(e) => {
+                        error!("Error parsed uri: {endpoint} {e:?}");
+                        continue;
+                    }
+                };
+                match self.client.get(uri).await {
+                    Ok(resp) => {
+                        return Ok(resp);
+                    }
+                    Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
+                };
+            }
+        } else {
+            match self
+                .saga_client
+                .get(
+                    "Blake3hash".to_string(),
+                    PROVIDER_ADDR
+                        .parse()
+                        .map_err(|_| anyhow!("Failed to parse ip"))?,
+                )
+                .await
+            {
+                Ok(data) => return Ok(Response::new(Body::from(data))),
+                Err(e) => error!("Saga client failed to get content {e}"),
+            }
         }
 
         Err(Error::Internal("Failed to get data".to_string()))
