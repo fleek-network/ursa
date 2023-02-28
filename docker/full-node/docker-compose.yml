@@ -17,6 +17,8 @@ services:
       - 80
     depends_on:
       - certbot
+      ursa:
+        condition: service_healthy
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -96,7 +98,7 @@ services:
     build:
       context: ../../.
       dockerfile: Dockerfile
-    restart: on-failure
+    restart: always
     ports:
       - "6009:6009"
     expose:
@@ -107,7 +109,8 @@ services:
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4069/ping"]
+      test: |
+        curl http://localhost:4069/ping || docker-compose restart ursa
       interval: 5m
       timeout: 10s
       retries: 3
