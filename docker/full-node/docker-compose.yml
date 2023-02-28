@@ -76,6 +76,7 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     ports:
+      - "4069:4069"
       - "6009:6009"
     expose:
       # 4069 TCP, used for HTTP RPC, REST, and metrics
