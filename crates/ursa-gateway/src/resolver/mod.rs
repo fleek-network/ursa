@@ -27,6 +27,7 @@ use crate::{
 };
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
+const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(250_000f64);
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -98,7 +99,6 @@ impl Resolver {
                         )
                     })
                     .ok();
-
                 let location = get_location(city?)
                     .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
                     .ok()?;
@@ -106,13 +106,17 @@ impl Resolver {
                 Some((distance, protocol, host, port.unwrap()))
             })
             .filter_map(|(distance, protocol, host, port)| {
-                if distance.is_finite() {
-                    debug!("{host} is {distance:?} meters from host");
-                    Some((OrderedFloat(distance), protocol, host, port))
-                } else {
+                if !distance.is_finite() {
                     debug!("Skipping {host} because distance could not be computed");
-                    None
+                    return None;
                 }
+                debug!("{host} is {distance:?} meters from host");
+                let distance = OrderedFloat(distance);
+                if distance > MAX_DISTANCE {
+                    debug!("Skipping distance");
+                    return None;
+                }
+                Some((distance, protocol, host, port))
             })
             .collect::<Vec<(OrderedFloat<f64>, String, IpAddr, u16)>>();
 
