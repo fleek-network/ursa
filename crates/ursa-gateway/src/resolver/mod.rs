@@ -234,7 +234,7 @@ impl Resolver {
             };
         }
 
-        // None of the addresses worked so we don't want them in our cache.
+        // In the case that none of the addresses worked, we clean our cache.
         self.cache.invalidate(cid);
         Err(Error::Internal("Failed to get data".to_string()))
     }
