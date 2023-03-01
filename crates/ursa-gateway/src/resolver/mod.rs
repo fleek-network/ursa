@@ -27,7 +27,7 @@ use crate::{
 };
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
-const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(250_000f64);
+const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(565_000f64);
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
