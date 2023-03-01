@@ -35,3 +35,4 @@ maxminddb.workspace = true
 geoutils.workspace = true
 ordered-float.workspace = true
 saga.workspace = true
+fvm_ipld_car.workspace = true

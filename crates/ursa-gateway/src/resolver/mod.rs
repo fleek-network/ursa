@@ -239,7 +239,20 @@ impl Resolver {
                 };
                 match self.client.get(uri).await {
                     Ok(resp) => {
-                        return Ok(resp);
+                        let (_, body) = resp.into_parts();
+                        let data = hyper::body::to_bytes(body)
+                            .await
+                            .map_err(|e| anyhow!(e.to_string()))?;
+                        let resp_data = data.clone();
+                        let reader = fvm_ipld_car::CarReader::new(data.as_ref())
+                            .await
+                            .map_err(|e| anyhow!(e.to_string()))?;
+                        let root = reader.header.roots[0];
+                        if root.to_string().as_str() == cid {
+                            return Ok(Response::new(Body::from(resp_data)));
+                        } else {
+                            return Err(Error::Internal("CID verification failed".to_string()));
+                        }
                     }
                     Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
                 };
