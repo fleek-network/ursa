@@ -18,7 +18,7 @@ use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
-use std::{net::IpAddr, sync::Arc};
+use std::{collections::VecDeque, net::IpAddr, sync::Arc};
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -34,7 +34,7 @@ type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
-    cache: Cache<String, Vec<String>>,
+    cache: Cache<String, VecDeque<String>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
     location: Location,
 }
@@ -43,7 +43,7 @@ impl Resolver {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
-        cache: Cache<String, Vec<String>>,
+        cache: Cache<String, VecDeque<String>>,
         maxminddb: Arc<Reader<Vec<u8>>>,
         addr: IpAddr,
     ) -> Result<Self, Error> {
@@ -61,8 +61,8 @@ impl Resolver {
     }
 
     /// Returns a set of provider address sorted by their distance relative to the gateway.
-    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Vec<String> {
-        let mut provider_addresses = providers
+    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> VecDeque<String> {
+        providers
             .into_iter()
             .flat_map(|provider_result| &provider_result.provider.addrs)
             .filter_map(|multiaddr| {
@@ -88,6 +88,7 @@ impl Resolver {
                     return None;
                 }
                 let host = host.unwrap();
+                let port = port.unwrap();
                 let city = self
                     .maxminddb
                     .lookup::<City>(host)
@@ -103,9 +104,6 @@ impl Resolver {
                     .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
                     .ok()?;
                 let distance = self.location.haversine_distance_to(&location).meters();
-                Some((distance, protocol, host, port.unwrap()))
-            })
-            .filter_map(|(distance, protocol, host, port)| {
                 if !distance.is_finite() {
                     debug!("Skipping {host} because distance could not be computed");
                     return None;
@@ -116,17 +114,8 @@ impl Resolver {
                     debug!("Skipping distance");
                     return None;
                 }
-                Some((distance, protocol, host, port))
+                Some(format!("{protocol}://{host}:{port}"))
             })
-            .collect::<Vec<(OrderedFloat<f64>, String, IpAddr, u16)>>();
-
-        provider_addresses.sort_by(|(totally_ordered1, _, _, _), (totally_ordered2, _, _, _)| {
-            totally_ordered1.cmp(totally_ordered2)
-        });
-
-        provider_addresses
-            .into_iter()
-            .map(|(_, protocol, host, port)| format!("{protocol}://{host}:{port}"))
             .collect()
     }
 
@@ -138,7 +127,7 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let provider_addresses = match self.cache.get(cid) {
+        let mut provider_addresses = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -225,7 +214,7 @@ impl Resolver {
             Some(provider_addresses) => provider_addresses,
         };
 
-        for addr in provider_addresses.into_iter() {
+        while let Some(addr) = provider_addresses.pop_front() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -236,12 +225,17 @@ impl Resolver {
             };
             match self.client.get(uri).await {
                 Ok(resp) => {
+                    // The address is good so we put it back at the end.
+                    provider_addresses.push_back(addr);
+                    self.cache.insert(cid.to_string(), provider_addresses);
                     return Ok(resp);
                 }
                 Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };
         }
 
+        // None of the addresses worked so we don't want them in our cache.
+        self.cache.invalidate(cid);
         Err(Error::Internal("Failed to get data".to_string()))
     }
 }
