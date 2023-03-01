@@ -111,7 +111,7 @@ impl Resolver {
                 debug!("{host} is {distance:?} meters from host");
                 let distance = OrderedFloat(distance);
                 if distance > MAX_DISTANCE {
-                    debug!("Skipping distance");
+                    debug!("Skipping this provider because it's too far");
                     return None;
                 }
                 Some(format!("{protocol}://{host}:{port}"))
