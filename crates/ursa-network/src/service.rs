@@ -788,7 +788,7 @@ where
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.mesh_peers() {
+                for peer in self.peers.replication_set() {
                     info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response

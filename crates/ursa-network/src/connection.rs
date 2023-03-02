@@ -8,20 +8,20 @@ const MAX_RTT: Duration = Duration::from_millis(15);
 
 pub struct Manager {
     connected_peers: HashSet<PeerId>,
-    mesh_peers: HashMap<PeerId, Duration>,
+    replication_set: HashMap<PeerId, Duration>,
 }
 
 impl Manager {
     pub fn new() -> Self {
         Self {
             connected_peers: HashSet::new(),
-            mesh_peers: HashMap::new(),
+            replication_set: HashMap::new(),
         }
     }
 
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
         if rtt > MAX_RTT {
-            self.mesh_peers.remove(&peer);
+            self.replication_set.remove(&peer);
             debug!("{peer} was not added because of high rrt {rtt:?}");
             return;
         }
@@ -29,22 +29,22 @@ impl Manager {
             debug!("{peer} was not added because we don't have a connection for it");
             return;
         }
-        if self.mesh_peers.len() > MESH_MAX_SIZE && !self.mesh_peers.contains_key(&peer) {
+        if self.replication_set.len() > MESH_MAX_SIZE && !self.replication_set.contains_key(&peer) {
             if let Some(peer_with_max_rtt) = self
-                .mesh_peers
+                .replication_set
                 .iter()
                 .max_by_key(|(_, duration)| duration)
                 .filter(|(_, duration)| duration > &&rtt)
                 .map(|(peer, _)| peer)
             {
                 debug!("Removing {} from mesh", peer_with_max_rtt);
-                self.mesh_peers.remove(peer_with_max_rtt);
+                self.replication_set.remove(peer_with_max_rtt);
                 debug!("Adding {peer} to mesh");
-                self.mesh_peers.insert(peer, rtt);
+                self.replication_set.insert(peer, rtt);
             }
         } else {
             debug!("Adding/updating mesh with {peer}");
-            self.mesh_peers.insert(peer, rtt);
+            self.replication_set.insert(peer, rtt);
         }
     }
 
@@ -65,12 +65,13 @@ impl Manager {
     }
 
     pub fn remove(&mut self, peer: &PeerId) -> bool {
-        self.mesh_peers.remove(peer);
+        self.replication_set.remove(peer);
         self.connected_peers.remove(peer)
     }
 
-    pub fn mesh_peers(&self) -> Vec<PeerId> {
-        self.mesh_peers
+    /// Set of peers to use in content replication.
+    pub fn replication_set(&self) -> Vec<PeerId> {
+        self.replication_set
             .iter()
             .map(|(peer, _)| peer.clone())
             .collect()
