@@ -7,7 +7,9 @@ const MESH_MAX_SIZE: usize = 3;
 const MAX_RTT: Duration = Duration::from_millis(15);
 
 pub struct Manager {
+    /// Connected peers.
     connected_peers: HashSet<PeerId>,
+    /// Set of peers to use in content replication.
     replication_set: HashMap<PeerId, Duration>,
 }
 
@@ -69,7 +71,6 @@ impl Manager {
         self.connected_peers.remove(peer)
     }
 
-    /// Set of peers to use in content replication.
     pub fn replication_set(&self) -> Vec<PeerId> {
         self.replication_set
             .iter()

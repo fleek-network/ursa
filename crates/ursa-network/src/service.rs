@@ -213,7 +213,7 @@ where
     _pending_requests: HashMap<RequestId, ResponseChannel<UrsaExchangeResponse>>,
     /// Pending responses.
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
-    /// Connected peers.
+    /// Manages set of connected peers.
     peers: Manager,
     /// Bootstrap multiaddrs.
     bootstraps: Vec<Multiaddr>,
