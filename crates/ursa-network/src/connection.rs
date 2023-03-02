@@ -12,6 +12,13 @@ pub struct Manager {
 }
 
 impl Manager {
+    pub fn new() -> Self {
+        Self {
+            connected_peers: HashSet::new(),
+            mesh_peers: HashMap::new(),
+        }
+    }
+
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
         if rtt > MAX_RTT {
             debug!("{peer} was not added because of high rrt {rtt:?}");

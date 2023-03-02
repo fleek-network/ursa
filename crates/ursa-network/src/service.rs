@@ -61,6 +61,7 @@ use ursa_store::UrsaStore;
 
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
+use crate::connection::Manager;
 use crate::transport::build_transport;
 use crate::utils::cache_summary::CacheSummary;
 use crate::{
@@ -213,7 +214,7 @@ where
     /// Pending responses.
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
     /// Connected peers.
-    peers: HashSet<PeerId>,
+    peers: Manager,
     /// Bootstrap multiaddrs.
     bootstraps: Vec<Multiaddr>,
     /// Summarizes the cached content.
@@ -259,7 +260,7 @@ where
         };
 
         let transport = build_transport(&keypair, config, relay_transport);
-        let mut peers = HashSet::new();
+        let mut peers = Manager::new();
         let behaviour = Behaviour::new(
             &keypair,
             config,
@@ -741,7 +742,7 @@ where
             NetworkCommand::GetBitswap { cid, sender } => {
                 info!("Getting cid {cid} via bitswap");
 
-                let peers = self.peers.clone();
+                let peers = self.peers.peers();
 
                 if peers.is_empty() {
                     error!(
@@ -786,16 +787,16 @@ where
             NetworkCommand::Put { cid, sender } => {
                 // replicate content
                 let swarm = self.swarm.behaviour_mut();
-                for peer in &self.peers {
+                for peer in self.peers.mesh_peers() {
                     info!("[NetworkCommand::Put] - sending cache request to peer {peer} for {cid}");
                     swarm
                         .request_response
-                        .send_request(peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
+                        .send_request(&peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
                 // update cache summary and share it with the connected peers
                 self.cached_content.insert(&cid.to_bytes());
                 let swarm = self.swarm.behaviour_mut();
-                for peer in &self.peers {
+                for peer in self.peers.ref_peers() {
                     let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
                         self.cached_content.clone(),
                     )));
@@ -808,7 +809,7 @@ where
             }
             NetworkCommand::GetPeers { sender } => {
                 sender
-                    .send(self.peers.clone())
+                    .send(self.peers.peers())
                     .map_err(|_| anyhow!("Failed to get Libp2p peers!"))?;
             }
             NetworkCommand::GetListenerAddresses { sender } => {
