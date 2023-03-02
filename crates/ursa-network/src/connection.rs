@@ -21,7 +21,6 @@ impl Manager {
 
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
         if rtt > MAX_RTT {
-            // Remove if peer was in the mesh.
             self.mesh_peers.remove(&peer);
             debug!("{peer} was not added because of high rrt {rtt:?}");
             return;
