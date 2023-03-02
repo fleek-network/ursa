@@ -347,6 +347,7 @@ where
                     rtt.as_millis(),
                     ping_event.peer.to_base58(),
                 );
+                self.peers.handle_rtt_received(rtt, ping_event.peer);
             }
             Ok(libp2p::ping::Success::Pong) => {
                 trace!(
