@@ -105,6 +105,10 @@ axum-prometheus = "0.3.0"
 [patch.'https://github.com/MystenLabs/sui.git']
 workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.git", rev = "c07eb1e343a455d57a5481b50eada03c62b4f2c6"}
 
+[patch.'crates-io']
+# fix libp2p 0.50.0's prerelease deps (quic, webrtc, tls)
+libp2p = { git = "https://github.com/ozwaldorf/rust-libp2p", rev = "be344c0abfa5c4eaa90d769eeece5bf875b86a57" }
+
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.
 debug = 1
