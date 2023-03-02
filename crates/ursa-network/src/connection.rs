@@ -21,6 +21,8 @@ impl Manager {
 
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
         if rtt > MAX_RTT {
+            // Remove if peer was in the mesh.
+            self.mesh_peers.remove(&peer);
             debug!("{peer} was not added because of high rrt {rtt:?}");
             return;
         }
@@ -28,11 +30,12 @@ impl Manager {
             debug!("{peer} was not added because we don't have a connection for it");
             return;
         }
-        if self.mesh_peers.len() > MESH_MAX_SIZE {
+        if self.mesh_peers.len() > MESH_MAX_SIZE && !self.mesh_peers.contains_key(&peer) {
             if let Some(peer_with_max_rtt) = self
                 .mesh_peers
                 .iter()
                 .max_by_key(|(_, duration)| duration)
+                .filter(|(_, duration)| duration > &&rtt)
                 .map(|(peer, _)| peer)
             {
                 debug!("Removing {} from mesh", peer_with_max_rtt);
@@ -41,7 +44,7 @@ impl Manager {
                 self.mesh_peers.insert(peer, rtt);
             }
         } else {
-            debug!("Adding {peer} to mesh");
+            debug!("Adding/updating mesh with {peer}");
             self.mesh_peers.insert(peer, rtt);
         }
     }
