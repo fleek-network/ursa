@@ -12,6 +12,7 @@ use hyper::{
     StatusCode, Uri,
 };
 use hyper_tls::HttpsConnector;
+use itertools::{Either, Itertools};
 use libp2p::multiaddr::Protocol;
 use maxminddb::{geoip2::City, Reader};
 use model::IndexerResponse;
@@ -34,7 +35,7 @@ type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
-    cache: Cache<String, VecDeque<String>>,
+    cache: Cache<String, Addresses>,
     maxminddb: Arc<Reader<Vec<u8>>>,
     location: Location,
 }
@@ -43,7 +44,7 @@ impl Resolver {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
-        cache: Cache<String, VecDeque<String>>,
+        cache: Cache<String, Addresses>,
         maxminddb: Arc<Reader<Vec<u8>>>,
         addr: IpAddr,
     ) -> Result<Self, Error> {
@@ -61,8 +62,8 @@ impl Resolver {
     }
 
     /// Returns a set of provider address sorted by their distance relative to the gateway.
-    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> VecDeque<String> {
-        providers
+    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Addresses {
+        let (neighbors, outsiders) = providers
             .into_iter()
             .flat_map(|provider_result| &provider_result.provider.addrs)
             .filter_map(|multiaddr| {
@@ -109,14 +110,22 @@ impl Resolver {
                     return None;
                 }
                 debug!("{host} is {distance:?} meters from host");
-                let distance = OrderedFloat(distance);
-                if distance > MAX_DISTANCE {
-                    debug!("Skipping this provider because it's too far");
-                    return None;
-                }
-                Some(format!("{protocol}://{host}:{port}"))
+                Some((
+                    OrderedFloat(distance),
+                    format!("{protocol}://{host}:{port}"),
+                ))
             })
-            .collect()
+            .partition_map(|(distance, address)| {
+                if distance > MAX_DISTANCE {
+                    debug!("Adding {address} to outsider list");
+                    return Either::Right(address);
+                }
+                Either::Left(address)
+            });
+        Addresses {
+            neighbors,
+            outsiders,
+        }
     }
 
     pub async fn resolve_content(&self, cid: &str) -> Result<Response<Body>, Error> {
@@ -197,14 +206,13 @@ impl Resolver {
                     .collect();
 
                 let provider_addresses = self.provider_addresses(providers);
-
-                if provider_addresses.is_empty() {
+                if provider_addresses.neighbors.is_empty()
+                    && provider_addresses.outsiders.is_empty()
+                {
                     return Err(Error::Internal(
                         "Failed to get a valid address for provider".to_string(),
                     ));
                 }
-
-                debug!("Provider addresses to query: {provider_addresses:?}");
 
                 self.cache
                     .insert(cid.to_string(), provider_addresses.clone());
@@ -214,7 +222,12 @@ impl Resolver {
             Some(provider_addresses) => provider_addresses,
         };
 
-        while let Some(addr) = provider_addresses.pop_front() {
+        debug!(
+            "Provider addresses to query: {:?}",
+            provider_addresses.neighbors
+        );
+
+        while let Some(addr) = provider_addresses.neighbors.pop_front() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -226,7 +239,34 @@ impl Resolver {
             match self.client.get(uri).await {
                 Ok(resp) => {
                     // The address is good so we put it back at the end.
-                    provider_addresses.push_back(addr);
+                    provider_addresses.neighbors.push_back(addr);
+                    self.cache.insert(cid.to_string(), provider_addresses);
+                    return Ok(resp);
+                }
+                Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
+            };
+        }
+
+        if !provider_addresses.outsiders.is_empty() {
+            debug!(
+                "Failed to get content from neighbors so falling back to {:?}",
+                provider_addresses.outsiders
+            );
+        }
+
+        while let Some(addr) = provider_addresses.outsiders.pop_front() {
+            let endpoint = format!("{addr}/ursa/v0/{cid}");
+            let uri = match endpoint.parse::<Uri>() {
+                Ok(uri) => uri,
+                Err(e) => {
+                    error!("Error parsed uri: {endpoint} {e:?}");
+                    continue;
+                }
+            };
+            match self.client.get(uri).await {
+                Ok(resp) => {
+                    // The address is good so we put it back at the end.
+                    provider_addresses.outsiders.push_back(addr);
                     self.cache.insert(cid.to_string(), provider_addresses);
                     return Ok(resp);
                 }
@@ -238,6 +278,14 @@ impl Resolver {
         self.cache.invalidate(cid);
         Err(Error::Internal("Failed to get data".to_string()))
     }
+}
+
+#[derive(Clone)]
+pub struct Addresses {
+    // Nodes within MAX_DISTANCE radius.
+    neighbors: VecDeque<String>,
+    // Nodes outside MAX_DISTANCE radius.
+    outsiders: VecDeque<String>,
 }
 
 fn get_location(city: City) -> Result<Location, Error> {
