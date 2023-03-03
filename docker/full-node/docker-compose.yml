@@ -106,3 +106,8 @@ services:
       - "6009"
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4069/ping"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
