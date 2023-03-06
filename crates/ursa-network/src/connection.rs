@@ -35,12 +35,12 @@ impl Manager {
             if let Some(peer_with_max_rtt) = self
                 .replication_set
                 .iter()
-                .max_by_key(|(_, duration)| duration)
+                .max_by_key(|(_, duration)| duration.clone())
                 .filter(|(_, duration)| duration > &&rtt)
-                .map(|(peer, _)| peer)
+                .map(|(peer, _)| peer.clone())
             {
                 debug!("Removing {} from mesh", peer_with_max_rtt);
-                self.replication_set.remove(peer_with_max_rtt);
+                self.replication_set.remove(&peer_with_max_rtt);
                 debug!("Adding {peer} to mesh");
                 self.replication_set.insert(peer, rtt);
             }
