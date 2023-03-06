@@ -72,9 +72,6 @@ impl Manager {
     }
 
     pub fn replication_set(&self) -> Vec<PeerId> {
-        self.replication_set
-            .iter()
-            .map(|(peer, _)| peer.clone())
-            .collect()
+        self.replication_set.clone().into_keys().collect()
     }
 }
