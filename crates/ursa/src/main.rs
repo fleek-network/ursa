@@ -6,14 +6,17 @@ use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
+use ursa_application::application_start;
 use ursa_consensus::{
     execution::Execution,
     service::{ConsensusService, ServiceArgs},
+    AbciApi, Engine,
 };
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::{ursa_agent, UrsaService};
@@ -46,7 +49,7 @@ async fn run() -> Result<()> {
         .init()?;
 
     // Make sure we run teardown no matter how we exit the run function.
-    defer! { TelemetryConfig::teardown(); };
+    defer! { TelemetryConfig::teardown(); }
 
     // Construct a single instance of shutdown controller for the entire application.
     // This instance should be cloned and passed down to whoever that needs it and not
@@ -73,6 +76,7 @@ async fn run() -> Result<()> {
         provider_config,
         server_config,
         consensus_config,
+        application_config,
     } = config;
 
     // ursa service setup
@@ -88,7 +92,7 @@ async fn run() -> Result<()> {
 
     let keypair = im.current();
 
-    let consensus_args = ServiceArgs::load(consensus_config).unwrap();
+    let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
 
     let registration = TrackerRegistration {
         id: keypair.clone().public().to_peer_id(),
@@ -196,11 +200,43 @@ async fn run() -> Result<()> {
         }
     });
 
+    //Store this to pass to consensus engine
+    let app_api = application_config.domain.clone();
+
+    // Start the application server
+    let application_task = task::spawn(async move {
+        if let Err(err) = application_start(application_config).await {
+            error!("[application_task] - {:?}", err)
+        }
+    });
+
+    //TODO(dalton): This is temporary this shim should be merged with the ursa-rpc-service
+    //Start the ABCI shim and engine
+    let (tx_abci_queries, rx_abci_queries) = channel(1000);
+    let mempool_address = consensus_config.worker[0].transaction.clone();
+
+    let abci_task = task::spawn(async move {
+        let api = AbciApi::new(mempool_address, tx_abci_queries).await;
+        let address = consensus_config.rpc_domain.parse::<SocketAddr>().unwrap();
+        warp::serve(api.routes()).run(address).await;
+    });
+
     // Start the consensus service.
     let consensus_service = ConsensusService::new(consensus_args);
-    let (tx_transactions, _rx_transactions) = channel(100);
+    let (tx_transactions, rx_transactions) = channel(1000);
     let execution = Execution::new(0, tx_transactions);
     consensus_service.start(execution).await;
+
+    let consensus_engine_task = task::spawn(async move {
+        let mut app_address = app_api.parse::<SocketAddr>().unwrap();
+        app_address.set_ip("0.0.0.0".parse().unwrap());
+
+        let mut engine = Engine::new(app_address, rx_abci_queries);
+
+        if let Err(err) = engine.run(rx_transactions).await {
+            error!("[consensus_engine_task] - {:?}", err)
+        }
+    });
 
     // register with ursa node tracker
     if !network_config.tracker.is_empty() {
@@ -218,6 +254,9 @@ async fn run() -> Result<()> {
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
+    consensus_engine_task.abort();
+    application_task.abort();
+    abci_task.abort();
     consensus_service.shutdown().await;
 
     Ok(())

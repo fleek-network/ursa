@@ -106,7 +106,7 @@ pub trait ProviderInterface: Sync + Send + 'static {
     fn create_announce_message(
         &mut self,
         peer_id: PeerId,
-        addresses: &mut Vec<Multiaddr>,
+        addresses: Vec<Multiaddr>,
     ) -> Result<Vec<u8>>;
 }
 
@@ -164,7 +164,7 @@ where
     fn create_announce_message(
         &mut self,
         peer_id: PeerId,
-        addresses: &mut Vec<Multiaddr>,
+        mut addresses: Vec<Multiaddr>,
     ) -> Result<Vec<u8>> {
         let multiaddrs = addresses
             .iter_mut()

@@ -20,6 +20,8 @@ pub struct ConsensusConfig {
     /// The address in which the primary will listen for incoming requests on. This MUST
     /// be a UDP address.
     pub address: Multiaddr,
+    ///The address to receive ABCI connections to defaults too
+    pub rpc_domain: String,
     /// Path to the BLS12381 private key for the primary.
     pub keypair: PathBuf,
     /// Path to the Ed25519 networking private key for the primary.
@@ -81,17 +83,19 @@ impl Default for ConsensusConfig {
         // 8000 for primary
         // 8x01 for worker `x` address
         // 8x02 for worker `x` transaction address
+        // 8003 for ABCI rpc server
 
         // Use increased delay values.
         let parameters = Parameters {
-            max_header_delay: Duration::from_secs(60),
-            min_header_delay: Duration::from_secs(60),
-            max_batch_delay: Duration::from_secs(60),
+            max_header_delay: Duration::from_secs(1),
+            min_header_delay: Duration::from_secs(1),
+            max_batch_delay: Duration::from_secs(1),
             ..Parameters::default()
         };
 
         Self {
             address: "/ip4/0.0.0.0/udp/8000".parse().unwrap(),
+            rpc_domain: "0.0.0.0:8003".into(),
             keypair: "~/.ursa/keystore/consensus/primary.key".into(),
             network_keypair: "~/.ursa/keystore/consensus/network.key".into(),
             store_path: "~/.ursa/data/narwhal_store".into(),

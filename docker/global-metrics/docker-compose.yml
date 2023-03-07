@@ -18,7 +18,6 @@ services:
       - 443
     depends_on:
       - certbot
-    network_mode: host
 
   nginxexporter:
     image: fish/nginx-exporter
@@ -43,7 +42,7 @@ services:
     ports:
       - "9090:9090"
     expose:
-      - "9090"
+      - 9090
     volumes:
       - ./data/prom:/etc/prometheus
     command:
@@ -51,7 +50,7 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=200h'
     depends_on:
-      - ursa-tracker
+      - kad-exporter
 
   grafana:
     image: grafana/grafana
@@ -72,16 +71,12 @@ services:
       - prometheus
     user: "$UID:$GID"
 
-  ursa-tracker:
-    environment:
-      - IPINFO_TOKEN=${IPINFO_TOKEN}
-    build:
-      context: ../..
-      dockerfile: docker/global-metrics/Dockerfile
-    restart: on-failure
-    ports:
-      - "4000:4000"
-    expose:
-      - "4000"
+  kad-exporter:
+    image: mxinden/kademlia-exporter
     volumes:
-      - ./data/tracker_db/:/root/tracker_db/:rw
+      - ./data:/data
+      - /var/lib/GeoIP:/var/lib/GeoIP
+    command: --config-file=/data/exporter.toml
+    restart: unless-stopped 
+    expose:
+      - 8080
