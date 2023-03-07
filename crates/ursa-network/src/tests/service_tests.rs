@@ -505,6 +505,20 @@ async fn test_put_command() -> Result<()> {
             }
         }
     }
+
+    loop {
+        if let SwarmEvent::Behaviour(BehaviourEvent::Ping(libp2p::ping::Event {
+            result: Ok(libp2p::ping::Success::Pong),
+            peer,
+        })) = node_2.swarm.select_next_some().await
+        {
+            if peer == peer_id_1 {
+                info!("Sent a pong to {peer_id_1:?}");
+                break;
+            }
+        }
+    }
+
     tokio::task::spawn(async move { node_2.start().await.unwrap() });
 
     // Send node 1 a PUT command.

@@ -22,9 +22,10 @@ impl Manager {
     }
 
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
+        debug!("Received {rtt:?} rtt for {peer}");
         if rtt > MAX_RTT {
             self.replication_set.remove(&peer);
-            debug!("{peer} was not added because of high rrt {rtt:?}");
+            debug!("{peer} was not added because of high rrt");
             return;
         }
         if !self.connected_peers.contains(&peer) {
