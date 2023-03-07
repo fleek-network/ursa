@@ -1,14 +1,12 @@
 use libp2p::PeerId;
-use std::collections::HashMap;
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use tracing::debug;
 
-#[cfg(test)]
-const REPLICATION_MAX_SIZE: usize = usize::MAX;
 #[cfg(not(test))]
 const REPLICATION_MAX_SIZE: usize = 2;
-#[cfg(test)]
-const MAX_RTT: Duration = Duration::MAX;
 #[cfg(not(test))]
 const MAX_RTT: Duration = Duration::from_millis(15);
 
@@ -25,6 +23,32 @@ impl Manager {
         Self::default()
     }
 
+    pub fn insert(&mut self, peer: PeerId) -> bool {
+        self.connected_peers.insert(peer)
+    }
+
+    pub fn contains(&self, peer: &PeerId) -> bool {
+        self.connected_peers.contains(peer)
+    }
+
+    pub fn ref_peers(&self) -> &HashSet<PeerId> {
+        &self.connected_peers
+    }
+
+    pub fn peers(&self) -> HashSet<PeerId> {
+        self.connected_peers.clone()
+    }
+
+    pub fn remove(&mut self, peer: &PeerId) -> bool {
+        self.replication_set.remove(peer);
+        self.connected_peers.remove(peer)
+    }
+
+    pub fn replication_set(&self) -> Vec<PeerId> {
+        self.replication_set.clone().into_keys().collect()
+    }
+
+    #[cfg(not(test))]
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
         debug!("Received {rtt:?} rtt for {peer}");
         if rtt > MAX_RTT {
@@ -57,28 +81,9 @@ impl Manager {
         }
     }
 
-    pub fn insert(&mut self, peer: PeerId) -> bool {
-        self.connected_peers.insert(peer)
-    }
-
-    pub fn contains(&self, peer: &PeerId) -> bool {
-        self.connected_peers.contains(peer)
-    }
-
-    pub fn ref_peers(&self) -> &HashSet<PeerId> {
-        &self.connected_peers
-    }
-
-    pub fn peers(&self) -> HashSet<PeerId> {
-        self.connected_peers.clone()
-    }
-
-    pub fn remove(&mut self, peer: &PeerId) -> bool {
-        self.replication_set.remove(peer);
-        self.connected_peers.remove(peer)
-    }
-
-    pub fn replication_set(&self) -> Vec<PeerId> {
-        self.replication_set.clone().into_keys().collect()
+    #[cfg(test)]
+    pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
+        debug!("Ignoring rtt and inserting {peer}");
+        self.replication_set.insert(peer, rtt);
     }
 }
