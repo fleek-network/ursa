@@ -62,7 +62,10 @@ services:
       - "9090"
     volumes:
       - ./data/prom:/etc/prometheus
-    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    command: 
+      - '--web.enable-lifecycle'
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=72h'
     depends_on:
       - ursa
       - node-exporter
@@ -93,7 +96,7 @@ services:
     build:
       context: ../../.
       dockerfile: Dockerfile
-    restart: on-failure
+    restart: always
     ports:
       - "6009:6009"
     expose:
@@ -103,3 +106,25 @@ services:
       - "6009"
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
+    healthcheck:
+      test: |
+        curl http://localhost:4069/ping || (
+          config_path=./docker/full-node/docker-compose.yml
+
+          if [[ ! -f "$config_path" && -f "docker-compose.yml" ]]; then
+            printf "%s\n" "🤖 Found docker-compose.yml in current work dir and will override the default path."
+
+            config_path="docker-compose.yml"
+          fi
+
+          if [[ ! -f "$config_path" ]]; then
+            printf "%s\n" "👹 Oops! The Ursa service should be restarted but we couldn't locate the Stack configuration file. Have you started the Stack from the project root?"
+
+            exit 1
+          fi
+
+          docker-compose -f "$config_path" restart ursa
+        )
+      interval: 5m
+      timeout: 10s
+      retries: 3
