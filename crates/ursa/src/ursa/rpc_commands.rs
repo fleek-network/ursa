@@ -1,14 +1,10 @@
-use ethers::{
-    abi::AbiParser,
-    core::types::{Address, TransactionRequest},
-};
 use structopt::StructOpt;
 use tracing::{error, info};
 use ursa_rpc_service::{
     api::{NetworkGetFileParams, NetworkPutFileParams},
     client::functions::{eth_call, eth_send_transaction, get_file, put_file},
 };
-use ursa_utils::transactions::encode_params;
+use ursa_utils::transactions::build_transaction;
 
 #[derive(Debug, StructOpt)]
 pub enum RpcCommands {
@@ -87,31 +83,13 @@ impl RpcCommands {
                 function,
                 args,
             } => {
-                let to = match address.parse::<Address>() {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        error!("Not a valid address");
-                        return;
-                    }
-                };
-
-                let function_abi = match AbiParser::default().parse_function(function) {
-                    Ok(func) => func,
+                let txn = match build_transaction(address, function, args) {
+                    Ok((_, txn)) => txn,
                     Err(e) => {
-                        error!("Unable to parse function: {e:?}");
+                        error!("{e:?}");
                         return;
                     }
                 };
-
-                let data = match encode_params(&function_abi, args) {
-                    Ok(params) => params,
-                    Err(e) => {
-                        error!("unable to encode params: {e:?}");
-                        return;
-                    }
-                };
-
-                let txn = TransactionRequest::new().to(to).data(data);
 
                 match eth_send_transaction(txn).await {
                     Ok(_result) => {
@@ -127,31 +105,13 @@ impl RpcCommands {
                 function,
                 args,
             } => {
-                let to = match address.parse::<Address>() {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        error!("Not a valid address");
-                        return;
-                    }
-                };
-
-                let function_abi = match AbiParser::default().parse_function(function) {
-                    Ok(func) => func,
+                let (function_abi, txn) = match build_transaction(address, function, args) {
+                    Ok((func, txn)) => (func, txn),
                     Err(e) => {
-                        error!("Unable to parse function: {e:?}");
+                        error!("{e:?}");
                         return;
                     }
                 };
-
-                let data = match encode_params(&function_abi, args) {
-                    Ok(params) => params,
-                    Err(e) => {
-                        error!("unable to encode params: {e:?}");
-                        return;
-                    }
-                };
-
-                let txn = TransactionRequest::new().to(to).data(data);
 
                 match eth_call(txn).await {
                     Ok(result) => match function_abi.decode_output(&result) {
