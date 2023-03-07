@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context as _, Result};
 use async_fs::{create_dir_all, File};
 use async_trait::async_trait;
 use axum::body::StreamBody;
 use db::Store;
+use ethers::core::types::TransactionRequest;
 use futures::channel::mpsc::unbounded;
 use futures::io::BufReader;
 use futures::{AsyncRead, AsyncWriteExt, SinkExt};
@@ -10,6 +11,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car, CarHeader, CarReader};
 use libipld::Cid;
 use libp2p::{Multiaddr, PeerId};
+use narwhal_types::{TransactionProto, TransactionsClient};
 use serde::{Deserialize, Serialize};
 use std::collections::{
     hash_map::{Entry, HashMap},
@@ -20,13 +22,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use surf::{http::Method, Client, RequestBuilder};
+use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedSender as Sender},
+    mpsc::{unbounded_channel, Sender as BoundedSender, UnboundedSender as Sender},
     oneshot, RwLock,
 };
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
+use ursa_consensus::AbciQueryQuery;
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
 use ursa_store::UrsaStore;
@@ -67,6 +71,12 @@ pub struct NetworkGetFileParams {
 }
 pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 
+pub type EthSendTransaction = TransactionRequest;
+pub const ETH_SEND_TRANSACTION: &str = "eth_sendTransaction";
+
+pub type EthCall = Vec<u8>;
+pub const ETH_CALL: &str = "eth_call";
+
 /// Abstraction of Ursa's server commands
 #[async_trait]
 pub trait NetworkInterface: Sync + Send + 'static {
@@ -96,6 +106,12 @@ pub trait NetworkInterface: Sync + Send + 'static {
 
     /// Get the addresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
+
+    ///Stream txn to the Narwhal worker mempool
+    async fn submit_narwhal_txn(&self, txn: TransactionProto) -> Result<()>;
+
+    ///Query the application layer through abci
+    async fn query_abci(&self, txn: AbciQueryQuery) -> Result<ResponseQuery>;
 }
 
 type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<u64>>>>>>;
@@ -108,9 +124,11 @@ where
     pub store: Arc<UrsaStore<S>>,
     pub network_send: Sender<NetworkCommand>,
     pub provider_send: Sender<ProviderCommand>,
+    pub mempool_address: String,
     pending_requests: PendingRequests,
     client: Arc<Client>,
     origin_config: OriginConfig,
+    abci_send: BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
 }
 
 #[async_trait]
@@ -239,6 +257,28 @@ where
             ))),
         }
     }
+
+    async fn submit_narwhal_txn(&self, txn: TransactionProto) -> Result<()> {
+        let mut client = TransactionsClient::connect(self.mempool_address.clone())
+            .await
+            .unwrap();
+        if let Err(e) = client.submit_transaction(txn).await {
+            Err(anyhow!(format!("Failure sending transacation: {e:?}")))
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn query_abci(&self, req: AbciQueryQuery) -> Result<ResponseQuery> {
+        let (tx, rx) = oneshot::channel();
+
+        match self.abci_send.send((tx, req.clone())).await {
+            Ok(_) => {}
+            Err(err) => error!("Error forwarding abci query: {}", err),
+        };
+
+        rx.await.with_context(|| "Failure querying abci")
+    }
 }
 
 impl<S> NodeNetworkInterface<S>
@@ -250,12 +290,16 @@ where
         network_send: Sender<NetworkCommand>,
         provider_send: Sender<ProviderCommand>,
         origin_config: OriginConfig,
+        mempool_address: String,
+        abci_send: BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
     ) -> Self {
         Self {
             store,
             network_send,
             provider_send,
+            mempool_address,
             origin_config,
+            abci_send,
             pending_requests: Arc::new(RwLock::new(HashMap::new())),
             client: Arc::new(Client::new()),
         }
