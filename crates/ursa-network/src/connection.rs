@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::{collections::HashSet, time::Duration};
 use tracing::debug;
 
-const MESH_MAX_SIZE: usize = 3;
+const REPLICATION_MAX_SIZE: usize = 3;
 const MAX_RTT: Duration = Duration::from_millis(15);
 
 pub struct Manager {
@@ -31,7 +31,8 @@ impl Manager {
             debug!("{peer} was not added because we don't have a connection for it");
             return;
         }
-        if self.replication_set.len() >= MESH_MAX_SIZE && !self.replication_set.contains_key(&peer)
+        if self.replication_set.len() >= REPLICATION_MAX_SIZE
+            && !self.replication_set.contains_key(&peer)
         {
             if let Some(peer_with_max_rtt) = self
                 .replication_set
