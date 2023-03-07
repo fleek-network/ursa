@@ -8,6 +8,8 @@ use ethers::{
 };
 use std::str::FromStr;
 
+///This will take in strings of address, human readable function abi, and args. And return ethers function abi and filled out transaction request with encoded params
+/// example of human readable function abi is "myFunction(string, uint256):(uin256)" parenthesis after : are the return
 pub fn build_transaction(
     address: &str,
     function: &str,
@@ -72,8 +74,6 @@ pub fn encode_params(func: &Function, args: &[impl AsRef<str>]) -> Result<Vec<u8
                         token = LenientTokenizer::tokenize(param, &value);
                     }
                 }
-                // TODO: Not sure what to do here. Put the no effect in for now, but that is not
-                // ideal. We could attempt massage for every value type?
                 _ => (),
             }
         }
