@@ -6,6 +6,7 @@ use tracing::debug;
 const REPLICATION_MAX_SIZE: usize = 3;
 const MAX_RTT: Duration = Duration::from_millis(15);
 
+#[derive(Default)]
 pub struct Manager {
     /// Connected peers.
     connected_peers: HashSet<PeerId>,
@@ -15,10 +16,7 @@ pub struct Manager {
 
 impl Manager {
     pub fn new() -> Self {
-        Self {
-            connected_peers: HashSet::new(),
-            replication_set: HashMap::new(),
-        }
+        Self::default()
     }
 
     pub fn handle_rtt_received(&mut self, rtt: Duration, peer: PeerId) {
@@ -38,9 +36,9 @@ impl Manager {
             if let Some(peer_with_max_rtt) = self
                 .replication_set
                 .iter()
-                .max_by_key(|(_, duration)| duration.clone())
+                .max_by_key(|(_, duration)| **duration)
                 .filter(|(_, duration)| duration > &&rtt)
-                .map(|(peer, _)| peer.clone())
+                .map(|(peer, _)| *peer)
             {
                 debug!("Removing {} from mesh", peer_with_max_rtt);
                 self.replication_set.remove(&peer_with_max_rtt);
