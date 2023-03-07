@@ -32,7 +32,9 @@ pub enum RpcCommands {
     Txn {
         #[structopt(about = "The address of the contract")]
         address: String,
-        #[structopt(about = "The function as human readable abi. Example: \"functionName(string, uint256):(uint256)\"")]
+        #[structopt(
+            about = "The function as human readable abi. Example: \"functionName(string, uint256):(uint256)\""
+        )]
         function: String,
         #[structopt(about = "The arguments as a string")]
         args: Vec<String>,
@@ -41,7 +43,9 @@ pub enum RpcCommands {
     Call {
         #[structopt(about = "The address of the contract")]
         address: String,
-        #[structopt(about = "The function as human readable abi. Example: \"functionName(string, uint256):(uint256)\"")]
+        #[structopt(
+            about = "The function as human readable abi. Example: \"functionName(string, uint256):(uint256)\""
+        )]
         function: String,
         #[structopt(about = "The arguments as a string")]
         args: Vec<String>,

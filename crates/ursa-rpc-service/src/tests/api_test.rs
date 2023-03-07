@@ -9,7 +9,7 @@ mod tests {
     use fvm_ipld_car::load_car;
     use std::path::Path;
     use std::sync::Arc;
-    use tokio::{task,sync::mpsc::channel};
+    use tokio::task;
 
     use tracing::error;
 
@@ -80,7 +80,7 @@ mod tests {
                 use_https: Some(false),
             },
             mempool_address,
-            abci_send
+            abci_send,
         ));
 
         // since we have no peers, get will fallback to origin
