@@ -3,7 +3,13 @@ use std::collections::HashMap;
 use std::{collections::HashSet, time::Duration};
 use tracing::debug;
 
+#[cfg(test)]
+const REPLICATION_MAX_SIZE: usize = usize::MAX;
+#[cfg(not(test))]
 const REPLICATION_MAX_SIZE: usize = 2;
+#[cfg(test)]
+const MAX_RTT: Duration = Duration::MAX;
+#[cfg(not(test))]
 const MAX_RTT: Duration = Duration::from_millis(15);
 
 #[derive(Default)]
