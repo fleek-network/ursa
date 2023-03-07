@@ -6,11 +6,17 @@ use axum::{headers::HeaderMap, routing::get, Router};
 use db::MemoryDB;
 use libp2p::identity::Keypair;
 use simple_logger::SimpleLogger;
+use tendermint_proto::abci::ResponseQuery;
+use ursa_consensus::AbciQueryQuery;
 use std::sync::Arc;
 use tracing::{log::LevelFilter, warn};
 use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
 use ursa_network::{NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
+use tokio::sync::{
+    mpsc::{ Sender as BoundedSender, channel},
+    oneshot
+};
 
 pub fn setup_logger() {
     let level = LevelFilter::Debug;
@@ -32,6 +38,8 @@ type InitResult = Result<(
     UrsaService<MemoryDB>,
     ProviderEngine<MemoryDB>,
     Arc<UrsaStore<MemoryDB>>,
+    String,
+    BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>
 )>;
 
 pub fn init() -> InitResult {
@@ -52,8 +60,9 @@ pub fn init() -> InitResult {
         service.command_sender(),
         vec!["/ip4/127.0.0.1/tcp/4069".parse().unwrap()],
     );
-
-    Ok((service, provider_engine, store))
+    let mempool_address = "/ip4/0.0.0.0/tcp/8102/http".to_string();
+    let (abci_send, _abci_recieve) = channel(1000);
+    Ok((service, provider_engine, store,mempool_address,abci_send))
 }
 
 pub async fn dummy_ipfs() -> Result<()> {
