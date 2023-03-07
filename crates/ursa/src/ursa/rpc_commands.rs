@@ -23,7 +23,7 @@ pub enum RpcCommands {
         path: String,
     },
 
-    //Example 'ursa rpc txn 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB "myFunction(string,uint256):(uint256) param1 1"
+    // Example 'ursa rpc txn 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB "myFunction(string,uint256):(uint256) param1 1"
     #[structopt(about = "Send a txn to Narwhal")]
     Txn {
         #[structopt(about = "The address of the contract")]
