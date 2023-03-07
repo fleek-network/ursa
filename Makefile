@@ -11,7 +11,7 @@ run: version
 	cargo run --bin cli
 
 install: version
-	cargo install --locked --path crates/ursa --force
+	cargo install --locked --path crates/ursa
 
 build: version
 	cargo build --release --bin ursa

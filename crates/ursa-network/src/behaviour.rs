@@ -260,10 +260,6 @@ where
         self.gossipsub.publish(topic, data)
     }
 
-    pub fn public_address(&self) -> Option<&Multiaddr> {
-        self.autonat.as_ref().and_then(|a| a.public_address())
-    }
-
     pub fn subscribe(&mut self, topic: &Topic) -> Result<bool, SubscriptionError> {
         self.gossipsub.subscribe(topic)
     }

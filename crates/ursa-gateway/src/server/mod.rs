@@ -2,26 +2,28 @@ mod model;
 mod route;
 
 use std::{
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{
     body::Body,
     extract::Extension,
     headers::HeaderName,
     http::{HeaderValue, Method, Request, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, head},
     Json, Router, ServiceExt,
 };
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use hyper_tls::HttpsConnector;
-use route::api::v1::get::get_car_handler;
+use maxminddb::Reader;
+use moka::sync::Cache;
 use serde_json::json;
 use tokio::{
     select, spawn,
@@ -43,7 +45,11 @@ use tracing::{error, info, Level};
 use crate::{
     config::{GatewayConfig, IndexerConfig, ServerConfig},
     resolver::Resolver,
-    server::model::HttpResponse,
+    server::{
+        model::HttpResponse,
+        route::api::v1::get::{check_car_handler, get_car_handler},
+    },
+    util::error::Error,
 };
 
 pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
@@ -53,10 +59,15 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
             ServerConfig {
                 addr,
                 port,
+                public_ip,
                 cert_path,
                 key_path,
                 concurrency_limit,
                 request_timeout,
+                cache_max_capacity,
+                cache_time_to_idle,
+                cache_time_to_live,
+                maxminddb,
                 ..
             },
         indexer: IndexerConfig { cid_url },
@@ -80,14 +91,37 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         .with_default_metrics()
         .build_pair();
 
-    let resolver = Arc::new(Resolver::new(
+    let cache = Cache::builder()
+        .max_capacity(*cache_max_capacity)
+        .time_to_idle(Duration::from_millis(*cache_time_to_idle))
+        .time_to_live(Duration::from_millis(*cache_time_to_live))
+        .build();
+
+    let maxmind_db = Arc::new(Reader::open_readfile(maxminddb)?);
+
+    let public_ip = IpAddr::from_str(public_ip)?;
+
+    let resolver = Resolver::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
-    ));
+        cache,
+        maxmind_db,
+        public_ip,
+    )
+    .map(Arc::new)
+    .map_err(|e| {
+        if let Error::Internal(message) = e {
+            anyhow!("Failed to create cherry-resolver {message:?}")
+        } else {
+            anyhow!("Failed to create cherry-resolver")
+        }
+    })?;
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
-            .route("/:cid", get(get_car_handler))
+            .route("/:cid", get(get_car_handler)) // ursa gateway
+            .route("/ipfs/:cid", get(get_car_handler)) // ipfs gateway specs
+            .route("/ipfs/:cid", head(check_car_handler)) // ipfs gateway specs
             .layer(Extension(resolver))
             .layer(CatchPanicLayer::custom(recover))
             .layer(PropagateRequestIdLayer::new(HeaderName::from_static(

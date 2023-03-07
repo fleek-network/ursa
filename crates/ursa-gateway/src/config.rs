@@ -73,11 +73,16 @@ pub struct GatewayConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub addr: String,
+    pub public_ip: String,
     pub request_timeout: u64,
     pub concurrency_limit: u32,
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
     pub stream_buf: u64,
+    pub cache_max_capacity: u64,
+    pub cache_time_to_idle: u64,
+    pub cache_time_to_live: u64,
+    pub maxminddb: PathBuf,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -92,6 +97,7 @@ impl Default for GatewayConfig {
             server: ServerConfig {
                 addr: "0.0.0.0".into(),
                 port: 443,
+                public_ip: "0.0.0.0".into(),
                 request_timeout: 5_000, // 5s
                 concurrency_limit: 100_000,
                 cert_path: PathBuf::from(env!("HOME"))
@@ -100,10 +106,14 @@ impl Default for GatewayConfig {
                 key_path: PathBuf::from(env!("HOME"))
                     .join(DEFAULT_URSA_GATEWAY_PATH)
                     .join("key.pem"),
-                stream_buf: 2_000_000, // 2MB
+                stream_buf: 2_000_000,             // 2MB
+                cache_max_capacity: 100_000,       //  Number of entries.
+                cache_time_to_idle: 5 * 60 * 1000, //  5 mins.
+                cache_time_to_live: 5 * 60 * 1000, //  5 mins.
+                maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".into(),
             },
             indexer: IndexerConfig {
-                cid_url: "https://cid.contact/cid".into(),
+                cid_url: "https://dev.cid.contact/cid".into(),
             },
         }
     }
@@ -140,6 +150,21 @@ impl GatewayConfig {
         }
         if let Some(indexer_cid_url) = config.indexer_cid_url {
             self.indexer.cid_url = indexer_cid_url;
+        }
+        if let Some(cache_max_capacity) = config.cache_max_capacity {
+            self.server.cache_max_capacity = cache_max_capacity;
+        }
+        if let Some(cache_time_to_live) = config.cache_time_to_live {
+            self.server.cache_time_to_live = cache_time_to_live;
+        }
+        if let Some(cache_time_to_idle) = config.cache_time_to_idle {
+            self.server.cache_time_to_idle = cache_time_to_idle;
+        }
+        if let Some(maxminddb_path) = config.maxminddb {
+            self.server.maxminddb = maxminddb_path;
+        }
+        if let Some(public_ip) = config.public_ip {
+            self.server.public_ip = public_ip;
         }
     }
 }

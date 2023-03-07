@@ -19,6 +19,7 @@ tower-http = { workspace = true, features = ["full"] }
 clap.workspace = true
 hyper.workspace = true
 hyper-tls.workspace = true
+itertools.workspace = true
 libipld.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -30,3 +31,7 @@ libp2p.workspace = true
 ursa-telemetry = { path = "../ursa-telemetry" }
 tracing-opentelemetry.workspace = true
 axum-prometheus.workspace = true
+moka.workspace = true
+maxminddb.workspace = true
+geoutils.workspace = true
+ordered-float.workspace = true

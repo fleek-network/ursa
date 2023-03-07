@@ -3,12 +3,13 @@ log_level = "ERROR"
 [server]
 port = 443
 addr = "0.0.0.0"
+public_ip = "0.0.0.0" # Used for calculating our Geolocation.
 request_timeout = 5000 # 5s
 concurrency_limit = 100000
 cert_path = ".ursa/gateway/cert.pem"
 key_path = ".ursa/gateway/key.pem"
 stream_buf = 2000000 # 2mb
+maxminddb = "/usr/local/etc/GeoIP/GeoLite2-City.mmdb"
 
 [indexer]
 cid_url = "https://cid.contact/cid"
-

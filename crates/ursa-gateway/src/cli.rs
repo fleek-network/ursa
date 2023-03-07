@@ -60,13 +60,19 @@ pub struct DaemonCmdOpts {
     /// indexer cid url
     #[arg(long)]
     pub indexer_cid_url: Option<String>,
-    /// max cache size (bytes)
+    /// max cache capacity (number of entries)
     #[arg(long)]
-    pub max_cache_size: Option<u64>,
+    pub cache_max_capacity: Option<u64>,
     /// cache ttl (ms)
     #[arg(long)]
-    pub ttl_buf: Option<u64>,
-    /// ttl cache interval (ms)
+    pub cache_time_to_live: Option<u64>,
+    /// time to idle cache interval (ms)
     #[arg(long)]
-    pub ttl_cache_interval: Option<u64>,
+    pub cache_time_to_idle: Option<u64>,
+    /// path to maxmind db (city)
+    #[arg(long)]
+    pub maxminddb: Option<PathBuf>,
+    /// public IP
+    #[arg(long)]
+    pub public_ip: Option<String>,
 }
