@@ -15,6 +15,7 @@ axum.workspace = true
 tracing-subscriber.workspace = true
 bytes.workspace = true
 db.workspace = true
+ethers.workspace = true 
 fnv.workspace = true
 futures.workspace = true
 fvm_ipld_blockstore.workspace = true
@@ -22,10 +23,12 @@ fvm_ipld_car.workspace = true
 hyper.workspace = true
 jsonrpc-v2.workspace = true
 libipld.workspace = true
+narwhal-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 simple_logger.workspace = true
 surf.workspace = true
+tendermint-proto.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
@@ -38,9 +41,6 @@ ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-consensus = { path = "../ursa-consensus"}
 
-ethers = { git = "https://github.com/gakonst/ethers-rs" }
-narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-types" }
-tendermint-proto = "0.23.7"
 
 [dependencies.libp2p]
 workspace = true
