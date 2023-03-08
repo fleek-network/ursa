@@ -46,6 +46,9 @@ pub struct NetworkConfig {
     /// Interval to run random kademlia walks to refresh the routing table. Defaults to 5 minutes
     #[serde(default = "NetworkConfig::default_kad_walk_interval")]
     pub kad_walk_interval: u64,
+    /// Maximum number of cache summaries from other peers to store.
+    #[serde(default = "NetworkConfig::default_max_cache_summaries")]
+    pub max_cache_summaries: usize,
 }
 
 impl NetworkConfig {
@@ -94,6 +97,9 @@ impl NetworkConfig {
     fn default_kad_walk_interval() -> u64 {
         300
     }
+    fn default_max_cache_summaries() -> usize {
+        10
+    }
 }
 
 impl Default for NetworkConfig {
@@ -112,6 +118,7 @@ impl Default for NetworkConfig {
             keystore_path: Self::default_keystore_path(),
             kad_replication_factor: Self::default_kad_replication_factor(),
             kad_walk_interval: Self::default_kad_walk_interval(),
+            max_cache_summaries: Self::default_max_cache_summaries(),
         }
     }
 }
