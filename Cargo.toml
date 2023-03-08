@@ -100,7 +100,7 @@ tracing = "0.1.37"
 tracing-tree = "0.2.2"
 tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-axum-tracing-opentelemetry = "0.8.2"
+axum-tracing-opentelemetry = "0.10.0"
 axum-prometheus = "0.3.0"
 
 [patch.'https://github.com/MystenLabs/sui.git']
