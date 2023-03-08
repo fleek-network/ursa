@@ -223,6 +223,8 @@ where
     peer_cached_content: HashMap<PeerId, CacheSummary>,
     /// Interval for random Kademlia walks.
     kad_walk_interval: u64,
+    /// Maximum number of cache summaries from other peers to store.
+    max_cache_summaries: usize,
     /// Public address reported from autonat
     pub public_addr: Option<Multiaddr>,
 }
@@ -318,6 +320,7 @@ where
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
             kad_walk_interval: config.kad_walk_interval,
+            max_cache_summaries: config.max_cache_summaries,
             public_addr: None,
         })
     }
@@ -609,6 +612,11 @@ where
                             }
                         }
                         RequestType::StoreSummary(cache_summary) => {
+                            if self.peer_cached_content.len() == self.max_cache_summaries {
+                                let key_to_remove =
+                                    *self.peer_cached_content.iter().next().unwrap().0;
+                                self.peer_cached_content.remove(&key_to_remove).unwrap();
+                            }
                             self.peer_cached_content.insert(peer, *cache_summary);
                             if self
                                 .swarm
