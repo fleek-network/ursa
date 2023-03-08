@@ -36,7 +36,7 @@ pub async fn init_server_app<C: Cache>(
     for location in server_config.clone().location {
         let route_path = format!(
             "/{}/*path",
-            location.path.trim_start_matches("/").trim_end_matches("/")
+            location.path.trim_start_matches('/').trim_end_matches('/')
         );
         let user_app = Router::new()
             .route(route_path.as_str(), get(serve_file_handler))
@@ -47,7 +47,7 @@ pub async fn init_server_app<C: Cache>(
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(Arc::new(server_config.clone())))
+        .layer(Extension(Arc::new(server_config)))
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
@@ -173,7 +173,7 @@ async fn serve_file_handler(
     Extension(root): Extension<String>,
 ) -> Response {
     let mut file_path = PathBuf::from_str(root.as_str()).unwrap();
-    file_path.push(uri.path().trim_start_matches("/"));
+    file_path.push(uri.path().trim_start_matches('/'));
     let path_str = file_path.as_os_str().to_str().unwrap();
     println!("{path_str}");
     match tokio::fs::read(path_str).await {
