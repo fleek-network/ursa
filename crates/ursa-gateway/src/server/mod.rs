@@ -2,12 +2,13 @@ mod model;
 mod route;
 
 use std::{
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{
     body::Body,
     extract::Extension,
@@ -21,6 +22,7 @@ use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use axum_tracing_opentelemetry::{find_current_trace_id, opentelemetry_tracing_layer};
 use hyper_tls::HttpsConnector;
+use maxminddb::Reader;
 use moka::sync::Cache;
 use serde_json::json;
 use tokio::{
@@ -47,6 +49,7 @@ use crate::{
         model::HttpResponse,
         route::api::v1::get::{check_car_handler, get_car_handler},
     },
+    util::error::Error,
 };
 
 pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>) -> Result<()> {
@@ -56,6 +59,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
             ServerConfig {
                 addr,
                 port,
+                public_ip,
                 cert_path,
                 key_path,
                 concurrency_limit,
@@ -63,6 +67,7 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
                 cache_max_capacity,
                 cache_time_to_idle,
                 cache_time_to_live,
+                maxminddb,
                 ..
             },
         indexer: IndexerConfig { cid_url },
@@ -92,11 +97,25 @@ pub async fn start(config: Arc<RwLock<GatewayConfig>>, shutdown_rx: Receiver<()>
         .time_to_live(Duration::from_millis(*cache_time_to_live))
         .build();
 
-    let resolver = Arc::new(Resolver::new(
+    let maxmind_db = Arc::new(Reader::open_readfile(maxminddb)?);
+
+    let public_ip = IpAddr::from_str(public_ip)?;
+
+    let resolver = Resolver::new(
         String::from(cid_url),
         hyper::Client::builder().build::<_, Body>(HttpsConnector::new()),
         cache,
-    ));
+        maxmind_db,
+        public_ip,
+    )
+    .map(Arc::new)
+    .map_err(|e| {
+        if let Error::Internal(message) = e {
+            anyhow!("Failed to create cherry-resolver {message:?}")
+        } else {
+            anyhow!("Failed to create cherry-resolver")
+        }
+    })?;
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()

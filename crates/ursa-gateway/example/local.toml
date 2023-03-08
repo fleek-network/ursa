@@ -3,6 +3,7 @@ log_level = "DEBUG"
 [server]
 port = 80
 addr = "0.0.0.0"
+public_ip = "0.0.0.0" # Used for calculating our Geolocation.
 request_timeout = 5000 # 5s
 concurrency_limit = 100000
 cert_path = ".ursa/gateway/cert.pem"
@@ -11,6 +12,7 @@ stream_buf = 2000000 # 2mb
 cache_max_capacity = 100000 # Number of entries
 cache_time_to_idle = 300000 # 5 mins
 cache_time_to_live = 300000 # 5 mins
+maxminddb = "/usr/local/etc/GeoIP/GeoLite2-City.mmdb"
 
 [indexer]
 cid_url = "https://dev.cid.contact/cid"

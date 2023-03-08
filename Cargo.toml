@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/ursa",
+  "crates/ursa-application",
   "crates/ursa-consensus",
   "crates/ursa-gateway",
   "crates/ursa-index-provider",
@@ -11,6 +12,7 @@ members = [
   "crates/ursa-store",
   "crates/ursa-telemetry",
   "crates/ursa-tracker",
+  "crates/ursa-utils",
 ]
 
 exclude = [
@@ -48,23 +50,27 @@ futures-util = "0.3.25"
 fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm/" }
 fvm_ipld_encoding = "=0.3.2"
+geoutils = "0.5"
 graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 imara-diff = "0.1.5"
+itertools = "0.10.5"
 jsonrpc-v2 = "0.11.0"
 lazy_static = "1.4"
 libipld = { version = "0.14.0", features = ["serde-codec"] }
 libipld-core = "0.14.0"
-libp2p = { version = "0.50.0", default-features = false }
+libp2p = { version = "0.50.1", default-features = false }
 libp2p-bitswap = "0.25.0"
 libipld-cbor = "0.14.0"
-libp2p-swarm = "0.41.1"
-moka = "0.9"
+libp2p-swarm = "0.42.0"
+maxminddb = "0.23"
+moka = "0.10"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 opentelemetry = "0.18.0"
 opentelemetry-jaeger = "0.17.0"
+ordered-float = "3.4"
 prometheus = "0.13.3"
 pem = "1.1.0"
 prometheus-client = "0.19.0"
@@ -72,6 +78,7 @@ rand = "0.8.5"
 resolve-path = "0.1.0"
 compile-time-run = "0.2.12"
 scalable_cuckoo_filter = { git = "https://github.com/matthias-wright/scalable_cuckoo_filter", rev = "fe691e06690549b545c18f975fa142700b58dc65", features = ["serde_support"] }
+scopeguard = "1.1.0"
 serde_derive = "1.0.147"
 serde = { version = "1.0.151", features = ["derive"] }
 serde_json = "1.0.91"
@@ -87,14 +94,20 @@ tokio-util = { version = "0.7", features = ["io", "compat"] }
 tokio-stream = "0.1"
 toml = "0.7.1"
 tower = "0.4.13"
-tower-http = "0.3.5"
+tower-http = "0.4.0"
 tracing-error = "0.2.0"
 tracing = "0.1.37"
 tracing-tree = "0.2.2"
 tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-axum-tracing-opentelemetry = "0.8.2"
+axum-tracing-opentelemetry = "0.10.0"
 axum-prometheus = "0.3.0"
+
+[patch.'https://github.com/MystenLabs/sui.git']
+workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.git", rev = "c07eb1e343a455d57a5481b50eada03c62b4f2c6"}
+
+[patch.'crates-io']
+libp2p = { git = "https://github.com/libp2p/rust-libp2p", rev = "d8de86e991ad540e6f69ca417c27f7407198944f" }
 
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.

@@ -69,4 +69,10 @@ pub struct DaemonCmdOpts {
     /// time to idle cache interval (ms)
     #[arg(long)]
     pub cache_time_to_idle: Option<u64>,
+    /// path to maxmind db (city)
+    #[arg(long)]
+    pub maxminddb: Option<PathBuf>,
+    /// public IP
+    #[arg(long)]
+    pub public_ip: Option<String>,
 }
