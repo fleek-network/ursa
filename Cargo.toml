@@ -63,7 +63,7 @@ libipld-core = "0.14.0"
 libp2p = { version = "0.50.1", default-features = false }
 libp2p-bitswap = "0.25.0"
 libipld-cbor = "0.14.0"
-libp2p-swarm = "0.41.1"
+libp2p-swarm = "0.42.0"
 maxminddb = "0.23"
 moka = "0.10"
 metrics = "0.20.1"
