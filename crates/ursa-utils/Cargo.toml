@@ -13,5 +13,5 @@ repository.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-ethers = { git = "https://github.com/gakonst/ethers-rs" }
+ethers.workspace = true
 
