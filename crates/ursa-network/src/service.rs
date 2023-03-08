@@ -614,7 +614,7 @@ where
                         RequestType::StoreSummary(cache_summary) => {
                             if self.peer_cached_content.len() == self.max_cache_summaries {
                                 let key_to_remove =
-                                    *self.peer_cached_content.iter().next().unwrap().0;
+                                    *self.peer_cached_content.keys().next().unwrap();
                                 self.peer_cached_content.remove(&key_to_remove).unwrap();
                             }
                             self.peer_cached_content.insert(peer, *cache_summary);
