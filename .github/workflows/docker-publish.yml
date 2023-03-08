@@ -20,6 +20,7 @@ on:
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
       - "**/Dockerfile*"
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
