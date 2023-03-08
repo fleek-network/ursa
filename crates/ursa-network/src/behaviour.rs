@@ -43,15 +43,16 @@ use libp2p::{
 };
 use libp2p_bitswap::{Bitswap, BitswapConfig};
 use std::borrow::Cow;
+use std::iter;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashSet, iter};
 
 use tracing::{info, warn};
 use ursa_metrics::BITSWAP_REGISTRY;
 use ursa_store::{BitswapStorage, UrsaStore};
 
+use crate::connection::Manager;
 use crate::gossipsub::build_gossipsub;
 use crate::{
     codec::protocol::{UrsaExchangeCodec, UrsaProtocol},
@@ -118,7 +119,7 @@ where
         config: &NetworkConfig,
         store: UrsaStore<S>,
         relay_client: Option<libp2p::relay::v2::client::Client>,
-        peers: &mut HashSet<PeerId>,
+        peers: &mut Manager,
     ) -> Self {
         let local_public_key = keypair.public();
         let local_peer_id = PeerId::from(local_public_key.clone());
