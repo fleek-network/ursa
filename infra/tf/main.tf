@@ -133,37 +133,14 @@ resource "digitalocean_record" "ursa-dashboard-domain" {
   value  = digitalocean_droplet.ursa-dashboard.ipv4_address
 }
 
-resource "digitalocean_record" "grafana-domain" {
-  domain = digitalocean_domain.default.name
-  type   = "A"
-  name   = "grafana"
-  value  = digitalocean_droplet.ursa-dashboard.ipv4_address
-}
-
-resource "digitalocean_record" "prometheus-domain" {
-  domain = digitalocean_domain.default.name
-  type   = "A"
-  name   = "prometheus"
-  value  = digitalocean_droplet.ursa-dashboard.ipv4_address
-}
-
-resource "digitalocean_volume" "ursa-dashboard-volume" {
-  name       = "ursa-dashboard-volume"
-  region     = var.droplet_region
-  size       = 1024 # 1TB
-}
-
 resource "digitalocean_droplet" "ursa-dashboard" {
   image      = var.droplet_image
   name       = "dashboard"
   region     = var.droplet_region
   size       = var.droplet_size
-  volume_ids = [digitalocean_volume.ursa-dashboard-volume.id]
   backups    = false
   monitoring = true
-  user_data  = templatefile("${path.module}/configs/metrics.yml", {
-    ipinfo_token = var.ipinfo_token,
-  })
+  user_data  = file("${path.module}/configs/metrics.yml")
   ssh_keys = [
     data.digitalocean_ssh_key.ursa-dev.id
   ]
