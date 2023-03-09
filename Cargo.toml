@@ -64,9 +64,9 @@ libipld-core = "0.14.0"
 libp2p = { version = "0.50.1", default-features = false }
 libp2p-bitswap = "0.25.0"
 libipld-cbor = "0.14.0"
-libp2p-swarm = "0.41.1"
+libp2p-swarm = "0.42.0"
 maxminddb = "0.23"
-moka = "0.9"
+moka = "0.10"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-types" }
@@ -97,13 +97,13 @@ tokio-util = { version = "0.7", features = ["io", "compat"] }
 tokio-stream = "0.1"
 toml = "0.7.1"
 tower = "0.4.13"
-tower-http = "0.3.5"
+tower-http = "0.4.0"
 tracing-error = "0.2.0"
 tracing = "0.1.37"
 tracing-tree = "0.2.2"
 tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-axum-tracing-opentelemetry = "0.8.2"
+axum-tracing-opentelemetry = "0.10.0"
 axum-prometheus = "0.3.0"
 
 [patch.'https://github.com/MystenLabs/sui.git']
