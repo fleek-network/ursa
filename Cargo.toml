@@ -41,6 +41,7 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
+ethers = { git = "https://github.com/gakonst/ethers-rs" }
 integer-encoding = "3.0.4"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
 fastmurmur3 = "0.1.2"
@@ -68,6 +69,7 @@ maxminddb = "0.23"
 moka = "0.10"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
+narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-types" }
 opentelemetry = "0.18.0"
 opentelemetry-jaeger = "0.17.0"
 ordered-float = "3.4"
@@ -87,6 +89,7 @@ simple_logger = "4.0.0"
 siphasher = "0.3"
 structopt = "0.3"
 surf = { version = "2.3.2", default-features = true, features = ["curl-client"] }
+tendermint-proto = "0.23.7"
 thiserror = "1.0.30"
 tracing-opentelemetry = "0.18.0"
 tokio = { version = "1.23.0", features = ["full", "tracing"] }

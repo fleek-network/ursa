@@ -36,5 +36,7 @@ ursa-tracker = { path = "../ursa-tracker" }
 ursa-utils = { path = "../ursa-utils" }
 imara-diff.workspace = true
 
+ethers.workspace = true
+multiaddr = {version = "0.17.0"}
 warp = "0.3.2"
 workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "workspace-hack" }
