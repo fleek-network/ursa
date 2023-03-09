@@ -1,0 +1,24 @@
+[package]
+name = "ursa-pod"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand.workspace = true
+anyhow.workspace = true
+elliptic-curve = { version="0.13" , default-features=false, features=["hash2curve", "arithmetic"]}
+k256 = { version="0.13", default-features = false, features = ["arithmetic", "hash2curve", "expose-field"] }
+blake3 = {version="1.3", features=["rayon"]}
+rand_core = "0.6"
+rand_hc = "0.3"
+sha2 = "0.10"
+
+[dev-dependencies]
+criterion = {version="0.4.0", features=["html_reports"]}
+benchmarks_utils = {git="https://github.com/qti3e/benchmarks", rev="c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package="benchmarks"}
+
+[[bench]]
+name = "encrypt"
+harness = false
