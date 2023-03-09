@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Result, Context as _};
 use ethers::{
     abi::{
         token::{LenientTokenizer, Tokenizer},
@@ -15,26 +15,11 @@ pub fn build_transaction(
     function: &str,
     args: &[String],
 ) -> Result<(Function, TransactionRequest)> {
-    let to = match address.parse::<Address>() {
-        Ok(addr) => addr,
-        Err(_) => {
-            bail!("Not a valid address");
-        }
-    };
+    let to = address.parse::<Address>().with_context(||"Not a valid Address")?;
 
-    let function_abi = match AbiParser::default().parse_function(function) {
-        Ok(func) => func,
-        Err(e) => {
-            bail!("Unable to parse function: {e:?}");
-        }
-    };
+    let function_abi = AbiParser::default().parse_function(function).with_context(|| "Unable to parse function" )?;
 
-    let data = match encode_params(&function_abi, args) {
-        Ok(params) => params,
-        Err(e) => {
-            bail!("unable to encode params: {e:?}");
-        }
-    };
+    let data = encode_params(&function_abi, args).with_context(||"Unable to encode params")?;
 
     Ok((function_abi, TransactionRequest::new().to(to).data(data)))
 }

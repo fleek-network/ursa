@@ -1,10 +1,9 @@
-use ethers::core::types::TransactionRequest;
 use jsonrpc_v2::Error;
 
 use crate::api::{
     EthCall, NetworkGetFileParams, NetworkGetParams, NetworkGetResult, NetworkPutFileParams,
     NetworkPutFileResult, ETH_CALL, ETH_SEND_TRANSACTION, NETWORK_GET, NETWORK_GET_FILE,
-    NETWORK_PUT_FILE,
+    NETWORK_PUT_FILE, EthSendTransactionParams,
 };
 
 use super::{
@@ -26,10 +25,10 @@ pub async fn put_file(params: NetworkPutFileParams) -> Result<NetworkPutFileResu
     call(NETWORK_PUT_FILE, params, Put).await
 }
 
-pub async fn eth_send_transaction(params: TransactionRequest) -> Result<()> {
+pub async fn eth_send_transaction(params: EthSendTransactionParams) -> Result<()> {
     call(ETH_SEND_TRANSACTION, params, Post).await
 }
 
-pub async fn eth_call(params: TransactionRequest) -> Result<EthCall> {
+pub async fn eth_call(params: EthSendTransactionParams) -> Result<EthCall> {
     call(ETH_CALL, params, Put).await
 }

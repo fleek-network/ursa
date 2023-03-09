@@ -71,7 +71,7 @@ pub struct NetworkGetFileParams {
 }
 pub const NETWORK_GET_FILE: &str = "ursa_get_file";
 
-pub type EthSendTransaction = TransactionRequest;
+pub type EthSendTransactionParams = TransactionRequest;
 pub const ETH_SEND_TRANSACTION: &str = "eth_sendTransaction";
 
 pub type EthCall = Vec<u8>;
@@ -107,10 +107,10 @@ pub trait NetworkInterface: Sync + Send + 'static {
     /// Get the addresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
 
-    ///Stream txn to the Narwhal worker mempool
+    /// Stream txn to the Narwhal worker mempool
     async fn submit_narwhal_txn(&self, txn: TransactionProto) -> Result<()>;
 
-    ///Query the application layer through abci
+    /// Query the application layer through abci
     async fn query_abci(&self, txn: AbciQueryQuery) -> Result<ResponseQuery>;
 }
 
@@ -124,7 +124,7 @@ where
     pub store: Arc<UrsaStore<S>>,
     pub network_send: Sender<NetworkCommand>,
     pub provider_send: Sender<ProviderCommand>,
-    pub mempool_address: String,
+    mempool_address: String,
     pending_requests: PendingRequests,
     client: Arc<Client>,
     origin_config: OriginConfig,
@@ -262,8 +262,9 @@ where
         let mut client = TransactionsClient::connect(self.mempool_address.clone())
             .await
             .unwrap();
+
         if let Err(e) = client.submit_transaction(txn).await {
-            Err(anyhow!(format!("Failure sending transacation: {e:?}")))
+            Err(anyhow!("Failure sending transacation: {e:?}"))
         } else {
             Ok(())
         }
@@ -272,9 +273,8 @@ where
     async fn query_abci(&self, req: AbciQueryQuery) -> Result<ResponseQuery> {
         let (tx, rx) = oneshot::channel();
 
-        match self.abci_send.send((tx, req.clone())).await {
-            Ok(_) => {}
-            Err(err) => error!("Error forwarding abci query: {}", err),
+        if let Err(err) = self.abci_send.send((tx, req.clone())).await {
+            error!("Error forwarding abci query: {}", err);
         };
 
         rx.await.with_context(|| "Failure querying abci")
