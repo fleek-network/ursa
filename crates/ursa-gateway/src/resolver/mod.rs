@@ -243,7 +243,7 @@ impl Resolver {
             match self.client.get(uri).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) => {
-                    provider_addresses.remove();
+                    provider_addresses.remove(addr);
                     error!("Error querying the node provider: {endpoint:?} {e:?}")
                 }
             };
@@ -296,8 +296,7 @@ pub struct AddressesState {
 impl Addresses {
     fn next(&self) -> Option<String> {
         let inner = self.inner.read().unwrap();
-        let old_stamp = inner.stamp;
-        if old_stamp + TIME_SHARING_DURATION >= Instant::now() {
+        if inner.stamp + TIME_SHARING_DURATION >= Instant::now() {
             drop(inner);
             debug!("Time is up! Attempting to grab write lock to rotate");
             match self.inner.try_write() {
@@ -325,10 +324,10 @@ impl Addresses {
         self.inner.read().unwrap().outsiders.clone()
     }
 
-    fn remove(&self) -> Option<String> {
+    fn remove(&self, addr: String) {
         let mut inner = self.inner.write().unwrap();
         inner.stamp = Instant::now();
-        inner.neighbors.pop_front()
+        inner.neighbors.retain(|a| a != &addr);
     }
 
     fn is_empty(&self) -> bool {
