@@ -19,7 +19,9 @@ use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
-use std::{collections::VecDeque, net::IpAddr, sync::Arc};
+use std::sync::TryLockError;
+use std::{collections::VecDeque, net::IpAddr, sync::Arc, sync::RwLock, time::Duration};
+use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -29,6 +31,7 @@ use crate::{
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(565_000f64);
+const TIME_SHARING_DURATION: Duration = Duration::from_micros(500);
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -123,8 +126,11 @@ impl Resolver {
                 Either::Left(address)
             });
         Addresses {
-            neighbors,
-            outsiders,
+            inner: Arc::new(RwLock::new(AddressesState {
+                neighbors,
+                outsiders,
+                stamp: Instant::now(),
+            })),
         }
     }
 
@@ -136,7 +142,7 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let mut provider_addresses = match self.cache.get(cid) {
+        let provider_addresses = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -206,9 +212,7 @@ impl Resolver {
                     .collect();
 
                 let provider_addresses = self.provider_addresses(providers);
-                if provider_addresses.neighbors.is_empty()
-                    && provider_addresses.outsiders.is_empty()
-                {
+                if provider_addresses.is_empty() {
                     return Err(Error::Internal(
                         "Failed to get a valid address for provider".to_string(),
                     ));
@@ -224,10 +228,10 @@ impl Resolver {
 
         debug!(
             "Provider addresses to query: {:?}",
-            provider_addresses.neighbors
+            provider_addresses.neighbors()
         );
 
-        while let Some(addr) = provider_addresses.neighbors.pop_front() {
+        while let Some(addr) = provider_addresses.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -237,24 +241,24 @@ impl Resolver {
                 }
             };
             match self.client.get(uri).await {
-                Ok(resp) => {
-                    // The address is good so we put it back at the end.
-                    provider_addresses.neighbors.push_back(addr);
-                    self.cache.insert(cid.to_string(), provider_addresses);
-                    return Ok(resp);
+                Ok(resp) => return Ok(resp),
+                Err(e) => {
+                    provider_addresses.remove();
+                    error!("Error querying the node provider: {endpoint:?} {e:?}")
                 }
-                Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };
         }
 
-        if !provider_addresses.outsiders.is_empty() {
+        let outsiders = provider_addresses.outsiders();
+
+        if !outsiders.is_empty() {
             debug!(
                 "Failed to get content from neighbors so falling back to {:?}",
-                provider_addresses.outsiders
+                outsiders
             );
         }
 
-        while let Some(addr) = provider_addresses.outsiders.pop_front() {
+        for addr in outsiders {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -264,12 +268,7 @@ impl Resolver {
                 }
             };
             match self.client.get(uri).await {
-                Ok(resp) => {
-                    // The address is good so we put it back at the end.
-                    provider_addresses.outsiders.push_back(addr);
-                    self.cache.insert(cid.to_string(), provider_addresses);
-                    return Ok(resp);
-                }
+                Ok(resp) => return Ok(resp),
                 Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
             };
         }
@@ -282,10 +281,57 @@ impl Resolver {
 
 #[derive(Clone)]
 pub struct Addresses {
+    inner: Arc<RwLock<AddressesState>>,
+}
+
+pub struct AddressesState {
     // Nodes within MAX_DISTANCE radius.
     neighbors: VecDeque<String>,
     // Nodes outside MAX_DISTANCE radius.
     outsiders: VecDeque<String>,
+    // Recently viewed time stamp.
+    stamp: Instant,
+}
+
+impl Addresses {
+    fn next(&self) -> Option<String> {
+        let inner = self.inner.read().unwrap();
+        let old_stamp = inner.stamp;
+        if old_stamp + TIME_SHARING_DURATION >= Instant::now() {
+            drop(inner);
+            match self.inner.try_write() {
+                Ok(mut writer_guard) => {
+                    let front = writer_guard.neighbors.pop_front().unwrap();
+                    writer_guard.neighbors.push_back(front.clone());
+                    writer_guard.stamp = Instant::now();
+                    Some(front)
+                }
+                Err(TryLockError::WouldBlock) => {
+                    self.inner.read().unwrap().neighbors.front().cloned()
+                }
+                _ => panic!(""),
+            }
+        } else {
+            inner.neighbors.front().cloned()
+        }
+    }
+
+    fn neighbors(&self) -> VecDeque<String> {
+        self.inner.read().unwrap().neighbors.clone()
+    }
+
+    fn outsiders(&self) -> VecDeque<String> {
+        self.inner.read().unwrap().outsiders.clone()
+    }
+
+    fn remove(&self) {
+        self.inner.write().unwrap().neighbors.pop_front();
+    }
+
+    fn is_empty(&self) -> bool {
+        let inner = self.inner.read().unwrap();
+        return inner.neighbors.is_empty() && inner.outsiders.is_empty();
+    }
 }
 
 fn get_location(city: City) -> Result<Location, Error> {
