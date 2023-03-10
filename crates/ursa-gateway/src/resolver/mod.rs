@@ -31,7 +31,7 @@ use crate::{
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(565_000f64);
-const TIME_SHARING_DURATION: Duration = Duration::from_micros(500);
+const TIME_SHARING_DURATION: Duration = Duration::from_millis(500);
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -299,6 +299,7 @@ impl Addresses {
         let old_stamp = inner.stamp;
         if old_stamp + TIME_SHARING_DURATION >= Instant::now() {
             drop(inner);
+            debug!("Time is up! Attempting to grab write lock to rotate");
             match self.inner.try_write() {
                 Ok(mut writer_guard) => {
                     let front = writer_guard.neighbors.pop_front().unwrap();
@@ -324,8 +325,10 @@ impl Addresses {
         self.inner.read().unwrap().outsiders.clone()
     }
 
-    fn remove(&self) {
-        self.inner.write().unwrap().neighbors.pop_front();
+    fn remove(&self) -> Option<String> {
+        let mut inner = self.inner.write().unwrap();
+        inner.stamp = Instant::now();
+        inner.neighbors.pop_front()
     }
 
     fn is_empty(&self) -> bool {
