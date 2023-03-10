@@ -296,14 +296,14 @@ pub struct AddressesState {
 impl Addresses {
     fn next(&self) -> Option<String> {
         let inner = self.inner.read().unwrap();
-        if inner.stamp + TIME_SHARING_DURATION >= Instant::now() {
+        let now = Instant::now();
+        if now.duration_since(inner.stamp) >= TIME_SHARING_DURATION {
             drop(inner);
-            debug!("Time is up! Attempting to grab write lock to rotate");
             match self.inner.try_write() {
                 Ok(mut writer_guard) => {
                     let front = writer_guard.neighbors.pop_front().unwrap();
                     writer_guard.neighbors.push_back(front.clone());
-                    writer_guard.stamp = Instant::now();
+                    writer_guard.stamp = now;
                     Some(front)
                 }
                 Err(TryLockError::WouldBlock) => {
