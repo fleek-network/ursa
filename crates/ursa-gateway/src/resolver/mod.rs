@@ -228,7 +228,7 @@ impl Resolver {
 
         debug!(
             "Provider addresses to query: {:?}",
-            provider_addresses.neighbors()
+            provider_addresses
         );
 
         while let Some(addr) = provider_addresses.next() {
@@ -279,11 +279,12 @@ impl Resolver {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Addresses {
     inner: Arc<RwLock<AddressesState>>,
 }
 
+#[derive(Debug)]
 pub struct AddressesState {
     // Nodes within MAX_DISTANCE radius.
     neighbors: VecDeque<String>,
@@ -309,15 +310,11 @@ impl Addresses {
                 Err(TryLockError::WouldBlock) => {
                     self.inner.read().unwrap().neighbors.front().cloned()
                 }
-                _ => panic!(""),
+                Err(TryLockError::Poisoned(e)) => panic!("{e}"),
             }
         } else {
             inner.neighbors.front().cloned()
         }
-    }
-
-    fn neighbors(&self) -> VecDeque<String> {
-        self.inner.read().unwrap().neighbors.clone()
     }
 
     fn outsiders(&self) -> VecDeque<String> {
