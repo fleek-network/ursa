@@ -226,10 +226,7 @@ impl Resolver {
             Some(provider_addresses) => provider_addresses,
         };
 
-        debug!(
-            "Provider addresses to query: {:?}",
-            provider_addresses
-        );
+        debug!("Provider addresses to query: {:?}", provider_addresses);
 
         while let Some(addr) = provider_addresses.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
