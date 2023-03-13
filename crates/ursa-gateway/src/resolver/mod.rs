@@ -1,4 +1,5 @@
 pub mod model;
+mod round_robin;
 
 use anyhow::{anyhow, Context};
 use axum::{
@@ -19,26 +20,26 @@ use model::IndexerResponse;
 use moka::sync::Cache;
 use ordered_float::OrderedFloat;
 use serde_json::from_slice;
-use std::sync::TryLockError;
-use std::{collections::VecDeque, net::IpAddr, sync::Arc, sync::RwLock, time::Duration};
-use tokio::time::Instant;
+use std::{net::IpAddr, sync::Arc};
 use tracing::{debug, error, warn};
 
 use crate::{
-    resolver::model::{Metadata, ProviderResult},
+    resolver::{
+        model::{Metadata, ProviderResult},
+        round_robin::Queue,
+    },
     util::error::Error,
 };
 
 const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 const MAX_DISTANCE: OrderedFloat<f64> = OrderedFloat(565_000f64);
-const TIME_SHARING_DURATION: Duration = Duration::from_millis(500);
 
 type Client = client::Client<HttpsConnector<HttpConnector>, Body>;
 
 pub struct Resolver {
     indexer_cid_url: String,
     client: Client,
-    cache: Cache<String, Addresses>,
+    cache: Cache<String, Arc<Providers>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
     location: Location,
 }
@@ -47,7 +48,7 @@ impl Resolver {
     pub fn new(
         indexer_cid_url: String,
         client: Client,
-        cache: Cache<String, Addresses>,
+        cache: Cache<String, Arc<Providers>>,
         maxminddb: Arc<Reader<Vec<u8>>>,
         addr: IpAddr,
     ) -> Result<Self, Error> {
@@ -64,8 +65,9 @@ impl Resolver {
         })
     }
 
-    /// Returns a set of provider address sorted by their distance relative to the gateway.
-    fn provider_addresses(&self, providers: Vec<&ProviderResult>) -> Addresses {
+    /// Partitions the providers into those that are within a MAX_DISTANCE distance
+    /// from the gateway and those that are outside of that distance.
+    fn partition_providers(&self, providers: Vec<&ProviderResult>) -> Providers {
         let (neighbors, outsiders) = providers
             .into_iter()
             .flat_map(|provider_result| &provider_result.provider.addrs)
@@ -125,12 +127,9 @@ impl Resolver {
                 }
                 Either::Left(address)
             });
-        Addresses {
-            inner: Arc::new(RwLock::new(AddressesState {
-                neighbors,
-                outsiders,
-                stamp: Instant::now(),
-            })),
+        Providers {
+            neighbors: Queue::new(neighbors),
+            outsiders: Queue::new(outsiders),
         }
     }
 
@@ -211,24 +210,26 @@ impl Resolver {
                     })
                     .collect();
 
-                let provider_addresses = self.provider_addresses(providers);
-                if provider_addresses.is_empty() {
+                let providers = self.partition_providers(providers);
+                if providers.neighbors.is_empty() && providers.outsiders.is_empty() {
                     return Err(Error::Internal(
                         "Failed to get a valid address for provider".to_string(),
                     ));
                 }
+                let providers = Arc::new(providers);
+                self.cache.insert(cid.to_string(), providers.clone());
 
-                self.cache
-                    .insert(cid.to_string(), provider_addresses.clone());
-
-                provider_addresses
+                providers
             }
-            Some(provider_addresses) => provider_addresses,
+            Some(providers) => providers,
         };
 
-        debug!("Provider addresses to query: {:?}", provider_addresses);
+        debug!(
+            "Provider addresses to query: {:?}",
+            provider_addresses.neighbors
+        );
 
-        while let Some(addr) = provider_addresses.next() {
+        while let Some(addr) = provider_addresses.neighbors.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -240,22 +241,20 @@ impl Resolver {
             match self.client.get(uri).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) => {
-                    provider_addresses.remove(addr);
+                    provider_addresses.neighbors.remove(addr);
                     error!("Error querying the node provider: {endpoint:?} {e:?}")
                 }
             };
         }
 
-        let outsiders = provider_addresses.outsiders();
-
-        if !outsiders.is_empty() {
+        if !provider_addresses.outsiders.is_empty() {
             debug!(
                 "Failed to get content from neighbors so falling back to {:?}",
-                outsiders
+                provider_addresses.outsiders
             );
         }
 
-        for addr in outsiders {
+        while let Some(addr) = provider_addresses.outsiders.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -266,7 +265,10 @@ impl Resolver {
             };
             match self.client.get(uri).await {
                 Ok(resp) => return Ok(resp),
-                Err(e) => error!("Error querying the node provider: {endpoint:?} {e:?}"),
+                Err(e) => {
+                    provider_addresses.outsiders.remove(addr);
+                    error!("Error querying the node provider: {endpoint:?} {e:?}")
+                }
             };
         }
 
@@ -276,58 +278,9 @@ impl Resolver {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Addresses {
-    inner: Arc<RwLock<AddressesState>>,
-}
-
-#[derive(Debug)]
-pub struct AddressesState {
-    // Nodes within MAX_DISTANCE radius.
-    neighbors: VecDeque<String>,
-    // Nodes outside MAX_DISTANCE radius.
-    outsiders: VecDeque<String>,
-    // Recently viewed time stamp.
-    stamp: Instant,
-}
-
-impl Addresses {
-    fn next(&self) -> Option<String> {
-        let inner = self.inner.read().unwrap();
-        let now = Instant::now();
-        if now.duration_since(inner.stamp) >= TIME_SHARING_DURATION {
-            drop(inner);
-            match self.inner.try_write() {
-                Ok(mut writer_guard) => {
-                    let front = writer_guard.neighbors.pop_front().unwrap();
-                    writer_guard.neighbors.push_back(front.clone());
-                    writer_guard.stamp = now;
-                    Some(front)
-                }
-                Err(TryLockError::WouldBlock) => {
-                    self.inner.read().unwrap().neighbors.front().cloned()
-                }
-                Err(TryLockError::Poisoned(e)) => panic!("{e}"),
-            }
-        } else {
-            inner.neighbors.front().cloned()
-        }
-    }
-
-    fn outsiders(&self) -> VecDeque<String> {
-        self.inner.read().unwrap().outsiders.clone()
-    }
-
-    fn remove(&self, addr: String) {
-        let mut inner = self.inner.write().unwrap();
-        inner.stamp = Instant::now();
-        inner.neighbors.retain(|a| a != &addr);
-    }
-
-    fn is_empty(&self) -> bool {
-        let inner = self.inner.read().unwrap();
-        return inner.neighbors.is_empty() && inner.outsiders.is_empty();
-    }
+pub struct Providers {
+    neighbors: Queue<String>,
+    outsiders: Queue<String>,
 }
 
 fn get_location(city: City) -> Result<Location, Error> {
