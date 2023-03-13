@@ -1,23 +1,16 @@
-use elliptic_curve::group::GroupEncoding;
-use elliptic_curve::hash2curve::{hash_to_field, ExpandMsgXmd, MapToCurve};
+use elliptic_curve::hash2curve::{FromOkm, MapToCurve};
 use elliptic_curve::sec1::ToEncodedPoint;
 use elliptic_curve::Field;
 use rand::Rng;
 use rand_core::RngCore;
 use rand_core::{block::BlockRngCore, OsRng, SeedableRng};
-use sha2::Sha256;
 use std::iter::zip;
 
-// TODO(qti3e): Remove the use of hash_to_curve that is using ExpandMsgXmd.
-// and avoid hashing the same information multiple times and reuse the hashes.
+const REQUEST_INFO_HASH_DOMAIN_SEP: &'static str = "FLEEK_NETWORK_POD_REQUEST_HASH";
+const SCHNORR_CHALLENGE_DOMAIN_SEP: &'static str = "FLEEK_NETWORK_POD_SCHNORR_CHALLENGE";
 
-// TODO(qti3e) Import this from somewhere else, this doesn't belong here.
-pub type CID = blake3::Hash;
-
-/// The request that
 pub struct RequestInfo {
-    /// The content identifier for the file that was requested.
-    pub cid: CID,
+    pub cid: [u8; 32],
     pub client: [u8; 32],
     pub time: u64,
     pub from_bytes: u64,
@@ -25,37 +18,20 @@ pub struct RequestInfo {
 }
 
 impl RequestInfo {
-    pub fn hash_to_curve(&self) -> k256::AffinePoint {
-        let mut u = [k256::FieldElement::default(), k256::FieldElement::default()];
-
-        hash_to_field::<ExpandMsgXmd<Sha256>, k256::FieldElement>(
-            &[],
-            &[b"fleek-network-pod-request"],
-            &mut u,
-        )
-        .unwrap();
-
-        let q0 = u[0].map_to_curve();
-        let q1 = u[1].map_to_curve();
-
-        (q0 + q1).to_affine()
-    }
-
-    pub fn hash(&self) -> blake3::Hash {
-        let mut hasher = blake3::Hasher::new_derive_key("FLEEK_NETWORK_POD_REQUEST_HASH");
-        hasher.update(self.cid.as_bytes());
+    #[inline(always)]
+    fn hash_xof(&self) -> blake3::OutputReader {
+        let mut hasher = blake3::Hasher::new_derive_key(REQUEST_INFO_HASH_DOMAIN_SEP);
+        hasher.update(&self.cid);
         hasher.update(&self.client);
         hasher.update(&self.time.to_be_bytes());
         hasher.update(&self.from_bytes.to_be_bytes());
         hasher.update(&self.to_bytes.to_be_bytes());
-        hasher.finalize()
+        hasher.finalize_xof()
     }
 
     pub fn rand(mut rng: impl RngCore) -> Self {
-        let cid: [u8; 32] = rng.gen();
-
         Self {
-            cid: blake3::Hash::from(cid),
+            cid: rng.gen(),
             from_bytes: 0,
             to_bytes: 256 * 1024 * 1024,
             client: rng.gen(),
@@ -84,13 +60,37 @@ pub fn encrypt_block(
     // DO NOT CHANGE THIS UNLESS YOU MAKE SURE THE TRANSMUTE LOGIC IS ALSO WORKING.
     const BLOCK_SIZE: usize = 64;
 
-    let request_hash = req.hash();
-    let encryption_key = req.hash_to_curve() * secret.0;
-    let encoded_point = encryption_key.to_affine().to_encoded_point(true);
-    let seed = *blake3::hash(encoded_point.as_bytes()).as_bytes();
+    // Use the same blake3 reader for computing the hash and the mapping to the curve.
+    // this reader is stateful but has a cheap clone.
+    let request_info_reader = req.hash_xof();
+
+    let request_info_hash = {
+        let mut buffer = [0; 32];
+        request_info_reader.clone().fill(&mut buffer);
+        buffer
+    };
+
+    let request_info_on_curve = {
+        let mut buffer = [0; 48];
+        let mut reader = request_info_reader;
+
+        reader.fill(&mut buffer);
+        let q0 = k256::FieldElement::from_okm(&buffer.into()).map_to_curve();
+
+        reader.fill(&mut buffer);
+        let q1 = k256::FieldElement::from_okm(&buffer.into()).map_to_curve();
+
+        q0 + q1
+    };
+
+    let seed = {
+        let encryption_key = request_info_on_curve * secret.0;
+        let encoded_point = encryption_key.to_affine().to_encoded_point(true);
+        blake3::hash(encoded_point.as_bytes())
+    };
 
     let mut hc_block = [0u8; BLOCK_SIZE];
-    let mut hc_rng = rand_hc::Hc128Core::from_seed(seed);
+    let mut hc_rng = rand_hc::Hc128Core::from_seed(*seed.as_bytes());
 
     let mut buffer_iter = buffer.chunks_exact(BLOCK_SIZE);
     let mut result_iter = result.chunks_exact_mut(BLOCK_SIZE);
@@ -128,28 +128,27 @@ pub fn encrypt_block(
         }
     }
 
-    let hash = {
+    let encrypted_hash = {
         let mut hasher = blake3::Hasher::new();
         hasher.update_rayon(&result);
         hasher.finalize()
     };
 
-    // schnorr commitment.
+    // schnorr commitment to the encrypted data.
 
     let k = k256::Scalar::random(OsRng);
     let r = (k256::AffinePoint::GENERATOR * k).to_affine();
-    let r_compressed = r.to_bytes().to_vec();
 
     let e = {
-        let mut c = [k256::Scalar::ZERO];
-        hash_to_field::<ExpandMsgXmd<Sha256>, k256::Scalar>(
-            &[&r_compressed, hash.as_bytes(), request_hash.as_bytes()],
-            &[b"fleek-network-pod"],
-            &mut c,
-        )
-        .unwrap();
-        c[0]
+        let mut okm: [u8; 48] = [0; 48];
+        let mut hasher = blake3::Hasher::new_derive_key(SCHNORR_CHALLENGE_DOMAIN_SEP);
+        hasher.update(r.to_encoded_point(false).as_bytes());
+        hasher.update(encrypted_hash.as_bytes());
+        hasher.update(&request_info_hash);
+        hasher.finalize_xof().fill(&mut okm);
+        k256::Scalar::from_okm(&okm.into())
     };
+
     let s = k - secret.0 * e;
     let mut ret = [0; 64];
     ret[0..32].copy_from_slice(&e.to_bytes());
