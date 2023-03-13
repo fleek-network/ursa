@@ -1,36 +1,99 @@
 use elliptic_curve::group::GroupEncoding;
-use elliptic_curve::hash2curve::{hash_to_field, ExpandMsgXmd};
+use elliptic_curve::hash2curve::{hash_to_field, ExpandMsgXmd, MapToCurve};
+use elliptic_curve::sec1::ToEncodedPoint;
 use elliptic_curve::Field;
+use rand::Rng;
+use rand_core::RngCore;
 use rand_core::{block::BlockRngCore, OsRng, SeedableRng};
 use sha2::Sha256;
 use std::iter::zip;
 
-pub struct Request {}
+// TODO(qti3e): Remove the use of hash_to_curve that is using ExpandMsgXmd.
+// and avoid hashing the same information multiple times and reuse the hashes.
+
+// TODO(qti3e) Import this from somewhere else, this doesn't belong here.
+pub type CID = blake3::Hash;
+
+/// The request that
+pub struct RequestInfo {
+    /// The content identifier for the file that was requested.
+    pub cid: CID,
+    pub client: [u8; 32],
+    pub time: u64,
+    pub from_bytes: u64,
+    pub to_bytes: u64,
+}
+
+impl RequestInfo {
+    pub fn hash_to_curve(&self) -> k256::AffinePoint {
+        let mut u = [k256::FieldElement::default(), k256::FieldElement::default()];
+
+        hash_to_field::<ExpandMsgXmd<Sha256>, k256::FieldElement>(
+            &[],
+            &[b"fleek-network-pod-request"],
+            &mut u,
+        )
+        .unwrap();
+
+        let q0 = u[0].map_to_curve();
+        let q1 = u[1].map_to_curve();
+
+        (q0 + q1).to_affine()
+    }
+
+    pub fn hash(&self) -> blake3::Hash {
+        let mut hasher = blake3::Hasher::new_derive_key("FLEEK_NETWORK_POD_REQUEST_HASH");
+        hasher.update(self.cid.as_bytes());
+        hasher.update(&self.client);
+        hasher.update(&self.time.to_be_bytes());
+        hasher.update(&self.from_bytes.to_be_bytes());
+        hasher.update(&self.to_bytes.to_be_bytes());
+        hasher.finalize()
+    }
+
+    pub fn rand(mut rng: impl RngCore) -> Self {
+        let cid: [u8; 32] = rng.gen();
+
+        Self {
+            cid: blake3::Hash::from(cid),
+            from_bytes: 0,
+            to_bytes: 256 * 1024 * 1024,
+            client: rng.gen(),
+            time: rng.gen(),
+        }
+    }
+}
+
 pub struct SecretKey(pub k256::Scalar);
 
-/// Encrypt a block of data and write the result to the provided mutable slice, this function will
-/// return an additional 64 byte that should be send to
+/// Encrypt a block of data and write the result to the provided mutable slice,
+/// this function will return an additional 64 byte that should be send to
 // TODO(qti3e) If possible in future make this function encrypt in place.
 pub fn encrypt_block(
     secret: &SecretKey,
-    req: &Request,
+    req: &RequestInfo,
     buffer: &[u8],
     result: &mut [u8],
 ) -> [u8; 64] {
-    // DO NOT CHANGE THIS UNLESS YOU MAKE SURE THE TRANSMUTE LOGIC IS ALSO WORKING.
-    const BLOCK_SIZE: usize = 64;
-
     assert_eq!(
         buffer.len(),
         result.len(),
         "plaintext and result buffer must be the same size."
     );
 
-    let mut buffer_iter = buffer.chunks_exact(BLOCK_SIZE);
-    let mut result_iter = result.chunks_exact_mut(BLOCK_SIZE);
+    // DO NOT CHANGE THIS UNLESS YOU MAKE SURE THE TRANSMUTE LOGIC IS ALSO WORKING.
+    const BLOCK_SIZE: usize = 64;
+
+    let request_hash = req.hash();
+    let encryption_key = req.hash_to_curve() * secret.0;
+    let encoded_point = encryption_key.to_affine().to_encoded_point(true);
+    let seed = *blake3::hash(encoded_point.as_bytes()).as_bytes();
 
     let mut hc_block = [0u8; BLOCK_SIZE];
-    let mut hc_rng = rand_hc::Hc128Core::from_seed([0; 32]);
+    let mut hc_rng = rand_hc::Hc128Core::from_seed(seed);
+
+    let mut buffer_iter = buffer.chunks_exact(BLOCK_SIZE);
+    let mut result_iter = result.chunks_exact_mut(BLOCK_SIZE);
 
     for (buffer_block, result_block) in zip(&mut buffer_iter, &mut result_iter) {
         unsafe {
@@ -78,10 +141,9 @@ pub fn encrypt_block(
     let r_compressed = r.to_bytes().to_vec();
 
     let e = {
-        // TODO(qti3e) include message and request hash.
         let mut c = [k256::Scalar::ZERO];
         hash_to_field::<ExpandMsgXmd<Sha256>, k256::Scalar>(
-            &[&r_compressed, hash.as_bytes()],
+            &[&r_compressed, hash.as_bytes(), request_hash.as_bytes()],
             &[b"fleek-network-pod"],
             &mut c,
         )
@@ -93,20 +155,4 @@ pub fn encrypt_block(
     ret[0..32].copy_from_slice(&e.to_bytes());
     ret[32..].copy_from_slice(&s.to_bytes());
     ret
-}
-
-#[test]
-fn x() {
-    use benchmarks_utils::*;
-    const SIZE: usize = 256 * KB;
-
-    let mut data = [0u8; SIZE];
-    let mut result = [0u8; SIZE];
-
-    OsRng.fill_bytes(&mut data);
-
-    let s_key = SecretKey(k256::Scalar::random(OsRng));
-
-    let mut result = mk_vec(SIZE);
-    encrypt_block(&s_key, &Request {}, &data, &mut result);
 }
