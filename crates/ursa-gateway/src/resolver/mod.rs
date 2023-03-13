@@ -41,7 +41,7 @@ pub struct Resolver {
     client: Client,
     cache: Cache<String, Arc<Providers>>,
     maxminddb: Arc<Reader<Vec<u8>>>,
-    location: Location,
+    location: GatewayLocation,
 }
 
 impl Resolver {
@@ -52,10 +52,15 @@ impl Resolver {
         maxminddb: Arc<Reader<Vec<u8>>>,
         addr: IpAddr,
     ) -> Result<Self, Error> {
-        let city = maxminddb
-            .lookup::<City>(addr)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let location = get_location(city)?;
+        let location = if addr.is_loopback() {
+            GatewayLocation::Private
+        } else {
+            let city = maxminddb
+                .lookup::<City>(addr)
+                .map_err(|e| anyhow!(e.to_string()))?;
+            GatewayLocation::Public(get_location(city)?)
+        };
+
         Ok(Self {
             indexer_cid_url,
             client,
@@ -95,25 +100,35 @@ impl Resolver {
                 }
                 let host = host.unwrap();
                 let port = port.unwrap();
-                let city = self
-                    .maxminddb
-                    .lookup::<City>(host)
-                    .map_err(|e| {
-                        debug!(
-                            "Failed to get location for ip {} with error {}",
-                            host,
-                            e.to_string()
-                        )
-                    })
-                    .ok();
-                let location = get_location(city?)
-                    .map_err(|e| debug!("Failed to get location for city with ip {host} {:?}", e))
-                    .ok()?;
-                let distance = self.location.haversine_distance_to(&location).meters();
-                if !distance.is_finite() {
-                    debug!("Skipping {host} because distance could not be computed");
-                    return None;
-                }
+                let distance = match self.location {
+                    GatewayLocation::Private => 0f64,
+                    GatewayLocation::Public(gateway_location) => {
+                        let city = self
+                            .maxminddb
+                            .lookup::<City>(host)
+                            .map_err(|e| {
+                                debug!(
+                                    "Failed to get location for ip {} with error {}",
+                                    host,
+                                    e.to_string()
+                                )
+                            })
+                            .ok();
+                        let provider_location = get_location(city?)
+                            .map_err(|e| {
+                                debug!("Failed to get location for city with ip {host} {:?}", e)
+                            })
+                            .ok()?;
+                        let distance = gateway_location
+                            .haversine_distance_to(&provider_location)
+                            .meters();
+                        if !distance.is_finite() {
+                            debug!("Skipping {host} because distance could not be computed");
+                            return None;
+                        }
+                        distance
+                    }
+                };
                 debug!("{host} is {distance:?} meters from host");
                 Some((
                     OrderedFloat(distance),
@@ -281,6 +296,11 @@ impl Resolver {
 pub struct Providers {
     neighbors: Queue<String>,
     outsiders: Queue<String>,
+}
+
+pub enum GatewayLocation {
+    Private,
+    Public(Location),
 }
 
 fn get_location(city: City) -> Result<Location, Error> {

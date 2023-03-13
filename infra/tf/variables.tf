@@ -75,12 +75,6 @@ variable "do_token" {
   description = "DigitalOcean API token"
 }
 
-# TF_VAR_ipinfo_token
-variable "ipinfo_token" {
-  type       = string
-  description = "ipinfo.io API Token"
-}
-
 variable "ursa_domain" {
   type        = string
   default     = "ursa.earth"
