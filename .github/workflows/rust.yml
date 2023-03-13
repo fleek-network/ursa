@@ -74,8 +74,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - run: cargo test --workspace --all-features
-      - run: cargo test --workspace --no-default-features
+      - run: cargo test --jobs 1 --workspace --all-features
+      - run: cargo test --jobs 1 --workspace --no-default-features
 
   coverage:
     name: Tests coverage
