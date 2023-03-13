@@ -2,7 +2,6 @@ use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
 use anyhow::{bail, Result};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
-use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
@@ -19,11 +18,10 @@ use ursa_consensus::{
     Engine,
 };
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_network::{ursa_agent, UrsaService};
+use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_telemetry::TelemetryConfig;
-use ursa_tracker::TrackerRegistration;
 use ursa_utils::shutdown::ShutdownController;
 
 pub mod config;
@@ -93,24 +91,6 @@ async fn run() -> Result<()> {
     let keypair = im.current();
 
     let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
-
-    let registration = TrackerRegistration {
-        id: keypair.clone().public().to_peer_id(),
-        agent: ursa_agent(),
-        addr: None, // if we have a dns address, we can set it here
-        p2p_port: network_config
-            .swarm_addrs
-            .first()
-            .expect("no tcp swarm address")
-            .iter()
-            .find_map(|proto| match proto {
-                Protocol::Tcp(port) => Some(port),
-                Protocol::Udp(port) => Some(port),
-                _ => None,
-            }),
-        http_port: Some(server_config.port),
-        telemetry: Some(true),
-    };
 
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
@@ -221,15 +201,6 @@ async fn run() -> Result<()> {
             error!("[consensus_engine_task] - {:?}", err)
         }
     });
-
-    // register with ursa node tracker
-    if !network_config.tracker.is_empty() {
-        match ursa_tracker::register_with_tracker(network_config.tracker, registration).await {
-            Ok(res) => info!("Registered with tracker: {res:?}"),
-            // if tracker fails, keep the process open.
-            Err(err) => error!("Failed to register with tracker: {err:?}"),
-        }
-    }
 
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
