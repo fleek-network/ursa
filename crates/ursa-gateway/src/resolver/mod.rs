@@ -70,8 +70,9 @@ impl Resolver {
         })
     }
 
-    /// Partitions the providers into those that are within a MAX_DISTANCE distance
-    /// from the gateway and those that are outside of that distance.
+    /// Partitions the providers into a set containing providers that are within
+    /// MAX_DISTANCE distance from the gateway and another set of providers that
+    /// are outside of that distance.
     fn partition_providers(&self, providers: Vec<&ProviderResult>) -> Providers {
         let (neighbors, outsiders) = providers
             .into_iter()
