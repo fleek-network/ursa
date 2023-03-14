@@ -157,7 +157,7 @@ impl Resolver {
             anyhow!("Error parsed uri: {endpoint}")
         })?;
 
-        let provider_addresses = match self.cache.get(cid) {
+        let providers = match self.cache.get(cid) {
             None => {
                 let body = match self
                     .client
@@ -240,12 +240,9 @@ impl Resolver {
             Some(providers) => providers,
         };
 
-        debug!(
-            "Provider addresses to query: {:?}",
-            provider_addresses.neighbors
-        );
+        debug!("Provider addresses to query: {:?}", providers.neighbors);
 
-        while let Some(addr) = provider_addresses.neighbors.next() {
+        while let Some(addr) = providers.neighbors.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -257,20 +254,20 @@ impl Resolver {
             match self.client.get(uri).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) => {
-                    provider_addresses.neighbors.remove(addr);
+                    providers.neighbors.remove(addr);
                     error!("Error querying the node provider: {endpoint:?} {e:?}")
                 }
             };
         }
 
-        if !provider_addresses.outsiders.is_empty() {
+        if !providers.outsiders.is_empty() {
             debug!(
                 "Failed to get content from neighbors so falling back to {:?}",
-                provider_addresses.outsiders
+                providers.outsiders
             );
         }
 
-        while let Some(addr) = provider_addresses.outsiders.next() {
+        while let Some(addr) = providers.outsiders.next() {
             let endpoint = format!("{addr}/ursa/v0/{cid}");
             let uri = match endpoint.parse::<Uri>() {
                 Ok(uri) => uri,
@@ -282,7 +279,7 @@ impl Resolver {
             match self.client.get(uri).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) => {
-                    provider_addresses.outsiders.remove(addr);
+                    providers.outsiders.remove(addr);
                     error!("Error querying the node provider: {endpoint:?} {e:?}")
                 }
             };
