@@ -5,7 +5,6 @@ use crate::config::{GenesisAuthority, GenesisCommittee};
 use crate::keys::LoadOrCreate;
 use crate::{config::ConsensusConfig, validator::Validator};
 use anyhow::Context;
-use arc_swap::ArcSwap;
 use fastcrypto::traits::KeyPair as _;
 use multiaddr::Multiaddr;
 use mysten_metrics::RegistryService;
@@ -43,8 +42,8 @@ pub struct ServiceArgs {
     pub primary_address: Multiaddr,
     pub worker_address: Multiaddr,
     pub store_path: PathBuf,
-    pub committee: Arc<ArcSwap<Committee>>,
-    pub worker_cache: Arc<ArcSwap<WorkerCache>>,
+    pub committee: Committee,
+    pub worker_cache: WorkerCache,
     pub registry_service: RegistryService,
 }
 
@@ -98,7 +97,7 @@ impl ConsensusService {
         let name = self.arguments.primary_keypair.public().clone();
         let execution_state = Arc::new(state);
 
-        let epoch = self.arguments.committee.load().epoch();
+        let epoch = self.arguments.committee.epoch();
         info!("Starting ConsensusService for epoch {}", epoch);
 
         let mut running = false;
@@ -173,7 +172,7 @@ impl ConsensusService {
         }
 
         let now = Instant::now();
-        let epoch = self.arguments.committee.load().epoch();
+        let epoch = self.arguments.committee.epoch();
         info!("Shutting down Narwhal epoch {:?}", epoch);
 
         self.worker_node.shutdown().await;
@@ -221,8 +220,8 @@ impl ServiceArgs {
             })
             .context("Could not load the genesis committee.")?;
 
-        let committee = Arc::new(Committee::from(&genesis_committee));
-        let worker_cache = Arc::new(WorkerCache::from(&genesis_committee));
+        let committee = Committee::from(&genesis_committee);
+        let worker_cache = WorkerCache::from(&genesis_committee);
 
         // create the directory for the store.
         let store_path = config.store_path.resolve().into_owned();
@@ -236,8 +235,8 @@ impl ServiceArgs {
             primary_address: config.address,
             worker_address: config.worker[0].address.clone(),
             store_path,
-            committee: Arc::new(ArcSwap::new(committee)),
-            worker_cache: Arc::new(ArcSwap::new(worker_cache)),
+            committee,
+            worker_cache,
             registry_service: RegistryService::new(Registry::new()),
         })
     }
