@@ -111,24 +111,22 @@ resource "digitalocean_firewall" "ursa-network" {
     port_range       = "443"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "3000"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-  inbound_rule {
-    port_range       = "4069"
-    protocol         = "tcp"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
+  # libp2p tcp
   inbound_rule {
     port_range       = "6009"
     protocol         = "tcp"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
+  # libp2p quic
   inbound_rule {
     port_range       = "4890"
     protocol         = "udp"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  # grafana
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "3000"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
