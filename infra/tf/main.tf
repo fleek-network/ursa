@@ -54,7 +54,7 @@ resource "digitalocean_droplet" "testnet-node" {
   backups    = false
   monitoring = true
   user_data = templatefile("${path.module}/configs/provider_node.yml", {
-    domain = "testnet-node-${count.index}.${digitalocean_domain.default.name}",
+    domain      = "testnet-node-${count.index}.${digitalocean_domain.default.name}",
     indexer_url = "${var.indexer_url}"
   })
   ssh_keys = [
@@ -93,7 +93,7 @@ resource "digitalocean_droplet" "bootstrap-node" {
 }
 
 resource "digitalocean_firewall" "ursa-network" {
-  name  = "ursa-network"
+  name        = "ursa-network"
   droplet_ids = concat(digitalocean_droplet.testnet-node[*].id, digitalocean_droplet.bootstrap-node[*].id)
 
   inbound_rule {
@@ -117,18 +117,18 @@ resource "digitalocean_firewall" "ursa-network" {
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
-    port_range = "4069"
-    protocol   = "tcp"
+    port_range       = "4069"
+    protocol         = "tcp"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
-    port_range = "6009"
-    protocol   = "tcp"
+    port_range       = "6009"
+    protocol         = "tcp"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
-    port_range = "4890"
-    protocol   = "udp"
+    port_range       = "4890"
+    protocol         = "udp"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
@@ -166,10 +166,10 @@ resource "digitalocean_droplet" "ursa-dashboard" {
   size       = "s-8vcpu-16gb-intel"
   backups    = false
   monitoring = true
-  user_data  = templatefile("${path.module}/configs/metrics.yml", {
-    domain = "${digitalocean_domain.default.name}",
+  user_data = templatefile("${path.module}/configs/metrics.yml", {
+    domain          = "${digitalocean_domain.default.name}",
     maxmind_account = "${var.maxmind_account}",
-    maxmind_key = "${var.maxmind_key}"
+    maxmind_key     = "${var.maxmind_key}"
   })
   ssh_keys = [
     data.digitalocean_ssh_key.ursa-dev.id
@@ -178,7 +178,7 @@ resource "digitalocean_droplet" "ursa-dashboard" {
 
 # Dashboard Firewall
 resource "digitalocean_firewall" "metrics-firewall" {
-  name  = "metrics-firewall"
+  name        = "metrics-firewall"
   droplet_ids = [digitalocean_droplet.ursa-dashboard.id]
   # ssh, http, https
   inbound_rule {
@@ -202,8 +202,8 @@ resource "digitalocean_firewall" "metrics-firewall" {
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {
-    protocol              = "udp"
-    port_range            = "4890-4891"
+    protocol         = "udp"
+    port_range       = "4890-4891"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
   inbound_rule {

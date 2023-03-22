@@ -59,7 +59,7 @@ variable "droplet_size" {
 ############
 
 variable "indexer_url" {
-  type = string
+  type    = string
   default = "https://dev.cid.contact"
 }
 
