@@ -4,7 +4,8 @@ use benchmarks_utils::*;
 use criterion::*;
 use elliptic_curve::Field;
 use rand_core::OsRng;
-use ursa_pod::{encrypt_block, RequestInfo, SecretKey};
+use ursa_pod::keys::SecretKey;
+use ursa_pod::primitives::{encrypt_block, RequestInfo};
 
 fn bench_encrypt(c: &mut Criterion) {
     const SIZE: usize = 256 * KB;
