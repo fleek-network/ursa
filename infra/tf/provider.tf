@@ -12,5 +12,5 @@ provider "digitalocean" {
 }
 
 data "digitalocean_ssh_key" "ursa-dev" {
-  name = "ursa-dev"
+  name = "ossian"
 }

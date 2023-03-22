@@ -50,14 +50,17 @@ variable "droplet_region" {
 
 variable "droplet_size" {
   type        = string
-  default     = "s-2vcpu-4gb"
+  default     = "s-8vcpu-16gb-intel"
   description = "Droplet size identifier"
 }
 
-variable "droplet_volume" {
-  type        = number
-  default     = 1024
-  description = "Droplet volume size in GB"
+############
+#   Node   #
+############
+
+variable "indexer_url" {
+  type = string
+  default = "https://dev.cid.contact"
 }
 
 #############
@@ -77,18 +80,26 @@ variable "do_token" {
 
 variable "ursa_domain" {
   type        = string
-  default     = "ursa.earth"
+  default     = "ursa.zone"
   description = "Ursa domain name"
 }
 
 variable "node_count" {
-  default     = 7
+  default     = 5
   type        = number
   description = "How many testnet nodes to deploy"
 }
 
 variable "bootstrap_count" {
-  default     = 2
+  default     = 1
   type        = number
   description = "How many bootstrap nodes to deploy"
+}
+
+variable "maxmind_account" {
+  description = "MaxmindDB Account for geoipupdate"
+}
+
+variable "maxmind_key" {
+  description = "MaxmindDB secret token for geoipupdate"
 }
