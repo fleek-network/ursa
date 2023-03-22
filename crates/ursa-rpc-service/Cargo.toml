@@ -41,7 +41,6 @@ ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-consensus = { path = "../ursa-consensus"}
 
-
 [dependencies.libp2p]
 workspace = true
 default-features = false

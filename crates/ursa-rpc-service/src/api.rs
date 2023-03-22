@@ -383,14 +383,29 @@ where
                 })?;
                 let len = body.len() as u64;
 
-                let car = CarReader::new(body.as_slice()).await.map_err(|e| {
+                let mut car = CarReader::new(body.as_slice()).await.map_err(|e| {
                     format!("Error reading car file for cid {root_cid} from origin: {e}")
                 })?;
 
                 if car.header.roots.contains(&root_cid) {
-                    car.read_into(store.as_ref())
-                        .await
-                        .map_err(|e| format!("Error storing cid {root_cid} from origin: {e}"))?;
+                    let mut buf = Vec::with_capacity(100);
+                    while let Some(block) = car.next_block().await.unwrap() {
+                        buf.push((block.cid, block.data));
+                        if buf.len() > 1000 {
+                            store
+                                .put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))
+                                .map_err(|e| {
+                                    format!("Error storing block with cid {0}: {e}", block.cid)
+                                })?;
+                            buf.clear();
+                        }
+                    }
+                    store
+                        .put_many_keyed(buf.iter().map(|(k, v)| (*k, v)))
+                        .map_err(|e| {
+                            format!("Error storing bulk block keys for cid {root_cid}: {e}")
+                        })?;
+
                     Ok(len)
                 } else {
                     Err(format!(

@@ -38,4 +38,4 @@ imara-diff.workspace = true
 ethers.workspace = true
 multiaddr = {version = "0.17.0"}
 warp = "0.3.2"
-workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "workspace-hack" }
+workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "workspace-hack" }
