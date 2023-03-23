@@ -70,6 +70,4 @@ impl Default for AdminConfig {
 pub struct TlsConfig {
     pub cert_path: String,
     pub key_path: String,
-    pub reload_cert_path: Option<String>,
-    pub reload_key_path: Option<String>,
 }

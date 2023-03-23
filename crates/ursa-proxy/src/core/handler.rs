@@ -82,13 +82,8 @@ pub async fn reload_tls_config(
                     .into_response();
             }
             let server_tls_config = server.config.tls.as_ref().unwrap();
-            if server_tls_config.reload_cert_path.is_none()
-                || server_tls_config.reload_key_path.is_none()
-            {
-                return StatusCode::OK.into_response();
-            }
-            let cert_path = server_tls_config.reload_cert_path.as_ref().unwrap();
-            let key_path = server_tls_config.reload_key_path.as_ref().unwrap();
+            let cert_path = server_tls_config.cert_path.as_str();
+            let key_path = server_tls_config.key_path.as_str();
             if server
                 .tls_config
                 .as_ref()
