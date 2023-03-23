@@ -98,7 +98,7 @@ from this secret key should not be used to globally identify a node outside the 
 #### Client
 
 Each client is identified by its public key, for clients we use BLS signatures, specifically the curve BLS12-381. This decision
-is made to allow
+is made to allow aggregation of the delivery acknowledgments when a node is sending the batch to the committee to claim its rewards.
 
 ### Encryption
 ### Verification
