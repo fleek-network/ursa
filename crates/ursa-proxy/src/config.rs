@@ -68,6 +68,6 @@ impl Default for AdminConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
-    pub cert_path: String,
-    pub key_path: String,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
