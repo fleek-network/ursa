@@ -10,18 +10,20 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
     use tokio::task;
+
     use tracing::error;
 
     #[tokio::test]
     async fn test_put_and_get() -> Result<()> {
         setup_logger();
-        let (mut ursa_service, mut provider_engine, store) = init()?;
-
+        let (mut ursa_service, mut provider_engine, store, mempool_address, abci_send) = init()?;
         let interface = Arc::new(NodeNetworkInterface::new(
             Arc::clone(&store),
             ursa_service.command_sender(),
             provider_engine.command_sender(),
             Default::default(),
+            mempool_address,
+            abci_send,
         ));
 
         // the test case does not start the provider engine, so the best way
@@ -62,7 +64,7 @@ mod tests {
         const IPFS_CID: &str = "bafkreihwcrnsi2tqozwq22k4vl7flutu43jlxgb3tenewysm2xvfuej5i4";
         const IPFS_LEN: usize = 26849;
 
-        let (node, mut provider, store) = init()?;
+        let (node, mut provider, store, mempool_address, abci_send) = init()?;
         let command_sender = node.command_sender();
         provider.command_receiver().close();
         tokio::task::spawn(async move {
@@ -77,6 +79,8 @@ mod tests {
                 ipfs_gateway: "127.0.0.1:9682".to_string(),
                 use_https: Some(false),
             },
+            mempool_address,
+            abci_send,
         ));
 
         // since we have no peers, get will fallback to origin

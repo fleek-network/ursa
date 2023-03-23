@@ -13,7 +13,6 @@ use ethers::abi::parse_abi;
 use ethers::contract::BaseContract;
 use ethers::prelude::{NameOrAddress, U256 as UInt256};
 use ethers::types::{Address, TransactionRequest};
-use revm::db::DatabaseRef;
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
 use revm::{
     self,
@@ -21,6 +20,7 @@ use revm::{
     primitives::{Env, ExecutionResult, TxEnv},
     Database, DatabaseCommit,
 };
+use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -361,26 +361,32 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
             }
         };
 
-        let res = match query {
-            Query::EthCall(mut tx) => {
-                match tx.to {
-                    Some(NameOrAddress::Address(addr)) => tx.to = Some(addr.into()),
-                    _ => panic!("not an address"),
-                };
-
+        let resp = match query {
+            Query::EthCall(tx) => {
                 let result = state.execute(tx, true).await.unwrap();
 
-                QueryResponse::Tx(result)
+                if let ExecutionResult::Success {
+                    output: Output::Call(bytes),
+                    ..
+                } = result
+                {
+                    bytes.to_vec()
+                } else {
+                    "Call was not succesful".into()
+                }
             }
             Query::Balance(address) => match state.db.basic(address.to_fixed_bytes().into()) {
-                Ok(info) => QueryResponse::Balance(info.unwrap_or_default().balance),
-                _ => panic!("error retrieving balance"),
+                Ok(info) => {
+                    let res = QueryResponse::Balance(info.unwrap_or_default().balance);
+                    serde_json::to_vec(&res).unwrap()
+                }
+                _ => "error retrieving balance".into(),
             },
         };
 
         ResponseQuery {
             key: query_request.data,
-            value: serde_json::to_vec(&res).unwrap(),
+            value: resp,
             ..Default::default()
         }
     }

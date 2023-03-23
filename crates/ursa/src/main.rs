@@ -2,7 +2,6 @@ use crate::{config::UrsaConfig, ursa::identity::IdentityManager};
 use anyhow::{bail, Result};
 use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
-use libp2p::multiaddr::Protocol;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
@@ -16,14 +15,13 @@ use ursa_application::application_start;
 use ursa_consensus::{
     execution::Execution,
     service::{ConsensusService, ServiceArgs},
-    AbciApi, Engine,
+    Engine,
 };
 use ursa_index_provider::engine::ProviderEngine;
-use ursa_network::{ursa_agent, UrsaService};
+use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
 use ursa_store::UrsaStore;
 use ursa_telemetry::TelemetryConfig;
-use ursa_tracker::TrackerRegistration;
 use ursa_utils::shutdown::ShutdownController;
 
 pub mod config;
@@ -94,24 +92,6 @@ async fn run() -> Result<()> {
 
     let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
 
-    let registration = TrackerRegistration {
-        id: keypair.clone().public().to_peer_id(),
-        agent: ursa_agent(),
-        addr: None, // if we have a dns address, we can set it here
-        p2p_port: network_config
-            .swarm_addrs
-            .first()
-            .expect("no tcp swarm address")
-            .iter()
-            .find_map(|proto| match proto {
-                Protocol::Tcp(port) => Some(port),
-                Protocol::Udp(port) => Some(port),
-                _ => None,
-            }),
-        http_port: Some(server_config.port),
-        telemetry: Some(true),
-    };
-
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
 
@@ -138,12 +118,28 @@ async fn run() -> Result<()> {
     let index_provider_router = index_provider_engine.router();
 
     // server setup
+    let mempool_address = consensus_config.worker[0].transaction.clone();
+    let mempool_port = mempool_address
+        .iter()
+        .find_map(|proto| match proto {
+            //Sui and Libp2p are using dif "MAJOR" version of multiaddr so we have to import and use the other one here
+            multiaddr::Protocol::Tcp(port) => Some(port),
+            _ => None,
+        })
+        .expect("Expected tcp url for worker mempool");
+
+    let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
+    let (tx_abci_queries, rx_abci_queries) = channel(1000);
+
     let interface = Arc::new(NodeNetworkInterface::new(
         store,
         service.command_sender(),
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
+        mempool_address_string,
+        tx_abci_queries,
     ));
+
     let server = Server::new(interface);
 
     // Start libp2p service
@@ -189,17 +185,6 @@ async fn run() -> Result<()> {
         }
     });
 
-    //TODO(dalton): This is temporary this shim should be merged with the ursa-rpc-service
-    //Start the ABCI shim and engine
-    let (tx_abci_queries, rx_abci_queries) = channel(1000);
-    let mempool_address = consensus_config.worker[0].transaction.clone();
-
-    let abci_task = task::spawn(async move {
-        let api = AbciApi::new(mempool_address, tx_abci_queries).await;
-        let address = consensus_config.rpc_domain.parse::<SocketAddr>().unwrap();
-        warp::serve(api.routes()).run(address).await;
-    });
-
     // Start the consensus service.
     let consensus_service = ConsensusService::new(consensus_args);
     let (tx_transactions, rx_transactions) = channel(1000);
@@ -217,15 +202,6 @@ async fn run() -> Result<()> {
         }
     });
 
-    // register with ursa node tracker
-    if !network_config.tracker.is_empty() {
-        match ursa_tracker::register_with_tracker(network_config.tracker, registration).await {
-            Ok(res) => info!("Registered with tracker: {res:?}"),
-            // if tracker fails, keep the process open.
-            Err(err) => error!("Failed to register with tracker: {err:?}"),
-        }
-    }
-
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
 
@@ -235,7 +211,6 @@ async fn run() -> Result<()> {
     provider_task.abort();
     consensus_engine_task.abort();
     application_task.abort();
-    abci_task.abort();
     consensus_service.shutdown().await;
 
     Ok(())

@@ -18,7 +18,6 @@ config.toml
 index_provider_db*
 test_db*
 ursa_db*
-tracker_db*
 keystore*
 car_files*
 

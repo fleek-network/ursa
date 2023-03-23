@@ -10,9 +10,6 @@ pub mod validator;
 mod abci_engine;
 pub use abci_engine::Engine;
 
-mod server;
-pub use server::AbciApi;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -22,8 +19,8 @@ pub struct BroadcastTxQuery {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AbciQueryQuery {
-    path: String,
-    data: String,
-    height: Option<usize>,
-    prove: Option<bool>,
+    pub path: String,
+    pub data: String,
+    pub height: Option<usize>,
+    pub prove: Option<bool>,
 }

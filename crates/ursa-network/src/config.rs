@@ -36,16 +36,15 @@ pub struct NetworkConfig {
     /// Keystore path. Defaults to ~/.ursa/keystore
     #[serde(default = "NetworkConfig::default_keystore_path")]
     pub keystore_path: PathBuf,
-    /// Temporary HTTP tracker url. This is used for pre-consensus node registrations.
-    /// Defaults to devnet tracker.
-    #[serde(default = "NetworkConfig::default_tracker")]
-    pub tracker: String,
     /// Determines the number of closest peers to which a record is replicated
     #[serde(default = "NetworkConfig::default_kad_replication_factor")]
     pub kad_replication_factor: usize,
     /// Interval to run random kademlia walks to refresh the routing table. Defaults to 5 minutes
     #[serde(default = "NetworkConfig::default_kad_walk_interval")]
     pub kad_walk_interval: u64,
+    /// Maximum number of cache summaries from other peers to store.
+    #[serde(default = "NetworkConfig::default_max_cache_summaries")]
+    pub max_cache_summaries: usize,
 }
 
 impl NetworkConfig {
@@ -63,9 +62,6 @@ impl NetworkConfig {
     }
     fn default_bootstrapper() -> bool {
         false
-    }
-    fn default_tracker() -> String {
-        "https://tracker.ursa.earth/register".to_string()
     }
     fn default_bootstrap_nodes() -> Vec<Multiaddr> {
         vec![
@@ -94,6 +90,9 @@ impl NetworkConfig {
     fn default_kad_walk_interval() -> u64 {
         300
     }
+    fn default_max_cache_summaries() -> usize {
+        10
+    }
 }
 
 impl Default for NetworkConfig {
@@ -108,10 +107,10 @@ impl Default for NetworkConfig {
             swarm_addrs: Self::default_swarm_addrs(),
             database_path: Self::default_database_path(),
             identity: Self::default_identity(),
-            tracker: Self::default_tracker(),
             keystore_path: Self::default_keystore_path(),
             kad_replication_factor: Self::default_kad_replication_factor(),
             kad_walk_interval: Self::default_kad_walk_interval(),
+            max_cache_summaries: Self::default_max_cache_summaries(),
         }
     }
 }
