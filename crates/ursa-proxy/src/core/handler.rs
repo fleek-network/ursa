@@ -1,11 +1,10 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
-use axum::extract::OriginalUri;
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
-    extract::{self, Path},
+    extract::{self, OriginalUri, Path},
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
-    response::{IntoResponse, Response},
+    response::{ErrorResponse, IntoResponse, Response, Result},
     routing::{get, post},
     Extension, Router, TypedHeader,
 };
@@ -15,9 +14,7 @@ use hyper::{
     Body,
 };
 use serde::Deserialize;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
@@ -66,42 +63,42 @@ pub struct ReloadTlsConfigPayload {
 pub async fn reload_tls_config(
     Extension(servers): Extension<HashMap<String, Server>>,
     payload: extract::Json<ReloadTlsConfigPayload>,
-) -> Response {
+) -> Result<Response> {
     match servers.get(payload.name.as_str()) {
-        None => (
+        None => (Err(ErrorResponse::from(
             StatusCode::BAD_REQUEST,
             format!("Unknown server {}", payload.name),
-        )
+        )),)
             .into_response(),
         Some(server) => {
             if server.config.tls.is_none() {
-                return (
+                return Ok((
                     StatusCode::BAD_REQUEST,
                     format!("No TLS config found for {}", payload.name),
                 )
-                    .into_response();
+                    .into_response());
             }
-            let server_tls_config = server.config.tls.as_ref().unwrap();
-            let cert_path = server_tls_config.cert_path.as_str();
-            let key_path = server_tls_config.key_path.as_str();
-            if server
+            let server_tls_config = server
+                .config
+                .tls
+                .as_ref()
+                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
+            let cert_path = server_tls_config
+                .cert_path
+                .as_str()
+                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
+            let key_path = server_tls_config
+                .key_path
+                .as_str()
+                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
+            server
                 .tls_config
                 .as_ref()
                 .unwrap()
                 .reload_from_pem_file(cert_path, key_path)
                 .await
-                .is_err()
-            {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "Failed to reload from cert_path: {} and key_path: {}",
-                        cert_path, key_path
-                    ),
-                )
-                    .into_response();
-            }
-            StatusCode::OK.into_response()
+                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
+            Ok(StatusCode::OK.into_response())
         }
     }
 }
@@ -176,16 +173,19 @@ pub async fn proxy_pass<C: Cache>(
 async fn serve_file_handler(
     OriginalUri(uri): OriginalUri,
     Extension(root): Extension<String>,
-) -> Response {
-    let mut file_path = PathBuf::from_str(root.as_str()).unwrap();
+) -> Result<Response> {
+    let mut file_path = PathBuf::from_str(root.as_str()).expect("To never fail");
     file_path.push(uri.path().trim_start_matches('/'));
-    let path_str = file_path.as_os_str().to_str().unwrap();
-    println!("{path_str}");
-    match tokio::fs::read(path_str).await {
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
-        Ok(file) => Response::builder()
-            .status(StatusCode::OK)
-            .body(axum::body::boxed(axum::body::Full::from(file)))
-            .unwrap(),
-    }
+    let path_str = file_path
+        .as_os_str()
+        .to_str()
+        .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
+    tokio::fs::read(path_str)
+        .await
+        .map(|file| {
+            Response::builder()
+                .status(StatusCode::OK)
+                .body(axum::body::boxed(axum::body::Full::from(file)))?
+        })
+        .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))
 }
