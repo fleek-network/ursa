@@ -90,7 +90,7 @@ In this section we will go through the algorithms used for different sections.
 #### Node
 
 The node has a ephemeral private key for this protocol, which is shared with the committee using Shamir Secret Sharing at
-the beginning of each consensus epoch. We use curve SECP256K1, the private key is a random number $ \alpha \in \mathbb{Z} $.
+the beginning of each consensus epoch. We use curve SECP256K1, the private key is a random number $\alpha \in \mathbb{Z}$.
 
 This private key is only used for the purposes of delivery protocol and is refreshed every epoch. The public key obtained
 from this secret key should not be used to globally identify a node outside the epoch it was used at.
