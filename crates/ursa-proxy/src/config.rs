@@ -23,12 +23,9 @@ pub struct ProxyConfig {
 pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,
-    pub cert_path: String,
-    pub key_path: String,
     pub server_name: String,
-    pub reload_cert_path: Option<String>,
-    pub reload_key_path: Option<String>,
     pub location: Vec<Location>,
+    pub tls: Option<TlsConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -67,4 +64,12 @@ impl Default for AdminConfig {
             addr: "0.0.0.0:8881".to_string(),
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TlsConfig {
+    pub cert_path: String,
+    pub key_path: String,
+    pub reload_cert_path: Option<String>,
+    pub reload_key_path: Option<String>,
 }

@@ -74,11 +74,21 @@ pub async fn reload_tls_config(
         )
             .into_response(),
         Some(server) => {
-            if server.config.reload_cert_path.is_none() || server.config.reload_key_path.is_none() {
+            if server.config.tls.is_none() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    format!("No TLS config found for {}", payload.name),
+                )
+                    .into_response();
+            }
+            let server_tls_config = server.config.tls.as_ref().unwrap();
+            if server_tls_config.reload_cert_path.is_none()
+                || server_tls_config.reload_key_path.is_none()
+            {
                 return StatusCode::OK.into_response();
             }
-            let cert_path = server.config.reload_cert_path.as_ref().unwrap();
-            let key_path = server.config.reload_key_path.as_ref().unwrap();
+            let cert_path = server_tls_config.reload_cert_path.as_ref().unwrap();
+            let key_path = server_tls_config.reload_key_path.as_ref().unwrap();
             if server
                 .tls_config
                 .as_ref()

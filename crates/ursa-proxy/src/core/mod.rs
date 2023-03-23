@@ -28,18 +28,6 @@ pub async fn start<C: Cache>(
     let client = Client::new();
     let mut servers = HashMap::new();
     for server_config in config.server {
-        let tls_config =
-            RustlsConfig::from_pem_file(&server_config.cert_path, &server_config.key_path)
-                .await
-                .unwrap();
-        let server_name = server_config.server_name.clone();
-        servers.insert(
-            server_name,
-            Server {
-                tls_config: Some(tls_config.clone()),
-                config: server_config.clone(),
-            },
-        );
         let server_app =
             init_server_app(server_config.clone(), cache.clone(), client.clone()).await;
         let bind_addr = server_config
@@ -47,12 +35,33 @@ pub async fn start<C: Cache>(
             .clone()
             .parse::<SocketAddr>()
             .context("Invalid binding address")?;
+        if let Some(server_tls_config) = server_config.tls.as_ref() {
+            let tls_config = RustlsConfig::from_pem_file(
+                &server_tls_config.cert_path,
+                &server_tls_config.key_path,
+            )
+            .await?;
+            let server_name = server_config.server_name.clone();
+            servers.insert(
+                server_name,
+                Server {
+                    tls_config: Some(tls_config.clone()),
+                    config: server_config.clone(),
+                },
+            );
+            workers.spawn(
+                axum_server::bind_rustls(bind_addr, tls_config)
+                    .handle(handle.clone())
+                    .serve(server_app.into_make_service()),
+            );
+        } else {
+            workers.spawn(
+                axum_server::bind(bind_addr)
+                    .handle(handle.clone())
+                    .serve(server_app.into_make_service()),
+            );
+        }
         info!("Listening on {bind_addr:?}");
-        workers.spawn(
-            axum_server::bind_rustls(bind_addr, tls_config)
-                .handle(handle.clone())
-                .serve(server_app.into_make_service()),
-        );
     }
 
     let admin_handle = handle.clone();
