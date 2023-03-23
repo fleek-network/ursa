@@ -34,12 +34,81 @@ In our case the two parties are 1) the node, and 2) the client. They are exchang
 ## Solution
 
 ```mermaid
+---
+title: Optimistic Happy Path
+---
 sequenceDiagram
     actor Client
     participant Node
     Client->>Node: Request
-    Node->>Client: Publicly Verifiable Encrypted Content
-    Client->>Node: Delivery Acknowledgment
-    Node->>Client: Decryption Key
+    loop Every Block
+      Node->>Client: Publicly Verifiable Encrypted Content
+      Client->>Node: Delivery Acknowledgment
+      Node->>Client: Decryption Key
+    end
 ```
 
+> 📝 You might have heard me using the term "Receipt of Payment" before, but now I'm using the term
+> "Delivery Acknowledgment".
+
+The above diagram depicts the main concept behind the solution, a node sends the encrypted response and only
+delivers the decryption key to the client once it receives the  *Delivery Acknowledgment* from the client.
+
+And of course, you might naturally ask what if the node doesn't deliver the decryption key? Since the client
+can not unsend the "Delivery Acknowledgment" we have placed a slow-path for the client to retrieve the decryption
+key from the committee.
+
+```mermaid
+---
+title: Unhappy Path
+---
+sequenceDiagram
+    actor Client
+    participant Node
+    participant Committee
+    Client->>Node: Request
+    loop Every Block
+        Node->>Client: Publicly Verifiable Encrypted Content
+        Client->>Node: Delivery Acknowledgmen
+        Node->>Client: Decryption Key
+    end
+    Note over Client, Node: Last Block
+    Node->>Client: Publicly Verifiable Encrypted Content
+    Client->>Node: Delivery Acknowledgmen
+    Note over Client, Node: Connection Hungup
+    Client->>Committee: Delivery Acknowledgmen
+    Committee->>Client: Decryption Key
+```
+
+## Algorithms
+
+In this section we will go through the algorithms used for different sections.
+
+
+### Key Generation
+
+#### Node
+
+The node has a ephemeral private key for this protocol, which is shared with the committee using Shamir Secret Sharing at
+the beginning of each consensus epoch. We use curve SECP256K1, the private key is a random number $ \alpha \in \mathbb{Z} $.
+
+This private key is only used for the purposes of delivery protocol and is refreshed every epoch. The public key obtained
+from this secret key should not be used to globally identify a node outside the epoch it was used at.
+
+#### Client
+
+Each client is identified by its public key, for clients we use BLS signatures, specifically the curve BLS12-381. This decision
+is made to allow
+
+### Encryption
+### Verification
+### Decryption
+### Generating Delivery Acknowledgments
+### Verifying Delivery Acknowledgments
+### Hash request to curve
+
+## Network Interface
+
+### Handshake
+
+### 
