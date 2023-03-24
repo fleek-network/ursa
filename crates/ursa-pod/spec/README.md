@@ -139,8 +139,10 @@ flowchart TB
                 bal{{"client has balance?"}}
                 isover{"is request finished?"}
                 bal -- no --> term4{{"terminate"}}
-                bal -- yes --> enc{{"encrypt and send block"}}
-                enc --> ack["delivery acknowledgement"]
+                bal -- yes --> noncechange{"new lane nonce available?"}
+                noncechange -- yes --> change{{"send new nonce"}} --> enc
+                noncechange -- no --> enc
+                enc{{"encrypt and send block"}} --> ack["delivery acknowledgement"]
                 ack --> ackvalid{"is valid?"}
                 ackvalid -- no --> term5{{"terminate"}}
                 ackvalid -- yes --> dec{{"send decryption key"}}
