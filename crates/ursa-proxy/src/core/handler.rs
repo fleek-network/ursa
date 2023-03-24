@@ -31,7 +31,7 @@ pub async fn init_server_app<C: Cache>(
     client: Client,
 ) -> Router {
     let mut user_apps = Router::new();
-    for location in server_config.clone().location {
+    for location in &server_config.location {
         let route_path = format!(
             "/{}/*path",
             location.path.trim_start_matches('/').trim_end_matches('/')
