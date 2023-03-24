@@ -20,6 +20,7 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
+use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
@@ -35,9 +36,8 @@ pub async fn init_server_app<C: Cache>(
             "/{}/*path",
             location.path.trim_start_matches('/').trim_end_matches('/')
         );
-        let user_app = Router::new()
-            .route(route_path.as_str(), get(serve_file_handler))
-            .layer(Extension(location.root));
+        let fs_path = PathBuf::from_str(location.root.as_str()).expect("To never fail");
+        let user_app = Router::new().route(route_path.as_str(), get(ServeDir::new(fs_path)));
         user_apps = user_apps.merge(user_app);
     }
     user_apps
@@ -168,24 +168,4 @@ pub async fn proxy_pass<C: Cache>(
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
     StreamBody::new(ReaderStream::new(reader)).into_response()
-}
-
-async fn serve_file_handler(
-    OriginalUri(uri): OriginalUri,
-    Extension(root): Extension<String>,
-) -> Result<Response> {
-    let mut file_path = PathBuf::from_str(root.as_str()).expect("To never fail");
-    file_path.push(uri.path().trim_start_matches('/'));
-    let path_str = file_path
-        .as_os_str()
-        .to_str()
-        .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
-    tokio::fs::read(path_str)
-        .await
-        .map(|file| {
-            Response::builder()
-                .status(StatusCode::OK)
-                .body(axum::body::boxed(axum::body::Full::from(file)))?
-        })
-        .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))
 }
