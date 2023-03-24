@@ -9,7 +9,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use fvm_ipld_blockstore::Blockstore;
-#[allow(deprecated)]
 use fvm_ipld_encoding::Cbor;
 use libipld::{codec::Encode, multihash::Code, Cid};
 use libipld_cbor::DagCborCodec;
@@ -184,7 +183,6 @@ where
             };
 
             info!("Announcing the advertisement with the message {message:?}");
-            #[allow(deprecated)]
             Ok(message.marshal_cbor().unwrap())
         } else {
             Err(anyhow!("No head found for announcement!"))
@@ -200,7 +198,6 @@ pub struct Message {
     pub ExtraData: [u8; 0],
 }
 
-#[allow(deprecated)]
 impl Cbor for Message {
     fn marshal_cbor(&self) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
         const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];
