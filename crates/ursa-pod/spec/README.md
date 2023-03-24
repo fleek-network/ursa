@@ -107,8 +107,55 @@ is made to allow aggregation of the delivery acknowledgments when a node is send
 ### Verifying Delivery Acknowledgments
 ### Hash request to curve
 
-## Network Interface
+## Network Protocol
+
+```mermaid
+---
+title: Proof of Delivery from Node PoV
+---
+flowchart TB
+    subgraph Handshake
+        term2
+        key{{"exchange keys"}} --> balance{"client has balance?"}
+        balance -- no --> term{{"terminate"}}
+        balance -- yes --> new{"new session requested?"}
+        new -- yes --> lane{"is there a free lane?"}
+        new -- no --> reuse{{"reuse the lane specified"}}
+        lane -- yes --> uselane{{"assign the session to a free lane"}}
+        lane -- no --> term2{{"terminate"}}
+        reuse --> load{{"load previous session"}}
+    end
+
+    subgraph Request
+        req
+        blake
+
+        req["request"] --> exists{"requested CID exists?"}
+        exists -- no --> notfound{{"send not found"}}
+        exists -- yes --> blake{{"send blake3 tree"}}
+        notfound --> req
+
+            subgraph Retrieval
+                bal{{"client has balance?"}}
+                isover{"is request finished?"}
+                bal -- no --> term4{{"terminate"}}
+                bal -- yes --> enc{{"encrypt and send block"}}
+                enc --> ack["delivery acknowledgement"]
+                ack --> ackvalid{"is valid?"}
+                ackvalid -- no --> term5{{"terminate"}}
+                ackvalid -- yes --> dec{{"send decryption key"}}
+                dec --> isover
+                isover -- no --> bal
+            end
+
+        blake --> bal
+        isover -- yes --> req
+    end
+
+    uselane --> req
+    load --> ack
+```
 
 ### Handshake
-
-### 
+### Request
+### Retrieve
