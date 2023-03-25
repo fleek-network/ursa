@@ -11,6 +11,8 @@ pub struct Genesis {
     pub staking: GenesisContract,
     #[serde(default)]
     pub registry: GenesisContract,
+    #[serde(default)]
+    pub epoch: GenesisContract,
 }
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct GenesisContract {

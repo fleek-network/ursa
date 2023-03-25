@@ -7,7 +7,7 @@ use narwhal_types::{Batch, ConsensusOutput};
 use tokio::sync::mpsc::Sender;
 use tracing::error;
 
-type Epoch = u64;
+use crate::Epoch;
 
 pub struct Execution {
     /// current epoch store implementation

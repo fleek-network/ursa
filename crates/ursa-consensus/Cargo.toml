@@ -11,6 +11,8 @@ repository.workspace = true
 resolve-path.workspace = true
 serde_json.workspace = true
 tokio-util.workspace = true
+ursa-utils = { path = "../ursa-utils" }
+ursa-application = { path = "../ursa-application" }
 anyhow       = "1.0"
 arc-swap     = { version = "1.6.0", features = ["serde"] }
 async-trait  = "0.1"

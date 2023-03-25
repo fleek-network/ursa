@@ -122,12 +122,14 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let token_bytes = hex::decode(genesis.token.bytecode).unwrap();
         let staking_bytes = hex::decode(genesis.staking.bytecode).unwrap();
         let registry_bytes = hex::decode(genesis.registry.bytecode).unwrap();
+        let epoch_bytes = hex::decode(genesis.epoch.bytecode).unwrap();
         let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
 
         //Parse addresses for contracts
         let token_address: Address = genesis.token.address.parse().unwrap();
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
+        let epoch_address: Address = genesis.epoch.address.parse().unwrap();
         let owner_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
             .parse()
             .unwrap();
@@ -143,6 +145,10 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         };
         let registry_contract = AccountInfo {
             code: Some(Bytecode::new_raw(registry_bytes.into())),
+            ..Default::default()
+        };
+        let epoch_contract = AccountInfo {
+            code: Some(Bytecode::new_raw(epoch_bytes.into())),
             ..Default::default()
         };
         let hello_contract = AccountInfo {
@@ -162,6 +168,9 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .insert_account_info(registry_address.to_fixed_bytes().into(), registry_contract);
         state
             .db
+            .insert_account_info(epoch_address.to_fixed_bytes().into(), epoch_contract);
+        state
+            .db
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
 
         //Build the abis to encode the init call params
@@ -169,7 +178,9 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             parse_abi(&["function initialize(uint256 totalSupply) external returns ()"]).unwrap(),
         );
         let staking_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address token, uint256 _minimumNodeStake, uint32 _elegibilityTime, uint32 _lockTime, uint32 _protocolPercentage) external returns ()"]).unwrap());
-        let registry_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address _stakingContract) external returns ()"]).unwrap());
+        let epoch_abi = BaseContract::from(
+            parse_abi(&["function initialize(address _nodeRegistry) external returns ()"]).unwrap(),
+        );
 
         //encode the init call params
         let token_params = token_abi
@@ -188,9 +199,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
                 ),
             )
             .unwrap();
-        let registry_params = registry_abi
-            .encode("initialize", (owner_address, staking_address))
-            .unwrap();
+        let epoch_params = epoch_abi.encode("initialize", registry_address).unwrap();
 
         //Call the init transactions
         let token_tx = TransactionRequest {
@@ -205,17 +214,17 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             data: Some(staking_params),
             ..Default::default()
         };
-        let registry_tx = TransactionRequest {
-            to: Some(registry_address.into()),
+        let epoch_tx = TransactionRequest {
+            to: Some(epoch_address.into()),
             from: Some(owner_address),
-            data: Some(registry_params),
+            data: Some(epoch_params),
             ..Default::default()
         };
 
         //Submit and commit the init txns to state
         let _token_res = state.execute(token_tx, false).await.unwrap();
         let _staking_res = state.execute(staking_tx, false).await.unwrap();
-        let _registry_res = state.execute(registry_tx, false).await.unwrap();
+        let _registry_res = state.execute(epoch_tx, false).await.unwrap();
 
         drop(state);
 
@@ -245,9 +254,20 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             }
         };
 
+        let mut to_epoch_contract: bool = false;
         // resolve the `to`
         match tx.to {
-            Some(NameOrAddress::Address(addr)) => tx.to = Some(addr.into()),
+            Some(NameOrAddress::Address(addr)) => {
+                // TODO(Dalton): This is the Epoch contract, but this should be able to pulled from genesis more easily
+                if addr
+                    == "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
+                        .parse::<Address>()
+                        .unwrap()
+                {
+                    to_epoch_contract = true;
+                }
+                tx.to = Some(addr.into())
+            }
             None => (),
             _ => panic!("not an address"),
         };
@@ -255,8 +275,28 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let result = state.execute(tx, false).await.unwrap();
         tracing::trace!("executed tx");
 
+        if to_epoch_contract {
+            if let ExecutionResult::Success {
+                output: Output::Call(bytes),
+                ..
+            } = &result
+            {
+                // safe unwrap, valid abi
+                let epoch_contract = BaseContract::from(parse_abi(&["function signalEpochChange(string memory committeeMember) external returns (bool)"]).unwrap());
+
+                if epoch_contract
+                    .decode_output("signalEpochChange", bytes)
+                    .unwrap_or(false)
+                {
+                    return ResponseDeliverTx {
+                        data: serde_json::to_vec(&ExecutionResponse::ChangeEpoch).unwrap(),
+                        ..Default::default()
+                    };
+                }
+            }
+        }
         ResponseDeliverTx {
-            data: serde_json::to_vec(&result).unwrap(),
+            data: serde_json::to_vec(&ExecutionResponse::Transaction).unwrap(),
             ..Default::default()
         }
     }
@@ -289,6 +329,12 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
 
 #[derive(Debug, Clone, Default)]
 pub struct Mempool;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub enum ExecutionResponse {
+    ChangeEpoch,
+    Transaction,
+}
 
 #[async_trait]
 impl MempoolTrait for Mempool {

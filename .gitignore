@@ -29,3 +29,7 @@ car_files*
 **/grafana/png
 **/grafana/csv
 **/grafana/file-collections
+
+# forge
+contracts/cache/
+contracts/out/

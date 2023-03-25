@@ -5,18 +5,13 @@ use dotenv::dotenv;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
 use std::env;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_application::application_start;
-use ursa_consensus::{
-    execution::Execution,
-    service::{ConsensusService, ServiceArgs},
-    Engine,
-};
+use ursa_consensus::consensus::Consensus;
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -90,7 +85,7 @@ async fn run() -> Result<()> {
 
     let keypair = im.current();
 
-    let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
+    //let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
 
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
@@ -186,21 +181,9 @@ async fn run() -> Result<()> {
     });
 
     // Start the consensus service.
-    let consensus_service = ConsensusService::new(consensus_args);
-    let (tx_transactions, rx_transactions) = channel(1000);
-    let execution = Execution::new(0, tx_transactions);
-    consensus_service.start(execution).await;
+    let mut consensus_service = Consensus::new(consensus_config, app_api.clone(), rx_abci_queries)?;
 
-    let consensus_engine_task = task::spawn(async move {
-        let mut app_address = app_api.parse::<SocketAddr>().unwrap();
-        app_address.set_ip("0.0.0.0".parse().unwrap());
-
-        let mut engine = Engine::new(app_address, rx_abci_queries);
-
-        if let Err(err) = engine.run(rx_transactions).await {
-            error!("[consensus_engine_task] - {:?}", err)
-        }
-    });
+    consensus_service.start().await;
 
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
@@ -209,7 +192,6 @@ async fn run() -> Result<()> {
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
-    consensus_engine_task.abort();
     application_task.abort();
     consensus_service.shutdown().await;
 

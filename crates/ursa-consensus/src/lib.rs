@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 pub mod config;
+pub mod consensus;
 pub mod execution;
 pub mod keys;
-pub mod service;
+pub mod narwhal;
 pub mod validator;
 
 mod abci_engine;
@@ -24,3 +25,5 @@ pub struct AbciQueryQuery {
     pub height: Option<usize>,
     pub prove: Option<bool>,
 }
+
+pub type Epoch = u64;
