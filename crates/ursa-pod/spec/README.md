@@ -116,10 +116,10 @@ title: Proof of Delivery from Node PoV
 flowchart TB
     subgraph Handshake
         term2
-        key{{"exchange keys"}} --> balance{"client has balance?"}
+        key{{"exchange keys"}} --> balance{"sufficient balance?"}
         balance -- no --> term{{"terminate"}}
         balance -- yes --> new{"new session requested?"}
-        new -- yes --> lane{"is there a free lane?"}
+        new -- yes --> lane{"free lane available?"}
         new -- no --> reuse{{"reuse the lane specified"}}
         lane -- yes --> uselane{{"assign the session to a free lane"}}
         lane -- no --> term2{{"terminate"}}
@@ -131,21 +131,23 @@ flowchart TB
         blake
 
         req["request"] --> exists{"requested CID exists?"}
-        exists -- no --> notfound{{"send not found"}}
+        exists -- no --> notfound{{"send not found error"}}
         exists -- yes --> blake{{"send blake3 tree"}}
         notfound --> req
 
             subgraph Retrieval
-                bal{{"client has balance?"}}
+                bal{{"sufficient balance?"}}
                 isover{"is request finished?"}
                 bal -- no --> term4{{"terminate"}}
                 bal -- yes --> noncechange{"new lane nonce available?"}
-                noncechange -- yes --> change{{"send new nonce"}} --> enc
-                noncechange -- no --> enc
+                noncechange -- yes --> change{{"send new nonce"}} --> lock
+                noncechange -- no --> lock
+                lock{{"lock the lane"}} --> enc
                 enc{{"encrypt and send block"}} --> ack["delivery acknowledgement"]
                 ack --> ackvalid{"is valid?"}
                 ackvalid -- no --> term5{{"terminate"}}
-                ackvalid -- yes --> dec{{"send decryption key"}}
+                ackvalid -- yes --> unlock{{"unlock the lane"}}
+                unlock --> dec{{"send decryption key"}}
                 dec --> isover
                 isover -- no --> bal
             end
