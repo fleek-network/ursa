@@ -4,14 +4,14 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
-use std::env;
+use std::{env, net::SocketAddr};
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_application::application_start;
-use ursa_consensus::consensus::Consensus;
+use ursa_consensus::{consensus::Consensus, Engine};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -124,7 +124,24 @@ async fn run() -> Result<()> {
         .expect("Expected tcp url for worker mempool");
 
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
-    let (tx_abci_queries, rx_abci_queries) = channel(1000);
+    
+    // Create engine so we can grab senders
+    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
+    app_address.set_ip("0.0.0.0".parse()?);
+
+    let mut abci_engine = Engine::new(app_address);
+
+    // Store the senders from the engine
+    let tx_abci_queries = abci_engine.get_abci_queries_sender();
+    let tx_certificates = abci_engine.get_certificates_sender();
+    let reconfigure_notify = abci_engine.get_reconfigure_notify();
+    
+    //Spawn engine
+    let abci_engine_task = std::thread::spawn(|| async move {
+        if let Err(err) = abci_engine.start().await {
+            error!("[abci_engine_task] - {:?}", err);
+        }
+    });
 
     let interface = Arc::new(NodeNetworkInterface::new(
         store,
@@ -132,7 +149,7 @@ async fn run() -> Result<()> {
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
         mempool_address_string,
-        tx_abci_queries,
+        tx_abci_queries.clone(),
     ));
 
     let server = Server::new(interface);
@@ -170,9 +187,6 @@ async fn run() -> Result<()> {
         }
     });
 
-    //Store this to pass to consensus engine
-    let app_api = application_config.domain.clone();
-
     // Start the application server
     let application_task = task::spawn(async move {
         if let Err(err) = application_start(application_config).await {
@@ -181,7 +195,7 @@ async fn run() -> Result<()> {
     });
 
     // Start the consensus service.
-    let mut consensus_service = Consensus::new(consensus_config, app_api.clone(), rx_abci_queries)?;
+    let mut consensus_service = Consensus::new(consensus_config, tx_abci_queries, tx_certificates, reconfigure_notify)?;
 
     consensus_service.start().await;
 

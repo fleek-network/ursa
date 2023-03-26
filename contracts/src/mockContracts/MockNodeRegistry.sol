@@ -10,6 +10,8 @@ contract MockNodeRegistry {
         string primaryAddress;
         string workerAddress;
         string workerPublicKey;
+        string workerMempool;
+        string networkKey;
         string previous;
         string next;
         // Maybe store worker mempool address
@@ -22,15 +24,15 @@ contract MockNodeRegistry {
     /// Node publicKey => Node struct
     mapping(string => Node) public whitelist;
 
-    function registerNode(address _owner, string calldata _primaryAddress, string calldata _workerAddress, string calldata _workerPublicKey, string calldata _primaryPublicKey) external {
+    function registerNode(address _owner, string calldata _primaryAddress, string calldata _workerAddress, string calldata _workerPublicKey, string calldata _primaryPublicKey, string calldata _networkKey, string calldata _workerMempool) external {
         require(whitelist[_primaryPublicKey].owner == address(0), "This node is already on whitelist");
-        _registerNode(_owner, _primaryAddress, _workerAddress, _workerPublicKey, _primaryPublicKey);
+        _registerNode(_owner, _primaryAddress, _workerAddress, _workerPublicKey, _primaryPublicKey, _networkKey, _workerMempool);
     }
 
-    function _registerNode(address _owner, string calldata _primaryAddress, string calldata _workerAddress, string calldata _workerPublicKey, string calldata _primaryPublicKey) private {
+    function _registerNode(address _owner, string calldata _primaryAddress, string calldata _workerAddress, string calldata _workerPublicKey, string calldata _primaryPublicKey, string calldata _networkKey, string calldata _workerMempool) private {
         whitelist[linkedListHead].previous = _primaryAddress;
         string memory next = linkedListHead;
-        Node memory node = Node(_owner, _primaryAddress, _workerAddress, _workerPublicKey, "", next);
+        Node memory node = Node(_owner, _primaryAddress, _workerAddress, _workerPublicKey, _workerMempool, _networkKey, "", next);
         whitelist[_primaryPublicKey] = node;
         whitelistCount -= 1;
     }
@@ -60,5 +62,9 @@ contract MockNodeRegistry {
 
         return(_whitelist);
     }
+
+    function getNodeInfo(string calldata nodeAddress) public view returns(Node memory){
+        return whitelist[nodeAddress];
+    } 
 
 }

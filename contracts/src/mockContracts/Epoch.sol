@@ -8,11 +8,21 @@ import "./MockNodeRegistry.sol";
 contract MockEpoch {
     /**  STATE **/
     uint256 public epoch;
-    uint256 public maxCommitteeSize = 512;
+    uint256 public currentEpochEndStamp;
     uint256 public currentCommitteeSize;
+    uint256 public maxCommitteeSize = 512;
     MockNodeRegistry public nodeRegistry;
     bool private initialized;
     uint256 private readyToChange;
+
+    struct CommitteeMember {
+        string publicKey;
+        string primaryAddress; 
+        string workerAddress;
+        string workerMempool;
+        string workerPublicKey;
+        string networkKey;
+    }
 
     /// epoch => committee public keys
     mapping(uint256 => string[]) public committee;
@@ -20,6 +30,24 @@ contract MockEpoch {
     function initialize(address _nodeRegistry) external {
         require(!initialized, "contract already initialized");
         nodeRegistry = MockNodeRegistry(_nodeRegistry);
+    }
+
+    function getCurrentEpochInfo() public view returns(uint256, uint256, CommitteeMember[] memory){
+        CommitteeMember[] memory committeeMembers;
+        for(uint i;i < currentCommitteeSize;){
+            
+            MockNodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
+            committeeMembers[i].publicKey = committee[epoch][i];
+            committeeMembers[i].primaryAddress = node.primaryAddress;
+            committeeMembers[i].workerAddress = node.workerAddress;
+            committeeMembers[i].workerPublicKey = node.workerPublicKey;
+            committeeMembers[i].networkKey = node.networkKey;
+            committeeMembers[i].workerMempool = node.workerMempool;
+            
+            unchecked{i += 1;}
+        }
+
+        return(epoch, currentEpochEndStamp, committeeMembers);
     }
 
     function getCurrentCommittee() public view returns(string[] memory){

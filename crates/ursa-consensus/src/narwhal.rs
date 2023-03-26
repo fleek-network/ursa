@@ -181,12 +181,6 @@ impl NarwhalService {
     }
 }
 
-impl Drop for NarwhalService {
-    fn drop(&mut self) {
-        futures::executor::block_on(self.shutdown());
-    }
-}
-
 impl NarwhalArgs {
     //TODO(dalton): should this be renamed, maybe load_genesis?
     /// Load a service arguments from a raw configuration.

@@ -5,23 +5,22 @@ use narwhal_types::Batch;
 use resolve_path::PathResolveExt;
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::{net::SocketAddr, path::PathBuf};
+use std:: path::PathBuf;
 use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::oneshot::Sender as OneShotSender;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::sync::Notify;
-use tokio::task;
-use tracing::error;
-
 use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
 
+use ursa_utils::transactions::{build_transaction, decode_committee};
+use ursa_application::types::Query;
 use crate::config::GenesisCommittee;
 use crate::{
     config::ConsensusConfig,
     execution::Execution,
     narwhal::{NarwhalArgs, NarwhalService},
 };
-use crate::{AbciQueryQuery, Engine};
+use crate::{AbciQueryQuery};
 // what do we need for this file to work and be complete?
 // - A mechanism to dynamically move the epoch forward and changing the committee dynamically.
 //    Each epoch has a fixed committee. The committee only changes per epoch.
@@ -42,7 +41,6 @@ use crate::{AbciQueryQuery, Engine};
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 
 /// The default channel capacity.
-pub const CHANNEL_CAPACITY: usize = 1_000;
 
 pub struct Consensus {
     /// The state of the current Narwhal epoch
@@ -53,12 +51,6 @@ pub struct Consensus {
     parameters: Parameters,
     /// Narwhal execution state
     execution_state: Arc<Execution>,
-    /// Engine for moving application layer and responding to queries
-    abci_engine: Arc<Engine>,
-    /// Receiver worker passes certificates too
-    rx_certificates: Option<Receiver<Vec<Batch>>>,
-    /// Receiver that forwards querys to application
-    rx_abci_queries: Option<Receiver<(OneShotSender<ResponseQuery>, AbciQueryQuery)>>,
     /// Path to the database used by the narwhal implementation
     store_path: PathBuf,
     /// Path to the genesis committee json
@@ -66,9 +58,11 @@ pub struct Consensus {
     /// Timestamp of the narwhal certificate that caused an epoch change
     /// is sent through this channel to notify that epoch chould change
     reconfigure_notify: Arc<Notify>,
-    // Called from the shutdown function to notify the start event loop to
-    // exit.
+    /// Called from the shutdown function to notify the start event loop to
+    /// exit.
     shutdown_notify: Notify,
+    /// Used to query application state.
+    tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>
 }
 
 struct EpochState {
@@ -83,22 +77,15 @@ struct EpochState {
 impl Consensus {
     pub fn new(
         config: ConsensusConfig,
-        app_domain: String,
-        rx_abci_queries: Receiver<(OneShotSender<ResponseQuery>, AbciQueryQuery)>,
+        tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+        tx_certificates : mpsc::Sender<Vec<Batch>>,
+        reconfigure_notify: Arc<Notify>
     ) -> Result<Self> {
         let narwhal_args = NarwhalArgs::load(config.clone())?;
         //TODO(dalton): Genesis epoch time needs to come from a genesis file.
         let epoch_time = 86400000;
         //TODO(dalton): Checkpoint system instead of starting from epoch 0 everytime
         let epoch = 0;
-
-        let mut app_address = app_domain.parse::<SocketAddr>()?;
-        app_address.set_ip("0.0.0.0".parse()?);
-        let reconfigure_notify = Arc::new(Notify::new());
-
-        let abci_engine = Engine::new(app_address, reconfigure_notify.clone());
-
-        let (tx_certificates, rx_certificates) = channel(CHANNEL_CAPACITY);
 
         //TODO(dalton): Should the ABCI engine also become ExecutionState? Is there value in keeping them seperated?
         let execution_state = Execution::new(epoch, tx_certificates);
@@ -117,13 +104,11 @@ impl Consensus {
             narwhal_args,
             parameters: config.parameters,
             execution_state: Arc::new(execution_state),
-            abci_engine: Arc::new(abci_engine),
-            rx_certificates: Some(rx_certificates),
-            rx_abci_queries: Some(rx_abci_queries),
             store_path,
             genesis_committee: config.genesis_committee,
             reconfigure_notify,
             shutdown_notify: Notify::new(),
+            tx_abci_queries
         })
     }
 
@@ -134,7 +119,7 @@ impl Consensus {
         store_path.set_file_name(format!("narwhal-store-{}", epoch));
         let store = NodeStorage::reopen(store_path);
 
-        //Pull new committee and worker cache
+        //Pull Epoch Info
         let (committee, worker_cache) = if epoch == 0 {
             let bytes = std::fs::read(self.genesis_committee.clone())
                 .with_context(|| {
@@ -210,17 +195,7 @@ impl Consensus {
     }
 
     pub async fn start(&mut self) {
-        let query_reciever = self.rx_abci_queries.take().unwrap();
-        let certificate_reciever = self.rx_certificates.take().unwrap();
-        let engine_clone = self.abci_engine.clone();
-        let abci_engine_task = task::spawn(async move {
-            if let Err(err) = engine_clone.run(query_reciever, certificate_reciever).await {
-                error!("[consensus_engine_task] - {:?}", err)
-            }
-        });
-
         self.start_current_epoch().await;
-
         loop {
             let reconfigure_future = self.reconfigure_notify.notified();
             let shutdown_future = self.shutdown_notify.notified();
@@ -237,11 +212,49 @@ impl Consensus {
                 // reconfigure event shoud continue instead of breaking
             }
         }
-
-        abci_engine_task.abort();
     }
 
     pub async fn shutdown(&mut self) {
         self.shutdown_notify.notify_waiters();
+    }
+}
+
+// TODO(dalton): make this pullable from genesis file
+const epoch_address: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
+const registry_address: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+
+//Application Query Helpers
+impl Consensus {
+    async fn get_epoch_info(&self) -> Result<()> {
+        //Build transaction
+        let (function, txn) = build_transaction(epoch_address, "getCurrentEpochInfo():(uint256 epoch, uint256 currentEpochEndStamp, tuple[](string publicKey, string primaryAddress, string workerAddress,string workerMempool,string workerPublicKey,string networkKey))", &[])?;
+        let query = Query::EthCall(txn);
+
+        let query_string = serde_json::to_string(&query)?;
+
+        let abci_query = AbciQueryQuery {
+        data: query_string,
+        path: "".to_string(),
+        height: None,
+        prove: None,
+        };
+
+        // Construct one shot channel to recieve response
+        let (tx, rx) = oneshot::channel();
+
+        // Send and wait for response
+        self.tx_abci_queries.send((tx, abci_query)).await?;
+        let response = rx.await.with_context(|| "Failure querying abci")?;
+
+        // decode response
+        let decoded_response = function.decode_output(&response.value)?;
+
+        // Safe unwrap. But will panic if epoch ever gets passed max u64.Which is 584942417 years with 1 millisecond epochs
+        let epoch = decoded_response[0].clone().into_int().unwrap().as_u64();
+        let epoch_timestamp = decoded_response[1].clone().into_int().unwrap().as_u64();
+        //safe unwrap
+        let (committee, worker_cache) = decode_committee(decoded_response[3].clone().into_array().unwrap(), epoch);
+
+        Ok(())
     }
 }

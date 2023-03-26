@@ -16,4 +16,6 @@ tracing.workspace = true
 ethers.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
+narwhal-config = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-config" }
+narwhal-crypto = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-crypto" }
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9a41ba511899c0d7efd9e047af2e968cdc54f77d" }
