@@ -1,26 +1,29 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use arc_swap::ArcSwap;
+use bytes::Bytes;
+use fastcrypto::traits::KeyPair;
+use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
 use narwhal_node::NodeStorage;
-use narwhal_types::Batch;
+use narwhal_types::{Batch, TransactionProto, TransactionsClient};
 use resolve_path::PathResolveExt;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std:: path::PathBuf;
+use std::time::{Duration, SystemTime};
 use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Notify;
-use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
+use tracing::error;
 
-use ursa_utils::transactions::{build_transaction, decode_committee};
-use ursa_application::types::Query;
-use crate::config::GenesisCommittee;
+use crate::AbciQueryQuery;
 use crate::{
     config::ConsensusConfig,
     execution::Execution,
     narwhal::{NarwhalArgs, NarwhalService},
 };
-use crate::{AbciQueryQuery};
+use ursa_application::types::Query;
+use ursa_utils::transactions::{build_transaction, decode_committee};
 // what do we need for this file to work and be complete?
 // - A mechanism to dynamically move the epoch forward and changing the committee dynamically.
 //    Each epoch has a fixed committee. The committee only changes per epoch.
@@ -38,13 +41,13 @@ use crate::{AbciQueryQuery};
 // Dalton Notes:
 // - Epoch time should be gathered from application layer along with new committee on epoch change
 
+// TODO(dalton): make this pullable from genesis file
+const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
+
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
-
-/// The default channel capacity.
-
 pub struct Consensus {
     /// The state of the current Narwhal epoch
-    epoch_state: RefCell<EpochState>,
+    epoch_state: RefCell<Option<EpochState>>,
     /// The narwhal configuration.
     narwhal_args: NarwhalArgs,
     /// This should not change ever so should be held in the outer layer
@@ -53,8 +56,8 @@ pub struct Consensus {
     execution_state: Arc<Execution>,
     /// Path to the database used by the narwhal implementation
     store_path: PathBuf,
-    /// Path to the genesis committee json
-    genesis_committee: PathBuf,
+    /// The address to the worker mempool
+    mempool_address: String,
     /// Timestamp of the narwhal certificate that caused an epoch change
     /// is sent through this channel to notify that epoch chould change
     reconfigure_notify: Arc<Notify>,
@@ -62,136 +65,137 @@ pub struct Consensus {
     /// exit.
     shutdown_notify: Notify,
     /// Used to query application state.
-    tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>
+    tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
 }
 
+/// This struct contains mutable state only for the current epoch
 struct EpochState {
-    /// The current epoch
-    epoch: Epoch,
-    /// The length of the epoch
-    epoch_time: u64,
     /// The Narwhal service for the current epoch
-    narwhal: Option<NarwhalService>,
+    narwhal: NarwhalService,
 }
 
 impl Consensus {
     pub fn new(
         config: ConsensusConfig,
         tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
-        tx_certificates : mpsc::Sender<Vec<Batch>>,
-        reconfigure_notify: Arc<Notify>
+        tx_certificates: mpsc::Sender<Vec<Batch>>,
+        reconfigure_notify: Arc<Notify>,
+        mempool_address: String,
     ) -> Result<Self> {
         let narwhal_args = NarwhalArgs::load(config.clone())?;
-        //TODO(dalton): Genesis epoch time needs to come from a genesis file.
-        let epoch_time = 86400000;
-        //TODO(dalton): Checkpoint system instead of starting from epoch 0 everytime
-        let epoch = 0;
 
         //TODO(dalton): Should the ABCI engine also become ExecutionState? Is there value in keeping them seperated?
-        let execution_state = Execution::new(epoch, tx_certificates);
-
-        let epoch_state = EpochState {
-            epoch,
-            epoch_time,
-            narwhal: None,
-        };
+        let execution_state = Execution::new(tx_certificates);
 
         let store_path = config.store_path.resolve().into_owned();
         std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
 
         Ok(Consensus {
-            epoch_state: RefCell::new(epoch_state),
+            epoch_state: RefCell::new(None),
             narwhal_args,
             parameters: config.parameters,
             execution_state: Arc::new(execution_state),
             store_path,
-            genesis_committee: config.genesis_committee,
+            mempool_address,
             reconfigure_notify,
             shutdown_notify: Notify::new(),
-            tx_abci_queries
+            tx_abci_queries,
         })
     }
 
     async fn start_current_epoch(&self) {
-        let epoch = { self.epoch_state.borrow().epoch };
+        //Pull epoch info
+        //TODO(dalton): This shouldnt ever fail but we should just retry if it does
+        let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
+
         //make or open store specific to current epoch
         let mut store_path = self.store_path.clone();
         store_path.set_file_name(format!("narwhal-store-{}", epoch));
         let store = NodeStorage::reopen(store_path);
 
-        //Pull Epoch Info
-        let (committee, worker_cache) = if epoch == 0 {
-            let bytes = std::fs::read(self.genesis_committee.clone())
-                .with_context(|| {
-                    format!(
-                        "Count not read the genesis committee file at: {:?}",
-                        self.genesis_committee
-                    )
-                })
-                .unwrap();
-            let genesis_committee: GenesisCommittee = serde_json::from_slice(bytes.as_slice())
-                .with_context(|| {
-                    format!(
-                        "Could not deserialize the genesis committee file at: {:?}",
-                        self.genesis_committee
-                    )
-                })
-                .unwrap();
-            let committee = Arc::new(Committee::from(&genesis_committee));
-            let worker_cache = Arc::new(WorkerCache::from(&genesis_committee));
-            (committee, worker_cache)
-        } else {
-            ////TEMPORARY
-            let bytes = std::fs::read(self.genesis_committee.clone())
-                .with_context(|| {
-                    format!(
-                        "Count not read the genesis committee file at: {:?}",
-                        self.genesis_committee
-                    )
-                })
-                .unwrap();
-            let genesis_committee: GenesisCommittee = serde_json::from_slice(bytes.as_slice())
-                .with_context(|| {
-                    format!(
-                        "Could not deserialize the genesis committee file at: {:?}",
-                        self.genesis_committee
-                    )
-                })
-                .unwrap();
-            let committee = Arc::new(Committee::from(&genesis_committee));
-            let worker_cache = Arc::new(WorkerCache::from(&genesis_committee));
-            (committee, worker_cache)
-            ////TEMPORARY
-        };
-
         let service = NarwhalService::new(
             self.narwhal_args.clone(),
             store,
-            Arc::new(ArcSwap::new(committee)),
-            Arc::new(ArcSwap::new(worker_cache)),
+            Arc::new(ArcSwap::new(Arc::new(committee))),
+            Arc::new(ArcSwap::new(Arc::new(worker_cache))),
             self.parameters.clone(),
         );
+
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        // TODO(Parsa/Dalton): We might want to add a assert requirment that ensures epoch time > now
+        // This logic works now as joining in late would have you signal and continute consuming certificates
+        // But may be good to put this restriction on this function to design around, So our checkpoint can hold this
+        // assertion true before calling start epoch
+        let until_epoch_ends: u64 = now
+            .saturating_sub(epoch_end_time as u128)
+            .try_into()
+            .unwrap();
+
+        // Start the timer to signal when your node thinks its ready to change epochs
+        let time_until_epoch_change = Duration::from_millis(until_epoch_ends);
+        self.wait_to_signal_epoch_change(time_until_epoch_change)
+            .await;
 
         service.start(self.execution_state.clone()).await;
 
         {
-            self.epoch_state.borrow_mut().narwhal = Some(service);
+            *self.epoch_state.borrow_mut() = Some(EpochState { narwhal: service })
         }
     }
 
     async fn move_to_next_epoch(&self) {
         {
-            let mut epoch_state_mut = self.epoch_state.borrow_mut();
-
-            if let Some(narwhal) = epoch_state_mut.narwhal.take() {
-                narwhal.shutdown().await;
-                epoch_state_mut.epoch += 1;
-            } else if epoch_state_mut.epoch > 0 {
-                //if narwhal is None only increment if its not epoch 0 because that would be genesis
-                epoch_state_mut.epoch += 1;
+            let epoch_state_mut = self.epoch_state.borrow_mut().take();
+            if let Some(state) = epoch_state_mut {
+                state.narwhal.shutdown().await
             }
-        };
+        }
         self.start_current_epoch().await
+    }
+
+    async fn wait_to_signal_epoch_change(&self, time_until_change: Duration) {
+        let primary_public_key = self.narwhal_args.primary_keypair.public().clone();
+        let mempool_address = self.mempool_address.clone();
+        tokio::task::spawn(async move {
+            tokio::time::sleep(time_until_change).await;
+            // We shouldnt panic here but we can try a few times incase of a failure
+            for i in 0..3 {
+                let txn = match build_transaction(
+                    EPOCH_ADDRESS,
+                    "signalEpochChange(string memory committeeMember):(bool)",
+                    &[primary_public_key.to_string()],
+                )
+                .and_then(|(_, txn)| {
+                    serde_json::to_vec(&txn).map_err(|_| anyhow!("failed encoding"))
+                }) {
+                    Ok(txn) => txn,
+                    Err(_) => continue,
+                };
+
+                let request = TransactionProto {
+                    transaction: Bytes::from(txn),
+                };
+
+                let mut client = match TransactionsClient::connect(mempool_address.clone()).await {
+                    Ok(client) => client,
+                    Err(_) => continue,
+                };
+
+                if client.submit_transaction(request).await.is_ok() {
+                    break;
+                } else if i == 2 {
+                    // Narwhal should still be able to come to consensus on epoch change without a validators signal
+                    // This is an edge case and could only happen with the wrong public key or wrong mempool address for your node in config
+                    // which wouldnt even make it this far. A node whose request failed here would still move to the next epoch
+                    // as long as 2/3rd validators sent their signal
+                    error!("Failed Sending change epoch request to mempool. Make sure your consensus config has correct address's")
+                }
+            }
+        });
     }
 
     pub async fn start(&mut self) {
@@ -219,24 +223,20 @@ impl Consensus {
     }
 }
 
-// TODO(dalton): make this pullable from genesis file
-const epoch_address: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
-const registry_address: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-
 //Application Query Helpers
 impl Consensus {
-    async fn get_epoch_info(&self) -> Result<()> {
+    async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
         //Build transaction
-        let (function, txn) = build_transaction(epoch_address, "getCurrentEpochInfo():(uint256 epoch, uint256 currentEpochEndStamp, tuple[](string publicKey, string primaryAddress, string workerAddress,string workerMempool,string workerPublicKey,string networkKey))", &[])?;
+        let (function, txn) = build_transaction(EPOCH_ADDRESS, "getCurrentEpochInfo():(uint256 epoch, uint256 currentEpochEndStamp, tuple[](string publicKey, string primaryAddress, string workerAddress,string workerMempool,string workerPublicKey,string networkKey))", &[])?;
         let query = Query::EthCall(txn);
 
         let query_string = serde_json::to_string(&query)?;
 
         let abci_query = AbciQueryQuery {
-        data: query_string,
-        path: "".to_string(),
-        height: None,
-        prove: None,
+            data: query_string,
+            path: "".to_string(),
+            height: None,
+            prove: None,
         };
 
         // Construct one shot channel to recieve response
@@ -253,8 +253,9 @@ impl Consensus {
         let epoch = decoded_response[0].clone().into_int().unwrap().as_u64();
         let epoch_timestamp = decoded_response[1].clone().into_int().unwrap().as_u64();
         //safe unwrap
-        let (committee, worker_cache) = decode_committee(decoded_response[3].clone().into_array().unwrap(), epoch);
+        let (committee, worker_cache) =
+            decode_committee(decoded_response[3].clone().into_array().unwrap(), epoch);
 
-        Ok(())
+        Ok((committee, worker_cache, epoch, epoch_timestamp))
     }
 }

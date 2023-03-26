@@ -4,10 +4,10 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
-use std::{env, net::SocketAddr};
 use std::sync::Arc;
+use std::{env, net::SocketAddr};
 use structopt::StructOpt;
-use tokio::{sync::mpsc::channel, task};
+use tokio::task;
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_application::application_start;
@@ -124,7 +124,7 @@ async fn run() -> Result<()> {
         .expect("Expected tcp url for worker mempool");
 
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
-    
+
     // Create engine so we can grab senders
     let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
     app_address.set_ip("0.0.0.0".parse()?);
@@ -135,9 +135,9 @@ async fn run() -> Result<()> {
     let tx_abci_queries = abci_engine.get_abci_queries_sender();
     let tx_certificates = abci_engine.get_certificates_sender();
     let reconfigure_notify = abci_engine.get_reconfigure_notify();
-    
+
     //Spawn engine
-    let abci_engine_task = std::thread::spawn(|| async move {
+    let _abci_engine_task = std::thread::spawn(|| async move {
         if let Err(err) = abci_engine.start().await {
             error!("[abci_engine_task] - {:?}", err);
         }
@@ -148,7 +148,7 @@ async fn run() -> Result<()> {
         service.command_sender(),
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
-        mempool_address_string,
+        mempool_address_string.clone(),
         tx_abci_queries.clone(),
     ));
 
@@ -195,7 +195,13 @@ async fn run() -> Result<()> {
     });
 
     // Start the consensus service.
-    let mut consensus_service = Consensus::new(consensus_config, tx_abci_queries, tx_certificates, reconfigure_notify)?;
+    let mut consensus_service = Consensus::new(
+        consensus_config,
+        tx_abci_queries,
+        tx_certificates,
+        reconfigure_notify,
+        mempool_address_string,
+    )?;
 
     consensus_service.start().await;
 
