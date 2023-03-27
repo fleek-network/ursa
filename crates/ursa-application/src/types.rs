@@ -11,7 +11,7 @@ use abci::{
 use anyhow::{bail, Result};
 use ethers::abi::parse_abi;
 use ethers::contract::BaseContract;
-use ethers::prelude::{NameOrAddress, U256 as UInt256};
+use ethers::prelude::NameOrAddress;
 use ethers::types::{Address, TransactionRequest};
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
 use revm::{

@@ -88,7 +88,7 @@ pub mod epoch {
         > {
             let factory = ethers::contract::ContractFactory::new(
                 EPOCH_ABI.clone(),
-                EPOCH_BYTECODE.clone().into(),
+                EPOCH_BYTECODE.clone(),
                 client,
             );
             let deployer = factory.deploy(constructor_args)?;

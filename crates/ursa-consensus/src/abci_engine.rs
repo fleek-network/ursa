@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Notify;
-use tracing::{error, warn};
+use tracing::warn;
 
 use narwhal_types::{Batch, Transaction};
 
@@ -23,8 +23,10 @@ pub const CHANNEL_CAPACITY: usize = 1_000;
 pub struct Engine {
     /// The address of the ABCI app
     app_address: SocketAddr,
-    /// The blocking Abci client connected to the application layer
+    /// The blocking Abci client connected to the application layer, for executing certificates
     client: AbciClient,
+    /// The blocking abci client for used only for querys, holds info connection only
+    req_client: AbciClient,
     /// The last block height, initialized to the application's latest block by default
     last_block_height: i64,
     tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
@@ -52,9 +54,11 @@ impl Engine {
 
         // Instantiate a new client to not be locked in an Info connection
         let client = ClientBuilder::default().connect(app_address).unwrap();
+        let req_client = ClientBuilder::default().connect(app_address).unwrap();
         Self {
             app_address,
             client,
+            req_client,
             last_block_height,
             tx_abci_queries,
             tx_certificates,
@@ -132,7 +136,7 @@ impl Engine {
         let req_height = req.height.unwrap_or(0);
         let req_prove = req.prove.unwrap_or(false);
 
-        let resp = self.client.query(RequestQuery {
+        let resp = self.req_client.query(RequestQuery {
             data: req.data.into(),
             path: req.path,
             height: req_height as i64,

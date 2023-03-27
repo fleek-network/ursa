@@ -88,7 +88,7 @@ pub mod node_registry {
         > {
             let factory = ethers::contract::ContractFactory::new(
                 NODEREGISTRY_ABI.clone(),
-                NODEREGISTRY_BYTECODE.clone().into(),
+                NODEREGISTRY_BYTECODE.clone(),
                 client,
             );
             let deployer = factory.deploy(constructor_args)?;

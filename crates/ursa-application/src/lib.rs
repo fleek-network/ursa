@@ -9,7 +9,7 @@ pub use config::ApplicationConfig;
 mod server;
 pub use server::application_start;
 
-mod genesis;
+pub mod genesis;
 pub mod types;
 
 use crate::types::WithGenesisDb;

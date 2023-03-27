@@ -198,15 +198,17 @@ async fn run() -> Result<()> {
     });
 
     // Start the consensus service.
-    let mut consensus_service = Consensus::new(
-        consensus_config,
-        tx_abci_queries,
-        tx_certificates,
-        reconfigure_notify,
-        mempool_address_string,
-    )?;
-
-    consensus_service.start().await;
+    let consensus_handle = task::spawn(async move {
+        let mut consensus_service = Consensus::new(
+            consensus_config,
+            tx_abci_queries,
+            tx_certificates,
+            reconfigure_notify,
+            mempool_address_string,
+        )
+        .unwrap();
+        consensus_service.start().await;
+    });
 
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
@@ -216,7 +218,7 @@ async fn run() -> Result<()> {
     service_task.abort();
     provider_task.abort();
     application_task.abort();
-    consensus_service.shutdown().await;
+    consensus_handle.abort();
 
     Ok(())
 }

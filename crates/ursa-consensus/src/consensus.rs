@@ -2,11 +2,11 @@ use anyhow::{anyhow, Context, Result};
 use arc_swap::ArcSwap;
 use bytes::Bytes;
 use fastcrypto::traits::KeyPair;
+use futures::lock::Mutex;
 use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
 use narwhal_node::NodeStorage;
 use narwhal_types::{Batch, TransactionProto, TransactionsClient};
 use resolve_path::PathResolveExt;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -49,7 +49,7 @@ const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 pub struct Consensus {
     /// The state of the current Narwhal epoch
-    epoch_state: RefCell<Option<EpochState>>,
+    epoch_state: Mutex<Option<EpochState>>,
     /// The narwhal configuration.
     narwhal_args: NarwhalArgs,
     /// This should not change ever so should be held in the outer layer
@@ -93,7 +93,7 @@ impl Consensus {
         std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
 
         Ok(Consensus {
-            epoch_state: RefCell::new(None),
+            epoch_state: Mutex::new(None),
             narwhal_args,
             parameters: config.parameters,
             execution_state: Arc::new(execution_state),
@@ -132,8 +132,8 @@ impl Consensus {
         // This logic works now as joining in late would have you signal and continute consuming certificates
         // But may be good to put this restriction on this function to design around, So our checkpoint can hold this
         // assertion true before calling start epoch
-        let until_epoch_ends: u64 = now
-            .saturating_sub(epoch_end_time as u128)
+        let until_epoch_ends: u64 = (epoch_end_time as u128)
+            .saturating_sub(now)
             .try_into()
             .unwrap();
 
@@ -144,14 +144,13 @@ impl Consensus {
 
         service.start(self.execution_state.clone()).await;
 
-        {
-            *self.epoch_state.borrow_mut() = Some(EpochState { narwhal: service })
-        }
+            *self.epoch_state.lock().await = Some(EpochState { narwhal: service })
+        
     }
 
     async fn move_to_next_epoch(&self) {
         {
-            let epoch_state_mut = self.epoch_state.borrow_mut().take();
+            let epoch_state_mut = self.epoch_state.lock().await.take();
             if let Some(state) = epoch_state_mut {
                 state.narwhal.shutdown().await
             }
@@ -164,8 +163,9 @@ impl Consensus {
         let mempool_address = self.mempool_address.clone();
         tokio::task::spawn(async move {
             tokio::time::sleep(time_until_change).await;
-            // We shouldnt panic here but we can try a few times incase of a failure
-            for i in 0..3 {
+            // We shouldnt panic here lets repeatedly try
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
                 let txn = match build_transaction(
                     EPOCH_ADDRESS,
                     "signalEpochChange(string memory committeeMember):(bool)",
@@ -175,7 +175,10 @@ impl Consensus {
                     serde_json::to_vec(&txn).map_err(|_| anyhow!("failed encoding"))
                 }) {
                     Ok(txn) => txn,
-                    Err(_) => continue,
+                    Err(_) => {
+                        error!("Error signaling epoch change, trying again");
+                        continue;
+                    }
                 };
 
                 let request = TransactionProto {
@@ -184,18 +187,16 @@ impl Consensus {
 
                 let mut client = match TransactionsClient::connect(mempool_address.clone()).await {
                     Ok(client) => client,
-                    Err(_) => continue,
+                    Err(e) => {
+                        error!("Error building client to signal epoch change {:?}", e);
+                        continue;
+                    }
                 };
 
                 if client.submit_transaction(request).await.is_ok() {
                     break;
-                } else if i == 2 {
-                    // Narwhal should still be able to come to consensus on epoch change without a validators signal
-                    // This is an edge case and could only happen with the wrong public key or wrong mempool address for your node in config
-                    // which wouldnt even make it this far. A node whose request failed here would still move to the next epoch
-                    // as long as 2/3rd validators sent their signal
-                    error!("Failed Sending change epoch request to mempool. Make sure your consensus config has correct address's")
                 }
+                error!("Error signaling epoch change trying again");
             }
         });
     }
@@ -221,7 +222,7 @@ impl Consensus {
     }
 
     pub async fn shutdown(&mut self) {
-        self.shutdown_notify.notify_waiters();
+        //  self.shutdown_notify.notify_waiters();
     }
 }
 

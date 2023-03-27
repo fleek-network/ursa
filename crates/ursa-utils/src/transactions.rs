@@ -1,10 +1,10 @@
 use crate::contract_bindings::epoch::{
-    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn, EPOCH_ABI,
+    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use ethers::{
     abi::{
-        token::{LenientTokenizer, Token, Tokenizer},
+        token::{LenientTokenizer, Tokenizer},
         AbiDecode, AbiEncode, AbiParser, Function, ParamType,
     },
     types::{Address, Bytes, TransactionRequest, U256},
