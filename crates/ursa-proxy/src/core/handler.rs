@@ -19,7 +19,7 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
 
@@ -49,11 +49,11 @@ pub async fn reload_tls_config(Extension(servers): Extension<Vec<Server>>) -> St
                     .reload_from_pem_file(cert_path, key_path)
                     .await
                 {
-                    debug!("Failed to reload from pem file {}", e);
+                    error!("Failed to reload from pem file {}", e);
                 }
             }
             _ => {
-                debug!("Invalid paths");
+                error!("Invalid paths");
                 continue;
             }
         }
