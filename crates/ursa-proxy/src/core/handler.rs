@@ -1,7 +1,7 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
-    extract::{self, OriginalUri, Path},
+    extract::{self, Path},
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
     response::{ErrorResponse, IntoResponse, Response, Result},
@@ -37,7 +37,7 @@ pub async fn init_server_app<C: Cache>(
             location.path.trim_start_matches('/').trim_end_matches('/')
         );
         let fs_path = PathBuf::from_str(location.root.as_str()).expect("To never fail");
-        let user_app = Router::new().route(route_path.as_str(), get(ServeDir::new(fs_path)));
+        let user_app = Router::new().route_service(route_path.as_str(), ServeDir::new(fs_path));
         user_apps = user_apps.merge(user_app);
     }
     user_apps
@@ -65,11 +65,10 @@ pub async fn reload_tls_config(
     payload: extract::Json<ReloadTlsConfigPayload>,
 ) -> Result<Response> {
     match servers.get(payload.name.as_str()) {
-        None => (Err(ErrorResponse::from(
+        None => Err(ErrorResponse::from((
             StatusCode::BAD_REQUEST,
             format!("Unknown server {}", payload.name),
-        )),)
-            .into_response(),
+        ))),
         Some(server) => {
             if server.config.tls.is_none() {
                 return Ok((
@@ -85,12 +84,12 @@ pub async fn reload_tls_config(
                 .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
             let cert_path = server_tls_config
                 .cert_path
-                .as_str()
-                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
+                .to_str()
+                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
             let key_path = server_tls_config
                 .key_path
-                .as_str()
-                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
+                .to_str()
+                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
             server
                 .tls_config
                 .as_ref()
