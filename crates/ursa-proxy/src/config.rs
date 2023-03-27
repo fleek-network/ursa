@@ -23,7 +23,6 @@ pub struct ProxyConfig {
 pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,
-    pub server_name: String,
     pub tls: Option<TlsConfig>,
 }
 

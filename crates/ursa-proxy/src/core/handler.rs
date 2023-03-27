@@ -1,10 +1,10 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
-    extract::{self, Path},
+    extract::Path,
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
-    response::{ErrorResponse, IntoResponse, Response, Result},
+    response::{IntoResponse, Response},
     routing::post,
     Extension, Router, TypedHeader,
 };
@@ -13,18 +13,17 @@ use hyper::{
     client::{self, HttpConnector},
     Body,
 };
-use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
 };
 use tokio_util::io::ReaderStream;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
 
-pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
+pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
     Router::new()
         .route("/purge", post(purge_cache_handler::<C>))
         .route("/reload-tls-config", post(reload_tls_config))
@@ -32,51 +31,34 @@ pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> R
         .layer(Extension(servers))
 }
 
-#[derive(Deserialize, Debug)]
-pub struct ReloadTlsConfigPayload {
-    name: String,
-}
-
-pub async fn reload_tls_config(
-    Extension(servers): Extension<HashMap<String, Server>>,
-    payload: extract::Json<ReloadTlsConfigPayload>,
-) -> Result<Response> {
-    match servers.get(payload.name.as_str()) {
-        None => Err(ErrorResponse::from((
-            StatusCode::BAD_REQUEST,
-            format!("Unknown server {}", payload.name),
-        ))),
-        Some(server) => {
-            if server.config.tls.is_none() {
-                return Ok((
-                    StatusCode::BAD_REQUEST,
-                    format!("No TLS config found for {}", payload.name),
-                )
-                    .into_response());
+pub async fn reload_tls_config(Extension(servers): Extension<Vec<Server>>) -> StatusCode {
+    for server in servers {
+        if server.config.tls.is_none() {
+            continue;
+        }
+        let server_tls_config = server.config.tls.as_ref().unwrap();
+        match (
+            server_tls_config.cert_path.to_str(),
+            server_tls_config.key_path.to_str(),
+        ) {
+            (Some(cert_path), Some(key_path)) => {
+                if let Err(e) = server
+                    .tls_config
+                    .as_ref()
+                    .unwrap()
+                    .reload_from_pem_file(cert_path, key_path)
+                    .await
+                {
+                    debug!("Failed to reload from pem file {}", e);
+                }
             }
-            let server_tls_config = server
-                .config
-                .tls
-                .as_ref()
-                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
-            let cert_path = server_tls_config
-                .cert_path
-                .to_str()
-                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
-            let key_path = server_tls_config
-                .key_path
-                .to_str()
-                .ok_or_else(|| ErrorResponse::from(StatusCode::BAD_REQUEST))?;
-            server
-                .tls_config
-                .as_ref()
-                .unwrap()
-                .reload_from_pem_file(cert_path, key_path)
-                .await
-                .map_err(|e| ErrorResponse::from((StatusCode::BAD_REQUEST, e.to_string())))?;
-            Ok(StatusCode::OK.into_response())
+            _ => {
+                debug!("Invalid paths");
+                continue;
+            }
         }
     }
+    StatusCode::OK
 }
 
 pub async fn purge_cache_handler<C: Cache>(Extension(cache): Extension<C>) -> StatusCode {

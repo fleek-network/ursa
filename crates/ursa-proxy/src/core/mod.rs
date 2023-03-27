@@ -9,9 +9,7 @@ use anyhow::{Context, Result};
 use axum::{routing::get, Extension, Router};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
-use std::{
-    collections::HashMap, io::Result as IOResult, net::SocketAddr, sync::Arc, time::Duration,
-};
+use std::{io::Result as IOResult, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
@@ -29,7 +27,7 @@ pub async fn start<C: Cache>(
     let mut workers = JoinSet::new();
     let handle = Handle::new();
     let client = Client::new();
-    let mut servers = HashMap::new();
+    let mut servers = Vec::new();
     for server_config in config.server {
         let server_config = Arc::new(server_config);
         let server_app = Router::new()
@@ -48,14 +46,10 @@ pub async fn start<C: Cache>(
                 &server_tls_config.key_path,
             )
             .await?;
-            let server_name = server_config.server_name.clone();
-            servers.insert(
-                server_name,
-                Server {
-                    tls_config: Some(tls_config.clone()),
-                    config: server_config.clone(),
-                },
-            );
+            servers.push(Server {
+                tls_config: Some(tls_config.clone()),
+                config: server_config.clone(),
+            });
             workers.spawn(
                 axum_server::bind_rustls(bind_addr, tls_config)
                     .handle(handle.clone())
