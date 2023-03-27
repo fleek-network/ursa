@@ -5,7 +5,7 @@ use axum::{
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
     response::{ErrorResponse, IntoResponse, Response, Result},
-    routing::{get, post},
+    routing::post,
     Extension, Router, TypedHeader,
 };
 use bytes::BufMut;
@@ -14,38 +14,15 @@ use hyper::{
     Body,
 };
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
-
-pub async fn init_server_app<C: Cache>(
-    server_config: ServerConfig,
-    cache: C,
-    client: Client,
-) -> Router {
-    let mut user_apps = Router::new();
-    for location in &server_config.location {
-        let route_path = format!(
-            "/{}/*path",
-            location.path.trim_start_matches('/').trim_end_matches('/')
-        );
-        let fs_path = PathBuf::from_str(location.root.as_str()).expect("To never fail");
-        let user_app = Router::new().route_service(route_path.as_str(), ServeDir::new(fs_path));
-        user_apps = user_apps.merge(user_app);
-    }
-    user_apps
-        .route("/*path", get(proxy_pass::<C>))
-        .layer(Extension(cache))
-        .layer(Extension(client))
-        .layer(Extension(Arc::new(server_config)))
-}
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: HashMap<String, Server>) -> Router {
     Router::new()

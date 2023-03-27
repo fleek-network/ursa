@@ -3,19 +3,22 @@ mod handler;
 use crate::{
     cache::Cache,
     config::{ProxyConfig, ServerConfig},
-    core::handler::{init_admin_app, init_server_app},
+    core::handler::{init_admin_app, proxy_pass},
 };
 use anyhow::{Context, Result};
+use axum::{routing::get, Extension, Router};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
-use std::{collections::HashMap, io::Result as IOResult, net::SocketAddr, time::Duration};
+use std::{
+    collections::HashMap, io::Result as IOResult, net::SocketAddr, sync::Arc, time::Duration,
+};
 use tokio::{select, sync::mpsc::Receiver, task::JoinSet};
 use tracing::info;
 
 #[derive(Clone)]
 pub struct Server {
     pub tls_config: Option<RustlsConfig>,
-    pub config: ServerConfig,
+    pub config: Arc<ServerConfig>,
 }
 
 pub async fn start<C: Cache>(
@@ -28,8 +31,12 @@ pub async fn start<C: Cache>(
     let client = Client::new();
     let mut servers = HashMap::new();
     for server_config in config.server {
-        let server_app =
-            init_server_app(server_config.clone(), cache.clone(), client.clone()).await;
+        let server_config = Arc::new(server_config);
+        let server_app = Router::new()
+            .route("/*path", get(proxy_pass::<C>))
+            .layer(Extension(cache.clone()))
+            .layer(Extension(client.clone()))
+            .layer(Extension(server_config.clone()));
         let bind_addr = server_config
             .listen_addr
             .clone()

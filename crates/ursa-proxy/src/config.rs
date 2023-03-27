@@ -24,14 +24,7 @@ pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,
     pub server_name: String,
-    pub location: Vec<Location>,
     pub tls: Option<TlsConfig>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Location {
-    pub path: String,
-    pub root: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
