@@ -33,7 +33,10 @@ pub fn init_server_app<C: Cache>(
     if let Some(serve_dir) = &server_config.serve_dir {
         let mut full_path = serve_dir.root.clone();
         full_path.push(serve_dir.path.clone());
-        let path = serve_dir.path.to_str().expect("Path to be a valid unicode");
+        let path = serve_dir
+            .path
+            .to_str()
+            .expect("Path to be a valid unicode string");
         user_app = user_app.route_service(path, ServeDir::new(full_path));
     }
     user_app
