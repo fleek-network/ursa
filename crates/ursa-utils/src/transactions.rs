@@ -1,10 +1,13 @@
+use crate::contract_bindings::epoch::{
+    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn, EPOCH_ABI,
+};
 use anyhow::{anyhow, bail, Context as _, Result};
 use ethers::{
     abi::{
         token::{LenientTokenizer, Token, Tokenizer},
-        AbiParser, Function, ParamType,
+        AbiDecode, AbiEncode, AbiParser, Function, ParamType,
     },
-    types::{Address, TransactionRequest, U256},
+    types::{Address, Bytes, TransactionRequest, U256},
 };
 use fastcrypto::traits::EncodeDecodeBase64;
 use narwhal_config::{Authority, Committee, WorkerCache, WorkerId, WorkerIndex, WorkerInfo};
@@ -78,27 +81,28 @@ pub fn encode_params(func: &Function, args: &[impl AsRef<str>]) -> Result<Vec<u8
     }
 }
 
-// Used to decode The committee array returned from the epoch genesis into a Array of tuples
-// each tuple contains the info for 1 committee member
-// (primary_node_publicKey, primary_node_domain, worker_domain, worker_public_key )
-pub fn decode_committee(tokens: Vec<Token>, epoch: u64) -> (Committee, WorkerCache) {
-    let mut committee = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        let committee_struct = token.into_tuple().unwrap();
-        committee.push(AuthorityFromContract {
-            primary_key: committee_struct[0].clone().into_string().unwrap(),
-            primary_address: committee_struct[1].clone().into_string().unwrap(),
-            worker_address: committee_struct[2].clone().into_string().unwrap(),
-            worker_mempool: committee_struct[3].clone().into_string().unwrap(),
-            worker_key: committee_struct[4].clone().into_string().unwrap(),
-            network_key: committee_struct[5].clone().into_string().unwrap(),
-        })
-    }
+pub fn get_epoch_info_params() -> TransactionRequest {
+    // safe unwrap
+    let to = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
+        .parse::<Address>()
+        .unwrap();
+    let data = EpochCalls::GetCurrentEpochInfo(GetCurrentEpochInfoCall::default()).encode();
+    TransactionRequest::new().to(to).data(data)
+}
+
+pub fn decode_epoch_info_return(output: Vec<u8>) -> GetCurrentEpochInfoReturn {
+    GetCurrentEpochInfoReturn::decode(Bytes::from(output)).unwrap()
+}
+
+pub fn decode_committee(
+    committee_members: Vec<CommitteeMember>,
+    epoch: u64,
+) -> (Committee, WorkerCache) {
     let epoch_info = EpochInformation {
-        authorities: committee
+        authorities: committee_members
             .iter()
             .filter_map(|authority| {
-                if let Ok(public_key) = PublicKey::decode_base64(&authority.primary_key) {
+                if let Ok(public_key) = PublicKey::decode_base64(&authority.public_key) {
                     Some((public_key, authority.clone()))
                 } else {
                     None
@@ -107,22 +111,12 @@ pub fn decode_committee(tokens: Vec<Token>, epoch: u64) -> (Committee, WorkerCac
             .collect(),
         epoch,
     };
+
     (Committee::from(&epoch_info), WorkerCache::from(&epoch_info))
 }
 
-//TODO(dalton): This should belong in the Ursa types crate. Putting it here until we have
-#[derive(Clone)]
-pub struct AuthorityFromContract {
-    primary_key: String,
-    primary_address: String,
-    worker_key: String,
-    worker_address: String,
-    worker_mempool: String,
-    network_key: String,
-}
-
 pub struct EpochInformation {
-    authorities: BTreeMap<PublicKey, AuthorityFromContract>,
+    authorities: BTreeMap<PublicKey, CommitteeMember>,
     epoch: u64,
 }
 
@@ -145,14 +139,14 @@ impl From<&EpochInformation> for Committee {
     }
 }
 
-impl TryFrom<&AuthorityFromContract> for Authority {
+impl TryFrom<&CommitteeMember> for Authority {
     type Error = anyhow::Error;
-    fn try_from(output: &AuthorityFromContract) -> Result<Self> {
-        let network_key = NetworkPublicKey::decode_base64(&output.network_key)
+    fn try_from(member: &CommitteeMember) -> Result<Self> {
+        let network_key = NetworkPublicKey::decode_base64(&member.network_key)
             .map_err(|_| anyhow!("Failed parsing network Key"))?;
         Ok(Authority {
             stake: 1,
-            primary_address: output
+            primary_address: member
                 .primary_address
                 .parse()
                 .map_err(|_| anyhow!("Failed parsing primary address"))?,
@@ -170,7 +164,7 @@ impl From<&EpochInformation> for WorkerCache {
                 .iter()
                 .filter_map(|(key, authority)| {
                     let worker_info = WorkerInfo {
-                        name: NetworkPublicKey::decode_base64(&authority.worker_key).ok()?,
+                        name: NetworkPublicKey::decode_base64(&authority.worker_public_key).ok()?,
                         transactions: authority.worker_mempool.parse().ok()?,
                         worker_address: authority.worker_address.parse().ok()?,
                     };

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use ethers::types::Bytes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -18,6 +19,7 @@ pub struct Genesis {
 pub struct GenesisContract {
     pub address: String,
     pub bytecode: String,
+    pub init_params: Option<Bytes>,
 }
 
 impl Genesis {

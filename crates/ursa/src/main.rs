@@ -112,6 +112,17 @@ async fn run() -> Result<()> {
     );
     let index_provider_router = index_provider_engine.router();
 
+    // Store the app address before passing to application so we can give to abci_engine
+    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
+    app_address.set_ip("0.0.0.0".parse()?);
+
+    // Start the application server
+    let application_task = task::spawn(async move {
+        if let Err(err) = application_start(application_config).await {
+            error!("[application_task] - {:?}", err)
+        }
+    });
+
     // server setup
     let mempool_address = consensus_config.worker[0].transaction.clone();
     let mempool_port = mempool_address
@@ -126,10 +137,7 @@ async fn run() -> Result<()> {
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
 
     // Create engine so we can grab senders
-    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
-    app_address.set_ip("0.0.0.0".parse()?);
-
-    let mut abci_engine = Engine::new(app_address);
+    let mut abci_engine = Engine::new(app_address).await;
 
     // Store the senders from the engine
     let tx_abci_queries = abci_engine.get_abci_queries_sender();
@@ -137,10 +145,12 @@ async fn run() -> Result<()> {
     let reconfigure_notify = abci_engine.get_reconfigure_notify();
 
     //Spawn engine
-    let _abci_engine_task = std::thread::spawn(|| async move {
-        if let Err(err) = abci_engine.start().await {
-            error!("[abci_engine_task] - {:?}", err);
-        }
+    let _abci_engine_task = std::thread::spawn(|| {
+        futures::executor::block_on(async move {
+            if let Err(err) = abci_engine.start().await {
+                error!("[abci_engine_task] - {:?}", err);
+            }
+        })
     });
 
     let interface = Arc::new(NodeNetworkInterface::new(
@@ -184,13 +194,6 @@ async fn run() -> Result<()> {
         if let Err(err) = index_provider_engine.start().await {
             error!("[provider_task] - {:?}", err);
             shutdown.shutdown();
-        }
-    });
-
-    // Start the application server
-    let application_task = task::spawn(async move {
-        if let Err(err) = application_start(application_config).await {
-            error!("[application_task] - {:?}", err)
         }
     });
 

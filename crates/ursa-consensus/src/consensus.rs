@@ -23,7 +23,9 @@ use crate::{
     narwhal::{NarwhalArgs, NarwhalService},
 };
 use ursa_application::types::Query;
-use ursa_utils::transactions::{build_transaction, decode_committee};
+use ursa_utils::transactions::{
+    build_transaction, decode_committee, decode_epoch_info_return, get_epoch_info_params,
+};
 // what do we need for this file to work and be complete?
 // - A mechanism to dynamically move the epoch forward and changing the committee dynamically.
 //    Each epoch has a fixed committee. The committee only changes per epoch.
@@ -227,7 +229,7 @@ impl Consensus {
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
         //Build transaction
-        let (function, txn) = build_transaction(EPOCH_ADDRESS, "getCurrentEpochInfo():(uint256 epoch, uint256 currentEpochEndStamp, tuple[](string publicKey, string primaryAddress, string workerAddress,string workerMempool,string workerPublicKey,string networkKey))", &[])?;
+        let txn = get_epoch_info_params();
         let query = Query::EthCall(txn);
 
         let query_string = serde_json::to_string(&query)?;
@@ -247,14 +249,12 @@ impl Consensus {
         let response = rx.await.with_context(|| "Failure querying abci")?;
 
         // decode response
-        let decoded_response = function.decode_output(&response.value)?;
+        let epoch_info = decode_epoch_info_return(response.value);
 
-        // Safe unwrap. But will panic if epoch ever gets passed max u64.Which is 584942417 years with 1 millisecond epochs
-        let epoch = decoded_response[0].clone().into_int().unwrap().as_u64();
-        let epoch_timestamp = decoded_response[1].clone().into_int().unwrap().as_u64();
-        //safe unwrap
-        let (committee, worker_cache) =
-            decode_committee(decoded_response[3].clone().into_array().unwrap(), epoch);
+        let epoch = epoch_info.epoch.as_u64();
+        let epoch_timestamp = epoch_info.current_epoch_end_ms.as_u64();
+
+        let (committee, worker_cache) = decode_committee(epoch_info.committee_members, epoch);
 
         Ok((committee, worker_cache, epoch, epoch_timestamp))
     }

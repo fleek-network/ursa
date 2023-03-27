@@ -46,25 +46,29 @@ contract MockEpoch {
         maxCommitteeSize = _maxCommitteeSize;
         epochDurationMs = _epochDuration;
         currentEpochEndStampMs = _firstEpochStart + _epochDuration;
+
+        committee[epoch] = _chooseNewCommittee();
+        currentCommitteeSize = committee[epoch].length;
+        initialized = true;
     }
 
-    function getCurrentEpochInfo() public view returns (uint256, uint256, CommitteeMember[] memory) {
-        CommitteeMember[] memory committeeMembers;
+    function getCurrentEpochInfo() public view returns (uint256 _epoch, uint256 _currentEpochEndMs, CommitteeMember[] memory _committeeMembers) {
+        _committeeMembers = new CommitteeMember[](currentCommitteeSize);
         for (uint256 i; i < currentCommitteeSize;) {
             MockNodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
-            committeeMembers[i].publicKey = committee[epoch][i];
-            committeeMembers[i].primaryAddress = node.primaryAddress;
-            committeeMembers[i].workerAddress = node.workerAddress;
-            committeeMembers[i].workerPublicKey = node.workerPublicKey;
-            committeeMembers[i].networkKey = node.networkKey;
-            committeeMembers[i].workerMempool = node.workerMempool;
+            _committeeMembers[i].publicKey = committee[epoch][i];
+            _committeeMembers[i].primaryAddress = node.primaryAddress;
+            _committeeMembers[i].workerAddress = node.workerAddress;
+            _committeeMembers[i].workerPublicKey = node.workerPublicKey;
+            _committeeMembers[i].networkKey = node.networkKey;
+            _committeeMembers[i].workerMempool = node.workerMempool;
 
             unchecked {
                 i += 1;
             }
         }
 
-        return (epoch, currentEpochEndStampMs, committeeMembers);
+        return (epoch, currentEpochEndStampMs, _committeeMembers);
     }
 
     function getCurrentCommittee() public view returns (string[] memory) {

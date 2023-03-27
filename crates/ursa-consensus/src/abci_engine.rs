@@ -35,7 +35,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(app_address: SocketAddr) -> Self {
+    /// Will panic if it cannot connect to application in 5 seconds
+    pub async fn new(app_address: SocketAddr) -> Self {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
         let mut client = ClientBuilder::default().connect(app_address).unwrap();
 
         let last_block_height = client
@@ -168,7 +171,6 @@ impl Engine {
     pub fn init_chain(&mut self) -> Result<()> {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
         if let Err(err) = client.init_chain(RequestInitChain::default()) {
-            error!("{:?}", err);
             //ignore errors about the chain being uninitialized
             if err.to_string().contains("already initialized") {
                 warn!("{}", err);

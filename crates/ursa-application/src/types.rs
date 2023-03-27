@@ -119,6 +119,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
 
         //Load the bytecode for the contracts we need on genesis block
         let genesis = Genesis::load().unwrap();
+
         let token_bytes = hex::decode(genesis.token.bytecode).unwrap();
         let staking_bytes = hex::decode(genesis.staking.bytecode).unwrap();
         let registry_bytes = hex::decode(genesis.registry.bytecode).unwrap();
@@ -173,58 +174,23 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .db
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
 
-        //Build the abis to encode the init call params
-        let token_abi = BaseContract::from(
-            parse_abi(&["function initialize(uint256 totalSupply) external returns ()"]).unwrap(),
-        );
-        let staking_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address token, uint256 _minimumNodeStake, uint32 _elegibilityTime, uint32 _lockTime, uint32 _protocolPercentage) external returns ()"]).unwrap());
-        let epoch_abi = BaseContract::from(
-            parse_abi(&["function initialize(address _nodeRegistry) external returns ()"]).unwrap(),
-        );
-
-        //encode the init call params
-        let token_params = token_abi
-            .encode("initialize", UInt256::from_dec_str("1000000000").unwrap())
-            .unwrap();
-        let staking_params = staking_abi
-            .encode(
-                "initialize",
-                (
-                    owner_address,
-                    token_address,
-                    UInt256::from_dec_str("1000").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                ),
-            )
-            .unwrap();
-        let epoch_params = epoch_abi.encode("initialize", registry_address).unwrap();
-
         //Call the init transactions
-        let token_tx = TransactionRequest {
-            to: Some(token_address.into()),
+        let registry_tx = TransactionRequest {
+            to: Some(registry_address.into()),
             from: Some(owner_address),
-            data: Some(token_params),
-            ..Default::default()
-        };
-        let staking_tx = TransactionRequest {
-            to: Some(staking_address.into()),
-            from: Some(owner_address),
-            data: Some(staking_params),
+            data: genesis.registry.init_params,
             ..Default::default()
         };
         let epoch_tx = TransactionRequest {
             to: Some(epoch_address.into()),
             from: Some(owner_address),
-            data: Some(epoch_params),
+            data: genesis.epoch.init_params,
             ..Default::default()
         };
 
         //Submit and commit the init txns to state
-        let _token_res = state.execute(token_tx, false).await.unwrap();
-        let _staking_res = state.execute(staking_tx, false).await.unwrap();
-        let _registry_res = state.execute(epoch_tx, false).await.unwrap();
+        let _registry_res = state.execute(registry_tx, false).await.unwrap();
+        let _epoch_res = state.execute(epoch_tx, false).await.unwrap();
 
         drop(state);
 

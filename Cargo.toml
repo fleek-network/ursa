@@ -40,7 +40,7 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", version = "0.2.0", git = "https://github.com/theBeardA/forest-rocksdb", branch = "chore/upgrade-db", features = ["rocksdb"] }
 dirs = "4"
 dotenv = "0.15.0"
-ethers = { git = "https://github.com/gakonst/ethers-rs" }
+ethers = "1.0.2"
 integer-encoding = "3.0.4"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
 fastmurmur3 = "0.1.2"
