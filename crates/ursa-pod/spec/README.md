@@ -192,6 +192,7 @@ flowchart TB
     subgraph Request
         req
         meta
+        eof
 
         req["request"] --> exists{"requested CID exists?"}
         exists -- no --> notfound{{"send not found error"}}
@@ -216,10 +217,11 @@ flowchart TB
                 unlock --> dec{{"send decryption key"}}
                 dec --> isover
                 isover -- no --> bal
+                isover -- yes --> eof{{"send end of request"}}
             end
 
         meta --> bal
-        isover -- yes --> req
+        eof --> req
     end
 
     uselane --> req
