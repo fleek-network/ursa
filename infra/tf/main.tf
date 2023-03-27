@@ -50,7 +50,7 @@ resource "digitalocean_droplet" "testnet-node" {
   image      = var.droplet_image
   name       = "testnet-node-${count.index}"
   region     = var.droplet_region
-  size       = var.droplet_size
+  size       = var.node_droplet_size
   backups    = false
   monitoring = true
   user_data = templatefile("${path.module}/configs/provider_node.yml", {
@@ -83,7 +83,7 @@ resource "digitalocean_droplet" "bootstrap-node" {
   image      = var.droplet_image
   name       = "bootstrap-node-${count.index}"
   region     = var.droplet_region
-  size       = var.droplet_size
+  size       = var.bootstrap_droplet_size
   backups    = false
   monitoring = true
   user_data  = file("${path.module}/configs/bootstrap_node.yml")
@@ -161,7 +161,7 @@ resource "digitalocean_droplet" "ursa-dashboard" {
   image      = var.droplet_image
   name       = "ursa-dashboard"
   region     = var.droplet_region
-  size       = "s-8vcpu-16gb-intel"
+  size       = var.dashboard_droplet_size
   backups    = false
   monitoring = true
   user_data = templatefile("${path.module}/configs/metrics.yml", {

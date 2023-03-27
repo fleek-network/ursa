@@ -48,10 +48,22 @@ variable "droplet_region" {
   description = "Droplet region identifier where the droplet will be created"
 }
 
-variable "droplet_size" {
+variable "bootstrap_droplet_size" {
   type        = string
   default     = "s-8vcpu-16gb-intel"
-  description = "Droplet size identifier"
+  description = "Droplet size identifier for bootstrap nodes"
+}
+
+variable "node_droplet_size" {
+  type        = string
+  default     = "s-8vcpu-16gb-intel"
+  description = "Droplet size identifier for provider nodes"
+}
+
+variable "dashboard_droplet_size" {
+  type        = string
+  default     = "s-8vcpu-16gb-intel"
+  description = "Droplet size identifier for the dashboard"
 }
 
 ############
