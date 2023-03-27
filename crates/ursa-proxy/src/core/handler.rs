@@ -5,7 +5,7 @@ use axum::{
     headers::CacheControl,
     http::{response::Parts, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Extension, Router, TypedHeader,
 };
 use bytes::BufMut;
@@ -19,9 +19,29 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
+use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
+
+pub fn init_server_app<C: Cache>(
+    server_config: Arc<ServerConfig>,
+    cache: C,
+    client: Client,
+) -> Router {
+    let mut user_app = Router::new();
+    if let Some(serve_dir) = &server_config.serve_dir {
+        let mut full_path = serve_dir.root.clone();
+        full_path.push(serve_dir.path.clone());
+        let path = serve_dir.path.to_str().expect("Path to be a valid unicode");
+        user_app = user_app.route_service(path, ServeDir::new(full_path));
+    }
+    user_app
+        .route("/*path", get(proxy_pass::<C>))
+        .layer(Extension(cache))
+        .layer(Extension(client))
+        .layer(Extension(server_config))
+}
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
     Router::new()

@@ -1,12 +1,12 @@
 mod handler;
 
+use crate::core::handler::init_server_app;
 use crate::{
     cache::Cache,
     config::{ProxyConfig, ServerConfig},
-    core::handler::{init_admin_app, proxy_pass},
+    core::handler::init_admin_app,
 };
 use anyhow::{Context, Result};
-use axum::{routing::get, Extension, Router};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use hyper::Client;
 use std::{io::Result as IOResult, net::SocketAddr, sync::Arc, time::Duration};
@@ -30,11 +30,7 @@ pub async fn start<C: Cache>(
     let mut servers = Vec::new();
     for server_config in config.server {
         let server_config = Arc::new(server_config);
-        let server_app = Router::new()
-            .route("/*path", get(proxy_pass::<C>))
-            .layer(Extension(cache.clone()))
-            .layer(Extension(client.clone()))
-            .layer(Extension(server_config.clone()));
+        let server_app = init_server_app(server_config.clone(), cache.clone(), client.clone());
         let bind_addr = server_config
             .listen_addr
             .clone()
