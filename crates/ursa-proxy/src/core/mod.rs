@@ -1,10 +1,9 @@
 mod handler;
 
-use crate::core::handler::init_server_app;
 use crate::{
     cache::Cache,
     config::{ProxyConfig, ServerConfig},
-    core::handler::init_admin_app,
+    core::handler::{init_admin_app, init_server_app},
 };
 use anyhow::{Context, Result};
 use axum_server::{tls_rustls::RustlsConfig, Handle};
