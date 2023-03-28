@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-// This contract is meant to be used for devolepment purposes only
-// it is unsafe with almost no restrictions
-contract MockNodeRegistry {
+
+contract NodeRegistry {
     /**
      * STATE *
      */

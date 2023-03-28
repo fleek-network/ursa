@@ -110,6 +110,12 @@ impl Consensus {
         //TODO(dalton): This shouldnt ever fail but we should just retry if it does
         let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
 
+        // If the this node is not on the committee, dont start narwhal start edge node logic
+        if !committee.authorities.contains_key(self.narwhal_args.primary_keypair.public()) {
+            self.run_edge_node().await;
+            return
+        }
+
         //make or open store specific to current epoch
         let mut store_path = self.store_path.clone();
         store_path.set_file_name(format!("narwhal-store-{}", epoch));
@@ -221,7 +227,12 @@ impl Consensus {
     }
 
     pub async fn shutdown(&mut self) {
-        //  self.shutdown_notify.notify_waiters();
+          self.shutdown_notify.notify_waiters();
+    }
+
+    pub async fn run_edge_node(&self) {
+        //Todo(): Edge node logic
+        return;
     }
 }
 

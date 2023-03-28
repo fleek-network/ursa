@@ -37,8 +37,9 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Will panic if it cannot connect to application in 5 seconds
     pub async fn new(app_address: SocketAddr) -> Self {
+        //Todo(dalton): Before PR handle his elegently. We are getting here too fast and application server
+        // is not starting in time
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let mut client = ClientBuilder::default().connect(app_address).unwrap();

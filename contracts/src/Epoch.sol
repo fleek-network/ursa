@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import "./MockNodeRegistry.sol";
+import "./NodeRegistry.sol";
 
-// This contract is meant to be used for devolepment purposes only
-// it is unsafe with almost no restrictions
-contract MockEpoch {
+
+contract EpochManager {
     /**
      * STATE *
      */
@@ -19,7 +18,7 @@ contract MockEpoch {
 
     uint256 public epochDurationMs;
 
-    MockNodeRegistry public nodeRegistry;
+    NodeRegistry public nodeRegistry;
     bool private initialized;
     uint256 private readyToChange;
 
@@ -42,7 +41,7 @@ contract MockEpoch {
         uint256 _maxCommitteeSize
     ) external {
         require(!initialized, "contract already initialized");
-        nodeRegistry = MockNodeRegistry(_nodeRegistry);
+        nodeRegistry = NodeRegistry(_nodeRegistry);
         maxCommitteeSize = _maxCommitteeSize;
         epochDurationMs = _epochDuration;
         currentEpochEndStampMs = _firstEpochStart + _epochDuration;
@@ -59,7 +58,7 @@ contract MockEpoch {
     {
         _committeeMembers = new CommitteeMember[](currentCommitteeSize);
         for (uint256 i; i < currentCommitteeSize;) {
-            MockNodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
+            NodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
             _committeeMembers[i].publicKey = committee[epoch][i];
             _committeeMembers[i].primaryAddress = node.primaryAddress;
             _committeeMembers[i].workerAddress = node.workerAddress;
