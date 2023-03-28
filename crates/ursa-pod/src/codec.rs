@@ -44,19 +44,6 @@ pub const SNAPPY: u8 = 1;
 pub const GZIP: u8 = 1 << 2;
 pub const LZ4: u8 = 1 << 3;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Blake3Tree {}
-
-impl Blake3Tree {
-    pub fn to_bytes(&self) -> Bytes {
-        Bytes::from_static(b"blake3tree")
-    }
-
-    pub fn from_bytes(_bytes: &mut BytesMut) -> Self {
-        Self {}
-    }
-}
-
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
@@ -530,17 +517,16 @@ mod tests {
         buf.put_slice(&[2u8; 64]); // content
 
         // decode proof stream
-        codec.read_buffer(64, 16);
         let mut count = 0;
+        codec.read_buffer(64, 16);
         loop {
             match codec.decode(&mut buf) {
-                Ok(None) => continue,
                 Ok(Some(UrsaFrame::Buffer(data))) => {
                     count += 1;
-                    assert_eq!(data.len(), 16);
                     assert_eq!(data, BytesMut::from([1u8; 16].as_slice()));
                 }
-                a => panic!("{a:?}"),
+                Ok(None) => continue,
+                other => unreachable!("{other:?}"),
             }
             if count > 3 {
                 break;
@@ -548,17 +534,16 @@ mod tests {
         }
 
         // decode content stream
-        codec.read_buffer(64, 16);
         count = 0;
+        codec.read_buffer(64, 16);
         loop {
             match codec.decode(&mut buf) {
-                Ok(None) => continue,
                 Ok(Some(UrsaFrame::Buffer(data))) => {
                     count += 1;
-                    assert_eq!(data.len(), 16);
                     assert_eq!(data, BytesMut::from([2u8; 16].as_slice()));
                 }
-                a => panic!("{a:?}"),
+                Ok(None) => continue,
+                other => unreachable!("{other:?}"),
             }
             if count > 3 {
                 break;
