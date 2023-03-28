@@ -62,6 +62,7 @@ use ursa_store::UrsaStore;
 use crate::behaviour::KAD_PROTOCOL;
 use crate::codec::protocol::{RequestType, ResponseType};
 use crate::connection::Manager;
+use crate::measurements::MeasurementManager;
 use crate::transport::build_transport;
 use crate::utils::cache_summary::CacheSummary;
 use crate::{
@@ -215,6 +216,8 @@ where
     pending_responses: HashMap<RequestId, oneshot::Sender<Result<UrsaExchangeResponse>>>,
     /// Manages set of connected peers.
     peers: Manager,
+    /// Manages the peer measurements.
+    measurement_manager: MeasurementManager,
     /// Bootstrap multiaddrs.
     bootstraps: Vec<Multiaddr>,
     /// Summarizes the cached content.
@@ -316,6 +319,7 @@ where
             _pending_requests: HashMap::default(),
             pending_responses: HashMap::default(),
             peers,
+            measurement_manager: MeasurementManager::default(),
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CacheSummary::default(),
             peer_cached_content: HashMap::default(),
@@ -648,6 +652,11 @@ where
                         response
                     );
 
+                    if response.0 == ResponseType::StoreSummaryRequest {
+                        self.measurement_manager
+                            .register_response(peer, request_id.to_string(), 0);
+                    }
+
                     if let Some(request) = self.pending_responses.remove(&request_id) {
                         if request.send(Ok(response)).is_err() {
                             warn!("[RequestResponseMessage::Response] - failed to send request: {request_id:?}");
@@ -809,7 +818,13 @@ where
                     let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
                         self.cached_content.clone(),
                     )));
-                    swarm.request_response.send_request(peer, request);
+                    let request_bytes = bincode::serialize(&request)?;
+                    let request_id = swarm.request_response.send_request(peer, request);
+                    self.measurement_manager.register_request(
+                        *peer,
+                        request_id.to_string(),
+                        request_bytes.len() as u128,
+                    );
                 }
 
                 sender
