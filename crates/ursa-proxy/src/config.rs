@@ -24,7 +24,7 @@ pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,
     pub tls: Option<TlsConfig>,
-    pub serve_dir: Option<ServeDirConfig>,
+    pub serve_dir_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -63,10 +63,4 @@ impl Default for AdminConfig {
 pub struct TlsConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ServeDirConfig {
-    pub path: PathBuf,
-    pub root: PathBuf,
 }

@@ -30,14 +30,13 @@ pub fn init_server_app<C: Cache>(
     client: Client,
 ) -> Router {
     let mut user_app = Router::new();
-    if let Some(serve_dir) = &server_config.serve_dir {
-        let mut full_path = serve_dir.root.clone();
-        full_path.push(serve_dir.path.clone());
-        let path = serve_dir
-            .path
-            .to_str()
-            .expect("Path to be a valid unicode string");
-        user_app = user_app.route_service(path, ServeDir::new(full_path));
+    if let Some(path) = &server_config.serve_dir_path {
+        if path.is_absolute() {
+            panic!("Cannot use an absolute path")
+        }
+        let mut route_path = String::from("/");
+        route_path.push_str(path.to_str().expect("Path to be a valid unicode string"));
+        user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(path));
     }
     user_app
         .route("/*path", get(proxy_pass::<C>))
