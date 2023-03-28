@@ -13,7 +13,6 @@ use hyper::{
     client::{self, HttpConnector},
     Body,
 };
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
