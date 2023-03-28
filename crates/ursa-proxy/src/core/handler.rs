@@ -13,6 +13,7 @@ use hyper::{
     client::{self, HttpConnector},
     Body,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::{
     io::{duplex, AsyncWriteExt},
@@ -31,12 +32,22 @@ pub fn init_server_app<C: Cache>(
 ) -> Router {
     let mut user_app = Router::new();
     if let Some(path) = &server_config.serve_dir_path {
-        if path.is_absolute() {
-            panic!("Cannot use an absolute path")
+        let directory = if path.is_absolute() {
+            path.strip_prefix("/")
+                .expect("To start with slash")
+                .to_path_buf()
+        } else {
+            path.clone()
+        };
+        let directory_str = directory
+            .to_str()
+            .expect("Path to be a valid unicode string");
+        // We have to check for this because we already have a route for "/".
+        if directory_str.is_empty() {
+            panic!("Invalid directory to serve")
         }
-        let mut route_path = String::from("/");
-        route_path.push_str(path.to_str().expect("Path to be a valid unicode string"));
-        user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(path));
+        let route_path = format!("/{}", directory_str);
+        user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
     user_app
         .route("/*path", get(proxy_pass::<C>))
