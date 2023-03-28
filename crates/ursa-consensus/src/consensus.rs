@@ -10,9 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::{mpsc,oneshot};
+use tokio::sync::{mpsc,oneshot,Notify};
 use tokio::{pin,select, time, task};
-use tokio::sync::Notify;
 use tracing::error;
 
 use crate::AbciQueryQuery;

@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Notify};
-use tokio::select;
+use tokio::{select,time};
 use tracing::warn;
 
 use narwhal_types::{Batch, Transaction};
@@ -39,7 +39,7 @@ impl Engine {
     pub async fn new(app_address: SocketAddr) -> Self {
         //Todo(dalton): Before PR handle his elegently. We are getting here too fast and application server
         // is not starting in time
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        time::sleep(time::Duration::from_millis(500)).await;
 
         let mut client = ClientBuilder::default().connect(app_address).unwrap();
 
