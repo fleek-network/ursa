@@ -39,7 +39,6 @@ pub const END_OF_REQUEST_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 5);
 pub const TERMINATATION_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 6);
 
 // Supported compression algorithm bitmap values.
-pub const NONE: u8 = 0;
 pub const SNAPPY: u8 = 1;
 pub const GZIP: u8 = 1 << 2;
 pub const LZ4: u8 = 1 << 3;
