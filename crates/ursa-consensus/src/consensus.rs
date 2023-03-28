@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use arc_swap::ArcSwap;
 use bytes::Bytes;
 use fastcrypto::traits::KeyPair;
 use futures::lock::Mutex;
@@ -11,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc,oneshot};
+use tokio::{pin,select, time, task};
 use tokio::sync::Notify;
 use tracing::error;
 
@@ -86,7 +85,7 @@ impl Consensus {
     ) -> Result<Self> {
         let narwhal_args = NarwhalArgs::load(config.clone())?;
 
-        //TODO(dalton): Should the ABCI engine also become ExecutionState? Is there value in keeping them seperated?
+        // TODO(dalton): Should the ABCI engine also become ExecutionState? Is there value in keeping them seperated?
         let execution_state = Execution::new(tx_certificates);
 
         let store_path = config.store_path.resolve().into_owned();
@@ -106,8 +105,8 @@ impl Consensus {
     }
 
     async fn start_current_epoch(&self) {
-        //Pull epoch info
-        //TODO(dalton): This shouldnt ever fail but we should just retry if it does
+        // Pull epoch info
+        // TODO(dalton): This shouldnt ever fail but we should just retry if it does
         let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
 
         // If the this node is not on the committee, dont start narwhal start edge node logic
@@ -124,8 +123,8 @@ impl Consensus {
         let service = NarwhalService::new(
             self.narwhal_args.clone(),
             store,
-            Arc::new(ArcSwap::new(Arc::new(committee))),
-            Arc::new(ArcSwap::new(Arc::new(worker_cache))),
+            committee,
+            worker_cache,
             self.parameters.clone(),
         );
 
@@ -166,11 +165,11 @@ impl Consensus {
     async fn wait_to_signal_epoch_change(&self, time_until_change: Duration) {
         let primary_public_key = self.narwhal_args.primary_keypair.public().clone();
         let mempool_address = self.mempool_address.clone();
-        tokio::task::spawn(async move {
-            tokio::time::sleep(time_until_change).await;
+        task::spawn(async move {
+            time::sleep(time_until_change).await;
             // We shouldnt panic here lets repeatedly try
             loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                time::sleep(Duration::from_secs(1)).await;
                 let txn = match build_transaction(
                     EPOCH_ADDRESS,
                     "signalEpochChange(string memory committeeMember):(bool)",
@@ -211,9 +210,9 @@ impl Consensus {
         loop {
             let reconfigure_future = self.reconfigure_notify.notified();
             let shutdown_future = self.shutdown_notify.notified();
-            tokio::pin!(shutdown_future);
-            tokio::pin!(reconfigure_future);
-            tokio::select! {
+            pin!(shutdown_future);
+            pin!(reconfigure_future);
+            select! {
                 _ = shutdown_future => {
                     break
                 }
@@ -236,7 +235,7 @@ impl Consensus {
     }
 }
 
-//Application Query Helpers
+// Application Query Helpers
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
         //Build transaction

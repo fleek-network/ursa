@@ -1,9 +1,8 @@
 use anyhow::{bail, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio::sync::Notify;
+use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::select;
 use tracing::warn;
 
 use narwhal_types::{Batch, Transaction};
@@ -73,7 +72,7 @@ impl Engine {
         self.init_chain()?;
 
         loop {
-            tokio::select! {
+            select! {
                 Some(batches) = self.rx_certificates.recv() => {
                     self.handle_cert(batches)?;
                 },

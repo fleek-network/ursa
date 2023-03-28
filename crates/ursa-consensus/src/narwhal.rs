@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::keys::LoadOrCreate;
@@ -88,7 +90,7 @@ impl NarwhalService {
         let name = self.arguments.primary_keypair.public().clone();
         let execution_state = Arc::new(state);
 
-        let epoch = self.committee.load().epoch();
+        let epoch = self.committee.epoch;
         info!("Starting NarwhalService for epoch {}", epoch);
 
         let mut running = false;
@@ -163,7 +165,7 @@ impl NarwhalService {
         }
 
         let now = Instant::now();
-        let epoch = self.committee.load().epoch();
+        let epoch = self.committee.epoch;
         info!("Shutting down Narwhal epoch {:?}", epoch);
 
         self.worker_node.shutdown().await;
@@ -180,7 +182,7 @@ impl NarwhalService {
 }
 
 impl NarwhalArgs {
-    //TODO(dalton): should this be renamed, maybe load_genesis?
+    // TODO(dalton): should this be renamed, maybe load_genesis?
     /// Load a service arguments from a raw configuration.
     pub fn load(config: ConsensusConfig) -> anyhow::Result<Self> {
         // Load or create all of the keys.

@@ -85,8 +85,6 @@ async fn run() -> Result<()> {
 
     let keypair = im.current();
 
-    //let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
-
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
 
@@ -128,7 +126,7 @@ async fn run() -> Result<()> {
     let mempool_port = mempool_address
         .iter()
         .find_map(|proto| match proto {
-            //Sui and Libp2p are using dif "MAJOR" version of multiaddr so we have to import and use the other one here
+            // Sui and Libp2p are using dif "MAJOR" version of multiaddr so we have to import and use the other one here
             multiaddr::Protocol::Tcp(port) => Some(port),
             _ => None,
         })
