@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use arrayref::array_ref;
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
@@ -42,18 +44,15 @@ pub const SNAPPY: u8 = 1;
 pub const GZIP: u8 = 1 << 2;
 pub const LZ4: u8 = 1 << 3;
 
-#[derive(Default)]
-pub struct UrsaCodec {}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Blake3Tree {}
 
 impl Blake3Tree {
-    fn to_bytes(&self) -> Bytes {
+    pub fn to_bytes(&self) -> Bytes {
         Bytes::from_static(b"blake3tree")
     }
 
-    fn from_bytes(_bytes: &mut BytesMut) -> Self {
+    pub fn from_bytes(_bytes: &mut BytesMut) -> Self {
         Self {}
     }
 }
@@ -101,14 +100,17 @@ pub enum UrsaFrame {
     /// [ TAG . blake3hash (32) ]
     /// size: 33 bytes
     ContentRequest { hash: Blake3CID },
-    /// [ TAG . compression (1) . signature (64) . proof length (8) . proof (..16384) . content length (8) . content (..262144) ]
+    /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) . [ proof .. ] . [ content .. ] ]
     /// size: 82 + proof len (max 16KB) + content len (max 256KB)
     ContentResponse {
         compression: u8,
+        proof_len: u64,
+        content_len: u64,
         signature: SchnorrSignature,
-        proof: Blake3Tree,
-        content: Bytes,
     },
+    /// Buffer contains a chunk of bytes initiated after the `UrsaCodec::read_buffer` method has been called.
+    /// It is not a full frame, and doesn't have a tag
+    Buffer(BytesMut),
     /// [ TAG . blake3hash (32) . u64 (8) . u16 (2) ]
     /// size: 43 bytes
     RangeRequest {
@@ -139,18 +141,19 @@ pub enum UrsaFrame {
 
 impl UrsaFrame {
     #[inline(always)]
-    pub fn tag(&self) -> u8 {
+    pub fn tag(&self) -> Option<u8> {
         match self {
-            Self::HandshakeRequest { .. } => HANDSHAKE_REQ_TAG,
-            Self::HandshakeResponse { .. } => HANDSHAKE_RES_TAG,
-            Self::ContentRequest { .. } => CONTENT_REQ_TAG,
-            Self::RangeRequest { .. } => CONTENT_RANGE_REQ_TAG,
-            Self::ContentResponse { .. } => CONTENT_RES_TAG,
-            Self::DecryptionKeyRequest { .. } => DECRYPTION_KEY_REQ_TAG,
-            Self::DecryptionKeyResponse { .. } => DECRYPTION_KEY_RES_TAG,
-            Self::UpdateEpochSignal(_) => UPDATE_EPOCH_SIGNAL_TAG,
-            Self::EndOfRequestSignal => END_OF_REQUEST_SIGNAL_TAG,
-            Self::TerminationSignal(_) => TERMINATATION_SIGNAL_TAG,
+            Self::HandshakeRequest { .. } => Some(HANDSHAKE_REQ_TAG),
+            Self::HandshakeResponse { .. } => Some(HANDSHAKE_RES_TAG),
+            Self::ContentRequest { .. } => Some(CONTENT_REQ_TAG),
+            Self::RangeRequest { .. } => Some(CONTENT_RANGE_REQ_TAG),
+            Self::ContentResponse { .. } => Some(CONTENT_RES_TAG),
+            Self::Buffer(_) => None,
+            Self::DecryptionKeyRequest { .. } => Some(DECRYPTION_KEY_REQ_TAG),
+            Self::DecryptionKeyResponse { .. } => Some(DECRYPTION_KEY_RES_TAG),
+            Self::UpdateEpochSignal(_) => Some(UPDATE_EPOCH_SIGNAL_TAG),
+            Self::EndOfRequestSignal => Some(END_OF_REQUEST_SIGNAL_TAG),
+            Self::TerminationSignal(_) => Some(TERMINATATION_SIGNAL_TAG),
         }
     }
 }
@@ -170,11 +173,28 @@ impl From<std::io::Error> for UrsaCodecError {
     }
 }
 
+#[derive(Default)]
+pub struct UrsaCodec {
+    take: usize,
+    chunk_size: usize,
+}
+
+impl UrsaCodec {
+    /// Instruct the codec to begin returning raw byte chunks (`UrsaFrame::Buffer`) until `size` is exhausted.
+    #[inline(always)]
+    pub fn read_buffer(&mut self, size: usize, chunk_size: usize) {
+        self.take = size;
+        self.chunk_size = chunk_size;
+    }
+}
+
 impl Encoder<UrsaFrame> for UrsaCodec {
     type Error = UrsaCodecError;
 
     fn encode(&mut self, event: UrsaFrame, buf: &mut BytesMut) -> Result<(), Self::Error> {
-        buf.put_u8(event.tag());
+        if let Some(tag) = event.tag() {
+            buf.put_u8(tag)
+        }
         match event {
             UrsaFrame::HandshakeRequest {
                 version,
@@ -209,22 +229,19 @@ impl Encoder<UrsaFrame> for UrsaCodec {
                 buf.put_slice(&hash);
             }
             UrsaFrame::ContentResponse {
-                proof,
                 compression,
+                proof_len,
+                content_len,
                 signature,
-                content,
             } => {
-                let proof = proof.to_bytes();
-                let proof_len = proof.len();
-                let content_len = content.len();
-                buf.reserve(67 + proof_len + content_len);
+                // reserve the length ahead of time for the proof and content
+                buf.reserve((81 + proof_len + content_len) as usize);
                 buf.put_u8(compression);
+                buf.put_u64(proof_len);
+                buf.put_u64(content_len);
                 buf.put_slice(&signature);
-                buf.put_u64(proof_len as u64);
-                buf.put(proof);
-                buf.put_u64(content_len as u64);
-                buf.put_slice(&content);
             }
+            UrsaFrame::Buffer(bytes) => buf.put(bytes),
             UrsaFrame::RangeRequest {
                 hash,
                 chunk_start,
@@ -265,6 +282,17 @@ impl Decoder for UrsaCodec {
             return Ok(None);
         }
 
+        // should we be reading a chunk right now?
+        if self.take > 0 {
+            let take = min(self.take, self.chunk_size);
+            return Ok(if len >= take {
+                self.take -= take;
+                Some(UrsaFrame::Buffer(src.split_to(take)))
+            } else {
+                None
+            });
+        }
+
         // first frame byte is the tag
         let tag = src[0];
         match tag {
@@ -282,14 +310,13 @@ impl Decoder for UrsaCodec {
                 let version = buf[5];
                 let supported_compression_bitmap = buf[6];
                 let lane = buf[7];
-                let mut pubkey = [0u8; 48];
-                pubkey.copy_from_slice(&buf[8..]);
+                let pubkey = *array_ref!(buf, 8, 48);
 
                 Ok(Some(UrsaFrame::HandshakeRequest {
                     version,
-                    pubkey,
                     supported_compression_bitmap,
                     lane,
+                    pubkey,
                 }))
             }
             HANDSHAKE_RES_TAG => {
@@ -299,11 +326,9 @@ impl Decoder for UrsaCodec {
 
                 let buf = src.split_to(44);
                 let lane = buf[1];
-                let mut epoch_bytes = [0u8; 8];
-                epoch_bytes.copy_from_slice(&buf[2..10]);
+                let epoch_bytes = *array_ref!(buf, 2, 8);
                 let epoch_nonce = u64::from_be_bytes(epoch_bytes);
-                let mut pubkey = [0u8; 33];
-                pubkey.copy_from_slice(&buf[10..43]);
+                let pubkey = *array_ref!(buf, 10, 33);
                 let last = match buf[43] {
                     0x80 => Some(LastLaneData {}),
                     0x00 => None,
@@ -323,8 +348,7 @@ impl Decoder for UrsaCodec {
                 }
 
                 let buf = src.split_to(33);
-                let mut hash = [0u8; 32];
-                hash.copy_from_slice(&buf[1..33]);
+                let hash = *array_ref!(buf, 1, 32);
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
@@ -338,6 +362,7 @@ impl Decoder for UrsaCodec {
                 let chunk_start_bytes = *array_ref!(buf, 33, 8);
                 let chunk_start = u64::from_be_bytes(chunk_start_bytes);
                 let chunks = u16::from_be_bytes([buf[41], buf[42]]);
+
                 Ok(Some(UrsaFrame::RangeRequest {
                     hash,
                     chunk_start,
@@ -345,40 +370,23 @@ impl Decoder for UrsaCodec {
                 }))
             }
             CONTENT_RES_TAG => {
-                if len < 74 {
+                if len < 82 {
                     return Ok(None);
                 }
 
-                let proof_len_bytes = *array_ref!(src, 66, 8);
-                let proof_len = u64::from_be_bytes(proof_len_bytes) as usize;
-
-                if len < 82 + proof_len {
-                    return Ok(None);
-                }
-
-                let content_len_bytes = *array_ref!(src, 74, 8);
-                let content_len = u64::from_be_bytes(content_len_bytes) as usize;
-
-                let len = src.len();
-                if len < 90 + proof_len + content_len {
-                    return Ok(None);
-                }
-
-                let compression = src[1];
-                let signature = *array_ref!(src, 2, 64);
-
-                let _ = src.split_to(82);
-                let mut proof_bytes = src.split_to(proof_len);
-                let proof = Blake3Tree::from_bytes(&mut proof_bytes);
-
-                let _ = src.split_to(8);
-                let content = src.split_to(content_len).freeze();
+                let buf = src.split_to(82);
+                let compression = buf[1];
+                let proof_len_bytes = *array_ref!(buf, 2, 8);
+                let proof_len = u64::from_be_bytes(proof_len_bytes);
+                let content_len_bytes = *array_ref!(buf, 10, 8);
+                let content_len = u64::from_be_bytes(content_len_bytes);
+                let signature = *array_ref!(buf, 18, 64);
 
                 Ok(Some(UrsaFrame::ContentResponse {
                     compression,
+                    proof_len,
+                    content_len,
                     signature,
-                    proof,
-                    content,
                 }))
             }
             DECRYPTION_KEY_REQ_TAG => {
@@ -504,15 +512,60 @@ mod tests {
 
     #[test]
     fn content_res() -> TResult {
+        // frame header decode
         run(
-                b"\x82\0\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\0\0\0\0\0\0\0\nblake3tree\0\0\0\0\0\0\0 \x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02",
+                b"\x82\0\0\0\0\0\0\0\0@\0\0\0\0\0\0\0@\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
                 UrsaFrame::ContentResponse {
                     compression: 0,
                     signature: [1u8; 64],
-                    proof: Blake3Tree {},
-                    content: Bytes::from([2u8; 32].as_slice()),
+                    proof_len: 64,
+                    content_len: 64,
                 },
-            )
+            )?;
+
+        // test frame chunk decode
+        let mut codec = UrsaCodec::default();
+        let mut buf = BytesMut::new();
+        buf.put_slice(&[1u8; 64]); // proof
+        buf.put_slice(&[2u8; 64]); // content
+
+        // decode proof stream
+        codec.read_buffer(64, 16);
+        let mut count = 0;
+        loop {
+            match codec.decode(&mut buf) {
+                Ok(None) => continue,
+                Ok(Some(UrsaFrame::Buffer(data))) => {
+                    count += 1;
+                    assert_eq!(data.len(), 16);
+                    assert_eq!(data, BytesMut::from([1u8; 16].as_slice()));
+                }
+                a => panic!("{a:?}"),
+            }
+            if count > 3 {
+                break;
+            }
+        }
+
+        // decode content stream
+        codec.read_buffer(64, 16);
+        count = 0;
+        loop {
+            match codec.decode(&mut buf) {
+                Ok(None) => continue,
+                Ok(Some(UrsaFrame::Buffer(data))) => {
+                    count += 1;
+                    assert_eq!(data.len(), 16);
+                    assert_eq!(data, BytesMut::from([2u8; 16].as_slice()));
+                }
+                a => panic!("{a:?}"),
+            }
+            if count > 3 {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     #[test]
