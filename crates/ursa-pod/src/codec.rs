@@ -328,9 +328,6 @@ impl Decoder for UrsaCodec {
                     return Ok(None);
                 }
 
-                let compression = src[1];
-                let signature = *array_ref!(src, 2, 64);
-
                 let proof_len_bytes = *array_ref!(src, 66, 8);
                 let proof_len = u64::from_be_bytes(proof_len_bytes) as usize;
 
@@ -345,6 +342,9 @@ impl Decoder for UrsaCodec {
                 if len < 90 + proof_len + content_len {
                     return Ok(None);
                 }
+
+                let compression = src[1];
+                let signature = *array_ref!(src, 2, 64);
 
                 let _ = src.split_to(82);
                 let mut proof_bytes = src.split_to(proof_len);
