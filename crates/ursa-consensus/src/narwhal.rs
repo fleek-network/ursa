@@ -26,8 +26,8 @@ pub struct NarwhalService {
     store: NodeStorage,
     primary: PrimaryNode,
     worker_node: WorkerNode,
-    committee: Arc<ArcSwap<Committee>>,
-    worker_cache: Arc<ArcSwap<WorkerCache>>,
+    committee:Committee,
+    worker_cache: WorkerCache,
     status: Mutex<Status>,
 }
 
@@ -52,8 +52,8 @@ impl NarwhalService {
     pub fn new(
         arguments: NarwhalArgs,
         store: NodeStorage,
-        committee: Arc<ArcSwap<Committee>>,
-        worker_cache: Arc<ArcSwap<WorkerCache>>,
+        committee: Committee,
+        worker_cache: WorkerCache,
         parameters: Parameters,
     ) -> Self {
         let primary =
