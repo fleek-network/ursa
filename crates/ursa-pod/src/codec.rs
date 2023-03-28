@@ -1,7 +1,7 @@
 use std::cmp::min;
 
 use arrayref::array_ref;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 pub type EpochNonce = u64;
@@ -63,6 +63,56 @@ impl Reason {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LastLaneData {}
 
+#[repr(u8)]
+pub enum FrameTag {
+    HandshakeRequest = HANDSHAKE_REQ_TAG,
+    HandshakeResponse = HANDSHAKE_RES_TAG,
+    ContentRequest = CONTENT_REQ_TAG,
+    ContentRangeRequest = CONTENT_RANGE_REQ_TAG,
+    ContentResponse = CONTENT_RES_TAG,
+    DecryptionKeyRequest = DECRYPTION_KEY_REQ_TAG,
+    DecryptionKeyResponse = DECRYPTION_KEY_RES_TAG,
+    UpdateEpochSignal = UPDATE_EPOCH_SIGNAL_TAG,
+    EndOfRequestSignal = END_OF_REQUEST_SIGNAL_TAG,
+    TerminationSignal = TERMINATATION_SIGNAL_TAG,
+}
+
+impl FrameTag {
+    pub fn size_hint(&self) -> usize {
+        match self {
+            FrameTag::HandshakeRequest => 56,
+            FrameTag::HandshakeResponse => 43,
+            FrameTag::ContentRequest => 33,
+            FrameTag::ContentResponse => 82, // header only
+            FrameTag::ContentRangeRequest => 43,
+            FrameTag::DecryptionKeyRequest => 97,
+            FrameTag::DecryptionKeyResponse => 34,
+            FrameTag::UpdateEpochSignal => 9,
+            FrameTag::EndOfRequestSignal => 1,
+            FrameTag::TerminationSignal => 2,
+        }
+    }
+}
+
+impl TryFrom<u8> for FrameTag {
+    type Error = UrsaCodecError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            HANDSHAKE_REQ_TAG => Ok(Self::HandshakeRequest),
+            HANDSHAKE_RES_TAG => Ok(Self::HandshakeResponse),
+            CONTENT_REQ_TAG => Ok(Self::ContentRequest),
+            CONTENT_RES_TAG => Ok(Self::ContentResponse),
+            CONTENT_RANGE_REQ_TAG => Ok(Self::ContentRangeRequest),
+            DECRYPTION_KEY_REQ_TAG => Ok(Self::DecryptionKeyRequest),
+            DECRYPTION_KEY_RES_TAG => Ok(Self::DecryptionKeyResponse),
+            UPDATE_EPOCH_SIGNAL_TAG => Ok(Self::UpdateEpochSignal),
+            END_OF_REQUEST_SIGNAL_TAG => Ok(Self::EndOfRequestSignal),
+            TERMINATATION_SIGNAL_TAG => Ok(Self::TerminationSignal),
+            t => Err(UrsaCodecError::InvalidTag(t)),
+        }
+    }
+}
+
 /// Frame variants for different requests and responses
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UrsaFrame {
@@ -86,7 +136,7 @@ pub enum UrsaFrame {
     /// [ TAG . blake3hash (32) ]
     /// size: 33 bytes
     ContentRequest { hash: Blake3CID },
-    /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) . [ proof .. ] . [ content .. ] ]
+    /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) ] [ proof .. ] [ content .. ]
     /// size: 82 + proof len (max 16KB) + content len (max 256KB)
     ContentResponse {
         compression: u8,
@@ -99,7 +149,7 @@ pub enum UrsaFrame {
     Buffer(BytesMut),
     /// [ TAG . blake3hash (32) . u64 (8) . u16 (2) ]
     /// size: 43 bytes
-    RangeRequest {
+    ContentRangeRequest {
         hash: Blake3CID,
         chunk_start: u64,
         chunks: u16,
@@ -127,19 +177,19 @@ pub enum UrsaFrame {
 
 impl UrsaFrame {
     #[inline(always)]
-    pub fn tag(&self) -> Option<u8> {
+    pub fn tag(&self) -> Option<FrameTag> {
         match self {
-            Self::HandshakeRequest { .. } => Some(HANDSHAKE_REQ_TAG),
-            Self::HandshakeResponse { .. } => Some(HANDSHAKE_RES_TAG),
-            Self::ContentRequest { .. } => Some(CONTENT_REQ_TAG),
-            Self::RangeRequest { .. } => Some(CONTENT_RANGE_REQ_TAG),
-            Self::ContentResponse { .. } => Some(CONTENT_RES_TAG),
+            Self::HandshakeRequest { .. } => Some(FrameTag::HandshakeRequest),
+            Self::HandshakeResponse { .. } => Some(FrameTag::HandshakeResponse),
+            Self::ContentRequest { .. } => Some(FrameTag::ContentRequest),
+            Self::ContentRangeRequest { .. } => Some(FrameTag::ContentRangeRequest),
+            Self::ContentResponse { .. } => Some(FrameTag::ContentResponse),
+            Self::DecryptionKeyRequest { .. } => Some(FrameTag::DecryptionKeyRequest),
+            Self::DecryptionKeyResponse { .. } => Some(FrameTag::DecryptionKeyResponse),
+            Self::UpdateEpochSignal(_) => Some(FrameTag::UpdateEpochSignal),
+            Self::EndOfRequestSignal => Some(FrameTag::EndOfRequestSignal),
+            Self::TerminationSignal(_) => Some(FrameTag::TerminationSignal),
             Self::Buffer(_) => None,
-            Self::DecryptionKeyRequest { .. } => Some(DECRYPTION_KEY_REQ_TAG),
-            Self::DecryptionKeyResponse { .. } => Some(DECRYPTION_KEY_RES_TAG),
-            Self::UpdateEpochSignal(_) => Some(UPDATE_EPOCH_SIGNAL_TAG),
-            Self::EndOfRequestSignal => Some(END_OF_REQUEST_SIGNAL_TAG),
-            Self::TerminationSignal(_) => Some(TERMINATATION_SIGNAL_TAG),
         }
     }
 }
@@ -179,81 +229,90 @@ impl Encoder<UrsaFrame> for UrsaCodec {
 
     fn encode(&mut self, event: UrsaFrame, buf: &mut BytesMut) -> Result<(), Self::Error> {
         if let Some(tag) = event.tag() {
-            buf.put_u8(tag)
-        }
-        match event {
-            UrsaFrame::HandshakeRequest {
-                version,
-                pubkey,
-                supported_compression_bitmap,
-                lane,
-            } => {
-                buf.reserve(55);
-                buf.put_slice(&NETWORK);
-                buf.put_u8(version);
-                buf.put_u8(supported_compression_bitmap);
-                buf.put_u8(lane);
-                buf.put_slice(&pubkey);
-            }
-            UrsaFrame::HandshakeResponse {
-                pubkey,
-                epoch_nonce,
-                lane,
-                last,
-            } => {
-                let last = match last {
-                    None => [0x00].as_slice(),
-                    Some(_data) => [0x80].as_slice(),
-                };
-                buf.reserve(42 + last.len());
-                buf.put_u8(lane);
-                buf.put_u64(epoch_nonce);
-                buf.put_slice(&pubkey);
-                buf.put_slice(last);
-            }
-            UrsaFrame::ContentRequest { hash } => {
-                buf.put_slice(&hash);
-            }
-            UrsaFrame::ContentResponse {
-                compression,
-                proof_len,
-                content_len,
-                signature,
-            } => {
-                // reserve the length ahead of time for the proof and content
-                buf.reserve((81 + proof_len + content_len) as usize);
-                buf.put_u8(compression);
-                buf.put_u64(proof_len);
-                buf.put_u64(content_len);
-                buf.put_slice(&signature);
-            }
-            UrsaFrame::Buffer(bytes) => buf.put(bytes),
-            UrsaFrame::RangeRequest {
-                hash,
-                chunk_start,
-                chunks,
-            } => {
-                buf.put_slice(&hash);
-                buf.put_u64(chunk_start);
-                buf.put_u16(chunks);
-            }
-            UrsaFrame::UpdateEpochSignal(nonce) => {
-                buf.put_u64(nonce);
-            }
-            UrsaFrame::DecryptionKeyRequest {
-                delivery_acknowledgement,
-            } => {
-                buf.put_slice(&delivery_acknowledgement);
-            }
-            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
-                buf.put_slice(&decryption_key);
-            }
-            UrsaFrame::EndOfRequestSignal => {}
-            UrsaFrame::TerminationSignal(reason) => {
-                buf.put_u8(reason as u8);
-            }
-        }
+            let size_hint = tag.size_hint();
+            buf.reserve(size_hint);
+            buf.put_u8(tag as u8);
 
+            match event {
+                UrsaFrame::HandshakeRequest {
+                    version,
+                    pubkey,
+                    supported_compression_bitmap,
+                    lane,
+                } => {
+                    buf.put_slice(&NETWORK);
+                    buf.put_u8(version);
+                    buf.put_u8(supported_compression_bitmap);
+                    buf.put_u8(lane);
+                    buf.put_slice(&pubkey);
+                }
+                UrsaFrame::HandshakeResponse {
+                    pubkey,
+                    epoch_nonce,
+                    lane,
+                    last,
+                } => {
+                    let last = match last {
+                        None => [0x00].as_slice(),
+                        Some(_data) => [0x80].as_slice(),
+                    };
+                    buf.reserve(last.len());
+                    buf.put_u8(lane);
+                    buf.put_u64(epoch_nonce);
+                    buf.put_slice(&pubkey);
+                    buf.put_slice(last);
+                }
+                UrsaFrame::ContentRequest { hash } => {
+                    buf.put_slice(&hash);
+                }
+                UrsaFrame::ContentResponse {
+                    compression,
+                    proof_len,
+                    content_len,
+                    signature,
+                } => {
+                    // allocate the length ahead of time for the proof and content
+                    buf.reserve((proof_len + content_len) as usize);
+                    buf.put_u8(compression);
+                    buf.put_u64(proof_len);
+                    buf.put_u64(content_len);
+                    buf.put_slice(&signature);
+                }
+                UrsaFrame::ContentRangeRequest {
+                    hash,
+                    chunk_start,
+                    chunks,
+                } => {
+                    buf.put_slice(&hash);
+                    buf.put_u64(chunk_start);
+                    buf.put_u16(chunks);
+                }
+                UrsaFrame::UpdateEpochSignal(nonce) => {
+                    buf.put_u64(nonce);
+                }
+                UrsaFrame::DecryptionKeyRequest {
+                    delivery_acknowledgement,
+                } => {
+                    buf.put_slice(&delivery_acknowledgement);
+                }
+                UrsaFrame::DecryptionKeyResponse { decryption_key } => {
+                    buf.put_slice(&decryption_key);
+                }
+                UrsaFrame::EndOfRequestSignal => {}
+                UrsaFrame::TerminationSignal(reason) => {
+                    buf.put_u8(reason as u8);
+                }
+                UrsaFrame::Buffer(_) => unreachable!(),
+            }
+        } else {
+            match event {
+                UrsaFrame::Buffer(bytes) => {
+                    buf.reserve(bytes.len());
+                    buf.put(bytes)
+                }
+                _ => unreachable!(),
+            }
+        }
         Ok(())
     }
 }
@@ -280,13 +339,12 @@ impl Decoder for UrsaCodec {
         }
 
         // first frame byte is the tag
-        let tag = src[0];
+        let (size_hint, tag) = FrameTag::try_from(src[0]).map(|t| (t.size_hint(), t))?;
+        if len < size_hint {
+            return Ok(None);
+        }
         match tag {
-            HANDSHAKE_REQ_TAG => {
-                if len < 56 {
-                    return Ok(None);
-                }
-
+            FrameTag::HandshakeRequest => {
                 let buf = src.split_to(56);
                 let network = &buf[1..5];
                 if network != NETWORK {
@@ -305,11 +363,7 @@ impl Decoder for UrsaCodec {
                     pubkey,
                 }))
             }
-            HANDSHAKE_RES_TAG => {
-                if len < 44 {
-                    return Ok(None);
-                }
-
+            FrameTag::HandshakeResponse => {
                 let buf = src.split_to(44);
                 let lane = buf[1];
                 let epoch_bytes = *array_ref!(buf, 2, 8);
@@ -328,38 +382,13 @@ impl Decoder for UrsaCodec {
                     last,
                 }))
             }
-            CONTENT_REQ_TAG => {
-                if len < 33 {
-                    return Ok(None);
-                }
-
+            FrameTag::ContentRequest => {
                 let buf = src.split_to(33);
                 let hash = *array_ref!(buf, 1, 32);
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
-            CONTENT_RANGE_REQ_TAG => {
-                if len < 43 {
-                    return Ok(None);
-                }
-
-                let buf = src.split_to(43);
-                let hash = *array_ref!(buf, 1, 32);
-                let chunk_start_bytes = *array_ref!(buf, 33, 8);
-                let chunk_start = u64::from_be_bytes(chunk_start_bytes);
-                let chunks = u16::from_be_bytes([buf[41], buf[42]]);
-
-                Ok(Some(UrsaFrame::RangeRequest {
-                    hash,
-                    chunk_start,
-                    chunks,
-                }))
-            }
-            CONTENT_RES_TAG => {
-                if len < 82 {
-                    return Ok(None);
-                }
-
+            FrameTag::ContentResponse => {
                 let buf = src.split_to(82);
                 let compression = buf[1];
                 let proof_len_bytes = *array_ref!(buf, 2, 8);
@@ -375,11 +404,20 @@ impl Decoder for UrsaCodec {
                     signature,
                 }))
             }
-            DECRYPTION_KEY_REQ_TAG => {
-                if len < 97 {
-                    return Ok(None);
-                }
+            FrameTag::ContentRangeRequest => {
+                let buf = src.split_to(43);
+                let hash = *array_ref!(buf, 1, 32);
+                let chunk_start_bytes = *array_ref!(buf, 33, 8);
+                let chunk_start = u64::from_be_bytes(chunk_start_bytes);
+                let chunks = u16::from_be_bytes([buf[41], buf[42]]);
 
+                Ok(Some(UrsaFrame::ContentRangeRequest {
+                    hash,
+                    chunk_start,
+                    chunks,
+                }))
+            }
+            FrameTag::DecryptionKeyRequest => {
                 let buf = src.split_to(97);
                 let delivery_acknowledgement = *array_ref!(buf, 1, 96);
 
@@ -387,32 +425,21 @@ impl Decoder for UrsaCodec {
                     delivery_acknowledgement,
                 }))
             }
-            DECRYPTION_KEY_RES_TAG => {
-                if len < 34 {
-                    return Ok(None);
-                }
-
+            FrameTag::DecryptionKeyResponse => {
                 let buf = src.split_to(34);
                 let decryption_key = *array_ref!(buf, 1, 33);
 
                 Ok(Some(UrsaFrame::DecryptionKeyResponse { decryption_key }))
             }
-            UPDATE_EPOCH_SIGNAL_TAG => {
-                if len < 9 {
-                    return Ok(None);
-                }
-
+            FrameTag::UpdateEpochSignal => {
                 let buf = src.split_to(9);
                 let epoch_bytes = *array_ref!(buf, 1, 8);
                 let epoch_nonce = u64::from_be_bytes(epoch_bytes);
 
                 Ok(Some(UrsaFrame::UpdateEpochSignal(epoch_nonce)))
             }
-            TERMINATATION_SIGNAL_TAG => {
-                if len < 2 {
-                    return Ok(None);
-                }
-
+            FrameTag::EndOfRequestSignal => Ok(Some(UrsaFrame::EndOfRequestSignal)),
+            FrameTag::TerminationSignal => {
                 let buf = src.split_to(2);
                 let byte = buf[1];
 
@@ -422,7 +449,6 @@ impl Decoder for UrsaCodec {
                     Err(UrsaCodecError::InvalidReason(byte))
                 }
             }
-            t => Err(UrsaCodecError::InvalidTag(t)),
         }
     }
 }
@@ -488,7 +514,7 @@ mod tests {
     fn content_range_req() -> TResult {
         run(
                 b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x02",
-                UrsaFrame::RangeRequest {
+                UrsaFrame::ContentRangeRequest {
                     hash: [0u8; 32],
                     chunk_start: 1u64,
                     chunks: 2u16,
