@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::keys::LoadOrCreate;
 use crate::{config::ConsensusConfig, validator::Validator};
-use arc_swap::ArcSwap;
 use fastcrypto::traits::KeyPair as _;
 use multiaddr::Multiaddr;
 use mysten_metrics::RegistryService;
@@ -13,7 +12,6 @@ use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStora
 use prometheus::Registry;
 use rand::thread_rng;
 use resolve_path::PathResolveExt;
-use std::sync::Arc;
 use tokio::{sync::Mutex, time::Instant};
 use tracing::{error, info};
 
