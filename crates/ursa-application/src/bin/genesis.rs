@@ -1,19 +1,21 @@
-use ethers::abi::{AbiEncode};
-use ethers::prelude:: Address;
-use ethers::prelude::{U256 as UInt256};
+use ethers::abi::AbiEncode;
+use ethers::prelude::Address;
+use ethers::prelude::U256 as UInt256;
 use ethers::types::Bytes;
-use std::{env,fs};
 use std::time::SystemTime;
+use std::{env, fs};
 use ursa_application::genesis::Genesis;
 use ursa_utils::contract_bindings::epoch::{EpochCalls, InitializeCall};
-use ursa_utils::contract_bindings::node_registry::{NodeInfo, InitializeCall as RegistryInitCall,NodeRegistryCalls};
+use ursa_utils::contract_bindings::node_registry::{
+    InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
+};
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    let epoch_time =  match args.get(1){
+    let epoch_time = match args.get(1) {
         Some(time) => time,
-        None => "300000"
+        None => "300000",
     };
     let registry_address: Address = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
         .parse()
@@ -84,5 +86,11 @@ async fn main() {
     genesis.registry.init_params = Some(Bytes::from(registry_bytes));
 
     let genesis_toml = toml::to_string(&genesis).unwrap();
-    fs::write(env::current_dir().unwrap().join("crates/ursa-application/genesis.toml"), genesis_toml).unwrap();
+    fs::write(
+        env::current_dir()
+            .unwrap()
+            .join("crates/ursa-application/genesis.toml"),
+        genesis_toml,
+    )
+    .unwrap();
 }

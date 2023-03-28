@@ -1,5 +1,5 @@
 use crate::contract_bindings::epoch::{
-    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn
+    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use ethers::{

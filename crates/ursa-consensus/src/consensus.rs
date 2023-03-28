@@ -144,8 +144,7 @@ impl Consensus {
 
         service.start(self.execution_state.clone()).await;
 
-            *self.epoch_state.lock().await = Some(EpochState { narwhal: service })
-        
+        *self.epoch_state.lock().await = Some(EpochState { narwhal: service })
     }
 
     async fn move_to_next_epoch(&self) {
