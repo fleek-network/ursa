@@ -52,7 +52,11 @@ contract MockEpoch {
         initialized = true;
     }
 
-    function getCurrentEpochInfo() public view returns (uint256 _epoch, uint256 _currentEpochEndMs, CommitteeMember[] memory _committeeMembers) {
+    function getCurrentEpochInfo()
+        public
+        view
+        returns (uint256 _epoch, uint256 _currentEpochEndMs, CommitteeMember[] memory _committeeMembers)
+    {
         _committeeMembers = new CommitteeMember[](currentCommitteeSize);
         for (uint256 i; i < currentCommitteeSize;) {
             MockNodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);

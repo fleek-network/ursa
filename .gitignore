@@ -31,5 +31,6 @@ car_files*
 **/grafana/file-collections
 
 # forge
+cache/
 contracts/cache/
 contracts/out/
