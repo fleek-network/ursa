@@ -83,6 +83,7 @@ pub struct LastLaneData {
 
 /// Frame tags
 #[repr(u8)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FrameTag {
     HandshakeRequest = HANDSHAKE_REQ_TAG,
     HandshakeResponse = HANDSHAKE_RES_TAG,
@@ -288,6 +289,7 @@ pub enum UrsaCodecError {
     InvalidNetwork,
     InvalidTag(u8),
     InvalidReason(u8),
+    UnexpectedFrame(FrameTag),
     Io(std::io::Error),
     Unknown,
 }

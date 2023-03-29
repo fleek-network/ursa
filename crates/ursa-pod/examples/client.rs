@@ -1,30 +1,33 @@
-use std::error::Error;
-
+use bytes::BytesMut;
 use futures::SinkExt;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
-use tracing::{info, Level};
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
-use ursa_pod::codec::{UrsaCodec, UrsaFrame};
+use ursa_pod::codec::{Blake3CID, UrsaCodec, UrsaCodecError, UrsaFrame};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    UfdpClient::new("127.0.0.1:8080").await?;
+    let mut client = UfdpClient::new("127.0.0.1:8080").await?;
+
+    let bytes = client.request([1; 32]).await?;
+    println!("{}", String::from_utf8_lossy(&bytes));
+
     Ok(())
 }
 
 pub struct UfdpClient {
-    _transport: Framed<TcpStream, UrsaCodec>,
+    transport: Framed<TcpStream, UrsaCodec>,
 }
 
 impl UfdpClient {
-    pub async fn new<T: ToSocketAddrs>(dest: T) -> Result<Self, Box<dyn Error>> {
+    pub async fn new<T: ToSocketAddrs>(dest: T) -> Result<Self, UrsaCodecError> {
         let codec = UrsaCodec::default();
         let stream = TcpStream::connect(dest).await?;
         let mut transport = Framed::new(stream, codec);
@@ -46,12 +49,46 @@ impl UfdpClient {
                 UrsaFrame::HandshakeResponse { .. } => {
                     info!("received handshake response from server: {frame:?}");
                 }
-                _ => panic!("unexpected frame"),
+                f => return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
             }
         }
 
-        Ok(Self {
-            _transport: transport,
-        })
+        Ok(Self { transport })
+    }
+
+    pub async fn request(&mut self, hash: Blake3CID) -> Result<BytesMut, UrsaCodecError> {
+        self.transport
+            .send(UrsaFrame::ContentRequest { hash })
+            .await
+            .expect("content request");
+
+        match self.transport.next().await.expect("content response")? {
+            UrsaFrame::ContentResponse {
+                content_len,
+                proof_len,
+                ..
+            } => {
+                info!("received content response");
+
+                debug!("streaming proof ({proof_len})");
+                if proof_len != 0 {
+                    unimplemented!()
+                }
+
+                debug!("streaming content ({content_len})");
+                if content_len != 0 {
+                    self.transport
+                        .codec_mut()
+                        .read_buffer(content_len as usize, 16384);
+                    match self.transport.next().await.expect("content buffer")? {
+                        UrsaFrame::Buffer(bytes) => Ok(bytes),
+                        f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
+                    }
+                } else {
+                    Err(UrsaCodecError::Unknown)
+                }
+            }
+            f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
+        }
     }
 }
