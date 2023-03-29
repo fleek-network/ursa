@@ -3,16 +3,10 @@ use bytes::{BufMut, BytesMut};
 use consts::*;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub type EpochNonce = u64;
-pub type Secp256k1AffinePoint = [u8; 33];
-
-pub type Blake3CID = [u8; 32];
-
-pub type Secp256k1PublicKey = Secp256k1AffinePoint;
-pub type SchnorrSignature = [u8; 64];
-
-pub type BLSPublicKey = [u8; 48];
-pub type BLSSignature = [u8; 96];
+use crate::types::{
+    BLSPublicKey, BLSSignature, Blake3CID, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
+    Secp256k1PublicKey,
+};
 
 /// Constant values for the codec.
 pub mod consts {
