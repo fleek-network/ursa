@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use bytes::BytesMut;
 use futures::SinkExt;
 use tokio::io::{AsyncRead, AsyncWrite};
