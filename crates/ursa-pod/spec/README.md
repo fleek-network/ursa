@@ -143,9 +143,12 @@ as the DST parameter.
 ### Block Encryption
 
 Based on the requirements, we needed a very efficient cryptographically secure symmetric encryption, and since
-[128-bit security is sufficient](https://eprint.iacr.org/2019/1492.pdf) for our use case, the decision is to use *Rabbit* cipher which only uses
-arithmetic instructions and is very efficient, we use the algorithm defined in [RFC-4503](https://www.rfc-editor.org/rfc/rfc4503) as a black box,
-this requires a 128-bit key and 64-bit IV, which we drive by truncating a Blake3 hash to 192-bit.
+[128-bit security is sufficient](https://eprint.iacr.org/2019/1492.pdf) for our use case, the decision is to use 
+[HC-128](https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf) which was found to perform the best during
+the benchmarks.
+
+The `hc-128` cipher, takes as an input one `128-bit` key and another `128-bit` IV, which is in total `256-bit`,
+we provide this input from a blake3 hash.
 
 The hash function uses the globally defined and unique DST `FLEEK_NETWORK_UFDP_HASH_SYMMETRIC_KEY`, and we hash the compressed SEC1 encoding of
 the `AffinePoint` obtained by multiplying the ephemeral secret key of the node with the point which we have obtained in the previous step by
@@ -161,8 +164,8 @@ let encryption_key = secret_key * RequestChunkInfo::hash_to_curve();
 let encoded_point = encryption_key.to_affine().to_encoded_point(true);
 let bytes = blake3::keyed_hash(BLAKE3_KEY, encoded_point.as_bytes());
 
-let rabbit_key: [u8; 16] = bytes[0..16];
-let rabbit_iv: [u8; 8] = bytes[16..24];
+let hc_key: [u8; 16] = bytes[0..16];
+let hc_iv: [u8; 16] = bytes[16..32];
 ```
 
 ### Block Verification
