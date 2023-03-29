@@ -30,6 +30,7 @@ impl UfdpServer {
                     info!("{request:?}");
                     match request {
                         Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
+                            info!("Handshake received, sending response");
                             transport
                                 .send(UrsaFrame::HandshakeResponse {
                                     pubkey: [2; 33],
