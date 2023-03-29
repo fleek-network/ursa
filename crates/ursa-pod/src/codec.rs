@@ -1,5 +1,3 @@
-use std::cmp::min;
-
 use arrayref::array_ref;
 use bytes::{BufMut, BytesMut};
 use consts::*;
@@ -99,6 +97,7 @@ pub enum FrameTag {
 }
 
 impl FrameTag {
+    #[inline(always)]
     pub fn size_hint(&self) -> usize {
         match self {
             FrameTag::HandshakeRequest => 56,
@@ -117,6 +116,8 @@ impl FrameTag {
 
 impl TryFrom<u8> for FrameTag {
     type Error = UrsaCodecError;
+
+    #[inline(always)]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             HANDSHAKE_REQ_TAG => Ok(Self::HandshakeRequest),
@@ -207,14 +208,14 @@ pub enum UrsaFrame {
         chunks: u16,
     },
     /// Client request for a decryption key.
-    /// The BLS delivery acknowledgement is batched and submitted by the node for rewards
+    /// The BLS delivery acknowledgment is batched and submitted by the node for rewards
     ///
     /// ```text
     /// [ TAG . bls signature (96) ]
     /// ```
     /// size: 97 bytes
     DecryptionKeyRequest {
-        delivery_acknowledgement: BLSSignature,
+        delivery_acknowledgment: BLSSignature,
     },
     /// Node response for a decryption key.
     /// The client will use the point to decrypt their data and use it.
@@ -227,7 +228,7 @@ pub enum UrsaFrame {
         decryption_key: Secp256k1AffinePoint,
     },
     /// Signal from the node an epoch has changed during a connection.
-    /// Clients should sign the next delivery acknowledgements with this new epoch.
+    /// Clients should sign the next delivery acknowledgments with this new epoch.
     ///
     /// ```text
     /// [ TAG . epoch nonce (8) ]
@@ -251,6 +252,7 @@ pub enum UrsaFrame {
 }
 
 impl UrsaFrame {
+    /// Return the frame's tag or `None` if the frame is a `Buffer`.
     #[inline(always)]
     pub fn tag(&self) -> Option<FrameTag> {
         match self {
@@ -265,6 +267,18 @@ impl UrsaFrame {
             Self::EndOfRequestSignal => Some(FrameTag::EndOfRequestSignal),
             Self::TerminationSignal(_) => Some(FrameTag::TerminationSignal),
             Self::Buffer(_) => None,
+        }
+    }
+
+    /// Return an estimation of the number of bytes this frame will need.
+    #[inline]
+    pub fn size_hint(&self) -> usize {
+        match self {
+            Self::Buffer(buffer) => buffer.len(),
+            // SAFETY: unwrap is safe since the only time `tag` returns `None`
+            // is when we have a `Self::Buffer` which we have already taken
+            // care of.
+            _ => self.tag().unwrap().size_hint(),
         }
     }
 }
@@ -304,95 +318,88 @@ impl Encoder<UrsaFrame> for UrsaCodec {
     type Error = UrsaCodecError;
 
     fn encode(&mut self, event: UrsaFrame, buf: &mut BytesMut) -> Result<(), Self::Error> {
+        buf.reserve(event.size_hint());
+
         if let Some(tag) = event.tag() {
-            let size_hint = tag.size_hint();
-            buf.reserve(size_hint);
             buf.put_u8(tag as u8);
+        }
 
-            match event {
-                UrsaFrame::HandshakeRequest {
-                    version,
-                    pubkey,
-                    supported_compression_bitmap,
-                    lane,
-                } => {
-                    buf.put_slice(&NETWORK);
-                    buf.put_u8(version);
-                    buf.put_u8(supported_compression_bitmap);
-                    buf.put_u8(lane);
-                    buf.put_slice(&pubkey);
-                }
-                UrsaFrame::HandshakeResponse {
-                    pubkey,
-                    epoch_nonce,
-                    lane,
-                    last,
-                } => {
-                    buf.put_u8(lane);
-                    buf.put_u64(epoch_nonce);
-                    buf.put_slice(&pubkey);
+        match event {
+            UrsaFrame::HandshakeRequest {
+                version,
+                pubkey,
+                supported_compression_bitmap,
+                lane,
+            } => {
+                buf.put_slice(&NETWORK);
+                buf.put_u8(version);
+                buf.put_u8(supported_compression_bitmap);
+                buf.put_u8(lane);
+                buf.put_slice(&pubkey);
+            }
+            UrsaFrame::HandshakeResponse {
+                pubkey,
+                epoch_nonce,
+                lane,
+                last,
+            } => {
+                buf.put_u8(lane);
+                buf.put_u64(epoch_nonce);
+                buf.put_slice(&pubkey);
 
-                    match last {
-                        None => buf.put_u8(0x00),
-                        Some(data) => {
-                            buf.reserve(104);
-                            buf.put_u8(0x80);
-                            buf.put_u64(data.bytes);
-                            buf.put_slice(&data.signature);
-                        }
+                match last {
+                    None => buf.put_u8(0x00),
+                    Some(data) => {
+                        buf.reserve(104);
+                        buf.put_u8(0x80);
+                        buf.put_u64(data.bytes);
+                        buf.put_slice(&data.signature);
                     }
                 }
-                UrsaFrame::ContentRequest { hash } => {
-                    buf.put_slice(&hash);
-                }
-                UrsaFrame::ContentResponse {
-                    compression,
-                    proof_len,
-                    content_len,
-                    signature,
-                } => {
-                    // allocate the length ahead of time for the proof and content
-                    buf.reserve((proof_len + content_len) as usize);
-                    buf.put_u8(compression);
-                    buf.put_u64(proof_len);
-                    buf.put_u64(content_len);
-                    buf.put_slice(&signature);
-                }
-                UrsaFrame::ContentRangeRequest {
-                    hash,
-                    chunk_start,
-                    chunks,
-                } => {
-                    buf.put_slice(&hash);
-                    buf.put_u64(chunk_start);
-                    buf.put_u16(chunks);
-                }
-                UrsaFrame::UpdateEpochSignal(nonce) => {
-                    buf.put_u64(nonce);
-                }
-                UrsaFrame::DecryptionKeyRequest {
-                    delivery_acknowledgement,
-                } => {
-                    buf.put_slice(&delivery_acknowledgement);
-                }
-                UrsaFrame::DecryptionKeyResponse { decryption_key } => {
-                    buf.put_slice(&decryption_key);
-                }
-                UrsaFrame::EndOfRequestSignal => {}
-                UrsaFrame::TerminationSignal(reason) => {
-                    buf.put_u8(reason as u8);
-                }
-                UrsaFrame::Buffer(_) => unreachable!(),
             }
-        } else {
-            match event {
-                UrsaFrame::Buffer(bytes) => {
-                    buf.reserve(bytes.len());
-                    buf.put(bytes)
-                }
-                _ => unreachable!(),
+            UrsaFrame::ContentRequest { hash } => {
+                buf.put_slice(&hash);
+            }
+            UrsaFrame::ContentResponse {
+                compression,
+                proof_len,
+                content_len,
+                signature,
+            } => {
+                buf.put_u8(compression);
+                buf.put_u64(proof_len);
+                buf.put_u64(content_len);
+                buf.put_slice(&signature);
+            }
+            UrsaFrame::ContentRangeRequest {
+                hash,
+                chunk_start,
+                chunks,
+            } => {
+                buf.put_slice(&hash);
+                buf.put_u64(chunk_start);
+                buf.put_u16(chunks);
+            }
+            UrsaFrame::UpdateEpochSignal(nonce) => {
+                buf.put_u64(nonce);
+            }
+            UrsaFrame::DecryptionKeyRequest {
+                delivery_acknowledgment,
+            } => {
+                buf.put_slice(&delivery_acknowledgment);
+            }
+            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
+                buf.put_slice(&decryption_key);
+            }
+            UrsaFrame::EndOfRequestSignal => {}
+            UrsaFrame::TerminationSignal(reason) => {
+                buf.put_u8(reason as u8);
+            }
+            UrsaFrame::Buffer(bytes) => {
+                buf.put(bytes);
             }
         }
+
         Ok(())
     }
 }
@@ -409,7 +416,7 @@ impl Decoder for UrsaCodec {
 
         // should we be reading a chunk right now?
         if self.take > 0 {
-            let take = min(self.take, self.chunk_size);
+            let take = self.take.min(self.chunk_size);
             return Ok(if len >= take {
                 self.take -= take;
                 Some(UrsaFrame::Buffer(src.split_to(take)))
@@ -509,10 +516,10 @@ impl Decoder for UrsaCodec {
             }
             FrameTag::DecryptionKeyRequest => {
                 let buf = src.split_to(size_hint);
-                let delivery_acknowledgement = *array_ref!(buf, 1, 96);
+                let delivery_acknowledgment = *array_ref!(buf, 1, 96);
 
                 Ok(Some(UrsaFrame::DecryptionKeyRequest {
-                    delivery_acknowledgement,
+                    delivery_acknowledgment,
                 }))
             }
             FrameTag::DecryptionKeyResponse => {
@@ -689,7 +696,7 @@ mod tests {
         run(
                 b"\x08\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
                 UrsaFrame::DecryptionKeyRequest {
-                    delivery_acknowledgement: [1; 96],
+                    delivery_acknowledgment: [1; 96],
                 },
             )
     }
