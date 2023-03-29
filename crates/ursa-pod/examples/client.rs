@@ -1,3 +1,4 @@
+use tokio::net::TcpStream;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
@@ -11,7 +12,8 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let mut client = UfdpClient::new("127.0.0.1:8080").await?;
+    let stream = TcpStream::connect("127.0.0.1:8080").await?;
+    let mut client = UfdpClient::new(stream).await?;
 
     let bytes = client.request(CID).await?;
     println!("{}", String::from_utf8_lossy(&bytes));

@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 use futures::SinkExt;
-use tokio::net::{TcpStream, ToSocketAddrs};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 use tracing::{debug, info};
@@ -10,14 +10,17 @@ use crate::{
     types::Blake3CID,
 };
 
-pub struct UfdpClient {
-    transport: Framed<TcpStream, UrsaCodec>,
+pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin> {
+    transport: Framed<S, UrsaCodec>,
 }
 
-impl UfdpClient {
-    pub async fn new<T: ToSocketAddrs>(dest: T) -> Result<Self, UrsaCodecError> {
+impl<S> UfdpClient<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    pub async fn new(stream: S) -> Result<Self, UrsaCodecError> {
         let codec = UrsaCodec::default();
-        let stream = TcpStream::connect(dest).await?;
+
         let mut transport = Framed::new(stream, codec);
 
         // send handshake
