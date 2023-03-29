@@ -4,7 +4,7 @@ use futures::SinkExt;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
-use tracing::{error, info, Level};
+use tracing::{debug, error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::codec::{UrsaCodec, UrsaFrame};
 
@@ -27,7 +27,7 @@ impl UfdpServer {
                 let mut transport = Framed::new(stream, UrsaCodec::default());
 
                 while let Some(request) = transport.next().await {
-                    info!("{request:?}");
+                    debug!("Received frame: {request:?}");
                     match request {
                         Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
                             info!("Handshake received, sending response");

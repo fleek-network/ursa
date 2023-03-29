@@ -147,7 +147,7 @@ pub enum UrsaFrame {
     /// Clients can optionally resume a previous lane in the event of a disconnection.
     /// To let the node select the lane automatically, `lane` should be set to `0xFF`.
     ///
-    /// ```
+    /// ```text
     /// [ TAG . b"URSA" . version (1) . supported compression algorithm bitmap (1) . session lane . pubkey (48) ]
     /// ```
     /// size: 56 bytes
@@ -161,7 +161,7 @@ pub enum UrsaFrame {
     ///
     /// Node will set a lane if unspecified by the client, or reuse an existing lane, including the [`LastLaneData`].
     ///
-    /// ```
+    /// ```text
     /// [ TAG . lane (1) . epoch nonce (8) . pubkey (32) ] [ 0x00 (1) || 0x80 (1) . u64 (8) . bls signature (96) ]
     /// ```
     /// size: 44 bytes or 147 bytes
@@ -173,7 +173,7 @@ pub enum UrsaFrame {
     },
     /// Client request for content
     ///
-    /// ```
+    /// ```text
     /// [ TAG . blake3hash (32) ]
     /// ```
     /// size: 33 bytes
@@ -182,7 +182,7 @@ pub enum UrsaFrame {
     ///
     /// The frame is always followed by the raw proof and content bytes.
     ///
-    /// ```
+    /// ```text
     /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) ] [ proof .. ] [ content .. ]
     /// ```
     /// size: 82 bytes + proof len (max 16KB) + content len (max 256KB)
@@ -197,7 +197,7 @@ pub enum UrsaFrame {
     Buffer(BytesMut),
     /// Client request for a range of chunks of content
     ///
-    /// ```
+    /// ```text
     /// [ TAG . blake3hash (32) . u64 (8) . u16 (2) ]
     /// ```
     /// size: 43 bytes
@@ -209,7 +209,7 @@ pub enum UrsaFrame {
     /// Client request for a decryption key.
     /// The BLS delivery acknowledgement is batched and submitted by the node for rewards
     ///
-    /// ```
+    /// ```text
     /// [ TAG . bls signature (96) ]
     /// ```
     /// size: 97 bytes
@@ -219,7 +219,7 @@ pub enum UrsaFrame {
     /// Node response for a decryption key.
     /// The client will use the point to decrypt their data and use it.
     ///
-    /// ```
+    /// ```text
     /// [ TAG . decryption key (33) ]
     /// ```
     /// size: 34 bytes
@@ -229,21 +229,21 @@ pub enum UrsaFrame {
     /// Signal from the node an epoch has changed during a connection.
     /// Clients should sign the next delivery acknowledgements with this new epoch.
     ///
-    /// ```
+    /// ```text
     /// [ TAG . epoch nonce (8) ]
     /// ```
     /// size: 9 bytes
     UpdateEpochSignal(EpochNonce),
     /// Signal from the node the request is finished.
     ///
-    /// ```
+    /// ```text
     /// [ TAG ]
     /// ```
     /// size: 1 byte
     EndOfRequestSignal,
     /// Signal from the node the connection was terminated, with a reason.
     ///
-    /// ```
+    /// ```text
     /// [ TAG . reason (1) ]
     /// ```
     /// size: 2 bytes
