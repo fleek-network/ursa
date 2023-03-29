@@ -73,7 +73,7 @@ where
                 if content_len != 0 {
                     self.transport
                         .codec_mut()
-                        .read_buffer(content_len as usize, 16384);
+                        .read_buffer(content_len as usize, 16 * 1024);
                     match self.transport.next().await.expect("content buffer")? {
                         UrsaFrame::Buffer(bytes) => Ok(bytes),
                         f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
