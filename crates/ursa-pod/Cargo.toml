@@ -2,6 +2,7 @@
 name = "ursa-pod"
 version = "0.1.0"
 edition = "2021"
+authors = ["qti3e <i@parsa.oo>", "ossian <self@ossian.dev>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,6 +23,9 @@ bytes = "1.4"
 [dev-dependencies]
 criterion = { version="0.4.0", features=["html_reports"] }
 benchmarks_utils = { git="https://github.com/qti3e/benchmarks", rev="c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package="benchmarks" }
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
+tracing = "0.1"
 
 [[bench]]
 name = "encrypt"
