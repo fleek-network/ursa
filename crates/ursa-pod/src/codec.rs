@@ -16,7 +16,7 @@ pub type SchnorrSignature = [u8; 64];
 pub type BLSPublicKey = [u8; 48];
 pub type BLSSignature = [u8; 96];
 
-/// Constant values for the codec
+/// Constant values for the codec.
 pub mod consts {
     /// Network byte prefix in [`super::UrsaFrame::HandshakeRequest`]
     pub const NETWORK: [u8; 4] = *b"URSA";
@@ -28,7 +28,6 @@ pub mod consts {
     /// The bit flag on any frame tag sent from the node to the client.
     pub const IS_RES_FLAG: u8 = 0b10000000;
 
-    // Request and response tags.
     /// [`super::UrsaFrame::HandshakeRequest`]
     pub const HANDSHAKE_REQ_TAG: u8 = 0x01 << 0;
     /// [`super::UrsaFrame::HandshakeResponse`]
@@ -44,9 +43,6 @@ pub mod consts {
     /// [`super::UrsaFrame::DecryptionKeyResponse`]
     pub const DECRYPTION_KEY_RES_TAG: u8 = IS_RES_FLAG | DECRYPTION_KEY_REQ_TAG;
 
-    // Signals sent from the node to the client, signals are not a response to a particular
-    // request, but they still have the `IS_RES` bit enabled since they are sent from the
-    // node to the client.
     /// [`super::UrsaFrame::UpdateEpochSignal`]
     pub const UPDATE_EPOCH_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 4);
     /// [`super::UrsaFrame::EndOfRequestSignal`]
@@ -87,7 +83,7 @@ pub struct LastLaneData {
     pub signature: BLSSignature,
 }
 
-/// Frame tag prefix's
+/// Frame tags
 #[repr(u8)]
 pub enum FrameTag {
     HandshakeRequest = HANDSHAKE_REQ_TAG,
@@ -139,6 +135,11 @@ impl TryFrom<u8> for FrameTag {
 }
 
 /// Frame variants for different requests and responses
+///
+/// All frames are prefixed with a [`FrameTag`].
+///
+/// Signals are not a response to a particular request, but they still have the `IS_RES` bit
+/// enabled since they are sent from the node to the client.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UrsaFrame {
     /// Client request to initiate a UFDP connection.
