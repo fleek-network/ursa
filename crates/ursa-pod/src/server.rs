@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use bytes::BytesMut;
 use futures::SinkExt;
-use tokio::net::{TcpListener, ToSocketAddrs};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info};
@@ -27,76 +27,71 @@ pub trait Backend: Copy + Send + Sync + 'static {
 
 pub struct UfdpServer<B: Backend> {
     backend: B,
-    listener: TcpListener,
 }
 
 impl<B> UfdpServer<B>
 where
     B: Backend,
 {
-    pub async fn new<A: Display + ToSocketAddrs>(
-        addr: A,
-        backend: B,
-    ) -> Result<Self, UrsaCodecError> {
-        let listener = TcpListener::bind(&addr).await?;
-        info!("Listening on {addr}");
-
-        Ok(Self { listener, backend })
+    pub fn new(backend: B) -> Result<Self, UrsaCodecError> {
+        Ok(Self { backend })
     }
 
-    pub async fn start(self) -> Result<(), UrsaCodecError> {
-        loop {
-            let (stream, _) = self.listener.accept().await?;
-            tokio::spawn(async move {
-                let mut transport = Framed::new(stream, UrsaCodec::default());
+    pub fn handle<S: AsyncWrite + AsyncRead + Unpin + Send + 'static>(
+        &mut self,
+        stream: S,
+    ) -> Result<(), UrsaCodecError> {
+        let backend = self.backend;
+        tokio::spawn(async move {
+            let mut transport = Framed::new(stream, UrsaCodec::default());
 
-                match transport.next().await.expect("handshake request") {
-                    Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                        info!("Handshake received, sending response");
+            match transport.next().await.expect("handshake request") {
+                Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
+                    info!("Handshake received, sending response");
+                    transport
+                        .send(UrsaFrame::HandshakeResponse {
+                            pubkey: [2; 33],
+                            epoch_nonce: 1000,
+                            lane: if lane == 0xFF { 0 } else { lane },
+                            last: None,
+                        })
+                        .await
+                        .expect("handshake response");
+                }
+                _ => return,
+            }
+
+            while let Some(request) = transport.next().await {
+                debug!("Received frame: {request:?}");
+                match request {
+                    Ok(UrsaFrame::ContentRequest { hash }) => {
+                        info!("Content request received, sending response");
+                        let content = backend.raw_content(hash);
                         transport
-                            .send(UrsaFrame::HandshakeResponse {
-                                pubkey: [2; 33],
-                                epoch_nonce: 1000,
-                                lane: if lane == 0xFF { 0 } else { lane },
-                                last: None,
+                            .send(UrsaFrame::ContentResponse {
+                                compression: 0,
+                                proof_len: 0,
+                                content_len: content.len() as u64,
+                                signature: [1u8; 64],
                             })
                             .await
-                            .expect("handshake response");
+                            .expect("content response");
+
+                        transport
+                            .send(UrsaFrame::Buffer(content))
+                            .await
+                            .expect("content data")
                     }
-                    _ => return,
-                }
-
-                while let Some(request) = transport.next().await {
-                    debug!("Received frame: {request:?}");
-                    match request {
-                        Ok(UrsaFrame::ContentRequest { hash }) => {
-                            info!("Content request received, sending response");
-                            let content = self.backend.raw_content(hash);
-                            transport
-                                .send(UrsaFrame::ContentResponse {
-                                    compression: 0,
-                                    proof_len: 0,
-                                    content_len: content.len() as u64,
-                                    signature: [1u8; 64],
-                                })
-                                .await
-                                .expect("content response");
-
-                            transport
-                                .send(UrsaFrame::Buffer(content))
-                                .await
-                                .expect("content data")
-                        }
-                        Ok(_) => unimplemented!(),
-                        Err(e) => {
-                            error!("{e:?}");
-                            break;
-                        }
+                    Ok(_) => unimplemented!(),
+                    Err(e) => {
+                        error!("{e:?}");
+                        break;
                     }
                 }
+            }
 
-                debug!("Connection Closed");
-            });
-        }
+            debug!("Connection Closed");
+        });
+        Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use bytes::BytesMut;
-use tracing::Level;
+use tokio::net::TcpListener;
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{
     codec::UrsaCodecError,
@@ -35,6 +36,12 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let server = UfdpServer::new("0.0.0.0:8080", DummyBackend {}).await?;
-    server.start().await
+    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    info!("Listening on port 8080");
+
+    let mut server = UfdpServer::new(DummyBackend {})?;
+    loop {
+        let (stream, _) = listener.accept().await?;
+        server.handle(stream)?;
+    }
 }
