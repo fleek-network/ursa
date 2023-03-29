@@ -26,6 +26,8 @@ benchmarks_utils = { git="https://github.com/qti3e/benchmarks", rev="c3c9c354dce
 tokio = { version = "1.0", features = ["full"] }
 tokio-stream = "0.1"
 tracing = "0.1"
+tracing-subscriber = "0.2"
+futures = "0.3"
 
 [[bench]]
 name = "encrypt"
