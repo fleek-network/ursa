@@ -3,7 +3,7 @@ use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
     headers::CacheControl,
-    http::{response::Parts, StatusCode, Uri},
+    http::{response::Parts, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
     Extension, Router, TypedHeader,
@@ -13,13 +13,13 @@ use hyper::{
     client::{self, HttpConnector},
     Body,
 };
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use tracing::{error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
@@ -48,11 +48,25 @@ pub fn init_server_app<C: Cache>(
         let route_path = format!("/{}", directory_str);
         user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
-    user_app
+    user_app = user_app
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(server_config))
+        .layer(Extension(server_config.clone()));
+
+    if let Some(headers) = &server_config.add_header {
+        for (header, value) in headers.iter() {
+            let value = value.clone();
+            user_app = user_app.layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_str(header).expect("Header name to be valid"),
+                move |_: &Response| {
+                    Some(HeaderValue::from_str(&value).expect("Header value to be valid"))
+                },
+            ));
+        }
+    }
+
+    user_app
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
