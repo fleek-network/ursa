@@ -10,6 +10,7 @@ use crate::{
     types::Blake3CID,
 };
 
+/// UFDP Client. Accepts any stream supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin> {
     transport: Framed<S, UrsaCodec>,
 }
@@ -18,6 +19,7 @@ impl<S> UfdpClient<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    /// Create a new client, attempting to handshake with the destination
     pub async fn new(stream: S) -> Result<Self, UrsaCodecError> {
         let codec = UrsaCodec::default();
 
@@ -47,6 +49,7 @@ where
         Ok(Self { transport })
     }
 
+    /// Send a request for content
     pub async fn request(&mut self, hash: Blake3CID) -> Result<BytesMut, UrsaCodecError> {
         self.transport
             .send(UrsaFrame::ContentRequest { hash })

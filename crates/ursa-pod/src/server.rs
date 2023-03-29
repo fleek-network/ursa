@@ -10,12 +10,15 @@ use crate::{
     types::{BLSSignature, Blake3CID, Secp256k1PublicKey},
 };
 
+/// Backend trait used by [`UfdpServer`] to access external data
 pub trait Backend: Copy + Send + Sync + 'static {
-    /// get some raw content for a given cid
+    /// Get some raw content for a given cid
     fn raw_content(&self, cid: Blake3CID) -> BytesMut;
-    /// get a users balance
-    fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128;
-    /// save a transaction to be batched and submitted
+
+    /// Get a users balance
+    fn get_balance(&self, pubkey: Secp256k1PublicKey) -> u128;
+
+    /// Save a transaction to be batched and submitted
     fn save_tx(
         &self,
         pubkey: Secp256k1PublicKey,
@@ -23,6 +26,7 @@ pub trait Backend: Copy + Send + Sync + 'static {
     ) -> Result<(), String>;
 }
 
+/// UFDP Server. Handles any stream of data supporting [`AsyncWrite`] + [`AsyncRead`]
 pub struct UfdpServer<B: Backend> {
     backend: B,
 }
@@ -35,6 +39,7 @@ where
         Ok(Self { backend })
     }
 
+    /// Handle a connection. Spawns a tokio task and begins the connection loop
     pub fn handle<S: AsyncWrite + AsyncRead + Unpin + Send + 'static>(
         &mut self,
         stream: S,
