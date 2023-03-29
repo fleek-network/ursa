@@ -2,6 +2,7 @@ use std::cmp::min;
 
 use arrayref::array_ref;
 use bytes::{BufMut, BytesMut};
+use consts::*;
 use tokio_util::codec::{Decoder, Encoder};
 
 pub type EpochNonce = u64;
@@ -15,34 +16,53 @@ pub type SchnorrSignature = [u8; 64];
 pub type BLSPublicKey = [u8; 48];
 pub type BLSSignature = [u8; 96];
 
-pub const NETWORK: [u8; 4] = *b"URSA";
-pub const MAX_FRAME_SIZE: usize = 1024;
-pub const MAX_LANES: u8 = 24;
+/// Constant values for the codec
+pub mod consts {
+    /// Network byte prefix in [`super::UrsaFrame::HandshakeRequest`]
+    pub const NETWORK: [u8; 4] = *b"URSA";
+    /// Maximum size for a frame
+    pub const MAX_FRAME_SIZE: usize = 1024;
+    /// Maximum lanes a client can use at one time
+    pub const MAX_LANES: u8 = 24;
 
-// The bit flag on any frame sent from the node to the client.
-pub const IS_RES_FLAG: u8 = 0b10000000;
+    /// The bit flag on any frame tag sent from the node to the client.
+    pub const IS_RES_FLAG: u8 = 0b10000000;
 
-// Request and response tags.
-pub const HANDSHAKE_REQ_TAG: u8 = 0x01 << 0;
-pub const HANDSHAKE_RES_TAG: u8 = IS_RES_FLAG | HANDSHAKE_REQ_TAG;
-pub const CONTENT_REQ_TAG: u8 = 0x01 << 1;
-pub const CONTENT_RANGE_REQ_TAG: u8 = 0x01 << 2;
-pub const CONTENT_RES_TAG: u8 = IS_RES_FLAG | CONTENT_REQ_TAG;
-pub const DECRYPTION_KEY_REQ_TAG: u8 = 0x01 << 3;
-pub const DECRYPTION_KEY_RES_TAG: u8 = IS_RES_FLAG | DECRYPTION_KEY_REQ_TAG;
+    // Request and response tags.
+    /// [`super::UrsaFrame::HandshakeRequest`]
+    pub const HANDSHAKE_REQ_TAG: u8 = 0x01 << 0;
+    /// [`super::UrsaFrame::HandshakeResponse`]
+    pub const HANDSHAKE_RES_TAG: u8 = IS_RES_FLAG | HANDSHAKE_REQ_TAG;
+    /// [`super::UrsaFrame::ContentRequest`]
+    pub const CONTENT_REQ_TAG: u8 = 0x01 << 1;
+    /// [`super::UrsaFrame::ContentRangeRequest`]
+    pub const CONTENT_RANGE_REQ_TAG: u8 = 0x01 << 2;
+    /// [`super::UrsaFrame::ContentResponse`]
+    pub const CONTENT_RES_TAG: u8 = IS_RES_FLAG | CONTENT_REQ_TAG;
+    /// [`super::UrsaFrame::DecryptionKeyRequest`]
+    pub const DECRYPTION_KEY_REQ_TAG: u8 = 0x01 << 3;
+    /// [`super::UrsaFrame::DecryptionKeyResponse`]
+    pub const DECRYPTION_KEY_RES_TAG: u8 = IS_RES_FLAG | DECRYPTION_KEY_REQ_TAG;
 
-// Signals sent from the node to the client, signals are not a response to a particular
-// request, but they still have the `IS_RES` bit enabled since they are sent from the
-// node to the client.
-pub const UPDATE_EPOCH_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 4);
-pub const END_OF_REQUEST_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 5);
-pub const TERMINATATION_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 6);
+    // Signals sent from the node to the client, signals are not a response to a particular
+    // request, but they still have the `IS_RES` bit enabled since they are sent from the
+    // node to the client.
+    /// [`super::UrsaFrame::UpdateEpochSignal`]
+    pub const UPDATE_EPOCH_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 4);
+    /// [`super::UrsaFrame::EndOfRequestSignal`]
+    pub const END_OF_REQUEST_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 5);
+    /// [`super::UrsaFrame::TerminationSignal`]
+    pub const TERMINATATION_SIGNAL_TAG: u8 = IS_RES_FLAG | (0x01 << 6);
 
-// Supported compression algorithm bitmap values.
-pub const SNAPPY: u8 = 0x01;
-pub const GZIP: u8 = 0x01 << 2;
-pub const LZ4: u8 = 0x01 << 3;
+    /// Snappy compression bitmap value
+    pub const SNAPPY: u8 = 0x01;
+    /// GZip compression bitmap value
+    pub const GZIP: u8 = 0x01 << 2;
+    /// LZ4 compression bitmap value
+    pub const LZ4: u8 = 0x01 << 3;
+}
 
+/// Termination reasons
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
@@ -60,12 +80,14 @@ impl Reason {
     }
 }
 
+/// Last known data for a lane
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LastLaneData {
-    bytes: u64,
-    signature: BLSSignature,
+    pub bytes: u64,
+    pub signature: BLSSignature,
 }
 
+/// Frame tag prefix's
 #[repr(u8)]
 pub enum FrameTag {
     HandshakeRequest = HANDSHAKE_REQ_TAG,
@@ -119,16 +141,28 @@ impl TryFrom<u8> for FrameTag {
 /// Frame variants for different requests and responses
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UrsaFrame {
+    /// Client request to initiate a UFDP connection.
+    ///
+    /// Clients can optionally resume a previous lane in the event of a disconnection.
+    /// To let the node select the lane automatically, `lane` should be set to `0xFF`.
+    ///
+    /// ```
     /// [ TAG . b"URSA" . version (1) . supported compression algorithm bitmap (1) . session lane . pubkey (48) ]
+    /// ```
     /// size: 56 bytes
-    /// To let the node select the lane automatically, set the value to 0xFF
     HandshakeRequest {
         version: u8,
         supported_compression_bitmap: u8,
         lane: u8,
         pubkey: BLSPublicKey,
     },
+    /// Node response to confirm a UFDP connection.
+    ///
+    /// Node will set a lane if unspecified by the client, or reuse an existing lane, including the [`LastLaneData`].
+    ///
+    /// ```
     /// [ TAG . lane (1) . epoch nonce (8) . pubkey (32) ] [ 0x00 (1) || 0x80 (1) . u64 (8) . bls signature (96) ]
+    /// ```
     /// size: 44 bytes or 147 bytes
     HandshakeResponse {
         pubkey: Secp256k1PublicKey,
@@ -136,44 +170,81 @@ pub enum UrsaFrame {
         lane: u8,
         last: Option<LastLaneData>,
     },
+    /// Client request for content
+    ///
+    /// ```
     /// [ TAG . blake3hash (32) ]
+    /// ```
     /// size: 33 bytes
     ContentRequest { hash: Blake3CID },
+    /// Node response for content.
+    ///
+    /// The frame is always followed by the raw proof and content bytes.
+    ///
+    /// ```
     /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) ] [ proof .. ] [ content .. ]
-    /// size: 82 + proof len (max 16KB) + content len (max 256KB)
+    /// ```
+    /// size: 82 bytes + proof len (max 16KB) + content len (max 256KB)
     ContentResponse {
         compression: u8,
         proof_len: u64,
         content_len: u64,
         signature: SchnorrSignature,
     },
-    /// Buffer contains a chunk of bytes initiated after the `UrsaCodec::read_buffer` method has been called.
-    /// It is not a full frame, and doesn't have a tag
+    /// Not a frame. Buffer contains a chunk of bytes initiated after the `UrsaCodec::read_buffer` method has been called.
+    /// It does *not* have a tag, and is used to chunk bytes after a [`UrsaFrame::ContentResponse`].
     Buffer(BytesMut),
+    /// Client request for a range of chunks of content
+    ///
+    /// ```
     /// [ TAG . blake3hash (32) . u64 (8) . u16 (2) ]
+    /// ```
     /// size: 43 bytes
     ContentRangeRequest {
         hash: Blake3CID,
         chunk_start: u64,
         chunks: u16,
     },
+    /// Client request for a decryption key.
+    /// The BLS delivery acknowledgement is batched and submitted by the node for rewards
+    ///
+    /// ```
     /// [ TAG . bls signature (96) ]
+    /// ```
     /// size: 97 bytes
     DecryptionKeyRequest {
         delivery_acknowledgement: BLSSignature,
     },
+    /// Node response for a decryption key.
+    /// The client will use the point to decrypt their data and use it.
+    ///
+    /// ```
     /// [ TAG . decryption key (33) ]
+    /// ```
     /// size: 34 bytes
     DecryptionKeyResponse {
         decryption_key: Secp256k1AffinePoint,
     },
+    /// Signal from the node an epoch has changed during a connection.
+    /// Clients should sign the next delivery acknowledgements with this new epoch.
+    ///
+    /// ```
     /// [ TAG . epoch nonce (8) ]
+    /// ```
     /// size: 9 bytes
     UpdateEpochSignal(EpochNonce),
+    /// Signal from the node the request is finished.
+    ///
+    /// ```
     /// [ TAG ]
+    /// ```
     /// size: 1 byte
     EndOfRequestSignal,
+    /// Signal from the node the connection was terminated, with a reason.
+    ///
+    /// ```
     /// [ TAG . reason (1) ]
+    /// ```
     /// size: 2 bytes
     TerminationSignal(Reason),
 }
@@ -212,6 +283,7 @@ impl From<std::io::Error> for UrsaCodecError {
     }
 }
 
+/// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
 #[derive(Default)]
 pub struct UrsaCodec {
     take: usize,
