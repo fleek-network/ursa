@@ -143,9 +143,10 @@ async fn run() -> Result<()> {
     let reconfigure_notify = abci_engine.get_reconfigure_notify();
 
     //Spawn engine
-    let _abci_engine_task = std::thread::spawn(|| {
+    let engine_shutdown = shutdown_controller.clone();
+    let _abci_engine_task = task::spawn_blocking(|| {
         futures::executor::block_on(async move {
-            if let Err(err) = abci_engine.start().await {
+            if let Err(err) = abci_engine.start(engine_shutdown).await {
                 error!("[abci_engine_task] - {:?}", err);
             }
         })
@@ -210,13 +211,12 @@ async fn run() -> Result<()> {
 
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
-
+    
     // Gracefully shutdown node & rpc
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
     application_task.abort();
     consensus_handle.abort();
-
     Ok(())
 }

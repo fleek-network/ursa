@@ -1,8 +1,9 @@
 use anyhow::{bail, Result};
+use ursa_utils::shutdown::ShutdownController;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Notify};
-use tokio::{select,time};
+use tokio::{select,time,pin};
 use tracing::warn;
 
 use narwhal_types::{Batch, Transaction};
@@ -68,10 +69,12 @@ impl Engine {
         }
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self, shutdown_controller: ShutdownController) -> Result<()> {
         self.init_chain()?;
 
         loop {
+            let shutdown_future = shutdown_controller.notify.notified();
+            pin!(shutdown_future);
             select! {
                 Some(batches) = self.rx_certificates.recv() => {
                     self.handle_cert(batches)?;
@@ -79,6 +82,7 @@ impl Engine {
                 Some((tx, req)) = self.rx_abci_queries.recv() => {
                     self.handle_abci_query(tx, req)?;
                 }
+                _ = shutdown_future => break,
                 else => break,
             }
         }
