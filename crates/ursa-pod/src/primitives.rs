@@ -9,8 +9,8 @@ use rand_core::RngCore;
 use rand_core::{block::BlockRngCore, OsRng, SeedableRng};
 use std::iter::zip;
 
-const REQUEST_INFO_HASH_DOMAIN_SEP: &'static str = "FLEEK_NETWORK_POD_REQUEST_INFO_HASH";
-const SCHNORR_CHALLENGE_DOMAIN_SEP: &'static str = "FLEEK_NETWORK_POD_SCHNORR_CHALLENGE";
+const REQUEST_INFO_HASH_DOMAIN_SEP: &str = "FLEEK_NETWORK_POD_REQUEST_INFO_HASH";
+const SCHNORR_CHALLENGE_DOMAIN_SEP: &str = "FLEEK_NETWORK_POD_SCHNORR_CHALLENGE";
 
 pub struct RequestInfo {
     pub cid: [u8; 32],
@@ -174,7 +174,7 @@ pub fn encrypt_block(
     // we hash what we're gonna deliver to the user.
     let ciphertext_hash = {
         let mut hasher = blake3::Hasher::new();
-        hasher.update_rayon(&result);
+        hasher.update_rayon(result);
         hasher.finalize()
     };
 
@@ -212,7 +212,7 @@ pub enum Error {
 }
 
 /// Publicly verify a buffer sent from the node.
-pub fn verify(pk: PublicKey, buffer: &[u8]) {
+pub fn verify(_pk: PublicKey, _buffer: &[u8]) {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"x");
 }
