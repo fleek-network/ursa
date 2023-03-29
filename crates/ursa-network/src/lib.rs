@@ -3,6 +3,7 @@ mod codec;
 pub mod config;
 mod connection;
 mod gossipsub;
+mod measurements;
 pub mod service;
 mod transport;
 mod utils;
