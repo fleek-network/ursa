@@ -1,5 +1,8 @@
-use bytes::BytesMut;
-use futures::SinkExt;
+use std::{pin::Pin, task::Poll};
+//use std::task::Poll;
+
+use bytes::{Bytes, BytesMut};
+use futures::{SinkExt, Stream, TryStreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
@@ -7,23 +10,53 @@ use tracing::{debug, info};
 
 use crate::{
     codec::{UrsaCodec, UrsaCodecError, UrsaFrame},
-    types::Blake3CID,
+    types::Blake3Cid,
 };
+
+const PROOF_CHUNK_LEN: usize = 4 * 1024;
+const CONTENT_CHUNK_LEN: usize = 16 * 1024;
+
+/// UFDP Response, implementing [`AsyncRead`] to stream chunks of content
+pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin> {
+    client: &'client mut UfdpClient<S>,
+    _proof: BytesMut,
+    pub content_len: u64,
+}
+
+impl<'client, S> Stream for UfdpResponse<'client, S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    type Item = Result<Bytes, std::io::Error>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        match self.client.transport.try_poll_next_unpin(cx) {
+            Poll::Ready(Some(Ok(UrsaFrame::Buffer(bytes)))) => {
+                // todo: verify/decode bytes
+                Poll::Ready(Some(Ok(bytes.freeze())))
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(_) => todo!("handle errors"),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
 
 /// UFDP Client. Accepts any stream supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin> {
-    transport: Framed<S, UrsaCodec>,
+    pub transport: Framed<S, UrsaCodec>,
 }
 
 impl<S> UfdpClient<S>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    S: AsyncRead + AsyncWrite + Unpin + Send,
 {
     /// Create a new client, attempting to handshake with the destination
     pub async fn new(stream: S) -> Result<Self, UrsaCodecError> {
-        let codec = UrsaCodec::default();
-
-        let mut transport = Framed::new(stream, codec);
+        let mut transport = Framed::new(stream, UrsaCodec::default());
 
         // send handshake
         transport
@@ -50,7 +83,7 @@ where
     }
 
     /// Send a request for content
-    pub async fn request(&mut self, hash: Blake3CID) -> Result<BytesMut, UrsaCodecError> {
+    pub async fn request(&mut self, hash: Blake3Cid) -> Result<UfdpResponse<S>, UrsaCodecError> {
         self.transport
             .send(UrsaFrame::ContentRequest { hash })
             .await
@@ -65,6 +98,7 @@ where
                 info!("received content response");
 
                 debug!("streaming proof ({proof_len})");
+                // todo: blake3tree encode/decode
                 if proof_len != 0 {
                     unimplemented!()
                 }
@@ -74,10 +108,13 @@ where
                     self.transport
                         .codec_mut()
                         .read_buffer(content_len as usize, 16 * 1024);
-                    match self.transport.next().await.expect("content buffer")? {
-                        UrsaFrame::Buffer(bytes) => Ok(bytes),
-                        f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
-                    }
+
+                    Ok(UfdpResponse {
+                        client: self,
+                        // todo: proof
+                        _proof: BytesMut::new(),
+                        content_len,
+                    })
                 } else {
                     Err(UrsaCodecError::Unknown)
                 }
