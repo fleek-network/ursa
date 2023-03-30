@@ -56,6 +56,11 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.content_len as usize;
+        (size, Some(size))
+    }
 }
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
