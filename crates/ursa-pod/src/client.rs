@@ -1,6 +1,6 @@
 use std::{pin::Pin, task::Poll};
 
-use bytes::Bytes;
+use bytes::{BufMut, Bytes, BytesMut};
 use futures::{SinkExt, Stream, TryStreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
@@ -32,6 +32,8 @@ const CONTENT_CHUNK_LEN: usize = 16 * 1024;
 /// ```
 pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin> {
     client: &'client mut UfdpClient<S>,
+    current_block: BytesMut,
+    index: u64,
     // todo: proof
     pub content_len: u64,
 }
@@ -48,8 +50,20 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         match self.client.transport.try_poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(UrsaFrame::Buffer(bytes)))) => {
-                // todo: verify/decode bytes
-                Poll::Ready(Some(Ok(bytes.freeze())))
+                self.index += bytes.len() as u64;
+                self.current_block.put_slice(&bytes);
+                // todo: incremental verification
+
+                if self.index < self.content_len {
+                    Poll::Pending
+                } else {
+                    // block is ready
+                    // todo:
+                    //   - send DA
+                    //   - recv decryption key
+                    //   - decrypt block
+                    Poll::Ready(Some(Ok(self.current_block.split().freeze())))
+                }
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Ready(_) => todo!("handle errors"),
@@ -115,11 +129,11 @@ where
             } => {
                 debug!("received content response, streaming proof ({proof_len})");
                 if proof_len != 0 {
-                    todo! {"
-                        - stream and collect blake3tree bytes
-                        - decode it
-                        - pass to UfdpResponse to incrementally verify content"
-                    }
+                    unimplemented!()
+                    // todo:
+                    //  - stream and collect blake3tree bytes
+                    //  - decode it
+                    //  - pass to UfdpResponse to incrementally verify content
                 }
 
                 if content_len != 0 {
@@ -130,6 +144,8 @@ where
                     Ok(UfdpResponse {
                         client: self,
                         // todo: proof
+                        current_block: BytesMut::with_capacity(256 * 1024),
+                        index: 0,
                         content_len,
                     })
                 } else {
