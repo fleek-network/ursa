@@ -2,16 +2,18 @@ use libp2p::PeerId;
 use lru::LruCache;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-type Bytes = u128;
-type BytesPerSecond = f64;
-type RequestId = String;
+mod bandwidth;
+mod latency;
+
+use bandwidth::{Bandwidth, Bytes, BytesPerSecond, RequestId};
+use latency::{Latency, Milliseconds};
 
 const MAX_CAPACITY: usize = 100;
 
 pub struct MeasurementManager {
-    peers: LruCache<PeerId, PeerMeasurement>,
+    peers: LruCache<PeerId, PeerMeasurementManager>,
 }
 
 impl MeasurementManager {
@@ -23,7 +25,7 @@ impl MeasurementManager {
 
     pub fn register_request(&mut self, peer_id: PeerId, request_id: RequestId, size: Bytes) {
         if !self.peers.contains(&peer_id) {
-            self.peers.put(peer_id, PeerMeasurement::new());
+            self.peers.put(peer_id, PeerMeasurementManager::new());
         }
         let measurements = self.peers.get_mut(&peer_id).unwrap();
         measurements.bandwidth.register_request(request_id, size);
@@ -33,6 +35,14 @@ impl MeasurementManager {
         if let Some(measurements) = self.peers.get_mut(&peer_id) {
             measurements.bandwidth.register_response(request_id, size);
         }
+    }
+
+    pub fn register_rtt(&mut self, peer_id: PeerId, rtt: Duration) {
+        if !self.peers.contains(&peer_id) {
+            self.peers.put(peer_id, PeerMeasurementManager::new());
+        }
+        let measurements = self.peers.get_mut(&peer_id).unwrap();
+        measurements.latency.register_rtt(rtt);
     }
 
     #[allow(dead_code)]
@@ -57,85 +67,32 @@ impl Default for MeasurementManager {
 
 #[allow(dead_code)]
 pub struct Measurements {
-    pub bandwidth: BytesPerSecond,
+    pub bandwidth: Option<BytesPerSecond>,
+    pub latency: Option<Milliseconds>,
 }
 
-struct PeerMeasurement {
+struct PeerMeasurementManager {
     bandwidth: Bandwidth,
-    // TODO(matthias): add latency and uptime measurements
+    latency: Latency,
 }
 
-impl PeerMeasurement {
+impl PeerMeasurementManager {
     fn new() -> Self {
         Self {
             bandwidth: Bandwidth::new(),
+            latency: Latency::new(),
         }
     }
 
     #[allow(dead_code)]
     fn get_measurements(&self) -> Option<Measurements> {
-        let bandwidth = self.bandwidth.get_estimate()?;
-        Some(Measurements { bandwidth })
-    }
-}
-
-#[derive(Clone)]
-struct Bandwidth {
-    requests: HashMap<RequestId, Request>,
-    sum: BytesPerSecond,
-    count: u64,
-}
-
-impl Bandwidth {
-    fn new() -> Self {
-        Self {
-            requests: HashMap::new(),
-            sum: 0.0,
-            count: 0,
-        }
-    }
-
-    fn register_request(&mut self, request_id: RequestId, size: Bytes) {
-        self.requests.insert(request_id, Request::new(size));
-    }
-
-    fn register_response(&mut self, request_id: RequestId, size: Bytes) {
-        if let Some(request) = self.requests.remove(&request_id) {
-            let total_size = request.size + size;
-            let duration = request.duration().as_secs();
-            if duration > 0 {
-                self.sum += (total_size as f64) / (duration as f64);
-                self.count += 1;
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    fn get_estimate(&self) -> Option<BytesPerSecond> {
-        if self.count > 0 {
-            Some(self.sum / (self.count as f64))
-        } else {
+        let bandwidth = self.bandwidth.get_estimate();
+        let latency = self.latency.get_estimate();
+        if bandwidth.is_none() && latency.is_none() {
             None
+        } else {
+            Some(Measurements { bandwidth, latency })
         }
-    }
-}
-
-#[derive(Clone)]
-struct Request {
-    instant: Instant,
-    size: Bytes,
-}
-
-impl Request {
-    fn new(size: Bytes) -> Self {
-        Self {
-            instant: Instant::now(),
-            size,
-        }
-    }
-
-    fn duration(&self) -> Duration {
-        self.instant.elapsed()
     }
 }
 
@@ -143,11 +100,12 @@ impl Request {
 mod tests {
     use super::*;
     use std::thread::sleep;
+    use std::time::Duration;
 
     const EPSILON: f64 = 1e-6;
 
     #[test]
-    fn test_basic() {
+    fn test_one_request() {
         let peer_id = PeerId::random();
         let request_id = RequestId::from("1");
         let mut manager = MeasurementManager::new();
@@ -157,7 +115,7 @@ mod tests {
 
         let measurements = manager.get_measurements();
         let measurement = measurements.get(&peer_id).unwrap();
-        assert!((measurement.bandwidth - 125_000.0).abs() < EPSILON);
+        assert!((measurement.bandwidth.unwrap() - 125_000.0).abs() < EPSILON);
     }
 
     #[test]
@@ -176,7 +134,7 @@ mod tests {
 
         let measurements = manager.get_measurements();
         let measurement = measurements.get(&peer_id).unwrap();
-        assert!((measurement.bandwidth - 93750.0).abs() < EPSILON);
+        assert!((measurement.bandwidth.unwrap() - 93750.0).abs() < EPSILON);
     }
 
     #[test]
@@ -201,5 +159,28 @@ mod tests {
         let measurements = manager.get_measurements();
         let measurement = measurements.get(&peer_id);
         assert!(measurement.is_none());
+    }
+
+    #[test]
+    fn test_latency_one_rtt() {
+        let peer_id = PeerId::random();
+        let mut manager = MeasurementManager::new();
+        manager.register_rtt(peer_id, Duration::from_millis(300));
+
+        let measurements = manager.get_measurements();
+        let measurement = measurements.get(&peer_id).unwrap();
+        assert!((measurement.latency.unwrap() - 150.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn test_latency_two_rtt() {
+        let peer_id = PeerId::random();
+        let mut manager = MeasurementManager::new();
+        manager.register_rtt(peer_id, Duration::from_millis(300));
+        manager.register_rtt(peer_id, Duration::from_millis(400));
+
+        let measurements = manager.get_measurements();
+        let measurement = measurements.get(&peer_id).unwrap();
+        assert!((measurement.latency.unwrap() - 175.0).abs() < EPSILON);
     }
 }
