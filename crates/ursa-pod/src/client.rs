@@ -3,7 +3,7 @@ use futures::{ready, SinkExt, Stream, StreamExt};
 use std::{pin::Pin, task::Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::{
     codec::{UrsaCodec, UrsaCodecError, UrsaFrame},
