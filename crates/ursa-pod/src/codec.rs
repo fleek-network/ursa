@@ -3,16 +3,10 @@ use bytes::{BufMut, BytesMut};
 use consts::*;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub type EpochNonce = u64;
-pub type Secp256k1AffinePoint = [u8; 33];
-
-pub type Blake3CID = [u8; 32];
-
-pub type Secp256k1PublicKey = Secp256k1AffinePoint;
-pub type SchnorrSignature = [u8; 64];
-
-pub type BLSPublicKey = [u8; 48];
-pub type BLSSignature = [u8; 96];
+use crate::types::{
+    Blake3Cid, BlsPublicKey, BlsSignature, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
+    Secp256k1PublicKey,
+};
 
 /// Constant values for the codec.
 pub mod consts {
@@ -78,11 +72,12 @@ impl Reason {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LastLaneData {
     pub bytes: u64,
-    pub signature: BLSSignature,
+    pub signature: BlsSignature,
 }
 
 /// Frame tags
 #[repr(u8)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FrameTag {
     HandshakeRequest = HANDSHAKE_REQ_TAG,
     HandshakeResponse = HANDSHAKE_RES_TAG,
@@ -156,7 +151,7 @@ pub enum UrsaFrame {
         version: u8,
         supported_compression_bitmap: u8,
         lane: u8,
-        pubkey: BLSPublicKey,
+        pubkey: BlsPublicKey,
     },
     /// Node response to confirm a UFDP connection.
     ///
@@ -178,19 +173,19 @@ pub enum UrsaFrame {
     /// [ TAG . blake3hash (32) ]
     /// ```
     /// size: 33 bytes
-    ContentRequest { hash: Blake3CID },
+    ContentRequest { hash: Blake3Cid },
     /// Node response for content.
     ///
     /// The frame is always followed by the raw proof and content bytes.
     ///
     /// ```text
-    /// [ TAG . compression (1) . proof length (8) . content length (8) . signature (64) ] [ proof .. ] [ content .. ]
+    /// [ TAG . compression (1) . proof length (8) . block length (8) . signature (64) ] [ proof .. ] [ content .. ]
     /// ```
     /// size: 82 bytes + proof len (max 16KB) + content len (max 256KB)
     ContentResponse {
         compression: u8,
         proof_len: u64,
-        content_len: u64,
+        block_len: u64,
         signature: SchnorrSignature,
     },
     /// Not a frame. Buffer contains a chunk of bytes initiated after the `UrsaCodec::read_buffer` method has been called.
@@ -203,7 +198,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 43 bytes
     ContentRangeRequest {
-        hash: Blake3CID,
+        hash: Blake3Cid,
         chunk_start: u64,
         chunks: u16,
     },
@@ -215,7 +210,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 97 bytes
     DecryptionKeyRequest {
-        delivery_acknowledgment: BLSSignature,
+        delivery_acknowledgment: BlsSignature,
     },
     /// Node response for a decryption key.
     /// The client will use the point to decrypt their data and use it.
@@ -235,7 +230,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 9 bytes
     UpdateEpochSignal(EpochNonce),
-    /// Signal from the node the request is finished.
+    /// Signal from the node the request is finished and no more blocks will be sent
     ///
     /// ```text
     /// [ TAG ]
@@ -288,6 +283,7 @@ pub enum UrsaCodecError {
     InvalidNetwork,
     InvalidTag(u8),
     InvalidReason(u8),
+    UnexpectedFrame(FrameTag),
     Io(std::io::Error),
     Unknown,
 }
@@ -363,12 +359,12 @@ impl Encoder<UrsaFrame> for UrsaCodec {
             UrsaFrame::ContentResponse {
                 compression,
                 proof_len,
-                content_len,
+                block_len,
                 signature,
             } => {
                 buf.put_u8(compression);
                 buf.put_u64(proof_len);
-                buf.put_u64(content_len);
+                buf.put_u64(block_len);
                 buf.put_slice(&signature);
             }
             UrsaFrame::ContentRangeRequest {
@@ -490,14 +486,14 @@ impl Decoder for UrsaCodec {
                 let compression = buf[1];
                 let proof_len_bytes = *array_ref!(buf, 2, 8);
                 let proof_len = u64::from_be_bytes(proof_len_bytes);
-                let content_len_bytes = *array_ref!(buf, 10, 8);
-                let content_len = u64::from_be_bytes(content_len_bytes);
+                let block_len_bytes = *array_ref!(buf, 10, 8);
+                let block_len = u64::from_be_bytes(block_len_bytes);
                 let signature = *array_ref!(buf, 18, 64);
 
                 Ok(Some(UrsaFrame::ContentResponse {
                     compression,
                     proof_len,
-                    content_len,
+                    block_len,
                     signature,
                 }))
             }
@@ -644,7 +640,7 @@ mod tests {
                     compression: 0,
                     signature: [1u8; 64],
                     proof_len: 64,
-                    content_len: 64,
+                    block_len: 64,
                 },
             )?;
 

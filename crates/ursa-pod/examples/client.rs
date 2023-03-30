@@ -1,57 +1,29 @@
-use std::error::Error;
-
-use futures::SinkExt;
-use tokio::net::{TcpStream, ToSocketAddrs};
-use tokio_stream::StreamExt;
-use tokio_util::codec::Framed;
+use bytes::BytesMut;
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpStream;
+use tokio_util::io::StreamReader;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-use ursa_pod::codec::{UrsaCodec, UrsaFrame};
+use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
+
+const CID: [u8; 32] = [1u8; 32];
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    UfdpClient::new("127.0.0.1:8080").await?;
+    let stream = TcpStream::connect("127.0.0.1:8080").await?;
+    let mut client = UfdpClient::new(stream).await?;
+    let res = client.request(CID).await?;
+    let mut reader = StreamReader::new(res);
+
+    // read the first block (<=256KiB)
+    let mut bytes = BytesMut::with_capacity(256 * 1024);
+    reader.read_buf(&mut bytes).await?;
+
+    info!("{}", String::from_utf8_lossy(&bytes));
     Ok(())
-}
-
-pub struct UfdpClient {
-    _transport: Framed<TcpStream, UrsaCodec>,
-}
-
-impl UfdpClient {
-    pub async fn new<T: ToSocketAddrs>(dest: T) -> Result<Self, Box<dyn Error>> {
-        let codec = UrsaCodec::default();
-        let stream = TcpStream::connect(dest).await?;
-        let mut transport = Framed::new(stream, codec);
-
-        // send handshake
-        transport
-            .send(UrsaFrame::HandshakeRequest {
-                version: 0,
-                supported_compression_bitmap: 0,
-                lane: 0xFF,
-                pubkey: [1; 48],
-            })
-            .await
-            .expect("handshake request");
-
-        // receive handshake
-        if let Ok(frame) = transport.next().await.expect("handshake response") {
-            match frame {
-                UrsaFrame::HandshakeResponse { .. } => {
-                    info!("received handshake response from server: {frame:?}");
-                }
-                _ => panic!("unexpected frame"),
-            }
-        }
-
-        Ok(Self {
-            _transport: transport,
-        })
-    }
 }

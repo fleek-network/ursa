@@ -1,62 +1,47 @@
-use std::{error::Error, fmt::Display};
-
-use futures::SinkExt;
-use tokio::net::{TcpListener, ToSocketAddrs};
-use tokio_stream::StreamExt;
-use tokio_util::codec::Framed;
-use tracing::{debug, error, info, Level};
+use bytes::BytesMut;
+use tokio::net::TcpListener;
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-use ursa_pod::codec::{UrsaCodec, UrsaFrame};
+use ursa_pod::{
+    codec::UrsaCodecError,
+    server::{Backend, UfdpServer},
+    types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
+};
 
-struct UfdpServer {
-    listener: TcpListener,
-}
+#[derive(Clone, Copy)]
+struct DummyBackend {}
 
-impl UfdpServer {
-    pub async fn new<A: Display + ToSocketAddrs>(addr: A) -> Result<Self, Box<dyn Error>> {
-        let listener = TcpListener::bind(&addr).await?;
-        info!("Listening on {addr}");
-
-        Ok(Self { listener })
+impl Backend for DummyBackend {
+    fn raw_content(&self, _cid: Blake3Cid) -> BytesMut {
+        BytesMut::from("hello world!")
     }
 
-    pub async fn start(self) -> Result<(), Box<dyn Error>> {
-        loop {
-            let (stream, _) = self.listener.accept().await?;
-            tokio::spawn(async move {
-                let mut transport = Framed::new(stream, UrsaCodec::default());
+    fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
+        10
+    }
 
-                while let Some(request) = transport.next().await {
-                    debug!("Received frame: {request:?}");
-                    match request {
-                        Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                            info!("Handshake received, sending response");
-                            transport
-                                .send(UrsaFrame::HandshakeResponse {
-                                    pubkey: [2; 33],
-                                    epoch_nonce: 1000,
-                                    lane: if lane == 0xFF { 0 } else { lane },
-                                    last: None,
-                                })
-                                .await
-                                .expect("handshake response");
-                        }
-                        Ok(_) => {}
-                        Err(e) => error!("{e:?}"),
-                    }
-                }
-            });
-        }
+    fn save_tx(
+        &self,
+        _pubkey: Secp256k1PublicKey,
+        _acknowledgment: BlsSignature,
+    ) -> Result<(), String> {
+        Ok(())
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let server = UfdpServer::new("0.0.0.0:8080").await?;
-    server.start().await
+    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    info!("Listening on port 8080");
+
+    let mut server = UfdpServer::new(DummyBackend {})?;
+    loop {
+        let (stream, _) = listener.accept().await?;
+        server.handle(stream)?;
+    }
 }
