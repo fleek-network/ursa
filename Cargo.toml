@@ -42,7 +42,7 @@ dirs = "4"
 dotenv = "0.15.0"
 ethers = "1.0.2"
 integer-encoding = "3.0.4"
-ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
+ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "21b3579cf19dccf428787304dd75ebcd0fb5adb7" }
 fastmurmur3 = "0.1.2"
 fnv = "1.0.7"
 futures = "0.3.25"
@@ -51,7 +51,7 @@ fvm_ipld_blockstore = "0.1"
 fvm_ipld_car = "0.6"
 fvm_ipld_encoding = "0.3.3"
 geoutils = "0.5"
-graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
+graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "21b3579cf19dccf428787304dd75ebcd0fb5adb7" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 imara-diff = "0.1.5"
