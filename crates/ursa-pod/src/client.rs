@@ -122,6 +122,7 @@ where
                 }
                 Some(Ok(UrsaFrame::EndOfRequestSignal)) => {
                     self.is_done = true;
+                    return Poll::Ready(None);
                 }
                 Some(Err(_)) => {
                     self.is_done = true;
