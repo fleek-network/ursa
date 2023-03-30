@@ -117,6 +117,7 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = self.block_len;
+        // upper bound is none, since we're not sure how many blocks will get decoded in total
         (size, None)
     }
 }
