@@ -305,6 +305,7 @@ impl UrsaCodec {
     /// Instruct the codec to begin returning raw byte chunks (`UrsaFrame::Buffer`) until `size` is exhausted.
     #[inline(always)]
     pub fn read_buffer(&mut self, size: usize, chunk_size: usize) {
+        tracing::debug!("{size} --- {chunk_size}");
         self.take = size;
         self.chunk_size = chunk_size;
     }
@@ -409,6 +410,8 @@ impl Decoder for UrsaCodec {
         if len == 0 {
             return Ok(None);
         }
+
+        tracing::error!("take {}", self.take);
 
         // should we be reading a chunk right now?
         if self.take > 0 {

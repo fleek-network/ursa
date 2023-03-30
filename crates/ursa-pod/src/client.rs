@@ -1,9 +1,10 @@
-use std::{pin::Pin, task::Poll};
-
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{SinkExt, Stream, TryStreamExt};
+use futures::{ready, SinkExt, Stream, StreamExt, TryStreamExt};
+use std::{
+    pin::{pin, Pin},
+    task::Poll,
+};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 use tracing::{debug, info};
 
@@ -13,7 +14,7 @@ use crate::{
 };
 
 const _PROOF_CHUNK_LEN: usize = 4 * 1024;
-const CONTENT_CHUNK_LEN: usize = 16 * 1024;
+const CONTENT_CHUNK_LEN: usize = 2;
 const CONTENT_BLOCK_MAX: usize = 256 * 1024;
 
 /// UFDP Response struct
@@ -31,11 +32,12 @@ const CONTENT_BLOCK_MAX: usize = 256 * 1024;
 ///
 /// println!("{bytes:?}");
 /// ```
-pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin> {
+pub struct UfdpResponse<'client, S> {
     client: &'client mut UfdpClient<S>,
     current_block: BytesMut,
     // todo: proof
     block_len: usize,
+    is_done: bool,
 }
 
 impl<'client, S> UfdpResponse<'client, S>
@@ -61,6 +63,8 @@ where
                 }
 
                 if content_len != 0 {
+                    tracing::debug!("here {content_len}");
+
                     client
                         .transport
                         .codec_mut()
@@ -71,6 +75,7 @@ where
                         // todo: proof
                         current_block: BytesMut::with_capacity(CONTENT_BLOCK_MAX),
                         block_len: content_len as usize,
+                        is_done: false,
                     })
                 } else {
                     Err(UrsaCodecError::Unknown)
@@ -83,7 +88,7 @@ where
 
 impl<'client, S> Stream for UfdpResponse<'client, S>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    S: AsyncRead + Unpin,
 {
     type Item = Result<Bytes, std::io::Error>;
 
@@ -91,27 +96,45 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        match self.client.transport.try_poll_next_unpin(cx) {
-            Poll::Ready(Some(Ok(UrsaFrame::Buffer(bytes)))) => {
-                self.current_block.put_slice(&bytes);
-                // todo: incremental verification
+        if self.is_done {
+            return Poll::Ready(None);
+        }
 
-                if self.current_block.len() < self.block_len {
-                    Poll::Pending
-                } else {
-                    // block is ready
-                    // todo:
-                    //   - send DA
-                    //   - recv decryption key
-                    //   - decrypt block
+        // the only time we should be returning Poll::Pending from this function is when we receive
+        // a Poll::Pending from the source. This is because when we return a Poll::Pending we
+        // *must* ensure that the data current task will wake up after.
 
-                    // for now, return raw bytes from current block
-                    Poll::Ready(Some(Ok(self.current_block.split().freeze())))
+        loop {
+            let res = self.client.transport.poll_next_unpin(cx);
+
+            match ready!(res) {
+                None => {
+                    // What should we do with the data we might have gotten from previous iterations
+                    // of the loop? Nothing. That data is useless because a partial block is useless.
+                    //
+                    // So technically this is an error at this layer.
+                    self.is_done = true;
+                    return Poll::Ready(Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "Unexpected end of data when receiving content.",
+                    ))));
                 }
+                Some(Err(_)) => {
+                    self.is_done = true;
+                    // TODO: impl From<UrsaCodecError> for std::io::Error.
+                    todo!()
+                }
+                Some(Ok(UrsaFrame::Buffer(bytes))) => {
+                    self.current_block.put_slice(&bytes);
+                    // TODO: Do any incremental processing with the chunk.
+                }
+                Some(Ok(UrsaFrame::EndOfRequestSignal)) => {
+                    self.is_done = true;
+                    return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
+                }
+                // TODO: Handle other cases.
+                _ => todo!(),
             }
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(_) => todo!("handle errors"),
-            Poll::Pending => Poll::Pending,
         }
     }
 
@@ -123,7 +146,7 @@ where
 }
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
-pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin> {
+pub struct UfdpClient<S> {
     pub transport: Framed<S, UrsaCodec>,
 }
 
