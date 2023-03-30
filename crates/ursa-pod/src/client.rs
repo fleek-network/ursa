@@ -14,6 +14,7 @@ use crate::{
 
 const _PROOF_CHUNK_LEN: usize = 4 * 1024;
 const CONTENT_CHUNK_LEN: usize = 16 * 1024;
+const CONTENT_BLOCK_MAX: usize = 256 * 1024;
 
 /// UFDP Response struct
 ///
@@ -33,14 +34,56 @@ const CONTENT_CHUNK_LEN: usize = 16 * 1024;
 pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin> {
     client: &'client mut UfdpClient<S>,
     current_block: BytesMut,
-    index: u64,
     // todo: proof
-    pub content_len: u64,
+    block_len: usize,
+}
+
+impl<'client, S> UfdpResponse<'client, S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    pub(crate) async fn new(
+        client: &'client mut UfdpClient<S>,
+    ) -> Result<UfdpResponse<S>, UrsaCodecError> {
+        match client.transport.next().await.expect("content response")? {
+            UrsaFrame::ContentResponse {
+                content_len,
+                proof_len,
+                ..
+            } => {
+                debug!("received content response, streaming proof ({proof_len})");
+                if proof_len != 0 {
+                    unimplemented!()
+                    // todo:
+                    //  - stream and collect blake2tree bytes
+                    //  - decode it
+                    //  - pass to UfdpResponse to incrementally verify content
+                }
+
+                if content_len != 0 {
+                    client
+                        .transport
+                        .codec_mut()
+                        .read_buffer(content_len as usize, CONTENT_CHUNK_LEN);
+
+                    Ok(UfdpResponse {
+                        client,
+                        // todo: proof
+                        current_block: BytesMut::with_capacity(CONTENT_BLOCK_MAX),
+                        block_len: content_len as usize,
+                    })
+                } else {
+                    Err(UrsaCodecError::Unknown)
+                }
+            }
+            f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
+        }
+    }
 }
 
 impl<'client, S> Stream for UfdpResponse<'client, S>
 where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
+    S: AsyncRead + AsyncWrite + Unpin,
 {
     type Item = Result<Bytes, std::io::Error>;
 
@@ -50,11 +93,10 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         match self.client.transport.try_poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(UrsaFrame::Buffer(bytes)))) => {
-                self.index += bytes.len() as u64;
                 self.current_block.put_slice(&bytes);
                 // todo: incremental verification
 
-                if self.index < self.content_len {
+                if self.current_block.len() < self.block_len {
                     Poll::Pending
                 } else {
                     // block is ready
@@ -62,6 +104,8 @@ where
                     //   - send DA
                     //   - recv decryption key
                     //   - decrypt block
+
+                    // for now, return raw bytes from current block
                     Poll::Ready(Some(Ok(self.current_block.split().freeze())))
                 }
             }
@@ -72,8 +116,8 @@ where
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.content_len as usize;
-        (size, Some(size))
+        let size = self.block_len;
+        (size, None)
     }
 }
 
@@ -121,38 +165,6 @@ where
             .await
             .expect("content request");
 
-        match self.transport.next().await.expect("content response")? {
-            UrsaFrame::ContentResponse {
-                content_len,
-                proof_len,
-                ..
-            } => {
-                debug!("received content response, streaming proof ({proof_len})");
-                if proof_len != 0 {
-                    unimplemented!()
-                    // todo:
-                    //  - stream and collect blake3tree bytes
-                    //  - decode it
-                    //  - pass to UfdpResponse to incrementally verify content
-                }
-
-                if content_len != 0 {
-                    self.transport
-                        .codec_mut()
-                        .read_buffer(content_len as usize, CONTENT_CHUNK_LEN);
-
-                    Ok(UfdpResponse {
-                        client: self,
-                        // todo: proof
-                        current_block: BytesMut::with_capacity(256 * 1024),
-                        index: 0,
-                        content_len,
-                    })
-                } else {
-                    Err(UrsaCodecError::Unknown)
-                }
-            }
-            f => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
-        }
+        UfdpResponse::new(self).await
     }
 }
