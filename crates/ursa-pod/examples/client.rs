@@ -2,7 +2,7 @@ use bytes::BytesMut;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio_util::io::StreamReader;
-use tracing::Level;
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
 
@@ -24,6 +24,6 @@ async fn main() -> Result<(), UrsaCodecError> {
     let mut bytes = BytesMut::with_capacity(256 * 1024);
     reader.read_buf(&mut bytes).await?;
 
-    println!("{}", String::from_utf8_lossy(&bytes));
+    info!("{}", String::from_utf8_lossy(&bytes));
     Ok(())
 }
