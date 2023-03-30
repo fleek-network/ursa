@@ -6,6 +6,8 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
 
+const SERVER_ADDRESS: &str = "127.0.0.1:8080";
+const PUB_KEY: [u8; 48] = [2u8; 48];
 const CID: [u8; 32] = [1u8; 32];
 
 #[tokio::main]
@@ -15,8 +17,9 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let stream = TcpStream::connect("127.0.0.1:8080").await?;
-    let mut client = UfdpClient::new(stream).await?;
+    let stream = TcpStream::connect(SERVER_ADDRESS).await?;
+    let mut client = UfdpClient::new(stream, PUB_KEY, None).await?;
+
     let res = client.request(CID).await?;
     let mut reader = StreamReader::new(res);
 

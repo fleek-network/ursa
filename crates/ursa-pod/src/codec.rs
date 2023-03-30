@@ -16,6 +16,12 @@ pub mod consts {
     pub const MAX_FRAME_SIZE: usize = 1024;
     /// Maximum lanes a client can use at one time
     pub const MAX_LANES: u8 = 24;
+    /// Maximum bytes a proof can be
+    pub const MAX_PROOF_SIZE: usize = 16 * 1024;
+    /// Maximum bytes a block can be
+    pub const MAX_BLOCK_SIZE: usize = 256 * 1024;
+    /// Maximum bytes a chunk of a block can be
+    pub const MAX_CHUNK_SIZE: usize = 16 * 1024;
 
     /// The bit flag on any frame tag sent from the node to the client.
     pub const IS_RES_FLAG: u8 = 0b10000000;
@@ -150,7 +156,7 @@ pub enum UrsaFrame {
     HandshakeRequest {
         version: u8,
         supported_compression_bitmap: u8,
-        lane: u8,
+        lane: Option<u8>,
         pubkey: BlsPublicKey,
     },
     /// Node response to confirm a UFDP connection.
@@ -330,7 +336,7 @@ impl Encoder<UrsaFrame> for UrsaCodec {
                 buf.put_slice(&NETWORK);
                 buf.put_u8(version);
                 buf.put_u8(supported_compression_bitmap);
-                buf.put_u8(lane);
+                buf.put_u8(lane.unwrap_or(0xFF));
                 buf.put_slice(&pubkey);
             }
             UrsaFrame::HandshakeResponse {
@@ -436,7 +442,10 @@ impl Decoder for UrsaCodec {
 
                 let version = buf[5];
                 let supported_compression_bitmap = buf[6];
-                let lane = buf[7];
+                let lane = match buf[7] {
+                    0xFF => None,
+                    v => Some(v),
+                };
                 let pubkey = *array_ref!(buf, 8, 48);
 
                 Ok(Some(UrsaFrame::HandshakeRequest {
@@ -579,7 +588,7 @@ mod tests {
             UrsaFrame::HandshakeRequest {
                 version: 0,
                 supported_compression_bitmap: 0,
-                lane: 0xFF,
+                lane: None,
                 pubkey: [1u8; 48],
             }
         )

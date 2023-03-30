@@ -1,26 +1,25 @@
-use bytes::{BufMut, Bytes, BytesMut};
-use futures::{ready, SinkExt, Stream, StreamExt};
 use std::{pin::Pin, task::Poll};
+
+use bytes::{BufMut, Bytes, BytesMut};
+use futures::{executor::block_on, ready, SinkExt, Stream, StreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
-use tracing::{error, info};
+use tracing::{debug, error};
 
 use crate::{
-    codec::{UrsaCodec, UrsaCodecError, UrsaFrame},
-    types::Blake3Cid,
+    codec::{
+        consts::{MAX_BLOCK_SIZE, MAX_CHUNK_SIZE, MAX_PROOF_SIZE},
+        UrsaCodec, UrsaCodecError, UrsaFrame,
+    },
+    types::{Blake3Cid, BlsPublicKey},
 };
 
-const _PROOF_CHUNK_LEN: usize = 4 * 1024;
-const PROOF_LEN_MAX: usize = 16 * 1024;
-const CONTENT_CHUNK_LEN: usize = 16 * 1024;
-const CONTENT_BLOCK_MAX: usize = 256 * 1024;
-
 #[derive(Clone, Copy, Debug)]
-enum UfdpResponseState {
+pub enum UfdpResponseState {
     WaitingForHeader,
     ReadingProof,
     ReadingContent,
-    // WaitingForDecryptionKey,
+    WaitingForDecryptionKey,
     Done,
 }
 
@@ -39,7 +38,7 @@ enum UfdpResponseState {
 ///
 /// println!("{bytes:?}");
 /// ```
-pub struct UfdpResponse<'client, S> {
+pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     client: &'client mut UfdpClient<S>,
     current_proof: BytesMut,
     current_block: BytesMut,
@@ -51,23 +50,28 @@ pub struct UfdpResponse<'client, S> {
 
 impl<'client, S> UfdpResponse<'client, S>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
     pub(crate) fn new(client: &'client mut UfdpClient<S>) -> UfdpResponse<S> {
         UfdpResponse {
             client,
-            current_proof: BytesMut::with_capacity(PROOF_LEN_MAX),
-            current_block: BytesMut::with_capacity(CONTENT_BLOCK_MAX),
+            current_proof: BytesMut::with_capacity(MAX_PROOF_SIZE),
+            current_block: BytesMut::with_capacity(MAX_BLOCK_SIZE),
             proof_len: 0,
             block_len: 0,
             state: UfdpResponseState::WaitingForHeader,
         }
     }
+
+    /// Get the current state of the response.
+    pub fn state(&self) -> UfdpResponseState {
+        self.state
+    }
 }
 
 impl<'client, S> Stream for UfdpResponse<'client, S>
 where
-    S: AsyncRead + Unpin,
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
     type Item = Result<Bytes, std::io::Error>;
 
@@ -99,7 +103,7 @@ where
                     self.client
                         .transport
                         .codec_mut()
-                        .read_buffer(proof_len, CONTENT_CHUNK_LEN);
+                        .read_buffer(proof_len, MAX_CHUNK_SIZE);
                     self.state = UfdpResponseState::ReadingProof;
                 }
                 (UfdpResponseState::ReadingProof, Some(Ok(UrsaFrame::Buffer(bytes)))) => {
@@ -109,7 +113,7 @@ where
                         self.client
                             .transport
                             .codec_mut()
-                            .read_buffer(block_len, CONTENT_CHUNK_LEN);
+                            .read_buffer(block_len, MAX_CHUNK_SIZE);
                         self.state = UfdpResponseState::ReadingContent
                     }
                 }
@@ -118,11 +122,24 @@ where
                     // TODO: Do any incremental processing with the chunk.
 
                     if self.current_block.len() == self.block_len {
-                        self.state = UfdpResponseState::WaitingForHeader;
-                        return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
+                        // BLOCKING: send delivery acknowledgment
+                        block_on(self.client.transport.send(UrsaFrame::DecryptionKeyRequest {
+                            delivery_acknowledgment: [1; 96],
+                        }))
+                        .expect("send delivery acknowledgment");
+
+                        // wait for decryption key
+                        self.state = UfdpResponseState::WaitingForDecryptionKey;
                     }
                 }
-
+                (
+                    UfdpResponseState::WaitingForDecryptionKey,
+                    Some(Ok(UrsaFrame::DecryptionKeyResponse { .. })),
+                ) => {
+                    // todo: decrypt block
+                    self.state = UfdpResponseState::WaitingForHeader;
+                    return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
+                }
                 (_, Some(Ok(UrsaFrame::EndOfRequestSignal))) => {
                     self.state = UfdpResponseState::Done;
                     return Poll::Ready(None);
@@ -158,34 +175,43 @@ where
 }
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
-pub struct UfdpClient<S> {
+pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     transport: Framed<S, UrsaCodec>,
     lane: u8,
 }
 
 impl<S> UfdpClient<S>
 where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
     /// Create a new client, attempting to handshake with the destination
-    pub async fn new(stream: S) -> Result<Self, UrsaCodecError> {
+    ///
+    /// Accepts a stream implementing [`AsyncRead`] + [`AsyncWrite`],
+    /// as well as the client's public key
+    pub async fn new(
+        stream: S,
+        pubkey: BlsPublicKey,
+        lane: Option<u8>,
+    ) -> Result<Self, UrsaCodecError> {
         let mut transport = Framed::new(stream, UrsaCodec::default());
 
         // send handshake
+        debug!("Sending handshake request");
         transport
             .send(UrsaFrame::HandshakeRequest {
                 version: 0,
                 supported_compression_bitmap: 0,
-                lane: 0xFF,
-                pubkey: [1; 48],
+                lane,
+                pubkey,
             })
             .await
             .expect("handshake request");
 
         // receive handshake
+        debug!("Received handshake request");
         match transport.next().await.expect("handshake response") {
             Ok(UrsaFrame::HandshakeResponse { lane, .. }) => {
-                info!("received handshake response from server");
+                debug!("Received handshake response from server");
                 Ok(Self { transport, lane })
             }
             Ok(f) => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
@@ -195,6 +221,7 @@ where
 
     /// Send a request for content.
     pub async fn request(&mut self, hash: Blake3Cid) -> Result<UfdpResponse<S>, UrsaCodecError> {
+        debug!("Sending content request");
         self.transport
             .send(UrsaFrame::ContentRequest { hash })
             .await?;
