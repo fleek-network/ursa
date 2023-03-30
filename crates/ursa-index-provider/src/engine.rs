@@ -7,9 +7,12 @@ use crate::{
 use bytes::Bytes;
 use db::Store;
 use libipld_core::ipld::Ipld;
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
-    oneshot,
+use tokio::{
+    select,
+    sync::{
+        mpsc::{unbounded_channel, Receiver, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
 };
 use ursa_network::{GossipsubMessage, NetworkCommand, NetworkEvent};
 
@@ -22,8 +25,6 @@ use fvm_ipld_blockstore::Blockstore;
 use libipld::Cid;
 use libp2p::{gossipsub::TopicHash, identity::Keypair, Multiaddr, PeerId};
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
-use tokio::select;
-use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{error, info, warn};
 use ursa_store::UrsaStore;
 
@@ -88,15 +89,15 @@ pub struct ProviderEngine<S> {
     /// provider config
     config: ProviderConfig,
     /// used by other processes to send message to provider engine
-    command_sender: Sender<ProviderCommand>,
+    command_sender: UnboundedSender<ProviderCommand>,
     /// Handles inbound messages to the provider engine
-    command_receiver: Receiver<ProviderCommand>,
+    command_receiver: UnboundedReceiver<ProviderCommand>,
     /// network command sender for communication with libp2p node
-    network_command_sender: Sender<NetworkCommand>,
+    network_command_sender: UnboundedSender<NetworkCommand>,
     /// List of addresses to submit to indexer.
     addresses: Vec<Multiaddr>,
     /// Handles events from the network.
-    network_event_receiver: UnboundedReceiver<NetworkEvent>,
+    network_event_receiver: Receiver<NetworkEvent>,
 }
 
 impl<S> ProviderEngine<S>
@@ -108,9 +109,9 @@ where
         store: Arc<UrsaStore<S>>,
         provider_store: Arc<UrsaStore<S>>,
         config: ProviderConfig,
-        network_command_sender: Sender<NetworkCommand>,
+        network_command_sender: UnboundedSender<NetworkCommand>,
         addresses: Vec<Multiaddr>,
-        network_event_receiver: UnboundedReceiver<NetworkEvent>,
+        network_event_receiver: Receiver<NetworkEvent>,
     ) -> Self {
         let (command_sender, command_receiver) = unbounded_channel();
         ProviderEngine {
@@ -124,11 +125,11 @@ where
             network_event_receiver,
         }
     }
-    pub fn command_sender(&self) -> Sender<ProviderCommand> {
+    pub fn command_sender(&self) -> UnboundedSender<ProviderCommand> {
         self.command_sender.clone()
     }
 
-    pub fn command_receiver(&mut self) -> &mut Receiver<ProviderCommand> {
+    pub fn command_receiver(&mut self) -> &mut UnboundedReceiver<ProviderCommand> {
         &mut self.command_receiver
     }
 

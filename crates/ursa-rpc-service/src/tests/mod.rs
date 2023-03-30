@@ -8,7 +8,6 @@ use libp2p::identity::Keypair;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
 use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{
     mpsc::{channel, Sender as BoundedSender},
     oneshot,
@@ -51,7 +50,7 @@ pub fn init() -> InitResult {
         ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
-    let (sender, receiver) = unbounded_channel();
+    let (sender, receiver) = channel(4096);
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store), sender)?;
 
     let provider_engine = ProviderEngine::new(

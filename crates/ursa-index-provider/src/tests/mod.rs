@@ -7,7 +7,7 @@ use crate::{config::ProviderConfig, engine::ProviderEngine};
 use db::MemoryDB;
 use libp2p::{identity::Keypair, PeerId};
 use simple_logger::SimpleLogger;
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::channel;
 use tokio::task;
 use tracing::{info, log::LevelFilter};
 use ursa_network::{NetworkConfig, UrsaService};
@@ -44,7 +44,7 @@ pub fn provider_engine_init(
     let store = get_store();
     let index_store = get_store();
 
-    let (sender, receiver) = unbounded_channel();
+    let (sender, receiver) = channel(4096);
     let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store), sender)?;
     let provider_engine = ProviderEngine::new(
         keypair,

@@ -8,7 +8,6 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use structopt::StructOpt;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::{sync::mpsc::channel, task};
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
@@ -99,7 +98,7 @@ async fn run() -> Result<()> {
     let db = RocksDb::open(db_path, &RocksDbConfig::default())
         .expect("Opening blockstore RocksDB must succeed");
     let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-    let (event_sender, event_receiver) = unbounded_channel();
+    let (event_sender, event_receiver) = channel(4096);
     let service = UrsaService::new(
         keypair.clone(),
         &network_config,

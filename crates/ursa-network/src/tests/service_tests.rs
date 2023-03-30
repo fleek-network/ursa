@@ -23,7 +23,7 @@ use libp2p_bitswap::BitswapStore;
 use simple_logger::SimpleLogger;
 use std::path::Path;
 use std::{sync::Arc, time::Duration, vec};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::channel;
 use tokio::{select, sync::oneshot, time::timeout};
 use tracing::warn;
 use tracing::{error, info, log::LevelFilter};
@@ -97,7 +97,7 @@ async fn network_init(
         config.bootstrap_nodes = vec![addr];
     }
 
-    let (sender, _) = unbounded_channel();
+    let (sender, _) = channel(4096);
     let mut service = UrsaService::new(keypair, config, Arc::clone(&store), sender)?;
 
     let node_addrs = async {

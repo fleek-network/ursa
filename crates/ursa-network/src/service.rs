@@ -47,10 +47,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::{
     select,
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+        mpsc::{unbounded_channel, Sender},
         oneshot,
     },
     time::{sleep, Instant},
@@ -201,9 +202,9 @@ where
     /// The main libp2p swarm emitting events.
     swarm: Swarm<Behaviour<S>>,
     /// Handles outbound messages to peers.
-    command_sender: Sender<NetworkCommand>,
+    command_sender: UnboundedSender<NetworkCommand>,
     /// Handles inbound messages from peers.
-    command_receiver: Receiver<NetworkCommand>,
+    command_receiver: UnboundedReceiver<NetworkCommand>,
     /// Handles events emitted by the ursa network.
     event_sender: Sender<NetworkEvent>,
     /// Bitswap pending queries.
@@ -339,14 +340,14 @@ where
         self.command_receiver.close();
     }
 
-    pub fn command_sender(&self) -> Sender<NetworkCommand> {
+    pub fn command_sender(&self) -> UnboundedSender<NetworkCommand> {
         self.command_sender.clone()
     }
 
     fn emit_event(&mut self, event: NetworkEvent) {
         let sender = self.event_sender.clone();
         tokio::task::spawn(async move {
-            if let Err(error) = sender.send(event) {
+            if let Err(error) = sender.send(event).await {
                 warn!("[emit_event] - failed to emit network event: {:?}.", error);
             };
         });
