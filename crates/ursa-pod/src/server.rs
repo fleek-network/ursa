@@ -69,19 +69,26 @@ where
                 match request {
                     Ok(UrsaFrame::ContentRequest { hash }) => {
                         info!("Content request received, sending response");
-                        let content = backend.raw_content(hash);
+                        let block = backend.raw_content(hash);
+                        let proof = BytesMut::from(b"dummy_proof".as_slice());
+
                         transport
                             .send(UrsaFrame::ContentResponse {
                                 compression: 0,
-                                proof_len: 0,
-                                content_len: content.len() as u64,
+                                proof_len: proof.len() as u64,
+                                block_len: block.len() as u64,
                                 signature: [1u8; 64],
                             })
                             .await
                             .expect("content response");
 
                         transport
-                            .send(UrsaFrame::Buffer(content))
+                            .send(UrsaFrame::Buffer(proof))
+                            .await
+                            .expect("content data");
+
+                        transport
+                            .send(UrsaFrame::Buffer(block))
                             .await
                             .expect("content data");
 
