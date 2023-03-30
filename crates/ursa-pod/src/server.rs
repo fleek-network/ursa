@@ -84,6 +84,11 @@ where
                             .send(UrsaFrame::Buffer(content))
                             .await
                             .expect("content data");
+
+                        transport
+                            .send(UrsaFrame::EndOfRequestSignal)
+                            .await
+                            .expect("EOR");
                     }
                     Ok(_) => unimplemented!(),
                     Err(e) => {

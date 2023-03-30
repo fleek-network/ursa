@@ -102,7 +102,12 @@ where
 
         loop {
             if self.current_block.len() < self.block_len {
+                // get the next chunk
                 match ready!(self.client.transport.poll_next_unpin(cx)) {
+                    Some(Ok(UrsaFrame::Buffer(bytes))) => {
+                        self.current_block.put_slice(&bytes);
+                        // TODO: Do any incremental processing with the chunk.
+                    }
                     None => {
                         // What should we do with the data we might have gotten from previous iterations
                         // of the loop? Nothing. That data is useless because a partial block is useless.
@@ -119,14 +124,40 @@ where
                         // TODO: impl From<UrsaCodecError> for std::io::Error.
                         todo!()
                     }
-                    Some(Ok(UrsaFrame::Buffer(bytes))) => {
-                        self.current_block.put_slice(&bytes);
-                        // TODO: Do any incremental processing with the chunk.
-                    }
                     // TODO: Handle other cases.
                     _ => todo!(),
                 }
             } else {
+                // receive EOR, or setup the client to receive the next proof + block
+                match ready!(self.client.transport.poll_next_unpin(cx)) {
+                    Some(Ok(UrsaFrame::ContentResponse { content_len, .. })) => {
+                        // todo: stream and collect proof
+
+                        let len = content_len as usize;
+                        self.block_len = len;
+                        self.client
+                            .transport
+                            .codec_mut()
+                            .read_buffer(len, CONTENT_CHUNK_LEN);
+                    }
+                    Some(Ok(UrsaFrame::EndOfRequestSignal)) => {
+                        self.is_done = true;
+                    }
+                    None => {
+                        self.is_done = true;
+                        return Poll::Ready(Some(Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Unexpected end of data when receiving content.",
+                        ))));
+                    }
+                    Some(Err(_)) => {
+                        self.is_done = true;
+                        // TODO: impl From<UrsaCodecError> for std::io::Error.
+                        todo!()
+                    }
+                    // TODO: Handle other cases.
+                    _ => todo!(),
+                }
                 return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
             }
         }
