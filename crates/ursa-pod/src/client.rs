@@ -172,7 +172,8 @@ where
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S> {
-    pub transport: Framed<S, UrsaCodec>,
+    transport: Framed<S, UrsaCodec>,
+    lane: u8,
 }
 
 impl<S> UfdpClient<S>
@@ -195,16 +196,14 @@ where
             .expect("handshake request");
 
         // receive handshake
-        if let Ok(frame) = transport.next().await.expect("handshake response") {
-            match frame {
-                UrsaFrame::HandshakeResponse { .. } => {
-                    info!("received handshake response from server: {frame:?}");
-                }
-                f => return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
+        match transport.next().await.expect("handshake response") {
+            Ok(UrsaFrame::HandshakeResponse { lane, .. }) => {
+                info!("received handshake response from server");
+                Ok(Self { transport, lane })
             }
+            Ok(f) => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
+            Err(e) => Err(e),
         }
-
-        Ok(Self { transport })
     }
 
     /// Send a request for content.
@@ -215,5 +214,10 @@ where
             .expect("content request");
 
         UfdpResponse::new(self).await
+    }
+
+    /// Get the lane assigned to the connection
+    pub fn lane(&self) -> u8 {
+        self.lane
     }
 }
