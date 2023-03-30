@@ -1,7 +1,6 @@
 use std::{pin::Pin, task::Poll};
-//use std::task::Poll;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use futures::{SinkExt, Stream, TryStreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
@@ -13,13 +12,27 @@ use crate::{
     types::Blake3Cid,
 };
 
-const PROOF_CHUNK_LEN: usize = 4 * 1024;
+const _PROOF_CHUNK_LEN: usize = 4 * 1024;
 const CONTENT_CHUNK_LEN: usize = 16 * 1024;
 
-/// UFDP Response, implementing [`AsyncRead`] to stream chunks of content
+/// UFDP Response struct
+///
+/// Implements [`Stream`], which can be wrapped with [`tokio_util::io::StreamReader`] for [`AsyncRead`].
+///
+/// Example:
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```
+/// let mut client = UfdpClient::new(stream).await?;
+///
+/// let mut reader = StreamReader::new(client.request(CID).await?);
+/// let mut bytes = BytesMut::with_capacity(16 * 1024);
+/// reader.read_buf(&mut bytes).await?;
+///
+/// println!("{bytes:?}");
+/// ```
 pub struct UfdpResponse<'client, S: AsyncRead + AsyncWrite + Unpin> {
     client: &'client mut UfdpClient<S>,
-    _proof: BytesMut,
+    // todo: proof
     pub content_len: u64,
 }
 
@@ -45,7 +58,7 @@ where
     }
 }
 
-/// UFDP Client. Accepts any stream supporting [`AsyncRead`] + [`AsyncWrite`]
+/// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin> {
     pub transport: Framed<S, UrsaCodec>,
 }
@@ -82,7 +95,7 @@ where
         Ok(Self { transport })
     }
 
-    /// Send a request for content
+    /// Send a request for content.
     pub async fn request(&mut self, hash: Blake3Cid) -> Result<UfdpResponse<S>, UrsaCodecError> {
         self.transport
             .send(UrsaFrame::ContentRequest { hash })
@@ -95,24 +108,23 @@ where
                 proof_len,
                 ..
             } => {
-                info!("received content response");
-
-                debug!("streaming proof ({proof_len})");
-                // todo: blake3tree encode/decode
+                debug!("received content response, streaming proof ({proof_len})");
                 if proof_len != 0 {
-                    unimplemented!()
+                    todo! {"
+                        - stream and collect blake3tree bytes
+                        - decode it
+                        - pass to UfdpResponse to incrementally verify content"
+                    }
                 }
 
-                debug!("streaming content ({content_len})");
                 if content_len != 0 {
                     self.transport
                         .codec_mut()
-                        .read_buffer(content_len as usize, 16 * 1024);
+                        .read_buffer(content_len as usize, CONTENT_CHUNK_LEN);
 
                     Ok(UfdpResponse {
                         client: self,
                         // todo: proof
-                        _proof: BytesMut::new(),
                         content_len,
                     })
                 } else {
