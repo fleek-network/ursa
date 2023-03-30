@@ -20,7 +20,7 @@ use tokio::{
 };
 use tokio_util::io::ReaderStream;
 use tower_http::services::ServeDir;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
 
@@ -130,6 +130,7 @@ pub async fn proxy_pass<C: Cache>(
                 },
                 mut body,
             ) => {
+                let max_size_cache_entry = config.max_size_cache_entry.unwrap_or(0);
                 let (mut writer, reader) = duplex(100);
                 task::spawn(async move {
                     let mut bytes = Vec::new();
@@ -140,6 +141,10 @@ pub async fn proxy_pass<C: Cache>(
                                     warn!("Failed to write to stream for {e:?}");
                                 }
                                 bytes.put(buf);
+                                if max_size_cache_entry > 0 && bytes.len() > max_size_cache_entry {
+                                    debug!("Data exceeds max size for a cache entry");
+                                    return;
+                                }
                             }
                             Err(e) => {
                                 error!("Failed to read stream for {e:?}");
