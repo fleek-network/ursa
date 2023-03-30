@@ -1,9 +1,6 @@
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{ready, SinkExt, Stream, StreamExt, TryStreamExt};
-use std::{
-    pin::{pin, Pin},
-    task::Poll,
-};
+use futures::{ready, SinkExt, Stream, StreamExt};
+use std::{pin::Pin, task::Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
 use tracing::{debug, info};
@@ -14,7 +11,7 @@ use crate::{
 };
 
 const _PROOF_CHUNK_LEN: usize = 4 * 1024;
-const CONTENT_CHUNK_LEN: usize = 2;
+const CONTENT_CHUNK_LEN: usize = 16 * 1024;
 const CONTENT_BLOCK_MAX: usize = 256 * 1024;
 
 /// UFDP Response struct
@@ -63,8 +60,7 @@ where
                 }
 
                 if content_len != 0 {
-                    tracing::debug!("here {content_len}");
-
+                    debug!("streaming content");
                     client
                         .transport
                         .codec_mut()
@@ -105,35 +101,33 @@ where
         // *must* ensure that the data current task will wake up after.
 
         loop {
-            let res = self.client.transport.poll_next_unpin(cx);
-
-            match ready!(res) {
-                None => {
-                    // What should we do with the data we might have gotten from previous iterations
-                    // of the loop? Nothing. That data is useless because a partial block is useless.
-                    //
-                    // So technically this is an error at this layer.
-                    self.is_done = true;
-                    return Poll::Ready(Some(Err(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        "Unexpected end of data when receiving content.",
-                    ))));
+            if self.current_block.len() < self.block_len {
+                match ready!(self.client.transport.poll_next_unpin(cx)) {
+                    None => {
+                        // What should we do with the data we might have gotten from previous iterations
+                        // of the loop? Nothing. That data is useless because a partial block is useless.
+                        //
+                        // So technically this is an error at this layer.
+                        self.is_done = true;
+                        return Poll::Ready(Some(Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Unexpected end of data when receiving content.",
+                        ))));
+                    }
+                    Some(Err(_)) => {
+                        self.is_done = true;
+                        // TODO: impl From<UrsaCodecError> for std::io::Error.
+                        todo!()
+                    }
+                    Some(Ok(UrsaFrame::Buffer(bytes))) => {
+                        self.current_block.put_slice(&bytes);
+                        // TODO: Do any incremental processing with the chunk.
+                    }
+                    // TODO: Handle other cases.
+                    _ => todo!(),
                 }
-                Some(Err(_)) => {
-                    self.is_done = true;
-                    // TODO: impl From<UrsaCodecError> for std::io::Error.
-                    todo!()
-                }
-                Some(Ok(UrsaFrame::Buffer(bytes))) => {
-                    self.current_block.put_slice(&bytes);
-                    // TODO: Do any incremental processing with the chunk.
-                }
-                Some(Ok(UrsaFrame::EndOfRequestSignal)) => {
-                    self.is_done = true;
-                    return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
-                }
-                // TODO: Handle other cases.
-                _ => todo!(),
+            } else {
+                return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
             }
         }
     }

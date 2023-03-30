@@ -17,13 +17,13 @@ async fn main() -> Result<(), UrsaCodecError> {
 
     let stream = TcpStream::connect("127.0.0.1:8080").await?;
     let mut client = UfdpClient::new(stream).await?;
-
     let res = client.request(CID).await?;
     let mut reader = StreamReader::new(res);
-    let mut bytes = BytesMut::with_capacity(16 * 1024);
+
+    // read the first block (<=256KiB)
+    let mut bytes = BytesMut::with_capacity(256 * 1024);
     reader.read_buf(&mut bytes).await?;
 
     println!("{}", String::from_utf8_lossy(&bytes));
-
     Ok(())
 }
