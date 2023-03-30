@@ -7,13 +7,13 @@ use tracing::{debug, error, info};
 
 use crate::{
     codec::{UrsaCodec, UrsaCodecError, UrsaFrame},
-    types::{BLSSignature, Blake3CID, Secp256k1PublicKey},
+    types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
 /// Backend trait used by [`UfdpServer`] to access external data
 pub trait Backend: Copy + Send + Sync + 'static {
     /// Get some raw content for a given cid
-    fn raw_content(&self, cid: Blake3CID) -> BytesMut;
+    fn raw_content(&self, cid: Blake3Cid) -> BytesMut;
 
     /// Get a users balance
     fn get_balance(&self, pubkey: Secp256k1PublicKey) -> u128;
@@ -22,7 +22,7 @@ pub trait Backend: Copy + Send + Sync + 'static {
     fn save_tx(
         &self,
         pubkey: Secp256k1PublicKey,
-        acknowledgment: BLSSignature,
+        acknowledgment: BlsSignature,
     ) -> Result<(), String>;
 }
 

@@ -5,14 +5,14 @@ use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{
     codec::UrsaCodecError,
     server::{Backend, UfdpServer},
-    types::{BLSSignature, Blake3CID, Secp256k1PublicKey},
+    types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
 
 impl Backend for DummyBackend {
-    fn raw_content(&self, _cid: Blake3CID) -> BytesMut {
+    fn raw_content(&self, _cid: Blake3Cid) -> BytesMut {
         BytesMut::from("hello world!")
     }
 
@@ -23,7 +23,7 @@ impl Backend for DummyBackend {
     fn save_tx(
         &self,
         _pubkey: Secp256k1PublicKey,
-        _acknowledgment: BLSSignature,
+        _acknowledgment: BlsSignature,
     ) -> Result<(), String> {
         Ok(())
     }

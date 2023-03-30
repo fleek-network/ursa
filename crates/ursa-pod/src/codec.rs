@@ -4,7 +4,7 @@ use consts::*;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::types::{
-    BLSPublicKey, BLSSignature, Blake3CID, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
+    Blake3Cid, BlsPublicKey, BlsSignature, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
     Secp256k1PublicKey,
 };
 
@@ -72,7 +72,7 @@ impl Reason {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LastLaneData {
     pub bytes: u64,
-    pub signature: BLSSignature,
+    pub signature: BlsSignature,
 }
 
 /// Frame tags
@@ -151,7 +151,7 @@ pub enum UrsaFrame {
         version: u8,
         supported_compression_bitmap: u8,
         lane: u8,
-        pubkey: BLSPublicKey,
+        pubkey: BlsPublicKey,
     },
     /// Node response to confirm a UFDP connection.
     ///
@@ -173,7 +173,7 @@ pub enum UrsaFrame {
     /// [ TAG . blake3hash (32) ]
     /// ```
     /// size: 33 bytes
-    ContentRequest { hash: Blake3CID },
+    ContentRequest { hash: Blake3Cid },
     /// Node response for content.
     ///
     /// The frame is always followed by the raw proof and content bytes.
@@ -198,7 +198,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 43 bytes
     ContentRangeRequest {
-        hash: Blake3CID,
+        hash: Blake3Cid,
         chunk_start: u64,
         chunks: u16,
     },
@@ -210,7 +210,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 97 bytes
     DecryptionKeyRequest {
-        delivery_acknowledgment: BLSSignature,
+        delivery_acknowledgment: BlsSignature,
     },
     /// Node response for a decryption key.
     /// The client will use the point to decrypt their data and use it.
