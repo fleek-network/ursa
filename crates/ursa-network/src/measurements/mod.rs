@@ -6,9 +6,14 @@ use std::time::Duration;
 
 mod bandwidth;
 mod latency;
+mod types;
+mod uptime;
 
-use bandwidth::{Bandwidth, Bytes, BytesPerSecond, RequestId};
-use latency::{Latency, Milliseconds};
+use bandwidth::Bandwidth;
+use latency::Latency;
+
+use crate::measurements::uptime::Uptime;
+use types::{Bytes, BytesPerSecond, Milliseconds, RequestId};
 
 const MAX_CAPACITY: usize = 100;
 
@@ -37,12 +42,13 @@ impl MeasurementManager {
         }
     }
 
-    pub fn register_rtt(&mut self, peer_id: PeerId, rtt: Duration) {
+    pub fn register_ping(&mut self, peer_id: PeerId, rtt: Duration) {
         if !self.peers.contains(&peer_id) {
             self.peers.put(peer_id, PeerMeasurementManager::new());
         }
         let measurements = self.peers.get_mut(&peer_id).unwrap();
         measurements.latency.register_rtt(rtt);
+        measurements.uptime.register_ping();
     }
 
     #[allow(dead_code)]
@@ -69,11 +75,13 @@ impl Default for MeasurementManager {
 pub struct Measurements {
     pub bandwidth: Option<BytesPerSecond>,
     pub latency: Option<Milliseconds>,
+    pub uptime: Option<Milliseconds>,
 }
 
 struct PeerMeasurementManager {
     bandwidth: Bandwidth,
     latency: Latency,
+    uptime: Uptime,
 }
 
 impl PeerMeasurementManager {
@@ -81,6 +89,7 @@ impl PeerMeasurementManager {
         Self {
             bandwidth: Bandwidth::new(),
             latency: Latency::new(),
+            uptime: Uptime::new(),
         }
     }
 
@@ -88,10 +97,15 @@ impl PeerMeasurementManager {
     fn get_measurements(&self) -> Option<Measurements> {
         let bandwidth = self.bandwidth.get_estimate();
         let latency = self.latency.get_estimate();
-        if bandwidth.is_none() && latency.is_none() {
+        let uptime = self.uptime.get_estimate();
+        if bandwidth.is_none() && latency.is_none() && uptime.is_none() {
             None
         } else {
-            Some(Measurements { bandwidth, latency })
+            Some(Measurements {
+                bandwidth,
+                latency,
+                uptime,
+            })
         }
     }
 }
@@ -101,6 +115,7 @@ mod tests {
     use super::*;
     use std::thread::sleep;
     use std::time::Duration;
+    use types::RequestId;
 
     const EPSILON: f64 = 1e-6;
 
@@ -162,10 +177,10 @@ mod tests {
     }
 
     #[test]
-    fn test_latency_one_rtt() {
+    fn test_latency_one_ping() {
         let peer_id = PeerId::random();
         let mut manager = MeasurementManager::new();
-        manager.register_rtt(peer_id, Duration::from_millis(300));
+        manager.register_ping(peer_id, Duration::from_millis(300));
 
         let measurements = manager.get_measurements();
         let measurement = measurements.get(&peer_id).unwrap();
@@ -173,14 +188,53 @@ mod tests {
     }
 
     #[test]
-    fn test_latency_two_rtt() {
+    fn test_latency_two_pings() {
         let peer_id = PeerId::random();
         let mut manager = MeasurementManager::new();
-        manager.register_rtt(peer_id, Duration::from_millis(300));
-        manager.register_rtt(peer_id, Duration::from_millis(400));
+        manager.register_ping(peer_id, Duration::from_millis(300));
+        manager.register_ping(peer_id, Duration::from_millis(400));
 
         let measurements = manager.get_measurements();
         let measurement = measurements.get(&peer_id).unwrap();
         assert!((measurement.latency.unwrap() - 175.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn test_uptime_one_ping() {
+        let peer_id = PeerId::random();
+        let mut manager = MeasurementManager::new();
+        manager.register_ping(peer_id, Duration::from_millis(0));
+
+        let measurements = manager.get_measurements();
+        let measurement = measurements.get(&peer_id).unwrap();
+        assert_eq!(measurement.uptime.unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_uptime_two_pings() {
+        let peer_id = PeerId::random();
+        let mut manager = MeasurementManager::new();
+        manager.register_ping(peer_id, Duration::from_millis(0));
+        sleep(Duration::new(1, 0));
+        manager.register_ping(peer_id, Duration::from_millis(0));
+
+        let measurements = manager.get_measurements();
+        let measurement = measurements.get(&peer_id).unwrap();
+        assert!((measurement.uptime.unwrap() - 1000.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn test_uptime_timeout() {
+        let peer_id = PeerId::random();
+        let mut manager = MeasurementManager::new();
+        manager.register_ping(peer_id, Duration::from_millis(0));
+        sleep(Duration::new(1, 0));
+        manager.register_ping(peer_id, Duration::from_millis(0));
+        // `MAX_TIME_BETWEEN_PINGS` is set to 2 seconds for test mode
+        sleep(Duration::new(3, 0));
+
+        let measurements = manager.get_measurements();
+        let measurement = measurements.get(&peer_id).unwrap();
+        assert_eq!(measurement.uptime.unwrap(), 0.0);
     }
 }
