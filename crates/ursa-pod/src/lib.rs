@@ -3,9 +3,12 @@
 /// UFDP codec implementation
 pub mod codec;
 pub mod keys;
-pub mod primitives;
 /// UFDP types
 pub mod types;
+
+/// UFDP core implementation.
+pub mod primitives;
+pub mod tree;
 
 /// UFDP client implementation
 #[cfg(feature = "client")]
