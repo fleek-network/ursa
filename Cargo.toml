@@ -111,6 +111,7 @@ workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.
 
 [patch.'crates-io']
 libp2p = { git = "https://github.com/libp2p/rust-libp2p", rev = "d8de86e991ad540e6f69ca417c27f7407198944f" }
+snow = { git = "https://github.com/mcginty/snow", rev = "abf198913935decc5235e1c091571a3e1aebdf6c" }
 
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.
