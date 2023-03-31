@@ -16,8 +16,12 @@ pub mod consts {
     pub const MAX_FRAME_SIZE: usize = 1024;
     /// Maximum lanes a client can use at one time
     pub const MAX_LANES: u8 = 24;
-    /// Maximum bytes a proof can be
-    pub const MAX_PROOF_SIZE: usize = 16 * 1024;
+    /// Maximum bytes a proof can be. The maximum theoretical file we support is
+    /// `2^64` bytes, given we transfer data as blocks of 256KiB (`2^18` bytes) the
+    /// maximum number of chunks is `2^46`. So the maximum height of the hash tree
+    /// will be 47. So we will have maximum of 47 hashes (hence `47 * 32`) and one byte
+    /// per each 8 hash (`ceil(47 / 8) = 6`).
+    pub const MAX_PROOF_SIZE: usize = 47 * 32 + 6;
     /// Maximum bytes a block can be
     pub const MAX_BLOCK_SIZE: usize = 256 * 1024;
     /// Maximum bytes a chunk of a block can be
