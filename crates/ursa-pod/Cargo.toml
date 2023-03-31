@@ -37,3 +37,7 @@ server = ["tokio", "tokio-stream", "futures", "tracing"]
 [[bench]]
 name = "encrypt"
 harness = false
+
+[[bench]]
+name = "codec"
+harness = false

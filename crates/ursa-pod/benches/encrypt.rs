@@ -2,7 +2,6 @@
 
 use benchmarks_utils::*;
 use criterion::*;
-use elliptic_curve::Field;
 use rand_core::OsRng;
 use ursa_pod::keys::SecretKey;
 use ursa_pod::primitives::{encrypt_block, RequestInfo};
@@ -15,7 +14,7 @@ fn bench_encrypt(c: &mut Criterion) {
     g.throughput(Throughput::Bytes(SIZE as u64));
 
     let data = random_vec(SIZE);
-    let s_key = SecretKey(k256::Scalar::random(OsRng));
+    let s_key = SecretKey::random(OsRng);
     let req = RequestInfo::rand(OsRng);
 
     g.bench_function("encrypt", |b| {
