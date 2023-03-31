@@ -228,14 +228,14 @@ impl Consensus {
     }
 
     pub async fn run_edge_node(&self) {
-        //Todo(Dalton): Edge node logic
+        // Todo(Dalton): Edge node logic
     }
 }
 
 // Application Query Helpers
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
-        //Build transaction
+        // Build transaction
         let txn = get_epoch_info_params();
         let query = Query::EthCall(txn);
 

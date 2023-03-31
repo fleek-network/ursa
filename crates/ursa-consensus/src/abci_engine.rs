@@ -127,11 +127,11 @@ impl Engine {
         Ok(())
     }
 
-    ///Handles ABCI queries coming to the primary and forwards them to the ABCI App. Each
-    ///handle call comes with a Sender channel which is used to send the response back to the
-    ///Primary and then to the client.
+    /// Handles ABCI queries coming to the primary and forwards them to the ABCI App. Each
+    /// handle call comes with a Sender channel which is used to send the response back to the
+    /// Primary and then to the client.
     ///
-    ///Client => Primary => handle_cert => ABCI App => Primary => Client
+    /// Client => Primary => handle_cert => ABCI App => Primary => Client
     fn handle_abci_query(
         &mut self,
         tx: oneshot::Sender<ResponseQuery>,
@@ -173,13 +173,13 @@ impl Engine {
     }
 }
 
-//Tendermint Lifecycle Helpers
+// Tendermint Lifecycle Helpers
 impl Engine {
-    ///Calls the `InitChain` hook on the app, ignores "already initialized" errors.
+    /// Calls the `InitChain` hook on the app, ignores "already initialized" errors.
     pub fn init_chain(&mut self) -> Result<()> {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
         if let Err(err) = client.init_chain(RequestInitChain::default()) {
-            //ignore errors about the chain being uninitialized
+            // ignore errors about the chain being uninitialized
             if err.to_string().contains("already initialized") {
                 warn!("{}", err);
                 return Ok(());
@@ -189,10 +189,10 @@ impl Engine {
         Ok(())
     }
 
-    ///Calls the `BeginBlock` hook on the ABCI app. For now, it just makes a request with
-    ///the new block height.
-    //If we wanted to, we could add additional arguments to be forwarded from the Consensus
-    //to the App logic on the beginning of each block.
+    /// Calls the `BeginBlock` hook on the ABCI app. For now, it just makes a request with
+    /// the new block height.
+    // If we wanted to, we could add additional arguments to be forwarded from the Consensus
+    // to the App logic on the beginning of each block.
     fn begin_block(&mut self, height: i64) -> Result<()> {
         let req = RequestBeginBlock {
             header: Some(Header {
@@ -206,7 +206,7 @@ impl Engine {
         Ok(())
     }
 
-    ///Calls the `DeliverTx` hook on the ABCI app. Returns true if the result of the tx says the epoch should change
+    /// Calls the `DeliverTx` hook on the ABCI app. Returns true if the result of the tx says the epoch should change
     fn deliver_tx(&mut self, tx: Transaction) -> Result<bool> {
         let response = self.client.deliver_tx(RequestDeliverTx { tx })?;
 
@@ -216,17 +216,17 @@ impl Engine {
         Ok(false)
     }
 
-    ///Calls the `EndBlock` hook on the ABCI app. For now, it just makes a request with
-    ///the proposed block height.
-    //If we wanted to, we could add additional arguments to be forwarded from the Consensus
-    //to the App logic on the end of each block.
+    /// Calls the `EndBlock` hook on the ABCI app. For now, it just makes a request with
+    /// the proposed block height.
+    // If we wanted to, we could add additional arguments to be forwarded from the Consensus
+    // to the App logic on the end of each block.
     fn end_block(&mut self, height: i64) -> Result<()> {
         let req = RequestEndBlock { height };
         self.client.end_block(req)?;
         Ok(())
     }
 
-    ///Calls the `Commit` hook on the ABCI app.
+    /// Calls the `Commit` hook on the ABCI app.
     fn commit(&mut self) -> Result<()> {
         self.client.commit()?;
         Ok(())

@@ -155,7 +155,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             ..Default::default()
         };
 
-        //Insert into db
+        // Insert into db
         state
             .db
             .insert_account_info(token_address.to_fixed_bytes().into(), token_contract);
