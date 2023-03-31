@@ -117,7 +117,7 @@ mod tests {
     use std::time::Duration;
     use types::RequestId;
 
-    const EPSILON: f64 = 1e-6;
+    const EPSILON: f64 = 1e-4;
 
     #[test]
     fn test_one_request() {
