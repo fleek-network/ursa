@@ -14,7 +14,7 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
     g.throughput(Throughput::Bytes(frame.size_hint() as u64));
     let mut codec = UrsaCodec::default();
 
-    g.bench_function(format!("encode/{title}"), |b| {
+    g.bench_function(format!("{title}/encode"), |b| {
         let mut result = BytesMut::new();
         b.iter(|| {
             codec.encode(frame.clone(), &mut result).unwrap();
@@ -24,7 +24,7 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
 
     let mut bytes = BytesMut::new();
     codec.encode(frame, &mut bytes).unwrap();
-    g.bench_function(format!("decode/{title}"), |b| {
+    g.bench_function(format!("{title}/decode"), |b| {
         b.iter(|| {
             let res = codec.decode(&mut bytes.clone()).unwrap();
             black_box(res);
@@ -33,7 +33,7 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
 }
 
 fn bench_encode_group(c: &mut Criterion) {
-    let mut g = c.benchmark_group("codec");
+    let mut g = c.benchmark_group("Codec");
     g.sample_size(20);
     g.measurement_time(Duration::from_secs(15));
 
