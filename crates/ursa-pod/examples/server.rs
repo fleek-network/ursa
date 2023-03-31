@@ -12,19 +12,23 @@ use ursa_pod::{
 struct DummyBackend {}
 
 impl Backend for DummyBackend {
-    fn raw_content(&self, _cid: Blake3Cid) -> BytesMut {
-        BytesMut::from("hello world!")
+    fn raw_content(&self, _cid: Blake3Cid) -> (BytesMut, u64) {
+        let content = BytesMut::from("hello world!");
+        let request_id = 0;
+        (content, request_id)
+    }
+
+    fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
+        let key = [1; 33];
+        let key_id = 0;
+        (key, key_id)
     }
 
     fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
-        10
+        9001
     }
 
-    fn save_tx(
-        &self,
-        _pubkey: Secp256k1PublicKey,
-        _acknowledgment: BlsSignature,
-    ) -> Result<(), String> {
+    fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
         Ok(())
     }
 }
