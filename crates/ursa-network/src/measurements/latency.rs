@@ -1,6 +1,5 @@
+use crate::measurements::types::Milliseconds;
 use std::time::Duration;
-
-pub type Milliseconds = f64;
 
 #[derive(Clone)]
 pub struct Latency {
