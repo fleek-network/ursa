@@ -8,11 +8,13 @@ use tracing::{debug, error};
 
 use crate::{
     codec::{
-        consts::{MAX_BLOCK_SIZE, MAX_CHUNK_SIZE, MAX_PROOF_SIZE},
+        consts::{MAX_BLOCK_SIZE, MAX_PROOF_SIZE},
         UrsaCodec, UrsaCodecError, UrsaFrame,
     },
     types::{Blake3Cid, BlsPublicKey},
 };
+
+const IO_CHUNK_SIZE: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub enum UfdpResponseState {
@@ -103,7 +105,7 @@ where
                     self.client
                         .transport
                         .codec_mut()
-                        .read_buffer(proof_len, MAX_CHUNK_SIZE);
+                        .read_buffer(proof_len, IO_CHUNK_SIZE);
                     self.state = UfdpResponseState::ReadingProof;
                 }
                 (UfdpResponseState::ReadingProof, Some(Ok(UrsaFrame::Buffer(bytes)))) => {
@@ -113,7 +115,7 @@ where
                         self.client
                             .transport
                             .codec_mut()
-                            .read_buffer(block_len, MAX_CHUNK_SIZE);
+                            .read_buffer(block_len, IO_CHUNK_SIZE);
                         self.state = UfdpResponseState::ReadingContent
                     }
                 }

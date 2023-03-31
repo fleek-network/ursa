@@ -6,12 +6,11 @@ use tokio_util::codec::Framed;
 use tracing::{debug, error};
 
 use crate::{
-    codec::{
-        consts::{MAX_BLOCK_SIZE, MAX_CHUNK_SIZE},
-        UrsaCodec, UrsaCodecError, UrsaFrame,
-    },
+    codec::{consts::MAX_BLOCK_SIZE, UrsaCodec, UrsaCodecError, UrsaFrame},
     types::{Blake3Cid, BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
 };
+
+const IO_CHUNK_SIZE: usize = 16 * 1024;
 
 /// Backend trait used by [`UfdpServer`] to access external data
 pub trait Backend: Copy + Send + Sync + 'static {
@@ -42,7 +41,7 @@ where
         Ok(Self { backend })
     }
 
-    /// Handle a connection. Spawns a tokio task and begins the connection loop
+    /// Handle a connection. Spawns a tokio task and begins the session loop
     pub fn handle<S: AsyncWrite + AsyncRead + Unpin + Send + 'static>(
         &mut self,
         stream: S,
@@ -108,7 +107,7 @@ where
 
                             let mut current_chunk = 0;
                             while !block.is_empty() {
-                                let chunk_len = block.len().min(MAX_CHUNK_SIZE);
+                                let chunk_len = block.len().min(IO_CHUNK_SIZE);
                                 debug!("Sending chunk #{current_chunk}");
                                 transport
                                     .send(UrsaFrame::Buffer(block.split_to(chunk_len)))

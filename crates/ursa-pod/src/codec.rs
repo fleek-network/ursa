@@ -24,8 +24,6 @@ pub mod consts {
     pub const MAX_PROOF_SIZE: usize = 47 * 32 + 6;
     /// Maximum bytes a block can be
     pub const MAX_BLOCK_SIZE: usize = 256 * 1024;
-    /// Maximum bytes a chunk of a block can be
-    pub const MAX_CHUNK_SIZE: usize = 16 * 1024;
 
     /// The bit flag on any frame tag sent from the node to the client.
     pub const IS_RES_FLAG: u8 = 0b10000000;
