@@ -9,8 +9,7 @@ use abci::{
     types::*,
 };
 use anyhow::{bail, Result};
-use ethers::abi::parse_abi;
-use ethers::contract::BaseContract;
+use ethers::abi::AbiDecode;
 use ethers::prelude::NameOrAddress;
 use ethers::types::{Address, TransactionRequest};
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
@@ -23,6 +22,8 @@ use revm::{
 use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use ursa_utils::contract_bindings::epoch_bindings::SignalEpochChangeReturn;
+use ursa_utils::transactions::EPOCH_ADDRESS;
 
 #[derive(Clone, Debug)]
 pub struct State<Db> {
@@ -131,9 +132,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
         let epoch_address: Address = genesis.epoch.address.parse().unwrap();
-        let owner_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-            .parse()
-            .unwrap();
 
         // Build the account info for the contracts
         let token_contract = AccountInfo {
@@ -177,13 +175,11 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Call the init transactions
         let registry_tx = TransactionRequest {
             to: Some(registry_address.into()),
-            from: Some(owner_address),
             data: genesis.registry.init_params,
             ..Default::default()
         };
         let epoch_tx = TransactionRequest {
             to: Some(epoch_address.into()),
-            from: Some(owner_address),
             data: genesis.epoch.init_params,
             ..Default::default()
         };
@@ -224,12 +220,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // resolve the `to`
         match tx.to {
             Some(NameOrAddress::Address(addr)) => {
-                // TODO(Dalton): This is the Epoch contract, but this should be able to pulled from genesis more easily
-                if addr
-                    == "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
-                        .parse::<Address>()
-                        .unwrap()
-                {
+                if addr == EPOCH_ADDRESS.parse::<Address>().unwrap() {
                     to_epoch_contract = true;
                 }
                 tx.to = Some(addr.into())
@@ -247,13 +238,11 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
                 ..
             } = &result
             {
-                // safe unwrap, valid abi
-                let epoch_contract = BaseContract::from(parse_abi(&["function signalEpochChange(string memory committeeMember) external returns (bool)"]).unwrap());
+                //  GetCurrentEpochInfoReturn::decode(Bytes::from(output)).unwrap()
+                let results = SignalEpochChangeReturn::decode(bytes)
+                    .unwrap_or(SignalEpochChangeReturn(false));
 
-                if epoch_contract
-                    .decode_output("signalEpochChange", bytes)
-                    .unwrap_or(false)
-                {
+                if results.0 {
                     return ResponseDeliverTx {
                         data: serde_json::to_vec(&ExecutionResponse::ChangeEpoch).unwrap(),
                         ..Default::default()

@@ -211,7 +211,7 @@ async fn run() -> Result<()> {
 
     // wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
-    
+
     // Gracefully shutdown node & rpc
     rpc_task.abort();
     service_task.abort();

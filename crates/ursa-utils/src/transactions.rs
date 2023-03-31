@@ -1,5 +1,6 @@
-use crate::contract_bindings::epoch::{
+use crate::contract_bindings::epoch_bindings::{
     CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
+    SignalEpochChangeCall,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use ethers::{
@@ -10,9 +11,12 @@ use ethers::{
     types::{Address, Bytes, TransactionRequest, U256},
 };
 use fastcrypto::traits::EncodeDecodeBase64;
-use narwhal_config::{Authority, Committee, WorkerCache, WorkerId, WorkerIndex, WorkerInfo};
+use narwhal_config::{Authority, Committee, WorkerCache, WorkerIndex, WorkerInfo};
 use narwhal_crypto::{NetworkPublicKey, PublicKey};
 use std::{collections::BTreeMap, str::FromStr};
+
+pub const REGISTRY_ADDRESS: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+pub const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
 
 /// This will take in strings of address, human readable function abi, and args. And return ethers function abi and filled out transaction request with encoded params
 /// example of human readable function abi is "myFunction(string, uint256):(uin256)" parenthesis after : are the return
@@ -83,9 +87,7 @@ pub fn encode_params(func: &Function, args: &[impl AsRef<str>]) -> Result<Vec<u8
 
 pub fn get_epoch_info_params() -> TransactionRequest {
     // safe unwrap
-    let to = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
-        .parse::<Address>()
-        .unwrap();
+    let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
     let data = EpochCalls::GetCurrentEpochInfo(GetCurrentEpochInfoCall::default()).encode();
     TransactionRequest::new().to(to).data(data)
 }
@@ -115,6 +117,14 @@ pub fn decode_committee(
     (Committee::from(&epoch_info), WorkerCache::from(&epoch_info))
 }
 
+pub fn encode_signal_epoch_call(public_key: String) -> TransactionRequest {
+    let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
+    let data = EpochCalls::SignalEpochChange(SignalEpochChangeCall {
+        committee_member: public_key,
+    })
+    .encode();
+    TransactionRequest::new().to(to).data(data)
+}
 pub struct EpochInformation {
     authorities: BTreeMap<PublicKey, CommitteeMember>,
     epoch: u64,
@@ -162,15 +172,25 @@ impl From<&EpochInformation> for WorkerCache {
             workers: output
                 .authorities
                 .iter()
-                .filter_map(|(key, authority)| {
-                    let worker_info = WorkerInfo {
-                        name: NetworkPublicKey::decode_base64(&authority.worker_public_key).ok()?,
-                        transactions: authority.worker_mempool.parse().ok()?,
-                        worker_address: authority.worker_address.parse().ok()?,
-                    };
+                .map(|(key, authority)| {
                     let mut worker_index = BTreeMap::new();
-                    worker_index.insert(0 as WorkerId, worker_info);
-                    Some((key.clone(), WorkerIndex(worker_index)))
+                    authority
+                        .workers
+                        .iter()
+                        .filter_map(|worker| {
+                            Some(WorkerInfo {
+                                name: NetworkPublicKey::decode_base64(&worker.worker_public_key)
+                                    .ok()?,
+                                transactions: worker.worker_mempool.parse().ok()?,
+                                worker_address: worker.worker_address.parse().ok()?,
+                            })
+                        })
+                        .enumerate()
+                        .for_each(|(index, worker)| {
+                            //Todo(dalton): Safe unwrap? The idea of the index overflowing u32 seems wild
+                            worker_index.insert(index.try_into().unwrap(), worker);
+                        });
+                    (key.clone(), WorkerIndex(worker_index))
                 })
                 .collect(),
         };

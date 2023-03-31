@@ -16,10 +16,8 @@ contract NodeRegistry {
     struct Node {
         address owner;
         string primaryAddress;
-        string workerAddress;
-        string workerPublicKey;
-        string workerMempool;
         string networkKey;
+        Worker[] workers;
         string previous;
         string next;
     }
@@ -29,6 +27,10 @@ contract NodeRegistry {
         string primaryPublicKey;
         string primaryAddress;
         string networkKey;
+        Worker[] workers;
+    }
+
+    struct Worker {
         string workerAddress;
         string workerPublicKey;
         string workerMempool;
@@ -53,17 +55,17 @@ contract NodeRegistry {
     function _registerNode(NodeInfo memory _node) private {
         whitelist[linkedListHead].previous = _node.primaryAddress;
         string memory next = linkedListHead;
-        Node memory node = Node(
-            _node.owner,
-            _node.primaryAddress,
-            _node.workerAddress,
-            _node.workerPublicKey,
-            _node.workerMempool,
-            _node.networkKey,
-            "",
-            next
-        );
-        whitelist[_node.primaryPublicKey] = node;
+        Node storage node = whitelist[_node.primaryPublicKey];
+        node.owner = _node.owner;
+        node.primaryAddress = _node.primaryAddress;
+        node.networkKey = _node.networkKey;
+        node.next = next;
+
+        for(uint256 i; i < _node.workers.length;){
+            node.workers.push(_node.workers[i]);
+            unchecked {i+= 1;}
+        }
+        
         whitelistCount += 1;
         linkedListHead = _node.primaryPublicKey;
     }
@@ -97,7 +99,8 @@ contract NodeRegistry {
         return (_whitelist);
     }
 
-    function getNodeInfo(string calldata nodeAddress) public view returns (Node memory) {
-        return whitelist[nodeAddress];
+    function getNodeInfo(string calldata nodePublicKey) public view returns (Node memory) {
+        //Todo(dalton): transform to nodeinfo to not return unneeded linked list fields
+        return whitelist[nodePublicKey];
     }
 }

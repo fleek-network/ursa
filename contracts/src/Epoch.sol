@@ -25,10 +25,8 @@ contract EpochManager {
     struct CommitteeMember {
         string publicKey;
         string primaryAddress;
-        string workerAddress;
-        string workerMempool;
-        string workerPublicKey;
         string networkKey;
+        NodeRegistry.Worker[] workers;
     }
 
     /// epoch => committee public keys
@@ -61,10 +59,8 @@ contract EpochManager {
             NodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
             _committeeMembers[i].publicKey = committee[epoch][i];
             _committeeMembers[i].primaryAddress = node.primaryAddress;
-            _committeeMembers[i].workerAddress = node.workerAddress;
-            _committeeMembers[i].workerPublicKey = node.workerPublicKey;
             _committeeMembers[i].networkKey = node.networkKey;
-            _committeeMembers[i].workerMempool = node.workerMempool;
+            _committeeMembers[i].workers = node.workers;
 
             unchecked {
                 i += 1;

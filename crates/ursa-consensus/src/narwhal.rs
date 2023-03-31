@@ -26,7 +26,7 @@ pub struct NarwhalService {
     store: NodeStorage,
     primary: PrimaryNode,
     worker_node: WorkerNode,
-    committee:Committee,
+    committee: Committee,
     worker_cache: WorkerCache,
     status: Mutex<Status>,
 }

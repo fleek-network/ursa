@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use bytes::Bytes;
 use fastcrypto::traits::KeyPair;
 use futures::lock::Mutex;
@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::{mpsc,oneshot,Notify};
-use tokio::{pin,select, time, task};
+use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::{pin, select, task, time};
 use tracing::error;
 
 use crate::AbciQueryQuery;
@@ -22,8 +22,9 @@ use crate::{
 };
 use ursa_application::types::Query;
 use ursa_utils::transactions::{
-    build_transaction, decode_committee, decode_epoch_info_return, get_epoch_info_params,
+    decode_committee, decode_epoch_info_return, encode_signal_epoch_call, get_epoch_info_params,
 };
+
 // what do we need for this file to work and be complete?
 // - A mechanism to dynamically move the epoch forward and changing the committee dynamically.
 //    Each epoch has a fixed committee. The committee only changes per epoch.
@@ -41,10 +42,10 @@ use ursa_utils::transactions::{
 // Dalton Notes:
 // - Epoch time should be gathered from application layer along with new committee on epoch change
 
-// TODO(dalton): make this pullable from genesis file
-const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
-
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
+
+const STORE_NAME: &str = "narwhal-store";
+
 pub struct Consensus {
     /// The state of the current Narwhal epoch
     epoch_state: Mutex<Option<EpochState>>,
@@ -109,14 +110,17 @@ impl Consensus {
         let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
 
         // If the this node is not on the committee, dont start narwhal start edge node logic
-        if !committee.authorities.contains_key(self.narwhal_args.primary_keypair.public()) {
+        if !committee
+            .authorities
+            .contains_key(self.narwhal_args.primary_keypair.public())
+        {
             self.run_edge_node().await;
-            return
+            return;
         }
 
         //make or open store specific to current epoch
         let mut store_path = self.store_path.clone();
-        store_path.set_file_name(format!("narwhal-store-{}", epoch));
+        store_path.set_file_name(format!("{}-{}", STORE_NAME, epoch));
         let store = NodeStorage::reopen(store_path);
 
         let service = NarwhalService::new(
@@ -169,14 +173,10 @@ impl Consensus {
             // We shouldnt panic here lets repeatedly try
             loop {
                 time::sleep(Duration::from_secs(1)).await;
-                let txn = match build_transaction(
-                    EPOCH_ADDRESS,
-                    "signalEpochChange(string memory committeeMember):(bool)",
-                    &[primary_public_key.to_string()],
-                )
-                .and_then(|(_, txn)| {
-                    serde_json::to_vec(&txn).map_err(|_| anyhow!("failed encoding"))
-                }) {
+
+                let txn = match serde_json::to_vec(&encode_signal_epoch_call(
+                    primary_public_key.to_string(),
+                )) {
                     Ok(txn) => txn,
                     Err(_) => {
                         error!("Error signaling epoch change, trying again");
@@ -219,18 +219,16 @@ impl Consensus {
                     self.move_to_next_epoch().await;
                     continue
                 }
-                // reconfigure event shoud continue instead of breaking
             }
         }
     }
 
     pub async fn shutdown(&mut self) {
-          self.shutdown_notify.notify_waiters();
+        self.shutdown_notify.notify_waiters();
     }
 
     pub async fn run_edge_node(&self) {
-        //Todo(): Edge node logic
-        return;
+        //Todo(Dalton): Edge node logic
     }
 }
 

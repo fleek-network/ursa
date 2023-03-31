@@ -1,6 +1,5 @@
 use crate::types::{Consensus, Info, Mempool, Snapshot, State};
 use revm::db::{CacheDB, EmptyDB};
-use revm::primitives::AccountInfo;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -19,22 +18,12 @@ impl Default for App<CacheDB<EmptyDB>> {
 
 impl App<CacheDB<EmptyDB>> {
     pub fn new() -> Self {
-        let mut state = State {
+        let state = State {
             db: CacheDB::new(EmptyDB()),
             block_height: Default::default(),
             app_hash: Default::default(),
             env: Default::default(),
         };
-
-        state.db.insert_account_info(
-            "0xDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                .parse()
-                .unwrap(),
-            AccountInfo {
-                balance: ethers::utils::parse_ether(1.5).unwrap().into(),
-                ..Default::default()
-            },
-        );
 
         let committed_state = Arc::new(Mutex::new(state.clone()));
         let current_state = Arc::new(Mutex::new(state));

@@ -1,10 +1,10 @@
 use anyhow::{bail, Result};
-use ursa_utils::shutdown::ShutdownController;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Notify};
-use tokio::{select,time,pin};
+use tokio::{pin, select, time};
 use tracing::warn;
+use ursa_utils::shutdown::ShutdownController;
 
 use narwhal_types::{Batch, Transaction};
 
@@ -38,7 +38,7 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(app_address: SocketAddr) -> Self {
-        //Todo(dalton): Before PR handle his elegently. We are getting here too fast and application server
+        //Todo(dalton): handle his elegently. We are getting here too fast and application server
         // is not starting in time
         time::sleep(time::Duration::from_millis(500)).await;
 
@@ -211,10 +211,9 @@ impl Engine {
         let response = self.client.deliver_tx(RequestDeliverTx { tx })?;
 
         if let Ok(ExecutionResponse::ChangeEpoch) = serde_json::from_slice(&response.data) {
-            Ok(true)
-        } else {
-            Ok(false)
+            return Ok(true);
         }
+        Ok(false)
     }
 
     ///Calls the `EndBlock` hook on the ABCI app. For now, it just makes a request with
