@@ -8,7 +8,7 @@ use ursa_pod::{
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
-const CONTENT: &[u8] = &[0; 257 * 1024];
+const CONTENT: &[u8] = &[0; 512 * 1024];
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
