@@ -26,7 +26,7 @@ tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 benchmarks_utils = { git = "https://github.com/qti3e/benchmarks", rev = "c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package = "benchmarks" }
-criterion = { version = "0.4.0", features = ["html_reports"] }
+criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
 tracing-subscriber = "0.2"
 
 [features]
@@ -40,4 +40,8 @@ harness = false
 
 [[bench]]
 name = "codec"
+harness = false
+
+[[bench]]
+name = "e2e"
 harness = false
