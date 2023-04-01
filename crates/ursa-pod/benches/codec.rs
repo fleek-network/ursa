@@ -78,7 +78,8 @@ fn bench_encode_group(c: &mut Criterion) {
     let frame = UrsaFrame::ContentResponse {
         compression: 0,
         proof_len: 0,
-        block_len: 0,
+        // 0 len block is an error!
+        block_len: 1,
         signature: *array_ref!(signature, 0, 64),
     };
     bench_frame(&mut g, frame, "content_response");
