@@ -292,6 +292,7 @@ pub enum UrsaCodecError {
     InvalidTag(u8),
     InvalidReason(u8),
     UnexpectedFrame(FrameTag),
+    ZeroLengthBlock,
     Io(std::io::Error),
     Unknown,
 }
@@ -499,6 +500,9 @@ impl Decoder for UrsaCodec {
                 let proof_len = u64::from_be_bytes(proof_len_bytes);
                 let block_len_bytes = *array_ref!(buf, 10, 8);
                 let block_len = u64::from_be_bytes(block_len_bytes);
+                if block_len == 0 {
+                    return Err(UrsaCodecError::ZeroLengthBlock);
+                }
                 let signature = *array_ref!(buf, 18, 64);
 
                 Ok(Some(UrsaFrame::ContentResponse {

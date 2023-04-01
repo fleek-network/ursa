@@ -8,12 +8,14 @@ use ursa_pod::{
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
+const CONTENT: &[u8] = &[0; 512 * 1024];
+
 #[derive(Clone, Copy)]
 struct DummyBackend {}
 
 impl Backend for DummyBackend {
     fn raw_content(&self, _cid: Blake3Cid) -> (BytesMut, u64) {
-        let content = BytesMut::from("hello world!");
+        let content = BytesMut::from(CONTENT);
         let request_id = 0;
         (content, request_id)
     }
