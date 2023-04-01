@@ -132,7 +132,10 @@ fn bench_tcp_group(c: &mut Criterion) {
                     ),
                     &num_requests,
                     |b, &n| {
-                        let runtime = tokio::runtime::Runtime::new().unwrap();
+                        let runtime = tokio::runtime::Builder::new_multi_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
                         runtime.spawn(server_tcp_loop(file));
                         b.to_async(runtime).iter(|| client_tcp_loop(n));
                     },
