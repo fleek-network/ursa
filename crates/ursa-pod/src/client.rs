@@ -106,16 +106,23 @@ where
                         .transport
                         .codec_mut()
                         .read_buffer(proof_len, IO_CHUNK_SIZE);
+                    debug!("Received content block header");
                     self.state = UfdpResponseState::ReadingProof;
                 }
                 (UfdpResponseState::ReadingProof, Some(Ok(UrsaFrame::Buffer(bytes)))) => {
+                    debug!("Received proof chunk");
                     self.current_proof.put_slice(&bytes);
                     if self.current_proof.len() == self.proof_len {
+                        // todo: parse proof
+                        let _proof_bytes = self.current_proof.split();
+                        self.current_proof.reserve(MAX_PROOF_SIZE);
+
                         let block_len = self.block_len;
                         self.client
                             .transport
                             .codec_mut()
                             .read_buffer(block_len, IO_CHUNK_SIZE);
+                        debug!("Finished reading proof, reading block {block_len}");
                         self.state = UfdpResponseState::ReadingContent
                     }
                 }
@@ -125,12 +132,14 @@ where
 
                     if self.current_block.len() == self.block_len {
                         // BLOCKING: send delivery acknowledgment
+                        debug!("Sending decryption key request");
                         block_on(self.client.transport.send(UrsaFrame::DecryptionKeyRequest {
                             delivery_acknowledgment: [1; 96],
                         }))
                         .expect("send delivery acknowledgment");
 
                         // wait for decryption key
+                        debug!("Waiting for decryption key");
                         self.state = UfdpResponseState::WaitingForDecryptionKey;
                     }
                 }
@@ -139,10 +148,12 @@ where
                     Some(Ok(UrsaFrame::DecryptionKeyResponse { .. })),
                 ) => {
                     // todo: decrypt block
+                    debug!("Received decryption key");
                     self.state = UfdpResponseState::WaitingForHeader;
                     return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
                 }
                 (_, Some(Ok(UrsaFrame::EndOfRequestSignal))) => {
+                    debug!("Received end of request signal");
                     self.state = UfdpResponseState::Done;
                     return Poll::Ready(None);
                 }
