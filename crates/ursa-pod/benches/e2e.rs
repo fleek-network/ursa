@@ -20,6 +20,7 @@ const CID: [u8; 32] = [3u8; 32];
 /* SERVER */
 
 const MAX_REQUESTS: usize = 5;
+
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
     &[0u8; 2 * 1024],
@@ -112,14 +113,9 @@ fn bench_tcp_group(c: &mut Criterion) {
                 let len = file.len() * num_requests;
                 g.throughput(Throughput::Bytes(len as u64));
 
-                // We need to allocate additional time to have the same accuracy between the benchmarks
-                let mut time = Duration::from_secs(7);
-                if num_requests > 3 {
-                    time += Duration::from_secs(5);
-                }
-                if file.len() >= 256 * 1024 * 1024 {
-                    time += Duration::from_secs(5);
-                }
+                // We need to allocate additional time to carry the same accuracy between the benchmarks
+                let mut time = Duration::from_secs(10 + num_requests as u64);
+                time += Duration::from_micros(len as u64 / 40);
                 g.measurement_time(time);
 
                 g.bench_with_input(
