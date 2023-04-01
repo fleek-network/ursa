@@ -70,7 +70,7 @@ moka = "0.10"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-types" }
-opentelemetry = "0.18.0"
+opentelemetry = "0.19.0"
 opentelemetry-jaeger = "0.17.0"
 ordered-float = "3.4"
 prometheus = "0.13.3"
