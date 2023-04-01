@@ -20,7 +20,7 @@ const CID: [u8; 32] = [3u8; 32];
 /* SERVER */
 
 const MAX_REQUESTS: usize = 5;
-const FILES: &[&[u8]] = &[
+const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
     &[0u8; 2 * 1024],
     &[0u8; 4 * 1024],
@@ -31,6 +31,9 @@ const FILES: &[&[u8]] = &[
     &[0u8; 128 * 1024],
     &[0u8; 256 * 1024],
     &[0u8; 512 * 1024],
+];
+
+const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024 * 1024],
     &[0u8; 2 * 1024 * 1024],
     &[0u8; 4 * 1024 * 1024],
@@ -101,39 +104,40 @@ async fn client_tcp_loop(iterations: usize) -> Result<(), UrsaCodecError> {
 }
 
 fn bench_tcp_group(c: &mut Criterion) {
-    let mut g = c.benchmark_group("UFDP Session (tcp)");
-    g.sample_size(20);
+    for (range, files) in [("kilobyte", KILOBYTE_FILES), ("megabyte", MEGABYTE_FILES)] {
+        let mut g = c.benchmark_group(format!("TCP UFDP Session (range: {range})"));
+        g.sample_size(20);
+        for num_requests in 1..MAX_REQUESTS + 1 {
+            for file in files {
+                let len = file.len() * num_requests;
+                g.throughput(Throughput::Bytes(len as u64));
 
-    for num_requests in 1..MAX_REQUESTS + 1 {
-        for file in FILES {
-            let len = file.len() * num_requests;
-            g.throughput(Throughput::Bytes(len as u64));
+                // We need to allocate additional time to have the same accuracy between the benchmarks
+                let mut time = Duration::from_secs(7);
+                if num_requests > 3 {
+                    time += Duration::from_secs(5);
+                }
+                if file.len() >= 256 * 1024 * 1024 {
+                    time += Duration::from_secs(5);
+                }
+                g.measurement_time(time);
 
-            // We need to allocate additional time to have the same accuracy between the benchmarks
-            let mut time = Duration::from_secs(7);
-            if num_requests > 3 {
-                time += Duration::from_secs(5);
-            }
-            if file.len() >= 256 * 1024 * 1024 {
-                time += Duration::from_secs(5);
-            }
-            g.measurement_time(time);
-
-            g.bench_with_input(
-                BenchmarkId::new(
-                    format!(
-                        "{num_requests} Request{}",
-                        if num_requests != 1 { "s" } else { "" }
+                g.bench_with_input(
+                    BenchmarkId::new(
+                        format!(
+                            "{num_requests} Request{}",
+                            if num_requests != 1 { "s" } else { "" }
+                        ),
+                        file.len(),
                     ),
-                    file.len(),
-                ),
-                &num_requests,
-                |b, &n| {
-                    let runtime = tokio::runtime::Runtime::new().unwrap();
-                    runtime.spawn(server_tcp_loop(file));
-                    b.to_async(runtime).iter(|| client_tcp_loop(n));
-                },
-            );
+                    &num_requests,
+                    |b, &n| {
+                        let runtime = tokio::runtime::Runtime::new().unwrap();
+                        runtime.spawn(server_tcp_loop(file));
+                        b.to_async(runtime).iter(|| client_tcp_loop(n));
+                    },
+                );
+            }
         }
     }
 }
