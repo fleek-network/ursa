@@ -26,7 +26,7 @@ revm = { version = "3.0.0", features = [
     "serde",
 ] }
 hex = "0.4.3"
-tendermint-abci = { version = "0.23.7", features = ["client"] }
+tendermint-abci = { version = "0.30.0", features = ["client"] }
 tendermint-proto = "0.23.7"
 reqwest = "0.11.11"
 
