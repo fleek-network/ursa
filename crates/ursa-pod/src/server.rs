@@ -6,7 +6,7 @@ use tokio_util::codec::Framed;
 use tracing::{debug, error};
 
 use crate::{
-    codec::{consts::MAX_BLOCK_SIZE, UrsaCodec, UrsaCodecError, UrsaFrame},
+    codec::{consts::MAX_BLOCK_SIZE, Reason, UrsaCodec, UrsaCodecError, UrsaFrame},
     types::{Blake3Cid, BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
 };
 
@@ -71,9 +71,10 @@ where
                 _ => return,
             }
 
-            while let Some(request) = transport.next().await {
-                debug!("Received frame: {request:?}");
-                match request {
+            debug!("Starting request loop");
+            while let Some(frame) = transport.next().await {
+                debug!("Received frame: {frame:?}");
+                match frame {
                     Ok(UrsaFrame::ContentRequest { hash }) => {
                         debug!("Content request received");
                         let (mut content, request_id) = backend.raw_content(hash);
@@ -88,7 +89,7 @@ where
                             let proof = BytesMut::from(b"dummy_proof".as_slice());
                             let proof_len = proof.len() as u64;
 
-                            debug!("Sending content response frame");
+                            debug!("Sending content response block");
                             transport
                                 .send(UrsaFrame::ContentResponse {
                                     compression: 0,
@@ -105,15 +106,13 @@ where
                                 .await
                                 .expect("send proof data");
 
-                            let mut current_chunk = 0;
                             while !block.is_empty() {
                                 let chunk_len = block.len().min(IO_CHUNK_SIZE);
-                                debug!("Sending chunk #{current_chunk}");
+                                debug!("Sending block chunk");
                                 transport
                                     .send(UrsaFrame::Buffer(block.split_to(chunk_len)))
                                     .await
                                     .expect("send content data");
-                                current_chunk += 1;
                             }
 
                             // wait for delivery acknowledgment
@@ -140,10 +139,24 @@ where
                             .send(UrsaFrame::EndOfRequestSignal)
                             .await
                             .expect("send EOR");
+                        debug!("Waiting for next request");
                     }
-                    Ok(f) => error!("Unexpected frame: {f:?}"),
+                    Ok(f) => {
+                        error!("Terminating, unexpected frame: {f:?}");
+                        transport
+                            .send(UrsaFrame::TerminationSignal(Reason::UnexpectedFrame))
+                            .await
+                            .expect("send termination signal");
+                        drop(transport);
+                        break;
+                    }
                     Err(e) => {
                         error!("{e:?}");
+                        transport
+                            .send(UrsaFrame::TerminationSignal(Reason::Unknown))
+                            .await
+                            .expect("send termination signal");
+                        drop(transport);
                         break;
                     }
                 }
@@ -151,6 +164,7 @@ where
 
             debug!("Connection Closed");
         });
+
         Ok(())
     }
 }

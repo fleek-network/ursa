@@ -16,11 +16,12 @@ pub mod consts {
     pub const MAX_FRAME_SIZE: usize = 1024;
     /// Maximum lanes a client can use at one time
     pub const MAX_LANES: u8 = 24;
-    /// Maximum bytes a proof can be. The maximum theoretical file we support is
-    /// `2^64` bytes, given we transfer data as blocks of 256KiB (`2^18` bytes) the
-    /// maximum number of chunks is `2^46`. So the maximum height of the hash tree
-    /// will be 47. So we will have maximum of 47 hashes (hence `47 * 32`) and one byte
-    /// per each 8 hash (`ceil(47 / 8) = 6`).
+    /// Maximum bytes a proof can be.
+    ///
+    /// The maximum theoretical file we support is `2^64` bytes, given we transfer
+    /// data as blocks of 256KiB (`2^18` bytes) the maximum number of chunks is `2^46`.
+    /// So the maximum height of the hash tree will be 47. So we will have maximum of
+    /// 47 hashes (hence `47 * 32`), and one byte per each 8 hash (`ceil(47 / 8) = 6`).
     pub const MAX_PROOF_SIZE: usize = 47 * 32 + 6;
     /// Maximum bytes a block can be
     pub const MAX_BLOCK_SIZE: usize = 256 * 1024;
@@ -62,14 +63,16 @@ pub mod consts {
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
-    InsufficientBalance = 0x00,
+    UnexpectedFrame = 0x00,
+    InsufficientBalance = 0x01,
     Unknown = 0xFF,
 }
 
 impl Reason {
     fn from_u8(byte: u8) -> Option<Self> {
         match byte {
-            0x00 => Some(Self::InsufficientBalance),
+            0x00 => Some(Self::UnexpectedFrame),
+            0x01 => Some(Self::InsufficientBalance),
             0xFF => Some(Self::Unknown),
             _ => None,
         }
@@ -546,7 +549,10 @@ impl Decoder for UrsaCodec {
 
                 Ok(Some(UrsaFrame::UpdateEpochSignal(epoch_nonce)))
             }
-            FrameTag::EndOfRequestSignal => Ok(Some(UrsaFrame::EndOfRequestSignal)),
+            FrameTag::EndOfRequestSignal => {
+                let _ = src.split_to(1);
+                Ok(Some(UrsaFrame::EndOfRequestSignal))
+            }
             FrameTag::TerminationSignal => {
                 let buf = src.split_to(size_hint);
                 let byte = buf[1];
