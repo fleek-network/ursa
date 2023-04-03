@@ -32,6 +32,7 @@ http-body-util = { version = "0.1.0-rc.2", optional = true }
 benchmarks_utils = { git = "https://github.com/qti3e/benchmarks", rev = "c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package = "benchmarks" }
 criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
 tracing-subscriber = "0.2"
+portpicker = "0.1.1"
 
 [features]
 default = ["client", "server", "bench-hyper"]

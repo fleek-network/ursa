@@ -1,7 +1,7 @@
-use std::{thread, time::Duration};
-
 use criterion::{measurement::Measurement, *};
 use futures::Future;
+use std::time::Duration;
+use tokio::sync::oneshot;
 
 /* SERVER */
 
@@ -37,16 +37,33 @@ fn benchmark<T: Measurement, C, S>(
     g: &mut BenchmarkGroup<T>,
     proto: &'static str,
     files: &[&'static [u8]],
-    client: impl Fn(&'static str, usize) -> C,
-    server: impl Fn(&'static str, &'static [u8]) -> S,
+    client: impl Fn(String, usize) -> C,
+    server: impl Fn(String, &'static [u8], oneshot::Sender<()>) -> S,
 ) where
     C: Future,
     S: Future + Send + 'static,
     S::Output: Send + 'static,
 {
-    let addr = "127.0.0.1:8080";
-    for num_requests in 1..MAX_REQUESTS + 1 {
-        for file in files {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    for file in files {
+        let addr = format!(
+            "127.0.0.1:{}",
+            // even when fixing the same port the error persists on Mac.
+            portpicker::pick_unused_port().expect("No free ports!")
+        );
+
+        // Spawn the server and wait for it to signal that it's ready.
+        let (tx_started, rx_started) = oneshot::channel();
+        println!("spawning server...");
+        let server_task = runtime.spawn(server(addr.clone(), file, tx_started));
+        futures::executor::block_on(rx_started).unwrap();
+        println!("server started");
+
+        for num_requests in 1..=MAX_REQUESTS {
             let len = file.len() * num_requests;
             g.throughput(Throughput::Bytes(len as u64));
 
@@ -65,16 +82,14 @@ fn benchmark<T: Measurement, C, S>(
                 ),
                 &num_requests,
                 |b, &n| {
-                    let runtime = tokio::runtime::Builder::new_multi_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
-                    runtime.spawn(server(addr, file));
-                    thread::sleep(Duration::from_secs(1));
-                    b.to_async(runtime).iter(|| client(addr, n));
+                    println!("running for #{n} req");
+                    b.to_async(&runtime).iter(|| client(addr.clone(), n));
                 },
             );
         }
+
+        println!("aborting server");
+        server_task.abort();
     }
 }
 
@@ -142,9 +157,16 @@ mod tcp_ufdp {
     }
 
     /// Simple tcp server loop that replies with static content
-    pub async fn server_loop(addr: &'static str, content: &'static [u8]) {
-        let listener = TcpListener::bind(addr).await.unwrap();
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<()>,
+    ) {
+        println!("starting server {addr}...");
+        let listener = TcpListener::bind(&addr).await.unwrap();
         let mut server = UfdpServer::new(DummyBackend { content }).unwrap();
+        println!("listening on {addr}!");
+        tx_started.send(()).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -154,7 +176,8 @@ mod tcp_ufdp {
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
-    pub async fn client_loop(addr: &'static str, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize) {
+        println!("connecting {addr}...");
         let stream = TcpStream::connect(addr).await.unwrap();
         let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
@@ -167,6 +190,8 @@ mod tcp_ufdp {
                 }
             }
         }
+
+        println!("run finished.");
     }
 }
 
@@ -179,8 +204,14 @@ mod http_hyper {
     use hyper::{server::conn::http1, service::service_fn, Request, Response};
     use tokio::net::{TcpListener, TcpStream};
 
-    pub async fn server_loop(addr: &'static str, content: &'static [u8]) {
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<()>,
+    ) {
         let listener = TcpListener::bind(addr).await.unwrap();
+        tx_started.send(()).unwrap();
+
         loop {
             let (stream, _) = listener.accept().await.unwrap();
 
@@ -197,10 +228,10 @@ mod http_hyper {
         }
     }
 
-    pub async fn client_loop(addr: &'static str, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize) {
         for _ in 0..iterations {
             // Open a TCP connection to the remote host
-            let stream = TcpStream::connect(addr).await.unwrap();
+            let stream = TcpStream::connect(&addr).await.unwrap();
             // Perform a TCP handshake
             let (mut sender, conn) = hyper::client::conn::http1::handshake(stream).await.unwrap();
             // Spawn a task to poll the connection, driving the HTTP state
@@ -211,7 +242,7 @@ mod http_hyper {
             });
             // Create an HTTP request with an empty body and a HOST header
             let req = Request::builder()
-                .uri(addr)
+                .uri(&addr)
                 .header(hyper::header::HOST, "127.0.0.1")
                 .body(Empty::<Bytes>::new())
                 .unwrap();
