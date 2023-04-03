@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-
 contract NodeRegistry {
     /**
      * STATE *
@@ -61,11 +60,13 @@ contract NodeRegistry {
         node.networkKey = _node.networkKey;
         node.next = next;
 
-        for(uint256 i; i < _node.workers.length;){
+        for (uint256 i; i < _node.workers.length;) {
             node.workers.push(_node.workers[i]);
-            unchecked {i+= 1;}
+            unchecked {
+                i += 1;
+            }
         }
-        
+
         whitelistCount += 1;
         linkedListHead = _node.primaryPublicKey;
     }

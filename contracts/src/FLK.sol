@@ -6,6 +6,7 @@ import "solmate/tokens/ERC20.sol";
 contract FleekToken is ERC20 {
     /* STATE */
 
+    address public owner;
     mapping(address => bool) private _minters;
 
     /* EVENTS */
@@ -14,16 +15,26 @@ contract FleekToken is ERC20 {
     event MinterRemoved(address indexed account);
 
     constructor(uint256 _initialSupply) ERC20("Fleek", "FLK", 18) {
+        owner = msg.sender;
         _mint(msg.sender, _initialSupply);
-
         _addMinter(msg.sender);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can perform this action");
+        _;
+    }
+
+    modifier onlyMinter() {
+        require(_minters[msg.sender], "Address not allowed");
+        _;
     }
 
     /**
      * @dev Add a new minter.
      * @param _account Address of the minter
      */
-    function addMinter(address _account) external {
+    function addMinter(address _account) external onlyOwner {
         _addMinter(_account);
     }
 
@@ -31,7 +42,7 @@ contract FleekToken is ERC20 {
      * @dev Remove a minter.
      * @param _account Address of the minter
      */
-    function removeMinter(address _account) external {
+    function removeMinter(address _account) external onlyOwner {
         _removeMinter(_account);
     }
 
@@ -40,7 +51,7 @@ contract FleekToken is ERC20 {
      * @param _to Address to send the newly minted tokens
      * @param _amount Amount of tokens to mint
      */
-    function mint(address _to, uint256 _amount) external {
+    function mint(address _to, uint256 _amount) external onlyMinter {
         _mint(_to, _amount);
     }
 
