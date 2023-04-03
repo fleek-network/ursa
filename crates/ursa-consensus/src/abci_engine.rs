@@ -8,7 +8,7 @@ use ursa_utils::shutdown::ShutdownController;
 
 use narwhal_types::{Batch, Transaction};
 
-//Tendermint Types
+// Tendermint Types
 use crate::AbciQueryQuery;
 use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
@@ -21,13 +21,13 @@ use ursa_application::ExecutionResponse;
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
 pub struct Engine {
-    /// The address of the ABCI app
+    /// The address of the ABCI app.
     app_address: SocketAddr,
-    /// The blocking Abci client connected to the application layer, for executing certificates
+    /// The blocking Abci client connected to the application layer, for executing certificates.
     client: AbciClient,
-    /// The blocking abci client for used only for querys, holds info connection only
+    /// The blocking abci client for used only for querys, holds info connection only.
     req_client: AbciClient,
-    /// The last block height, initialized to the application's latest block by default
+    /// The last block height, initialized to the application's latest block by default.
     last_block_height: i64,
     tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
     tx_certificates: mpsc::Sender<Vec<Batch>>,
@@ -39,7 +39,7 @@ pub struct Engine {
 impl Engine {
     pub async fn new(app_address: SocketAddr) -> Self {
         //Todo(dalton): handle his elegently. We are getting here too fast and application server
-        // is not starting in time
+        // is not starting in time.
         time::sleep(time::Duration::from_millis(500)).await;
 
         let mut client = ClientBuilder::default().connect(app_address).unwrap();
@@ -53,7 +53,7 @@ impl Engine {
         let (tx_certificates, rx_certificates) = mpsc::channel(CHANNEL_CAPACITY);
         let reconfigure_notifier = Arc::new(Notify::new());
 
-        // Instantiate a new client to not be locked in an Info connection
+        // Instantiate a new client to not be locked in an Info connection.
         let client = ClientBuilder::default().connect(app_address).unwrap();
         let req_client = ClientBuilder::default().connect(app_address).unwrap();
         Self {
@@ -104,18 +104,18 @@ impl Engine {
         self.reconfigure_notifier.clone()
     }
 
-    ///On each new certificate, increment the block height to proposed and run through the
-    ///BeginBlock -> DeliverTx for each tx in the certificate -> EndBlock -> Commit event loop.
+    /// On each new certificate, increment the block height to proposed and run through the
+    /// BeginBlock -> DeliverTx for each tx in the certificate -> EndBlock -> Commit event loop.
     fn handle_cert(&mut self, batch: Vec<Batch>) -> Result<()> {
-        // increment block
+        // Increment block.
         let proposed_block_height = self.last_block_height + 1;
 
-        // save it for next time
+        // Save it for next time.
         self.last_block_height = proposed_block_height;
 
-        // drive the app through the event loop
+        // Drive the app through the event loop.
         self.begin_block(proposed_block_height)?;
-        // if the results of execution are to change the epoch wait until after block is committed
+        // If the results of execution are to change the epoch wait until after block is committed.
         let change_epoch = self.deliver_batch(batch)?;
         self.end_block(proposed_block_height)?;
         self.commit()?;
@@ -155,7 +155,7 @@ impl Engine {
 
     /// Reconstructs the batch corresponding to the provided Primary's certificate from the Workers' stores
     /// and proceeds to deliver each tx to the App over ABCI's DeliverTx endpoint.
-    /// returns true if the epoch should change based on the results of execution
+    /// Returns true if the epoch should change based on the results of execution.
     fn deliver_batch(&mut self, batches: Vec<Batch>) -> Result<bool> {
         //Deliver
         let mut change_epoch = false;
@@ -173,13 +173,13 @@ impl Engine {
     }
 }
 
-// Tendermint Lifecycle Helpers
+// Tendermint Lifecycle Helpers.
 impl Engine {
     /// Calls the `InitChain` hook on the app, ignores "already initialized" errors.
     pub fn init_chain(&mut self) -> Result<()> {
         let mut client = ClientBuilder::default().connect(self.app_address)?;
         if let Err(err) = client.init_chain(RequestInitChain::default()) {
-            // ignore errors about the chain being uninitialized
+            // Ignore errors about the chain being already initialized.
             if err.to_string().contains("already initialized") {
                 warn!("{}", err);
                 return Ok(());
@@ -206,7 +206,7 @@ impl Engine {
         Ok(())
     }
 
-    /// Calls the `DeliverTx` hook on the ABCI app. Returns true if the result of the tx says the epoch should change
+    /// Calls the `DeliverTx` hook on the ABCI app. Returns true if the result of the tx says the epoch should change.
     fn deliver_tx(&mut self, tx: Transaction) -> Result<bool> {
         let response = self.client.deliver_tx(RequestDeliverTx { tx })?;
 

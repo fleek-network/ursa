@@ -23,7 +23,7 @@ pub struct GenesisContract {
 }
 
 impl Genesis {
-    /// Load the genesis file
+    /// Load the genesis file.
     pub fn load() -> Result<Genesis> {
         let raw = include_str!("../genesis.toml");
         toml::from_str(raw).context("Failed to parse genesis file")

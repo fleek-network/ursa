@@ -118,7 +118,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         tracing::trace!("initing the chain");
         let mut state = self.current_state.lock().await;
 
-        // Load the bytecode for the contracts we need on genesis block
+        // Load the bytecode for the contracts we need on genesis block.
         let genesis = Genesis::load().unwrap();
 
         let token_bytes = hex::decode(genesis.token.bytecode).unwrap();
@@ -127,13 +127,13 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let epoch_bytes = hex::decode(genesis.epoch.bytecode).unwrap();
         let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
 
-        // Parse addresses for contracts
+        // Parse addresses for contracts.
         let token_address: Address = genesis.token.address.parse().unwrap();
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
         let epoch_address: Address = genesis.epoch.address.parse().unwrap();
 
-        // Build the account info for the contracts
+        // Build the account info for the contracts.
         let token_contract = AccountInfo {
             code: Some(Bytecode::new_raw(token_bytes.into())),
             ..Default::default()
@@ -155,7 +155,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             ..Default::default()
         };
 
-        // Insert into db
+        // Insert into db.
         state
             .db
             .insert_account_info(token_address.to_fixed_bytes().into(), token_contract);
@@ -172,7 +172,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .db
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
 
-        // Call the init transactions
+        // Call the init transactions.
         let registry_tx = TransactionRequest {
             to: Some(registry_address.into()),
             data: genesis.registry.init_params,
@@ -184,7 +184,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             ..Default::default()
         };
 
-        // Submit and commit the init txns to state
+        // Submit and commit the init txns to state.
         let _registry_res = state.execute(registry_tx, false).await.unwrap();
         let _epoch_res = state.execute(epoch_tx, false).await.unwrap();
 
@@ -217,7 +217,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         };
 
         let mut to_epoch_contract: bool = false;
-        // resolve the `to`
+        // Resolve the `to`.
         match tx.to {
             Some(NameOrAddress::Address(addr)) => {
                 if addr == EPOCH_ADDRESS.parse::<Address>().unwrap() {
@@ -238,7 +238,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
                 ..
             } = &result
             {
-                //  GetCurrentEpochInfoReturn::decode(Bytes::from(output)).unwrap()
                 let results = SignalEpochChangeReturn::decode(bytes)
                     .unwrap_or(SignalEpochChangeReturn(false));
 
@@ -347,7 +346,7 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
         }
     }
 
-    // replicate the eth_call interface
+    // Replicate the eth_call interface.
     async fn query(&self, query_request: RequestQuery) -> ResponseQuery {
         let mut state = self.state.lock().await;
 
