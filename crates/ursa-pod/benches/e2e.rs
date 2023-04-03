@@ -38,7 +38,7 @@ fn benchmark<T: Measurement, C, S>(
     proto: &'static str,
     files: &[&'static [u8]],
     client: impl Fn(String, usize) -> C,
-    server: impl Fn(String, &'static [u8], oneshot::Sender<()>) -> S,
+    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>) -> S,
 ) where
     C: Future,
     S: Future + Send + 'static,
@@ -50,18 +50,13 @@ fn benchmark<T: Measurement, C, S>(
         .unwrap();
 
     for file in files {
-        let addr = format!(
-            "127.0.0.1:{}",
-            // even when fixing the same port the error persists on Mac.
-            portpicker::pick_unused_port().expect("No free ports!")
-        );
-
         // Spawn the server and wait for it to signal that it's ready.
         let (tx_started, rx_started) = oneshot::channel();
         println!("spawning server...");
-        let server_task = runtime.spawn(server(addr.clone(), file, tx_started));
-        futures::executor::block_on(rx_started).unwrap();
+        let server_task = runtime.spawn(server("127.0.0.1:0".into(), file, tx_started));
+        let port = futures::executor::block_on(rx_started).unwrap();
         println!("server started");
+        let addr = format!("127.0.0.1:{port}");
 
         for num_requests in 1..=MAX_REQUESTS {
             let len = file.len() * num_requests;
@@ -160,13 +155,13 @@ mod tcp_ufdp {
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<()>,
+        tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
-        println!("starting server {addr}...");
         let listener = TcpListener::bind(&addr).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
         let mut server = UfdpServer::new(DummyBackend { content }).unwrap();
-        println!("listening on {addr}!");
-        tx_started.send(()).unwrap();
+
+        tx_started.send(port).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -177,7 +172,6 @@ mod tcp_ufdp {
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
-        println!("connecting {addr}...");
         let stream = TcpStream::connect(addr).await.unwrap();
         let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
@@ -190,8 +184,6 @@ mod tcp_ufdp {
                 }
             }
         }
-
-        println!("run finished.");
     }
 }
 
@@ -207,10 +199,11 @@ mod http_hyper {
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<()>,
+        tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
         let listener = TcpListener::bind(addr).await.unwrap();
-        tx_started.send(()).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tx_started.send(port).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
