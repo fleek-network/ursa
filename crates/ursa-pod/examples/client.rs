@@ -16,11 +16,10 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
+    let time = std::time::Instant::now();
     let stream = TcpStream::connect(SERVER_ADDRESS).await?;
     let mut client = UfdpClient::new(stream, PUB_KEY, None).await?;
-
     let mut res = client.request(CID).await?;
-
     let mut buf = BytesMut::new();
     loop {
         match res.next().await {
@@ -29,7 +28,7 @@ async fn main() -> Result<(), UrsaCodecError> {
             Some(Err(e)) => panic!("{e:?}"),
         }
     }
-
-    info!("recieved {} bytes", buf.len());
+    let took = time.elapsed().as_micros();
+    info!("received {} bytes in {took}μs", buf.len());
     Ok(())
 }

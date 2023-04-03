@@ -113,12 +113,11 @@ fn protocol_benchmarks(c: &mut Criterion) {
 }
 
 mod tcp_ufdp {
-    use bytes::BytesMut;
-
     use tokio::net::{TcpListener, TcpStream};
     use tokio_stream::StreamExt;
     use ursa_pod::{
         client::UfdpClient,
+        codec::consts::MAX_BLOCK_SIZE,
         server::{Backend, UfdpServer},
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
@@ -133,9 +132,14 @@ mod tcp_ufdp {
     }
 
     impl Backend for DummyBackend {
-        fn raw_content(&self, _cid: Blake3Cid) -> (BytesMut, u64) {
-            let content = BytesMut::from(self.content);
-            (content, 0)
+        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+            let s = block as usize * MAX_BLOCK_SIZE;
+            if s < self.content.len() {
+                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
+                Some(&self.content[s..e])
+            } else {
+                None
+            }
         }
 
         fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
