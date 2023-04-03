@@ -1,15 +1,7 @@
-use std::time::Duration;
+use std::{thread, time::Duration};
 
-use criterion::*;
+use criterion::{measurement::Measurement, *};
 use futures::Future;
-
-#[cfg(feature = "bench-hyper")]
-use http_hyper::bench_http_hyper;
-use tcp_ufdp::bench_tcp_ufdp;
-
-const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
-const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-const CID: [u8; 32] = [3u8; 32];
 
 /* SERVER */
 
@@ -41,10 +33,10 @@ const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 512 * 1024 * 1024],
 ];
 
-fn session_group<C, S>(
-    c: &mut Criterion,
-    title: &'static str,
-    addr: &'static str,
+fn benchmark<T: Measurement, C, S>(
+    g: &mut BenchmarkGroup<T>,
+    proto: &'static str,
+    files: &[&'static [u8]],
     client: impl Fn(&'static str, usize) -> C,
     server: impl Fn(&'static str, &'static [u8]) -> S,
 ) where
@@ -52,48 +44,68 @@ fn session_group<C, S>(
     S: Future + Send + 'static,
     S::Output: Send + 'static,
 {
-    for (range, files) in [("kilobyte", KILOBYTE_FILES), ("megabyte", MEGABYTE_FILES)] {
-        let mut g = c.benchmark_group(format!("{title} Session (range: {range})"));
-        g.sample_size(20);
-        for num_requests in 1..MAX_REQUESTS + 1 {
-            for file in files {
-                let len = file.len() * num_requests;
-                g.throughput(Throughput::Bytes(len as u64));
+    let addr = "127.0.0.1:8080";
+    for num_requests in 1..MAX_REQUESTS + 1 {
+        for file in files {
+            let len = file.len() * num_requests;
+            g.throughput(Throughput::Bytes(len as u64));
 
-                // We need to allocate additional time to carry the same accuracy between the benchmarks
-                let mut time = Duration::from_secs(10 + num_requests as u64);
-                time += Duration::from_micros(len as u64 / 40);
-                g.measurement_time(time);
+            // We need to allocate additional time to carry the same accuracy between the benchmarks
+            let mut time = Duration::from_secs(10 + num_requests as u64);
+            time += Duration::from_micros(len as u64 / 40);
+            g.measurement_time(time);
 
-                g.bench_with_input(
-                    BenchmarkId::new(
-                        format!(
-                            "{num_requests} Request{}",
-                            if num_requests != 1 { "s" } else { "" }
-                        ),
-                        file.len(),
+            g.bench_with_input(
+                BenchmarkId::new(
+                    format!(
+                        "{proto}/{num_requests} Request{}",
+                        if num_requests != 1 { "s" } else { "" }
                     ),
-                    &num_requests,
-                    |b, &n| {
-                        let runtime = tokio::runtime::Builder::new_multi_thread()
-                            .enable_all()
-                            .build()
-                            .unwrap();
-                        runtime.spawn(server(addr, file));
-                        b.to_async(runtime).iter(|| client(addr, n));
-                    },
-                );
-            }
+                    file.len(),
+                ),
+                &num_requests,
+                |b, &n| {
+                    let runtime = tokio::runtime::Builder::new_multi_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    runtime.spawn(server(addr, file));
+                    thread::sleep(Duration::from_secs(1));
+                    b.to_async(runtime).iter(|| client(addr, n));
+                },
+            );
         }
+    }
+}
+
+fn protocol_benchmarks(c: &mut Criterion) {
+    for (range, files) in [("Kilobyte", KILOBYTE_FILES), ("Megabyte", MEGABYTE_FILES)] {
+        let mut g = c.benchmark_group(range);
+        g.sample_size(20);
+
+        benchmark(
+            &mut g,
+            "TCP UFDP",
+            files,
+            tcp_ufdp::client_loop,
+            tcp_ufdp::server_loop,
+        );
+
+        #[cfg(feature = "bench-hyper")]
+        benchmark(
+            &mut g,
+            "HTTP Hyper",
+            files,
+            http_hyper::client_loop,
+            http_hyper::server_loop,
+        );
     }
 }
 
 mod tcp_ufdp {
     use bytes::BytesMut;
-    use criterion::*;
 
     use tokio::net::{TcpListener, TcpStream};
-
     use tokio_stream::StreamExt;
     use ursa_pod::{
         client::UfdpClient,
@@ -101,7 +113,9 @@ mod tcp_ufdp {
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
 
-    use crate::{session_group, CID, CLIENT_PUB_KEY, DECRYPTION_KEY};
+    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: [u8; 32] = [3u8; 32];
 
     #[derive(Clone, Copy)]
     struct DummyBackend {
@@ -128,7 +142,7 @@ mod tcp_ufdp {
     }
 
     /// Simple tcp server loop that replies with static content
-    async fn server_tcp_loop(addr: &'static str, content: &'static [u8]) {
+    pub async fn server_loop(addr: &'static str, content: &'static [u8]) {
         let listener = TcpListener::bind(addr).await.unwrap();
         let mut server = UfdpServer::new(DummyBackend { content }).unwrap();
 
@@ -140,7 +154,7 @@ mod tcp_ufdp {
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
-    async fn client_tcp_loop(addr: &'static str, iterations: usize) {
+    pub async fn client_loop(addr: &'static str, iterations: usize) {
         let stream = TcpStream::connect(addr).await.unwrap();
         let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
@@ -154,16 +168,6 @@ mod tcp_ufdp {
             }
         }
     }
-
-    pub fn bench_tcp_ufdp(c: &mut Criterion) {
-        session_group(
-            c,
-            "TCP UFDP",
-            "127.0.0.1:8000",
-            client_tcp_loop,
-            server_tcp_loop,
-        )
-    }
 }
 
 #[cfg(feature = "bench-hyper")]
@@ -171,14 +175,11 @@ mod http_hyper {
     use std::io::Error;
 
     use bytes::Bytes;
-    use criterion::Criterion;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{server::conn::http1, service::service_fn, Request, Response};
     use tokio::net::{TcpListener, TcpStream};
 
-    use crate::session_group;
-
-    pub async fn server_http_loop(addr: &'static str, content: &'static [u8]) {
+    pub async fn server_loop(addr: &'static str, content: &'static [u8]) {
         let listener = TcpListener::bind(addr).await.unwrap();
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -196,7 +197,7 @@ mod http_hyper {
         }
     }
 
-    pub async fn client_http_loop(addr: &'static str, iterations: usize) {
+    pub async fn client_loop(addr: &'static str, iterations: usize) {
         for _ in 0..iterations {
             // Open a TCP connection to the remote host
             let stream = TcpStream::connect(addr).await.unwrap();
@@ -225,22 +226,6 @@ mod http_hyper {
             }
         }
     }
-
-    pub fn bench_http_hyper(c: &mut Criterion) {
-        session_group(
-            c,
-            "HTTP Hyper",
-            "127.0.0.1:8001",
-            client_http_loop,
-            server_http_loop,
-        )
-    }
-}
-
-fn protocol_benchmarks(c: &mut Criterion) {
-    bench_tcp_ufdp(c);
-    #[cfg(feature = "bench-hyper")]
-    bench_http_hyper(c);
 }
 
 criterion_group!(benches, protocol_benchmarks);
