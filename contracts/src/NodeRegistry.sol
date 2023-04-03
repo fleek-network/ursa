@@ -75,8 +75,8 @@ contract NodeRegistry {
     }
 
     function _removeNode(string calldata _nodePublicKey) private {
-        whitelist[whitelist[_nodePublicKey].previous] = whitelist[whitelist[_nodePublicKey].next];
-        whitelist[whitelist[_nodePublicKey].next] = whitelist[whitelist[_nodePublicKey].previous];
+        whitelist[whitelist[_nodePublicKey].previous].next = whitelist[_nodePublicKey].next;
+        whitelist[whitelist[_nodePublicKey].next].previous = whitelist[_nodePublicKey].previous;
         whitelist[_nodePublicKey].owner = address(0);
         whitelistCount -= 1;
     }
