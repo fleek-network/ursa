@@ -39,6 +39,7 @@ use libp2p::{
     Multiaddr, PeerId, Swarm,
 };
 use libp2p_bitswap::{BitswapEvent, QueryId};
+use lru::LruCache;
 use rand::prelude::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
@@ -186,11 +187,6 @@ pub enum NetworkCommand {
         peer_id: PeerId,
         message: GossipsubMessage,
     },
-
-    #[cfg(test)]
-    GetPeerContent {
-        sender: oneshot::Sender<HashMap<PeerId, CacheSummary>>,
-    },
 }
 
 pub struct UrsaService<S>
@@ -224,11 +220,9 @@ where
     /// Summarizes the cached content.
     cached_content: CacheSummary,
     /// Content summaries from other nodes.
-    peer_cached_content: HashMap<PeerId, CacheSummary>,
+    peer_cached_content: LruCache<PeerId, CacheSummary>,
     /// Interval for random Kademlia walks.
     kad_walk_interval: u64,
-    /// Maximum number of cache summaries from other peers to store.
-    max_cache_summaries: usize,
     /// Public address reported from autonat
     pub public_addr: Option<Multiaddr>,
     /// Graphsync pending requests.
@@ -314,6 +308,7 @@ where
 
         let (command_sender, command_receiver) = unbounded_channel();
 
+        let max_cache_summaries = NonZeroUsize::new(config.max_cache_summaries).unwrap();
         Ok(UrsaService {
             swarm,
             store,
@@ -328,9 +323,8 @@ where
             measurement_manager: MeasurementManager::default(),
             bootstraps: config.bootstrap_nodes.clone(),
             cached_content: CacheSummary::default(),
-            peer_cached_content: HashMap::default(),
+            peer_cached_content: LruCache::new(max_cache_summaries),
             kad_walk_interval: config.kad_walk_interval,
-            max_cache_summaries: config.max_cache_summaries,
             public_addr: None,
             graphsync_pending: HashMap::default(),
         })
@@ -628,12 +622,7 @@ where
                             }
                         }
                         RequestType::StoreSummary(cache_summary) => {
-                            if self.peer_cached_content.len() == self.max_cache_summaries {
-                                let key_to_remove =
-                                    *self.peer_cached_content.keys().next().unwrap();
-                                self.peer_cached_content.remove(&key_to_remove).unwrap();
-                            }
-                            self.peer_cached_content.insert(peer, *cache_summary);
+                            self.peer_cached_content.put(peer, *cache_summary);
                             if self
                                 .swarm
                                 .behaviour_mut()
@@ -779,7 +768,7 @@ where
                 ..
             } => {
                 if num_established == 0 && self.peers.remove(&peer_id) {
-                    self.peer_cached_content.remove(&peer_id);
+                    self.peer_cached_content.pop(&peer_id);
                     debug!("Peer disconnected: {peer_id}");
                     self.emit_event(NetworkEvent::PeerDisconnected(peer_id));
                 }
@@ -934,12 +923,6 @@ where
                         .map_err(|_| anyhow!("Failed to publish message!"))?;
                 }
             },
-            #[cfg(test)]
-            NetworkCommand::GetPeerContent { sender } => {
-                sender
-                    .send(self.peer_cached_content.clone())
-                    .map_err(|_| anyhow!("Failed to send peer content."))?;
-            }
         }
         Ok(())
     }
