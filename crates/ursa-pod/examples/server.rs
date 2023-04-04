@@ -7,7 +7,7 @@ use ursa_pod::{
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
-const CONTENT: &[u8] = &[0; 256 * 1024];
+const CONTENT: &[u8] = &[0; 4 * 256 * 1024];
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
@@ -15,7 +15,7 @@ struct DummyBackend {}
 impl Backend for DummyBackend {
     fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
         // serve 10GB
-        if block < 1024 * 4 * 10 {
+        if block < 100 {
             Some(CONTENT)
         } else {
             None
@@ -44,12 +44,55 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let listener = TcpListener::bind("127.0.0.1:6969").await?;
+    let addr = "127.0.0.1:6969";
+
+    #[cfg(feature = "bench-hyper")]
+    hyper::serve(addr).await;
+
+    #[cfg(not(feature = "bench-hyper"))]
+    run_ufdp(addr).await;
+
     info!("Listening on port 6969");
 
-    let server = UfdpServer::new(DummyBackend {})?;
+    Ok(())
+}
+
+async fn run_ufdp(addr: &str) {
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let server = UfdpServer::new(DummyBackend {}).unwrap();
     loop {
-        let (stream, _) = listener.accept().await?;
-        server.handle(stream)?;
+        let (stream, _) = listener.accept().await.unwrap();
+        server.handle(stream).unwrap();
+    }
+}
+
+#[cfg(feature = "bench-hyper")]
+mod hyper {
+    use std::io::Error;
+
+    use bytes::Bytes;
+    use http_body_util::Full;
+    use hyper::{server::conn::http1, service::service_fn, Response};
+    use tokio::net::TcpListener;
+
+    pub async fn serve(addr: &str) {
+        let listener = TcpListener::bind(addr).await.unwrap();
+
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+
+            let service = service_fn(move |_req| async move {
+                Ok::<_, Error>(Response::new(Full::new(Bytes::from(
+                    &[0u8; 100 * 1024 * 1024] as &[u8],
+                ))))
+            });
+
+            if let Err(err) = http1::Builder::new()
+                .serve_connection(stream, service)
+                .await
+            {
+                println!("Error serving connection: {:?}", err);
+            }
+        }
     }
 }

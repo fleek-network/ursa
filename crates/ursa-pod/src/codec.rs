@@ -24,7 +24,7 @@ pub mod consts {
     /// 47 hashes (hence `47 * 32`), and one byte per each 8 hash (`ceil(47 / 8) = 6`).
     pub const MAX_PROOF_SIZE: usize = 47 * 32 + 6;
     /// Maximum bytes a block can be
-    pub const MAX_BLOCK_SIZE: usize = 256 * 1024;
+    pub const MAX_BLOCK_SIZE: usize = 4 * 256 * 1024;
 
     /// The bit flag on any frame tag sent from the node to the client.
     pub const IS_RES_FLAG: u8 = 0b10000000;
