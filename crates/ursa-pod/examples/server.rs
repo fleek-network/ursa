@@ -7,17 +7,16 @@ use ursa_pod::{
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
-const CONTENT: &[u8] = &[0; 512 * 1024];
+const CONTENT: &[u8] = &[0; 256 * 1024];
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
 
 impl Backend for DummyBackend {
     fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
-        let s = block as usize * MAX_BLOCK_SIZE;
-        if s < CONTENT.len() {
-            let e = CONTENT.len().min(s + MAX_BLOCK_SIZE);
-            Some(&CONTENT[s..e])
+        // serve 10GB
+        if block < 1024 * 4 * 10 {
+            Some(CONTENT)
         } else {
             None
         }
@@ -41,7 +40,7 @@ impl Backend for DummyBackend {
 #[tokio::main]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::TRACE)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 

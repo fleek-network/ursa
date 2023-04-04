@@ -12,7 +12,7 @@ const CID: [u8; 32] = [1u8; 32];
 #[tokio::main]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::TRACE)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -28,7 +28,7 @@ async fn main() -> Result<(), UrsaCodecError> {
             Some(Err(e)) => panic!("{e:?}"),
         }
     }
-    let took = time.elapsed().as_micros();
-    info!("received {} bytes in {took}μs", buf.len());
+    let took = time.elapsed().as_millis();
+    info!("received {} bytes in {took}ms", buf.len());
     Ok(())
 }
