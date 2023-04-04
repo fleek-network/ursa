@@ -9,13 +9,21 @@ const SERVER_ADDRESS: &str = "127.0.0.1:6969";
 const PUB_KEY: [u8; 48] = [2u8; 48];
 const CID: [u8; 32] = [1u8; 32];
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
+    for _ in 0..10 {
+        tokio::spawn(download());
+    }
+
+    Ok(())
+}
+
+async fn download() -> Result<(), UrsaCodecError> {
     let time = std::time::Instant::now();
     let stream = TcpStream::connect(SERVER_ADDRESS).await?;
     let mut client = UfdpClient::new(stream, PUB_KEY, None).await?;
