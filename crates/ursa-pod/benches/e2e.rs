@@ -52,10 +52,8 @@ fn benchmark<T: Measurement, C, S>(
     for file in files {
         // Spawn the server and wait for it to signal that it's ready.
         let (tx_started, rx_started) = oneshot::channel();
-        println!("spawning server...");
         let server_task = runtime.spawn(server("127.0.0.1:0".into(), file, tx_started));
         let port = futures::executor::block_on(rx_started).unwrap();
-        println!("server started");
         let addr = format!("127.0.0.1:{port}");
 
         for num_requests in 1..=MAX_REQUESTS {
@@ -77,13 +75,11 @@ fn benchmark<T: Measurement, C, S>(
                 ),
                 &num_requests,
                 |b, &n| {
-                    println!("running for #{n} req");
                     b.to_async(&runtime).iter(|| client(addr.clone(), n));
                 },
             );
         }
 
-        println!("aborting server");
         server_task.abort();
     }
 }

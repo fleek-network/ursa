@@ -4,7 +4,6 @@ use bytes::{BufMut, Bytes, BytesMut};
 use futures::{executor::block_on, ready, SinkExt, Stream, StreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
-use tracing::{debug, error};
 
 use crate::{
     codec::{
@@ -99,8 +98,6 @@ where
                         ..
                     })),
                 ) => {
-                    debug!("Received content block header");
-
                     self.block_len = block_len as usize;
                     let proof_len = proof_len as usize;
                     self.proof_len = proof_len;
@@ -117,7 +114,6 @@ where
                     }
                 }
                 (UfdpResponseState::ReadingProof, Some(Ok(UrsaFrame::Buffer(bytes)))) => {
-                    debug!("Received proof chunk");
                     self.current_proof.put_slice(&bytes);
                     if self.current_proof.len() == self.proof_len {
                         let _proof_bytes = self.current_proof.split();
@@ -130,7 +126,6 @@ where
                             .transport
                             .codec_mut()
                             .read_buffer(block_len, IO_CHUNK_SIZE);
-                        debug!("Finished reading proof, reading block {block_len}");
                         self.state = UfdpResponseState::ReadingContent
                     }
                 }
@@ -139,15 +134,12 @@ where
                     // TODO: Do any incremental processing with the chunk.
 
                     if self.current_block.len() == self.block_len {
-                        debug!("Sending decryption key request");
-
                         // BLOCKING: send delivery acknowledgment
                         block_on(self.client.transport.send(UrsaFrame::DecryptionKeyRequest {
                             delivery_acknowledgment: [1; 96],
                         }))
                         .expect("send delivery acknowledgment");
 
-                        debug!("Waiting for decryption key");
                         self.state = UfdpResponseState::WaitingForDecryptionKey;
                     }
                 }
@@ -155,16 +147,12 @@ where
                     UfdpResponseState::WaitingForDecryptionKey,
                     Some(Ok(UrsaFrame::DecryptionKeyResponse { .. })),
                 ) => {
-                    debug!("Received decryption key");
-
                     // todo: decrypt block
 
                     self.state = UfdpResponseState::WaitingForHeader;
-                    debug!("Waiting for header");
                     return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
                 }
                 (_, Some(Ok(UrsaFrame::EndOfRequestSignal))) => {
-                    debug!("Received end of request signal");
                     self.state = UfdpResponseState::Done;
                     return Poll::Ready(None);
                 }
@@ -220,7 +208,6 @@ where
         let mut transport = Framed::new(stream, UrsaCodec::default());
 
         // send handshake
-        debug!("Sending handshake request");
         transport
             .send(UrsaFrame::HandshakeRequest {
                 version: 0,
@@ -232,12 +219,8 @@ where
             .expect("handshake request");
 
         // receive handshake
-        debug!("Received handshake request");
         match transport.next().await.expect("handshake response") {
-            Ok(UrsaFrame::HandshakeResponse { lane, .. }) => {
-                debug!("Received handshake response from server");
-                Ok(Self { transport, lane })
-            }
+            Ok(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { transport, lane }),
             Ok(f) => Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap())),
             Err(e) => Err(e),
         }
@@ -245,7 +228,6 @@ where
 
     /// Send a request for content.
     pub async fn request(&mut self, hash: Blake3Cid) -> Result<UfdpResponse<S>, UrsaCodecError> {
-        debug!("Sending content request");
         self.transport
             .send(UrsaFrame::ContentRequest { hash })
             .await?;

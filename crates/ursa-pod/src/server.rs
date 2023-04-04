@@ -1,10 +1,9 @@
 use bytes::BytesMut;
 use futures::SinkExt;
-use std::{io::IoSlice, sync::Arc};
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
-use tracing::{debug, error};
 
 use crate::{
     codec::{Reason, UrsaCodec, UrsaCodecError, UrsaFrame},
@@ -73,7 +72,6 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
         self.handshake().await;
 
         // Step 2: Handle requests.
-        debug!("Starting request loop");
         while let Some(Ok(frame)) = self.transport.next().await {
             match frame {
                 UrsaFrame::ContentRequest { hash } => {
@@ -88,15 +86,12 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
                 }
             }
         }
-
-        debug!("Connection Closed");
     }
 
     #[inline(always)]
     async fn handshake(&mut self) {
         match self.transport.next().await.expect("handshake request") {
             Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                debug!("Handshake received, sending response");
                 let lane = lane.unwrap_or({
                     // todo: lane management
                     0
@@ -119,8 +114,6 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
 
     #[inline(always)]
     async fn deliver_content(&mut self, cid: Blake3Cid) {
-        debug!("Serving content");
-
         let mut block_number = 0;
         while let Some(block) = self.backend.raw_block(&cid, block_number) {
             block_number += 1;
@@ -161,15 +154,12 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
             // wait for delivery acknowledgment
             match self.transport.next().await {
                 Some(Ok(UrsaFrame::DecryptionKeyRequest { .. })) => {
-                    debug!("Delivery acknowledgment received");
                     // todo: transaction manager (batch and store tx)
                 }
                 Some(Ok(f)) => error!("Unexpected frame {f:?}"),
                 Some(Err(e)) => error!("Codec error: {e:?}"),
                 None => error!("Connection closed"),
             }
-
-            debug!("Sending decryption key");
 
             // send decryption key
             self.transport
@@ -178,12 +168,9 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
                 .expect("send decryption key");
         }
 
-        debug!("Sending EOR");
         self.transport
             .send(UrsaFrame::EndOfRequestSignal)
             .await
             .expect("send EOR");
-
-        debug!("Waiting for next request");
     }
 }
