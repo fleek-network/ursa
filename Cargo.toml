@@ -38,7 +38,7 @@ clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
 ctrlc = "3.2.4"
 db = { package = "forest_db", git = "https://github.com/ChainSafe/forest", rev = "3e682310482718182cb2495fbaec5e575e5884e5", features = ["rocksdb"] }
-dirs = "4"
+dirs = "5"
 dotenv = "0.15.0"
 ethers = "1.0.2"
 integer-encoding = "3.0.4"
