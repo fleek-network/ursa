@@ -1,7 +1,7 @@
 use bytes::BytesMut;
 use futures::SinkExt;
-use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
+use std::{io::IoSlice, sync::Arc};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 use tracing::{debug, error};
@@ -140,21 +140,25 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
                 .await
                 .expect("send content response");
 
-            self.transport
-                .feed(UrsaFrame::Buffer(proof))
-                .await
-                .expect("send proof");
+            // --- experiment: try sending the raw data as is using the underlying IO.
+            // get the unwritten data.
+            let buf = {
+                let buffer = self.transport.write_buffer_mut();
+                let mut empty = BytesMut::new();
+                std::mem::swap(buffer, &mut empty);
+                empty
+            };
 
-            // TODO: Find a better way to do this send without copying the data multiple times.
-            self.transport
-                .feed(UrsaFrame::Buffer(block.into()))
+            {
+                let io = self.transport.get_mut();
+                io.write_vectored(&[
+                    IoSlice::new(&buf),
+                    IoSlice::new(&proof),
+                    IoSlice::new(&block),
+                ])
                 .await
-                .expect("send content data");
-
-            self.transport
-                .flush()
-                .await
-                .expect("could not flush the data");
+                .unwrap();
+            }
 
             // wait for delivery acknowledgment
             match self.transport.next().await {
