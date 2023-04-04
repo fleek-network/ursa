@@ -131,7 +131,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
             let block_len = block.len() as u64;
 
             self.transport
-                .feed(UrsaFrame::ContentResponse {
+                .send(UrsaFrame::ContentResponse {
                     compression: 0,
                     proof_len,
                     block_len,
@@ -141,23 +141,21 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
                 .expect("send content response");
 
             // --- experiment: try sending the raw data as is using the underlying IO.
-            // get the unwritten data.
-            let buf = {
-                let buffer = self.transport.write_buffer_mut();
-                let mut empty = BytesMut::new();
-                std::mem::swap(buffer, &mut empty);
-                empty
-            };
 
             {
                 let io = self.transport.get_mut();
-                io.write_vectored(&[
-                    IoSlice::new(&buf),
-                    IoSlice::new(&proof),
-                    IoSlice::new(&block),
-                ])
-                .await
-                .unwrap();
+
+                let mut proof: &[u8] = proof.as_ref();
+                while !proof.is_empty() {
+                    let bytes = io.write(&proof).await.unwrap();
+                    proof = &proof[bytes..];
+                }
+
+                let mut block: &[u8] = block;
+                while !block.is_empty() {
+                    let bytes = io.write(&block).await.unwrap();
+                    block = &block[bytes..];
+                }
             }
 
             // wait for delivery acknowledgment
