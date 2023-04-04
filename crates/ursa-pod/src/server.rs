@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
+use tracing::error;
 
 use crate::{
     codec::{Reason, UrsaCodec, UrsaCodecError, UrsaFrame},

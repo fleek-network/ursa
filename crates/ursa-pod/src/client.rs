@@ -4,6 +4,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use futures::{executor::block_on, ready, SinkExt, Stream, StreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
+use tracing::error;
 
 use crate::{
     codec::{
