@@ -5,12 +5,14 @@ import "./FLK.sol";
 import "./Epoch.sol";
 import "./RewardsAgg.sol";
 import "./NodeRegistry.sol";
+import "./utils/MathUtils.sol";
 
 contract FleekReward {
     FleekToken private fleekToken;
     RewardsAggregator public rewardsAggregator;
     EpochManager public epochManager;
     NodeRegistry public nodeRegistry;
+    ufixed8x2 public inflationInLastEpoch;
 
     bool private initialized;
     address public owner;
@@ -19,14 +21,14 @@ contract FleekReward {
     mapping(uint256 => bool) public rewardsDistribution;
 
     // these can go in governance/controlled contracts
-    // min factor by which the inflation can go down based on usage
-    uint256 minInflationFactor;
-    // max inflation for the year
-    uint256 maxInflation;
-    // price per GB in dollars
-    uint256 pUSD;
-    // Cost of running node per GB
-    uint256 cAvg;
+    // min factor by which the inflation can go down based on usage in %
+    ufixed8x2 minInflationFactor;
+    // max inflation for the year in %
+    ufixed8x2 maxInflation;
+    // price per byte in 1/18th USD 
+    fixed price;
+    // Cost of running node per byte in 1/18th USD
+    fixed cost;
 
     event RewardMinted(address indexed account, uint256 amount);
 
@@ -39,6 +41,7 @@ contract FleekReward {
         nodeRegistry = NodeRegistry(_nodeRegistry);
         epochManager = EpochManager(_epochManager);
         rewardsAggregator = RewardsAggregator(_rewardsAggregator);
+        inflationInLastEpoch = maxInflation;
         initialized = true;
     }
 
@@ -64,13 +67,11 @@ contract FleekReward {
      * @param epoch epoch for which the rewards to be calculated
      */
     function _calculateRewards(uint256 epoch) private view {
-        uint256 _uActual = rewardsAggregator.getDataServedCurrentEpoch();
-        uint256 _uPotential = rewardsAggregator.getAvgUsageNEpochs();
-
+        int256 _uActual = int256(rewardsAggregator.getDataServedCurrentEpoch());
+        int256 _uPotential = int256(rewardsAggregator.getAvgUsageNEpochs());
         require(_uPotential != 0, "potential usage cannot be zero");
-
-        uint256 _deltaU = (_uActual - _uPotential) / _uPotential;
-
-        // uint256 inflationChange = 1 - (Math.max((pUSD/cAvg) * _deltaU, minInflationFactor));
+        int256 _deltaUNumerator = (_uActual - _uPotential) * 10^18;
+        // fixed256x18 _deltaU = fixed256x18(_deltaUNumerator / _uPotential);
+        // fixed256x18 inflationChange = (price/cost) * fixed256x18(_deltaU);
     }
 }

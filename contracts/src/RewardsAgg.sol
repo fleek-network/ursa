@@ -5,45 +5,55 @@ import "./NodeRegistry.sol";
 import "./Epoch.sol";
 
 contract RewardsAggregator {
-    /// Node publicKey => epoch => Metrics struct
-    mapping(string => mapping(uint256 => Metrics)) public metrics;
+    ///  epoch => Node publicKey => Data served
+    mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
+
+    ///  epoch => Node publicKey => performance score
+    mapping(uint256 => mapping(string => uint256)) public performanceScore;
 
     NodeRegistry public nodeRegistry;
     EpochManager public epochManager;
-    uint256 public daysForPotential;
-    address public owner;
 
+    // Todo: this will change with an added multiplier if we decide to change the epoch time
+    uint16 public daysForPotential;
+    string[] public publicKeys;
+    address public owner;
     bool private initialized;
 
-    struct Metrics {
-        uint256 DataInBytesServed;
-        uint256 performanceScore;
-    }
 
-    function initialize(address _epochManager) external {
+
+    function initialize(address _epochManager, address _nodeRegistry) external {
         require(!initialized, "contract already initialized");
         // get whitelist nodes from registry and add epoch 0 into the metrics maaping
         epochManager = EpochManager(_epochManager);
+        nodeRegistry = NodeRegistry(_nodeRegistry);
+        
+        (bool success, bytes memory result) = address(_nodeRegistry).call(abi.encodeWithSignature("getWhitelist()"));
+        require(success, "Failed to call function");
+        publicKeys = abi.decode(result, (string []));
         initialized = true;
     }
 
-    // maybe we don't need addNewEpoch and addNewNode and recordMetrics can handle that
-    function addNewEpoch(uint256 epoch) external {
-        // add a new epoch for all whitelist nodes existing in the registry
-    }
-
-    function addNewNode(string memory pubKey) external {
-        // listen for new registration of the node and add node for the current epoch
+    /**
+     * @dev record data served for given a node with given public key
+     * @param epoch epoch for which the metrics are stored
+     * @param publicKey public key of the node
+     * @param dataServed data served from the pod transaction
+     */
+    function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external {
+        DataServedInBytes[epoch][publicKey] += dataServed;
     }
 
     /**
-     * @dev record metrics for given a node with given public key
+     * @dev record erformance score for given a node with given public key
+     * @param epoch epoch for which the metrics are stored
      * @param publicKey public key of the node
-     * @param metric metric struct
+     * @param score performance score sent by validators
      */
-    function recordMetrics(string memory publicKey, Metrics memory metric) external {
-        // must check if the node is whitelisted
-        // handle the case where new epoch or node is to be added
+    function recordPerformanceScore(uint epoch, string calldata publicKey, uint256 score) external {
+        if (performanceScore[epoch][publicKey] <= 0) {
+            performanceScore[epoch][publicKey] = score;
+        }
     }
 
     /**
@@ -52,7 +62,7 @@ contract RewardsAggregator {
      * @param epoch epoch for which data served to get
      */
     function getDataServedForNode(string memory publicKey, uint256 epoch) public view returns (uint256) {
-        return metrics[publicKey][epoch].DataInBytesServed;
+        return DataServedInBytes[epoch][publicKey];
     }
 
     /**
@@ -60,12 +70,12 @@ contract RewardsAggregator {
      */
     function getAvgUsageNEpochs() public view returns (uint256) {
         uint256 _endEpoch = epochManager.epoch();
-        uint256 _startEpoch = _endEpoch - (daysForPotential - 1);
-        uint256 agg = 0;
+        uint256 _startEpoch = _endEpoch - daysForPotential - 1;
+        uint256 _sum = 0;
         for (uint256 i = _startEpoch; i < _endEpoch; i++) {
-            agg += _getDataForEpoch(i);
+            _sum += _getDataForEpoch(i);
         }
-        return agg;
+        return _sum/daysForPotential;
     }
 
     /**
@@ -81,6 +91,10 @@ contract RewardsAggregator {
      * @param epoch epoch number for which served data is required
      */
     function _getDataForEpoch(uint256 epoch) private view returns (uint256) {
-        // go through all the whitelist node and aggregate data for an epoch
+        uint256 sum = 0;
+        for(uint256 i = 0; i < publicKeys.length; i++) {
+            sum += DataServedInBytes[epoch][publicKeys[i]];
+        }
+        return sum;
     }
 }
