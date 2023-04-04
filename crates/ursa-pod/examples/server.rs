@@ -44,7 +44,7 @@ async fn main() -> Result<(), UrsaCodecError> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    let listener = TcpListener::bind("127.0.0.1:6969").await?;
     info!("Listening on port 8080");
 
     let server = UfdpServer::new(DummyBackend {})?;

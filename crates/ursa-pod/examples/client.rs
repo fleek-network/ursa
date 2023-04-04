@@ -5,7 +5,7 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
 
-const SERVER_ADDRESS: &str = "127.0.0.1:8080";
+const SERVER_ADDRESS: &str = "127.0.0.1:6969";
 const PUB_KEY: [u8; 48] = [2u8; 48];
 const CID: [u8; 32] = [1u8; 32];
 
