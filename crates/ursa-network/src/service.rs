@@ -612,7 +612,10 @@ where
                                 .unwrap();
                             self.graphsync_pending.insert(*req.id(), cid);
                             let swarm = self.swarm.behaviour_mut();
+                            let gs_req_id = req.id().urn().to_string();
                             swarm.graphsync.request(peer, req);
+                            self.measurement_manager
+                                .register_request(peer, gs_req_id, 0);
                             if swarm
                                 .request_response
                                 .send_response(
@@ -691,6 +694,12 @@ where
             } => {
                 info!("[GraphSyncEvent::Completed]: {peer_id} {received}");
                 if let Some(cid) = self.graphsync_pending.remove(&id) {
+                    self.measurement_manager.register_response(
+                        peer_id,
+                        id.urn().to_string(),
+                        received as u128,
+                    );
+                    self.update_and_share_cache_summary(&cid)?;
                     self.emit_event(NetworkEvent::PullComplete {
                         cid,
                         size: received as u64,
@@ -838,20 +847,7 @@ where
                         .send_request(&peer, UrsaExchangeRequest(RequestType::CacheRequest(cid)));
                 }
                 // update cache summary and share it with the connected peers
-                self.cached_content.insert(&cid.to_bytes());
-                let swarm = self.swarm.behaviour_mut();
-                for peer in self.peers.ref_peers() {
-                    let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
-                        self.cached_content.clone(),
-                    )));
-                    let request_bytes = bincode::serialize(&request)?;
-                    let request_id = swarm.request_response.send_request(peer, request);
-                    self.measurement_manager.register_request(
-                        *peer,
-                        request_id.to_string(),
-                        request_bytes.len() as u128,
-                    );
-                }
+                self.update_and_share_cache_summary(&cid)?;
 
                 sender
                     .send(Ok(()))
@@ -944,6 +940,24 @@ where
                     .send(self.peer_cached_content.clone())
                     .map_err(|_| anyhow!("Failed to send peer content."))?;
             }
+        }
+        Ok(())
+    }
+
+    fn update_and_share_cache_summary(&mut self, cid: &Cid) -> Result<()> {
+        self.cached_content.insert(cid.to_bytes());
+        let swarm = self.swarm.behaviour_mut();
+        for peer in self.peers.ref_peers() {
+            let request = UrsaExchangeRequest(RequestType::StoreSummary(Box::new(
+                self.cached_content.clone(),
+            )));
+            let request_bytes = bincode::serialize(&request)?;
+            let request_id = swarm.request_response.send_request(peer, request);
+            self.measurement_manager.register_request(
+                *peer,
+                request_id.to_string(),
+                request_bytes.len() as u128,
+            );
         }
         Ok(())
     }
