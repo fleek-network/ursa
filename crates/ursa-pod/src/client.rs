@@ -136,12 +136,13 @@ where
 
                     if self.current_block.len() == self.block_len {
                         // BLOCKING: send delivery acknowledgment
-                        block_on(self.client.transport.send(UrsaFrame::DecryptionKeyRequest {
-                            delivery_acknowledgment: [1; 96],
-                        }))
-                        .expect("send delivery acknowledgment");
+                        // block_on(self.client.transport.send(UrsaFrame::DecryptionKeyRequest {
+                        //     delivery_acknowledgment: [1; 96],
+                        // }))
+                        // .expect("send delivery acknowledgment");
 
-                        self.state = UfdpResponseState::WaitingForDecryptionKey;
+                        self.state = UfdpResponseState::WaitingForHeader;
+                        return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
                     }
                 }
                 (
@@ -149,9 +150,9 @@ where
                     Some(Ok(UrsaFrame::DecryptionKeyResponse { .. })),
                 ) => {
                     // todo: decrypt block
-
-                    self.state = UfdpResponseState::WaitingForHeader;
-                    return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
+                    unreachable!();
+                    // self.state = UfdpResponseState::WaitingForHeader;
+                    // return Poll::Ready(Some(Ok(self.current_block.split().freeze())));
                 }
                 (_, Some(Ok(UrsaFrame::EndOfRequestSignal))) => {
                     self.state = UfdpResponseState::Done;

@@ -7,7 +7,7 @@ use ursa_pod::{
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
-const CONTENT: &[u8] = &[0; 4 * 256 * 1024];
+const CONTENT: &[u8] = &[0; 256 * 1024];
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
@@ -15,7 +15,7 @@ struct DummyBackend {}
 impl Backend for DummyBackend {
     fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
         // serve 10GB
-        if block < 100 {
+        if block < 4 * 1024 * 10 {
             Some(CONTENT)
         } else {
             None
@@ -37,7 +37,7 @@ impl Backend for DummyBackend {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)

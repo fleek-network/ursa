@@ -153,20 +153,20 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
             }
 
             // wait for delivery acknowledgment
-            match self.transport.next().await {
-                Some(Ok(UrsaFrame::DecryptionKeyRequest { .. })) => {
-                    // todo: transaction manager (batch and store tx)
-                }
-                Some(Ok(f)) => error!("Unexpected frame {f:?}"),
-                Some(Err(e)) => error!("Codec error: {e:?}"),
-                None => error!("Connection closed"),
-            }
+            // match self.transport.next().await {
+            //     Some(Ok(UrsaFrame::DecryptionKeyRequest { .. })) => {
+            //         // todo: transaction manager (batch and store tx)
+            //     }
+            //     Some(Ok(f)) => error!("Unexpected frame {f:?}"),
+            //     Some(Err(e)) => error!("Codec error: {e:?}"),
+            //     None => error!("Connection closed"),
+            // }
 
             // send decryption key
-            self.transport
-                .send(UrsaFrame::DecryptionKeyResponse { decryption_key })
-                .await
-                .expect("send decryption key");
+            // self.transport
+            //     .send(UrsaFrame::DecryptionKeyResponse { decryption_key })
+            //     .await
+            //     .expect("send decryption key");
         }
 
         self.transport
