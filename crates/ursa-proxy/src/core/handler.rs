@@ -30,6 +30,7 @@ pub fn init_server_app<C: Cache>(
     client: Client,
 ) -> Router {
     let mut user_app = Router::new();
+
     if let Some(path) = &server_config.serve_dir_path {
         let directory = if path.is_absolute() {
             path.strip_prefix("/")
@@ -48,6 +49,7 @@ pub fn init_server_app<C: Cache>(
         let route_path = format!("/{}", directory_str);
         user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
+
     user_app = user_app
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
