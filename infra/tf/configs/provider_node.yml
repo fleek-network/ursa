@@ -1,0 +1,31 @@
+#cloud-config
+groups:
+  - ubuntu: [root,sys]
+
+runcmd:
+  - apt-get install -y build-essential
+  - snap install yq
+  - mkdir -p /root/.ursa
+  - |
+    echo "
+    [provider_config]
+    indexer_url = \"${indexer_url}\"
+    [server_config]
+    addresses = [\"/ip4/`curl ipinfo.io/ip`/tcp/80\"]
+    " > /root/.ursa/config.toml
+  - cd /root && git clone https://github.com/fleek-network/ursa
+  - cd ursa/docker/full-node/
+  - yq -ie 'del(.services.ursa.build)' ./docker-compose.yml
+  - yq -i ".services.ursa.image = \"ghcr.io/fleek-network/ursa:latest\"" ./docker-compose.yml 
+  - yq -i ".services.ursa.volumes = [\"/root/.ursa:/root/.ursa:rw\"]" docker-compose.yml
+  - docker compose up -d
+  - chmod +x ./init-letsencrypt.sh
+  - sed -i 's/docker-compose/docker compose/g' init-letsencrypt.sh
+  - sed -i 's/node.ursa.earth www.node.ursa.earth/${domain}/g' data/nginx/app.conf
+  - sed -i 's/ursa.earth/${domain}/g' data/nginx/app.conf
+  - EMAIL="major@fleek.network" DOMAINS="${domain}" ./init-letsencrypt.sh y
+  
+  # optional test files
+  #- curl https://storage.fleek.zone/d87e5d02-db68-4a55-b022-54712e23adaa-bucket/bafybeieznn4rwypqvgq2kdlojrylzndjmaoh2zwgxmerpwezjmta5tpooi.car -o /root/.ursa/25kb.car
+  #- docker compose exec ursa ursa rpc put /root/.ursa/25kb.car
+ 
