@@ -110,11 +110,10 @@ fn protocol_benchmarks(c: &mut Criterion) {
 
 mod tcp_ufdp {
     use tokio::net::{TcpListener, TcpStream};
-    use tokio_stream::StreamExt;
     use ursa_pod::{
         client::UfdpClient,
         codec::consts::MAX_BLOCK_SIZE,
-        server::{Backend, UfdpServer},
+        server::{Backend, UfdpHandler},
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
 
@@ -159,13 +158,13 @@ mod tcp_ufdp {
     ) {
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let mut server = UfdpServer::new(DummyBackend { content }).unwrap();
 
         tx_started.send(port).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            server.handle(stream).unwrap();
+            let handler = UfdpHandler::new(stream, DummyBackend { content });
+            handler.serve().await.unwrap();
         }
     }
 
@@ -176,13 +175,7 @@ mod tcp_ufdp {
         let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
         for _ in 0..iterations {
-            let mut res = client.request(CID).await.unwrap();
-            while let Some(frame) = res.next().await {
-                match frame {
-                    Ok(_data) => {}
-                    Err(e) => panic!("{e}"),
-                }
-            }
+            client.request(CID).await.unwrap();
         }
     }
 }

@@ -1,9 +1,9 @@
 use tokio::net::TcpListener;
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{
-    codec::{consts::MAX_BLOCK_SIZE, UrsaCodecError},
-    server::{Backend, UfdpServer},
+    connection::UrsaCodecError,
+    server::{Backend, UfdpHandler},
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
@@ -46,11 +46,11 @@ async fn main() -> Result<(), UrsaCodecError> {
 
     let addr = "127.0.0.1:6969";
 
-    #[cfg(feature = "bench-hyper")]
-    hyper::serve(addr).await;
-
     #[cfg(not(feature = "bench-hyper"))]
     run_ufdp(addr).await;
+
+    #[cfg(feature = "bench-hyper")]
+    hyper::serve(addr).await;
 
     info!("Listening on port 6969");
 
@@ -59,10 +59,14 @@ async fn main() -> Result<(), UrsaCodecError> {
 
 async fn run_ufdp(addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
-    let server = UfdpServer::new(DummyBackend {}).unwrap();
     loop {
+        info!("accepted conn");
         let (stream, _) = listener.accept().await.unwrap();
-        server.handle(stream).unwrap();
+        let handler = UfdpHandler::new(stream, DummyBackend {});
+
+        if let Err(e) = handler.serve().await {
+            error!("UFDP Session failed: {e:?}");
+        }
     }
 }
 

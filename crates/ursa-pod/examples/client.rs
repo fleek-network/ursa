@@ -1,9 +1,7 @@
-use bytes::{BufMut, BytesMut};
 use tokio::net::TcpStream;
-use tokio_stream::StreamExt;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-use ursa_pod::{client::UfdpClient, codec::UrsaCodecError};
+use ursa_pod::{client::UfdpClient, connection::UrsaCodecError};
 
 const SERVER_ADDRESS: &str = "127.0.0.1:6969";
 const PUB_KEY: [u8; 48] = [2u8; 48];
@@ -18,12 +16,12 @@ async fn main() -> Result<(), UrsaCodecError> {
 
     let mut handles = vec![];
 
-    for _ in 0..10 {
-        #[cfg(feature = "bench-hyper")]
-        handles.push(tokio::spawn(hyper::download()));
-
+    for _ in 0..1 {
         #[cfg(not(feature = "bench-hyper"))]
         handles.push(tokio::spawn(download_ufdp()));
+
+        #[cfg(feature = "bench-hyper")]
+        handles.push(tokio::spawn(hyper::download()));
     }
 
     futures::future::join_all(handles).await;
@@ -35,17 +33,10 @@ async fn download_ufdp() -> Result<(), UrsaCodecError> {
     let time = std::time::Instant::now();
     let stream = TcpStream::connect(SERVER_ADDRESS).await?;
     let mut client = UfdpClient::new(stream, PUB_KEY, None).await?;
-    let mut res = client.request(CID).await?;
-    let mut buf = BytesMut::new();
-    loop {
-        match res.next().await {
-            Some(Ok(bytes)) => buf.put_slice(&bytes),
-            None => break,
-            Some(Err(e)) => panic!("{e:?}"),
-        }
-    }
+    let size = client.request(CID).await?;
+
     let took = time.elapsed().as_millis();
-    info!("received {} bytes in {took}ms", buf.len());
+    info!("received {} bytes in {took}ms", size);
     Ok(())
 }
 

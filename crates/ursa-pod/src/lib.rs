@@ -1,7 +1,7 @@
 //! Implementation of Ursa's fair delivery protocol.
 
-/// UFDP codec implementation
-pub mod codec;
+/// UFDP encoding/decoding implementation
+pub mod connection;
 pub mod keys;
 pub mod primitives;
 /// UFDP types

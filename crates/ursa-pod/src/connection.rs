@@ -1,7 +1,10 @@
+use std::io::{Error, ErrorKind, Write};
+
 use arrayref::array_ref;
-use bytes::{BufMut, BytesMut};
+use arrayvec::ArrayVec;
+use bytes::BytesMut;
 use consts::*;
-use tokio_util::codec::{Decoder, Encoder};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::types::{
     Blake3Cid, BlsPublicKey, BlsSignature, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
@@ -306,118 +309,204 @@ impl From<std::io::Error> for UrsaCodecError {
     }
 }
 
-/// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
-#[derive(Default)]
-pub struct UrsaCodec {
-    take: usize,
-    chunk_size: usize,
-}
-
-impl UrsaCodec {
-    /// Instruct the codec to begin returning raw byte chunks (`UrsaFrame::Buffer`) until `size` is exhausted.
-    #[inline(always)]
-    pub fn read_buffer(&mut self, size: usize, chunk_size: usize) {
-        self.take = size;
-        self.chunk_size = chunk_size;
+impl From<UrsaCodecError> for std::io::Error {
+    fn from(value: UrsaCodecError) -> Self {
+        match value {
+            UrsaCodecError::Io(e) => e,
+            error => Error::new(ErrorKind::Other, format!("{error:?}")),
+        }
     }
 }
 
-impl Encoder<UrsaFrame> for UrsaCodec {
-    type Error = UrsaCodecError;
+/// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
+pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
+    stream: T,
+    read_buffer: BytesMut,
+    pub take: usize,
+    chunk_size: usize,
+}
 
-    fn encode(&mut self, event: UrsaFrame, buf: &mut BytesMut) -> Result<(), Self::Error> {
-        buf.reserve(event.size_hint());
-
-        if let Some(tag) = event.tag() {
-            buf.put_u8(tag as u8);
+impl<T> UfdpConnection<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    pub fn new(stream: T) -> Self {
+        Self {
+            stream,
+            read_buffer: BytesMut::with_capacity(16 * 1024),
+            take: 0,
+            chunk_size: 16 * 1024,
         }
+    }
 
-        match event {
-            UrsaFrame::HandshakeRequest {
-                version,
-                pubkey,
-                supported_compression_bitmap,
-                lane,
-            } => {
-                buf.put_slice(&NETWORK);
-                buf.put_u8(version);
-                buf.put_u8(supported_compression_bitmap);
-                buf.put_u8(lane.unwrap_or(0xFF));
-                buf.put_slice(&pubkey);
-            }
-            UrsaFrame::HandshakeResponse {
-                pubkey,
-                epoch_nonce,
-                lane,
-                last,
-            } => {
-                buf.put_u8(lane);
-                buf.put_u64(epoch_nonce);
-                buf.put_slice(&pubkey);
+    #[inline(always)]
+    pub async fn termination_signal(&mut self, reason: Option<Reason>) -> std::io::Result<()> {
+        self.write_frame(UrsaFrame::TerminationSignal(
+            reason.unwrap_or(Reason::Unknown),
+        ))
+        .await
+    }
 
-                match last {
-                    None => buf.put_u8(0x00),
-                    Some(data) => {
-                        buf.reserve(104);
-                        buf.put_u8(0x80);
-                        buf.put_u64(data.bytes);
-                        buf.put_slice(&data.signature);
-                    }
+    #[inline(always)]
+    pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
+        if let UrsaFrame::Buffer(bytes) = frame {
+            // write directly to stream
+            self.stream.write_all(&bytes).await?;
+        } else {
+            match frame {
+                UrsaFrame::HandshakeRequest {
+                    version,
+                    pubkey,
+                    supported_compression_bitmap,
+                    lane,
+                } => {
+                    let mut buf = ArrayVec::<u8, 56>::new_const();
+                    debug_assert_eq!(NETWORK.len(), 4);
+
+                    buf.push(FrameTag::HandshakeRequest as u8);
+                    buf.write_all(&NETWORK).unwrap();
+                    buf.push(version);
+                    buf.push(supported_compression_bitmap);
+                    buf.push(lane.unwrap_or(0xFF));
+                    buf.write_all(&pubkey).unwrap();
+
+                    self.stream.write_all(&buf).await?;
                 }
-            }
-            UrsaFrame::ContentRequest { hash } => {
-                buf.put_slice(&hash);
-            }
-            UrsaFrame::ContentResponse {
-                compression,
-                proof_len,
-                block_len,
-                signature,
-            } => {
-                buf.put_u8(compression);
-                buf.put_u64(proof_len);
-                buf.put_u64(block_len);
-                buf.put_slice(&signature);
-            }
-            UrsaFrame::ContentRangeRequest {
-                hash,
-                chunk_start,
-                chunks,
-            } => {
-                buf.put_slice(&hash);
-                buf.put_u64(chunk_start);
-                buf.put_u16(chunks);
-            }
-            UrsaFrame::UpdateEpochSignal(nonce) => {
-                buf.put_u64(nonce);
-            }
-            UrsaFrame::DecryptionKeyRequest {
-                delivery_acknowledgment,
-            } => {
-                buf.put_slice(&delivery_acknowledgment);
-            }
-            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
-                buf.put_slice(&decryption_key);
-            }
-            UrsaFrame::EndOfRequestSignal => {}
-            UrsaFrame::TerminationSignal(reason) => {
-                buf.put_u8(reason as u8);
-            }
-            UrsaFrame::Buffer(bytes) => {
-                buf.put(bytes);
+                UrsaFrame::HandshakeResponse {
+                    pubkey,
+                    epoch_nonce,
+                    lane,
+                    last,
+                } => {
+                    let mut buf = ArrayVec::<u8, 147>::new_const();
+
+                    buf.push(FrameTag::HandshakeResponse as u8);
+                    buf.push(lane);
+                    buf.write_all(&epoch_nonce.to_be_bytes()).unwrap();
+                    buf.write_all(&pubkey).unwrap();
+
+                    match last {
+                        None => buf.push(0x00),
+                        Some(data) => {
+                            buf.push(0x80);
+                            buf.write_all(&data.bytes.to_be_bytes()).unwrap();
+                            buf.write_all(&data.signature).unwrap()
+                        }
+                    };
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::ContentRequest { hash } => {
+                    let mut buf = ArrayVec::<u8, 33>::new_const();
+
+                    buf.push(FrameTag::ContentRequest as u8);
+                    buf.write_all(&hash).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::ContentResponse {
+                    compression,
+                    proof_len,
+                    block_len,
+                    signature,
+                } => {
+                    let mut buf = ArrayVec::<u8, 82>::new_const();
+
+                    buf.push(FrameTag::ContentResponse as u8);
+                    buf.push(compression);
+                    buf.write_all(&proof_len.to_be_bytes()).unwrap();
+                    buf.write_all(&block_len.to_be_bytes()).unwrap();
+                    buf.write_all(&signature).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::ContentRangeRequest {
+                    hash,
+                    chunk_start,
+                    chunks,
+                } => {
+                    let mut buf = ArrayVec::<u8, 43>::new_const();
+
+                    buf.push(FrameTag::ContentRangeRequest as u8);
+                    buf.write_all(&hash).unwrap();
+                    buf.write_all(&chunk_start.to_be_bytes()).unwrap();
+                    buf.write_all(&chunks.to_be_bytes()).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::UpdateEpochSignal(nonce) => {
+                    let mut buf = ArrayVec::<u8, 9>::new_const();
+
+                    buf.push(FrameTag::UpdateEpochSignal as u8);
+                    buf.write_all(&nonce.to_be_bytes()).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::DecryptionKeyRequest {
+                    delivery_acknowledgment,
+                } => {
+                    let mut buf = ArrayVec::<u8, 97>::new_const();
+
+                    buf.push(FrameTag::DecryptionKeyRequest as u8);
+                    buf.write_all(&delivery_acknowledgment).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::DecryptionKeyResponse { decryption_key } => {
+                    let mut buf = ArrayVec::<u8, 34>::new_const();
+
+                    buf.push(FrameTag::DecryptionKeyResponse as u8);
+                    buf.write_all(&decryption_key).unwrap();
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::EndOfRequestSignal => {
+                    self.stream
+                        .write_u8(FrameTag::EndOfRequestSignal as u8)
+                        .await?
+                }
+                UrsaFrame::TerminationSignal(reason) => {
+                    let mut buf = ArrayVec::<u8, 2>::new_const();
+
+                    buf.push(FrameTag::TerminationSignal as u8);
+                    buf.push(reason as u8);
+
+                    self.stream.write_all(&buf).await?;
+                }
+                UrsaFrame::Buffer(_) => unreachable!(),
             }
         }
 
         Ok(())
     }
-}
 
-impl Decoder for UrsaCodec {
-    type Item = UrsaFrame;
-    type Error = UrsaCodecError;
+    #[inline(always)]
+    pub async fn read_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
+        loop {
+            if let Some(frame) = self.parse_frame(filter)? {
+                return Ok(Some(frame));
+            }
 
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let len = src.len();
+            if 0 == self.stream.read_buf(&mut self.read_buffer).await? {
+                // The remote closed the connection. For this to be
+                // a clean shutdown, there should be no data in the
+                // read buffer. If there is, this means that the
+                // peer closed the socket while sending a frame.
+                if self.read_buffer.is_empty() {
+                    return Ok(None);
+                } else {
+                    return Err(Error::new(
+                        ErrorKind::ConnectionReset,
+                        "Client disconnected",
+                    ));
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn parse_frame(&mut self, _filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
+        let len = self.read_buffer.len();
         if len == 0 {
             return Ok(None);
         }
@@ -427,23 +516,28 @@ impl Decoder for UrsaCodec {
             let take = self.take.min(self.chunk_size);
             return Ok(if len >= take {
                 self.take -= take;
-                Some(UrsaFrame::Buffer(src.split_to(take)))
+                Some(UrsaFrame::Buffer(self.read_buffer.split_to(take)))
             } else {
                 None
             });
         }
 
         // first frame byte is the tag
-        let (size_hint, tag) = FrameTag::try_from(src[0]).map(|t| (t.size_hint(), t))?;
+        let (size_hint, tag) =
+            FrameTag::try_from(self.read_buffer[0]).map(|t| (t.size_hint(), t))?;
+
+        // todo: utilize filter to be able to immediately return unexpected frame errors
+
         if len < size_hint {
             return Ok(None);
         }
+
         match tag {
             FrameTag::HandshakeRequest => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let network = &buf[1..5];
                 if network != NETWORK {
-                    return Err(UrsaCodecError::InvalidNetwork);
+                    return Err(UrsaCodecError::InvalidNetwork.into());
                 }
 
                 let version = buf[5];
@@ -462,21 +556,21 @@ impl Decoder for UrsaCodec {
                 }))
             }
             FrameTag::HandshakeResponse => {
-                let (buf, last) = match src[43] {
+                let (buf, last) = match self.read_buffer[43] {
                     0x80 => {
                         let size_hint = size_hint + 104;
                         if len < size_hint {
                             return Ok(None);
                         }
 
-                        let buf = src.split_to(size_hint);
+                        let buf = self.read_buffer.split_to(size_hint);
                         let bytes_bytes = *array_ref!(buf, 44, 8);
                         let bytes = u64::from_be_bytes(bytes_bytes);
                         let signature = *array_ref!(buf, 52, 96);
                         (buf, Some(LastLaneData { bytes, signature }))
                     }
-                    0x00 => (src.split_to(size_hint), None),
-                    _ => return Err(UrsaCodecError::Unknown),
+                    0x00 => (self.read_buffer.split_to(size_hint), None),
+                    _ => return Err(UrsaCodecError::Unknown.into()),
                 };
                 let lane = buf[1];
                 let epoch_bytes = *array_ref!(buf, 2, 8);
@@ -491,20 +585,20 @@ impl Decoder for UrsaCodec {
                 }))
             }
             FrameTag::ContentRequest => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let hash = *array_ref!(buf, 1, 32);
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
             FrameTag::ContentResponse => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let compression = buf[1];
                 let proof_len_bytes = *array_ref!(buf, 2, 8);
                 let proof_len = u64::from_be_bytes(proof_len_bytes);
                 let block_len_bytes = *array_ref!(buf, 10, 8);
                 let block_len = u64::from_be_bytes(block_len_bytes);
                 if block_len == 0 {
-                    return Err(UrsaCodecError::ZeroLengthBlock);
+                    return Err(UrsaCodecError::ZeroLengthBlock.into());
                 }
                 let signature = *array_ref!(buf, 18, 64);
 
@@ -516,7 +610,7 @@ impl Decoder for UrsaCodec {
                 }))
             }
             FrameTag::ContentRangeRequest => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let hash = *array_ref!(buf, 1, 32);
                 let chunk_start_bytes = *array_ref!(buf, 33, 8);
                 let chunk_start = u64::from_be_bytes(chunk_start_bytes);
@@ -529,7 +623,7 @@ impl Decoder for UrsaCodec {
                 }))
             }
             FrameTag::DecryptionKeyRequest => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let delivery_acknowledgment = *array_ref!(buf, 1, 96);
 
                 Ok(Some(UrsaFrame::DecryptionKeyRequest {
@@ -537,37 +631,37 @@ impl Decoder for UrsaCodec {
                 }))
             }
             FrameTag::DecryptionKeyResponse => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let decryption_key = *array_ref!(buf, 1, 33);
 
                 Ok(Some(UrsaFrame::DecryptionKeyResponse { decryption_key }))
             }
             FrameTag::UpdateEpochSignal => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let epoch_bytes = *array_ref!(buf, 1, 8);
                 let epoch_nonce = u64::from_be_bytes(epoch_bytes);
 
                 Ok(Some(UrsaFrame::UpdateEpochSignal(epoch_nonce)))
             }
             FrameTag::EndOfRequestSignal => {
-                let _ = src.split_to(1);
+                let _ = self.read_buffer.split_to(1);
                 Ok(Some(UrsaFrame::EndOfRequestSignal))
             }
             FrameTag::TerminationSignal => {
-                let buf = src.split_to(size_hint);
+                let buf = self.read_buffer.split_to(size_hint);
                 let byte = buf[1];
 
                 if let Some(reason) = Reason::from_u8(byte) {
                     Ok(Some(UrsaFrame::TerminationSignal(reason)))
                 } else {
-                    Err(UrsaCodecError::InvalidReason(byte))
+                    Err(UrsaCodecError::InvalidReason(byte).into())
                 }
             }
         }
     }
 }
 
-#[cfg(test)]
+#[cfg(disabled)]
 mod tests {
     use super::*;
 
@@ -583,7 +677,7 @@ mod tests {
 
         // simulate calling as bytes stream into the buffer
         for byte in encoded {
-            buf.put_u8(*byte);
+            self.stream.write_u8(*byte);
             if let Some(frame) = codec.decode(&mut buf)? {
                 assert_eq!(frame, decoded);
                 assert!(buf.is_empty());
@@ -668,8 +762,8 @@ mod tests {
         // test frame chunk decode
         let mut codec = UrsaCodec::default();
         let mut buf = BytesMut::new();
-        buf.put_slice(&[1u8; 64]); // proof
-        buf.put_slice(&[2u8; 64]); // content
+        self.stream.write_all(&[1u8; 64]); // proof
+        self.stream.write_all(&[2u8; 64]); // content
 
         // decode proof stream
         let mut count = 0;

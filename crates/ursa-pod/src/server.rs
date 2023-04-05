@@ -1,13 +1,14 @@
-use bytes::BytesMut;
-use futures::SinkExt;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use tokio_stream::StreamExt;
-use tokio_util::codec::Framed;
+
+use bytes::BytesMut;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
 
 use crate::{
-    codec::{Reason, UrsaCodec, UrsaCodecError, UrsaFrame},
+    connection::{
+        consts::{CONTENT_REQ_TAG, HANDSHAKE_REQ_TAG},
+        Reason, UfdpConnection, UrsaCodecError, UrsaFrame,
+    },
     types::{Blake3Cid, BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
 };
 
@@ -29,92 +30,72 @@ pub trait Backend: Send + Sync + 'static {
 }
 
 /// UFDP Server. Handles any stream of data supporting [`AsyncWrite`] + [`AsyncRead`]
-pub struct UfdpServer<B: Backend> {
+pub struct UfdpHandler<S: AsyncRead + AsyncWrite + Unpin, B: Backend> {
+    conn: UfdpConnection<S>,
     backend: Arc<B>,
 }
 
-impl<B> UfdpServer<B>
-where
-    B: Backend,
-{
-    pub fn new(backend: B) -> Result<Self, UrsaCodecError> {
-        Ok(Self {
-            backend: Arc::new(backend),
-        })
-    }
-
-    /// Handle a connection. Spawns a tokio task and begins the session loop
-    pub fn handle<S: AsyncWrite + AsyncRead + Unpin + Send + 'static>(
-        &self,
-        stream: S,
-    ) -> Result<(), UrsaCodecError> {
-        let backend = self.backend.clone();
-        tokio::spawn(UfdpConnection::new(stream, backend).serve());
-        Ok(())
-    }
-}
-
-struct UfdpConnection<S, B> {
-    transport: Framed<S, UrsaCodec>,
-    backend: Arc<B>,
-}
-
-impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
+impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     #[inline(always)]
-    pub fn new(stream: S, backend: Arc<B>) -> Self {
+    pub fn new(stream: S, backend: B) -> Self {
         Self {
-            transport: Framed::new(stream, UrsaCodec::default()),
-            backend,
+            conn: UfdpConnection::new(stream),
+            backend: Arc::new(backend),
         }
     }
 
-    pub async fn serve(mut self) {
+    pub async fn serve(mut self) -> Result<(), UrsaCodecError> {
         // Step 1: Perform the handshake.
-        self.handshake().await;
+        self.handshake().await?;
 
         // Step 2: Handle requests.
-        while let Some(Ok(frame)) = self.transport.next().await {
+        while let Some(frame) = self.conn.read_frame(Some(CONTENT_REQ_TAG)).await? {
             match frame {
                 UrsaFrame::ContentRequest { hash } => {
-                    self.deliver_content(hash).await;
+                    self.deliver_content(hash).await?;
                 }
                 f => {
                     error!("Terminating, unexpected frame: {f:?}");
-                    self.transport
-                        .feed(UrsaFrame::TerminationSignal(Reason::UnexpectedFrame))
-                        .await
-                        .expect("send termination signal");
+                    self.conn
+                        .termination_signal(Some(Reason::UnexpectedFrame))
+                        .await?;
+                    return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()));
                 }
             }
         }
+
+        Ok(())
     }
 
     #[inline(always)]
-    async fn handshake(&mut self) {
-        match self.transport.next().await.expect("handshake request") {
-            Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                let lane = lane.unwrap_or({
-                    // todo: lane management
-                    0
-                });
-
-                // Use send here because we want to flush the handshake response immediately.
-                self.transport
-                    .send(UrsaFrame::HandshakeResponse {
+    async fn handshake(&mut self) -> Result<(), UrsaCodecError> {
+        match self.conn.read_frame(Some(HANDSHAKE_REQ_TAG)).await? {
+            Some(UrsaFrame::HandshakeRequest { lane, .. }) => {
+                // send res frame
+                self.conn
+                    .write_frame(UrsaFrame::HandshakeResponse {
                         pubkey: [2; 33],
                         epoch_nonce: 1000,
-                        lane,
+                        lane: lane.unwrap_or(0),
                         last: None,
                     })
-                    .await
-                    .expect("handshake response");
+                    .await?;
+
+                Ok(())
             }
-            _ => return,
+            Some(f) => {
+                error!("Terminating, unexpected frame: {f:?}");
+                self.conn
+                    .termination_signal(Some(Reason::UnexpectedFrame))
+                    .await?;
+                Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()))
+            }
+            None => Err(UrsaCodecError::Unknown),
         }
     }
 
     #[inline(always)]
-    async fn deliver_content(&mut self, cid: Blake3Cid) {
+    async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
         let mut block_number = 0;
         while let Some(block) = self.backend.raw_block(&cid, block_number) {
             block_number += 1;
@@ -124,54 +105,43 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpConnection<S, B> {
             let proof_len = proof.len() as u64;
             let block_len = block.len() as u64;
 
-            self.transport
-                .send(UrsaFrame::ContentResponse {
+            self.conn
+                .write_frame(UrsaFrame::ContentResponse {
                     compression: 0,
                     proof_len,
                     block_len,
                     signature: [1u8; 64],
                 })
-                .await
-                .expect("send content response");
+                .await?;
 
-            // --- experiment: try sending the raw data as is using the underlying IO.
-
-            {
-                let io = self.transport.get_mut();
-
-                let mut proof: &[u8] = proof.as_ref();
-                while !proof.is_empty() {
-                    let bytes = io.write(&proof).await.unwrap();
-                    proof = &proof[bytes..];
-                }
-
-                let mut block: &[u8] = block;
-                while !block.is_empty() {
-                    let bytes = io.write(&block).await.unwrap();
-                    block = &block[bytes..];
-                }
-            }
+            self.conn.write_frame(UrsaFrame::Buffer(proof)).await?;
+            self.conn
+                .write_frame(UrsaFrame::Buffer(block.into()))
+                .await?;
 
             // wait for delivery acknowledgment
-            // match self.transport.next().await {
-            //     Some(Ok(UrsaFrame::DecryptionKeyRequest { .. })) => {
-            //         // todo: transaction manager (batch and store tx)
-            //     }
-            //     Some(Ok(f)) => error!("Unexpected frame {f:?}"),
-            //     Some(Err(e)) => error!("Codec error: {e:?}"),
-            //     None => error!("Connection closed"),
-            // }
+            match self.conn.read_frame(None).await? {
+                Some(UrsaFrame::DecryptionKeyRequest { .. }) => {
+                    // todo: transaction manager (batch and store tx)
+                }
+                Some(f) => {
+                    error!("Terminating asdf, unexpected frame: {f:?}");
+                    self.conn
+                        .termination_signal(Some(Reason::UnexpectedFrame))
+                        .await?;
+                    return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()));
+                }
+                None => return Err(UrsaCodecError::Unknown),
+            }
 
             // send decryption key
-            // self.transport
-            //     .send(UrsaFrame::DecryptionKeyResponse { decryption_key })
-            //     .await
-            //     .expect("send decryption key");
+            self.conn
+                .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })
+                .await?;
         }
 
-        self.transport
-            .send(UrsaFrame::EndOfRequestSignal)
-            .await
-            .expect("send EOR");
+        self.conn.write_frame(UrsaFrame::EndOfRequestSignal).await?;
+
+        Ok(())
     }
 }
