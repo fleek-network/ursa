@@ -58,9 +58,6 @@ pub fn init_server_app<C: Cache>(
 
     if let Some(headers) = &server_config.add_header {
         for (header, values) in headers.iter() {
-            if values.is_empty() {
-                continue;
-            }
             for value in values {
                 let value = value.clone();
                 user_app = user_app.layer(SetResponseHeaderLayer::appending(
