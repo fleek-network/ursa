@@ -55,14 +55,28 @@ pub fn init_server_app<C: Cache>(
         .layer(Extension(server_config.clone()));
 
     if let Some(headers) = &server_config.add_header {
-        for (header, value) in headers.iter() {
-            let value = value.clone();
+        for (header, values) in headers.iter() {
+            if values.is_empty() {
+                continue;
+            }
+            let mut values_iter = values.iter();
+            let first_value = values_iter.next().expect("At least one header value");
+            let value = first_value.clone();
             user_app = user_app.layer(SetResponseHeaderLayer::overriding(
                 HeaderName::from_str(header).expect("Header name to be valid"),
                 move |_: &Response| {
                     Some(HeaderValue::from_str(&value).expect("Header value to be valid"))
                 },
             ));
+            for value in values_iter {
+                let value = value.clone();
+                user_app = user_app.layer(SetResponseHeaderLayer::appending(
+                    HeaderName::from_str(header).expect("Header name to be valid"),
+                    move |_: &Response| {
+                        Some(HeaderValue::from_str(&value).expect("Header value to be valid"))
+                    },
+                ));
+            }
         }
     }
 
