@@ -109,7 +109,11 @@ fn protocol_benchmarks(c: &mut Criterion) {
 }
 
 mod tcp_ufdp {
-    use tokio::net::{TcpListener, TcpStream};
+    use futures::future::join_all;
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        task,
+    };
     use ursa_pod::{
         client::UfdpClient,
         connection::consts::MAX_BLOCK_SIZE,
@@ -164,19 +168,28 @@ mod tcp_ufdp {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let handler = UfdpHandler::new(stream, DummyBackend { content });
-            handler.serve().await.unwrap();
+            task::spawn(async move {
+                if let Err(e) = handler.serve().await {
+                    println!("server error: {e:?}");
+                }
+            });
         }
     }
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
-        let stream = TcpStream::connect(addr).await.unwrap();
-        let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
-
+        let mut tasks = vec![];
         for _ in 0..iterations {
-            client.request(CID).await.unwrap();
+            let stream = TcpStream::connect(&addr).await.unwrap();
+            let task = task::spawn(async {
+                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
         }
+        join_all(tasks).await;
     }
 }
 
