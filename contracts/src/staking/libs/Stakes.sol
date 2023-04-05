@@ -14,9 +14,9 @@ library Stakes {
     struct Node {
         uint256 tokensStaked; // Tokens staked that are not locked.
         uint256 tokensLocked; // Tokens locked for withdrawal subject to lockPeriod.
-        uint256 tokensLockedUntil; // The block that locked tokens can be withdrawn.
-        uint256 eligableAt; // The block this node is eligable to be whitelisted.
-       // uint256 nodeAddress; // The address associated with this node.
+        uint256 tokensLockedUntil; // The epoch that locked tokens can be withdrawn.
+        uint256 eligableAt; // The epoch this node is eligable to be whitelisted.
+        // uint256 nodeAddress; // The address associated with this node.
         address owner; // The ethereum address that owns this node.
     }
 
@@ -42,16 +42,16 @@ library Stakes {
      * @dev Lock tokens until a locking period passes.
      * @param stake Stake data
      * @param _tokens Amount of tokens to unstake
-     * @param _period Period in blocks that need to pass before withdrawal
+     * @param _period Period in epochs that need to pass before withdrawal
      */
-    function lockTokens(Stakes.Node storage stake, uint256 _tokens, uint256 _period) internal {
+    function lockTokens(Stakes.Node storage stake, uint256 _tokens, uint256 _period, uint256 _currentEpoch) internal {
         release(stake, _tokens);
         // Take into account period averaging for multiple unstake requests
         uint256 lockingPeriod = _period;
-        //TODO(dalton): Check this in relation to epochs
+
         if (stake.tokensLocked > 0) {
             lockingPeriod = MathUtils.weightedAverage(
-                MathUtils.diffOrZero(stake.tokensLockedUntil, block.number), // Remaining thawing period
+                MathUtils.diffOrZero(stake.tokensLockedUntil, _currentEpoch), // Remaining thawing period
                 stake.tokensLocked, // Weighted by remaining unstaked tokens
                 _period, // Thawing period
                 _tokens // Weighted by new tokens to unstake
@@ -60,8 +60,8 @@ library Stakes {
 
         // Update balances
         stake.tokensLocked = stake.tokensLocked + _tokens;
-        //TODO(dalton): Epochs
-        stake.tokensLockedUntil = block.number + lockingPeriod;
+
+        stake.tokensLockedUntil = _currentEpoch + lockingPeriod;
     }
 
     /**
@@ -81,9 +81,9 @@ library Stakes {
      * @param stake Stake data
      * @return Amount of tokens being withdrawn
      */
-    function withdrawTokens(Stakes.Node storage stake) internal returns (uint256) {
+    function withdrawTokens(Stakes.Node storage stake, uint256 _currentEpoch) internal returns (uint256) {
         // Calculate tokens that can be released
-        uint256 tokensToWithdraw = stake.tokensWithdrawable();
+        uint256 tokensToWithdraw = stake.tokensWithdrawable(_currentEpoch);
 
         if (tokensToWithdraw > 0) {
             // Reset locked tokens
@@ -94,13 +94,12 @@ library Stakes {
     }
 
     /**
-     * @dev Set the block this node is elegible to be whitelisted
+     * @dev Set the epoch this node is elegible to be whitelisted
      * @param stake Stake data
      * @param _elegibilityPeriod The period set on staking.sol that a node must stake for
      */
-    function setElegibleEpoch(Stakes.Node storage stake, uint256 _elegibilityPeriod) internal {
-        //todo(dalton): Epochs not block numbers
-        stake.eligableAt = block.number + _elegibilityPeriod;
+    function setElegibleEpoch(Stakes.Node storage stake, uint256 _elegibilityPeriod, uint256 _currentEpoch) internal {
+        stake.eligableAt = _currentEpoch + _elegibilityPeriod;
     }
 
     /**
@@ -116,9 +115,9 @@ library Stakes {
      * @param stake Stake data
      * @return Token amount
      */
-    function tokensWithdrawable(Stakes.Node memory stake) internal view returns (uint256) {
+    function tokensWithdrawable(Stakes.Node memory stake, uint256 _currentEpoch) internal pure returns (uint256) {
         // No tokens to withdraw before locking period
-        if (stake.tokensLockedUntil == 0 || block.number < stake.tokensLockedUntil) {
+        if (stake.tokensLockedUntil == 0 || _currentEpoch < stake.tokensLockedUntil) {
             return 0;
         }
         return stake.tokensLocked;

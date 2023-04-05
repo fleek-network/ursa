@@ -161,6 +161,7 @@ impl Consensus {
             time::sleep(time_until_change).await;
             // We shouldnt panic here lets repeatedly try.
             loop {
+                //TODO(dalton):
                 time::sleep(Duration::from_secs(1)).await;
 
                 let txn = match serde_json::to_vec(&encode_signal_epoch_call(

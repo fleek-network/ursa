@@ -4,9 +4,9 @@ pragma solidity ^0.8.15;
 import "../management/Controlled.sol";
 import "../token/FleekToken.sol";
 import "../registry/NodeRegistry.sol";
+import "../epoch/EpochManager.sol";
 import "./libs/Stakes.sol";
 import "../utils/TokenUtils.sol";
-
 
 /**
  * @title Staking contract
@@ -18,6 +18,7 @@ contract Staking is Controlled {
 
     FleekToken internal _fleekToken;
     NodeRegistry internal _nodeRegistry;
+    EpochManager internal _epochManager;
 
     /// Minimum amount of tokens an node needs to stake.
     uint256 public minimumNodeStake;
@@ -26,7 +27,7 @@ contract Staking is Controlled {
     uint256 public nodeElegibiliyPeriod; // in epochs
 
     /// Time in epochs before a node can withdrawl tokens
-    uint32 public lockTime; // in epochs
+    uint256 public lockTime; // in epochs
 
     /// node stakes : node BLS public key => Stake
     mapping(string => Stakes.Node) public stakes;
@@ -75,8 +76,6 @@ contract Staking is Controlled {
      */
     event NodeWhitelistRemoval(string node);
 
-
-
     /* PUBLIC FUNCTIONS */
 
     /**
@@ -86,6 +85,7 @@ contract Staking is Controlled {
         address _controller,
         address _token,
         address _registry,
+        address _epoch,
         uint256 _minimumNodeStake,
         uint32 _elegibilityTime,
         uint32 _lockTime
@@ -94,6 +94,7 @@ contract Staking is Controlled {
 
         _fleekToken = FleekToken(_token);
         _nodeRegistry = NodeRegistry(_registry);
+        _epochManager = EpochManager(_epoch);
 
         // Settings
         _setMinimumNodeStake(_minimumNodeStake);
@@ -116,40 +117,40 @@ contract Staking is Controlled {
     function _setMinimumNodeStake(uint256 _minimumNodeStake) private {
         require(_minimumNodeStake > 0, "minimumNodeStake must be > 0");
         minimumNodeStake = _minimumNodeStake;
-      //  emit ParameterUpdated("minimumNodeStake");
+        emit ParameterUpdated("minimumNodeStake");
     }
 
-     /**
-     * @dev  Set the time in blocks that a node must wait before being eligible to be whitelisted.
-     * @param _elegibilityTime Time in blocks to wait before a node can be whitelisted
+    /**
+     * @dev  Set the time in epochs that a node must wait before being eligible to be whitelisted.
+     * @param _elegibilityTime Time in epochs to wait before a node can be whitelisted
      */
-    function setNodeElegibilityPeriod(uint32 _elegibilityTime) external onlyController {
+    function setNodeElegibilityPeriod(uint256 _elegibilityTime) external onlyController {
         _setNodeElegibilityPeriod(_elegibilityTime);
     }
 
     /**
-     * @dev Set the time in blocks that a node must wait before being eligible to be whitelisted.
-     * @param _elegibilityTime Time in blocks to wait before a node can be whitelisted
+     * @dev Set the time in epochs that a node must wait before being eligible to be whitelisted.
+     * @param _elegibilityTime Time in epochs to wait before a node can be whitelisted
      */
-    function _setNodeElegibilityPeriod(uint32 _elegibilityTime) private {
+    function _setNodeElegibilityPeriod(uint256 _elegibilityTime) private {
         require(_elegibilityTime > 0, "elegibilityTime must be > 0");
         nodeElegibiliyPeriod = _elegibilityTime;
         emit ParameterUpdated("nodeElegibiliyPeriod");
     }
 
-        /**
+    /**
      * @dev Set the lock period for unstaking.
-     * @param _lockTime in blocks to wait for token withdrawals after unstaking
+     * @param _lockTime in epochs to wait for token withdrawals after unstaking
      */
-    function setLockTime(uint32 _lockTime) external onlyController {
+    function setLockTime(uint256 _lockTime) external onlyController {
         _setLockTime(_lockTime);
     }
 
     /**
      * @dev Internal: Set the lock time for unstaking.
-     * @param _lockTime Period in blocks to wait for token withdrawals after unstaking
+     * @param _lockTime Period in epochs to wait for token withdrawals after unstaking
      */
-    function _setLockTime(uint32 _lockTime) private {
+    function _setLockTime(uint256 _lockTime) private {
         require(_lockTime > 0, "lockTime cannot be 0");
         lockTime = _lockTime;
         emit ParameterUpdated("lockTime");
@@ -175,7 +176,7 @@ contract Staking is Controlled {
         return stakes[_node].tokensStaked > 0;
     }
 
-      /**
+    /**
      * @dev Get the total amount of tokens staked by the node.
      * @param _node Address of the node
      * @return Amount of tokens staked by the node
@@ -221,7 +222,9 @@ contract Staking is Controlled {
     function stake(uint256 _tokens, string calldata _nodePublicKey) external {
         require(_tokens > 0, "_tokens cannot be 0");
         // Ensure minimum stake
-        require(stakes[_nodePublicKey].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum");
+        require(
+            stakes[_nodePublicKey].tokensStaked + _tokens >= minimumNodeStake, "Your stake does not meet the minimum"
+        );
 
         // Todo(dalton): Proof of possesion for BLS publicKey
         if (stakes[_nodePublicKey].owner == address(0)) {
@@ -267,7 +270,8 @@ contract Staking is Controlled {
 
         // Set elegibility if not already set
         if (stakes[_node].eligableAt == 0) {
-            stakes[_node].setElegibleEpoch(nodeElegibiliyPeriod);
+            uint256 currentEpoch = _epochManager.epoch();
+            stakes[_node].setElegibleEpoch(nodeElegibiliyPeriod, currentEpoch);
         }
 
         emit StakeDeposited(_node, _tokens);
@@ -284,7 +288,7 @@ contract Staking is Controlled {
      */
     function unstake(uint256 _tokens, string calldata _node) external {
         Stakes.Node storage nodeStake = stakes[_node];
-        
+
         // TODO(dalton): BLS verification from the nodes signature instead of owner check
         require(msg.sender == nodeStake.owner, "you are not the owner of this node");
         require(nodeStake.tokensStaked > 0, "node has nothing staked");
@@ -300,21 +304,24 @@ contract Staking is Controlled {
             _removeFromWhitelist(_node);
         }
 
+        // Get the current epoch from the registry contract
+        uint256 currentEpoch = _epochManager.epoch();
+
         // Before locking more tokens, withdraw any unlocked ones if possible
-        uint256 tokensToWithdraw = nodeStake.tokensWithdrawable();
+        uint256 tokensToWithdraw = nodeStake.tokensWithdrawable(currentEpoch);
         if (tokensToWithdraw > 0) {
             _withdraw(_node);
         }
 
         // Update the node stake locking tokens
-        nodeStake.lockTokens(tokensToLock, lockTime);
+        nodeStake.lockTokens(tokensToLock, lockTime, currentEpoch);
 
         emit StakeLocked(_node, nodeStake.tokensLocked, nodeStake.tokensLockedUntil);
     }
 
     /**
      * @dev Withdraw node tokens once the lock time has passed.
-    * @param _node BLS public key of the node
+     * @param _node BLS public key of the node
      */
     function withdraw(string calldata _node) external {
         _withdraw(_node);
@@ -325,8 +332,10 @@ contract Staking is Controlled {
      * @param _node Address of node to withdraw funds from
      */
     function _withdraw(string calldata _node) private {
+        // Get current epoch from epoch contract.
+        uint256 currentEpoch = _epochManager.epoch();
         // Get tokens available for withdraw and update balance
-        uint256 tokensToWithdraw = stakes[_node].withdrawTokens();
+        uint256 tokensToWithdraw = stakes[_node].withdrawTokens(currentEpoch);
         require(tokensToWithdraw > 0, "No tokens eligable for withdraw");
 
         // Return tokens to the indexer
@@ -336,11 +345,12 @@ contract Staking is Controlled {
     }
 
     function whitelistNode(string calldata _node) external {
-        //TODO(dalton): Epoch not blocks
-        require(stakes[_node].eligableAt <= block.number, "Node is not elegible");
+        uint256 currentEpoch = _epochManager.epoch();
+
+        require(stakes[_node].eligableAt <= currentEpoch, "Node is not elegible");
 
         ///TODO: register the node
-       // _nodeRegistry.registerNode(("placeholder"));
+        // _nodeRegistry.registerNode(("placeholder"));
 
         ///TODO: Should we emit this here? Already emitted on Registry contract with more info
         //Maybe its good to emit here because this just specifically says what address whitelisted the node
@@ -355,15 +365,10 @@ contract Staking is Controlled {
         require(address(_nodeRegistry) != address(0), "Node Registry contract not set");
 
         stakes[_node].removeElegibility();
-        
+
         // TODO(dalton): node registry interaction
-       // _nodeRegistry.removeNode(stakes[_node].nodeAddress);
+        // _nodeRegistry.removeNode(stakes[_node].nodeAddress);
 
         emit NodeWhitelistRemoval(_node);
     }
-
-
-
-
-
 }
