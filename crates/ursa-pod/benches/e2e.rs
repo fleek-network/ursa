@@ -112,7 +112,7 @@ mod tcp_ufdp {
     use tokio::net::{TcpListener, TcpStream};
     use ursa_pod::{
         client::UfdpClient,
-        codec::consts::MAX_BLOCK_SIZE,
+        connection::consts::MAX_BLOCK_SIZE,
         server::{Backend, UfdpHandler},
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
