@@ -61,16 +61,7 @@ pub fn init_server_app<C: Cache>(
             if values.is_empty() {
                 continue;
             }
-            let mut values_iter = values.iter();
-            let first_value = values_iter.next().expect("At least one header value");
-            let value = first_value.clone();
-            user_app = user_app.layer(SetResponseHeaderLayer::overriding(
-                HeaderName::from_str(header).expect("Header name to be valid"),
-                move |_: &Response| {
-                    Some(HeaderValue::from_str(&value).expect("Header value to be valid"))
-                },
-            ));
-            for value in values_iter {
+            for value in values {
                 let value = value.clone();
                 user_app = user_app.layer(SetResponseHeaderLayer::appending(
                     HeaderName::from_str(header).expect("Header name to be valid"),
