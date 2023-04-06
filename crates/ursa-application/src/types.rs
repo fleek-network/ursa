@@ -192,30 +192,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .encode("initialize", (owner_address, staking_address))
             .unwrap();
 
-        //Call the init transactions
-        let token_tx = TransactionRequest {
-            to: Some(token_address.into()),
-            from: Some(owner_address),
-            data: Some(token_params),
-            ..Default::default()
-        };
-        let staking_tx = TransactionRequest {
-            to: Some(staking_address.into()),
-            from: Some(owner_address),
-            data: Some(staking_params),
-            ..Default::default()
-        };
-        let registry_tx = TransactionRequest {
-            to: Some(registry_address.into()),
-            from: Some(owner_address),
-            data: Some(registry_params),
-            ..Default::default()
-        };
-
-        //Submit and commit the init txns to state
-        let _token_res = state.execute(token_tx, false).await.unwrap();
-        let _registry_res = state.execute(registry_tx, false).await.unwrap();
-
         drop(state);
 
         self.commit(RequestCommit {}).await;
