@@ -20,17 +20,15 @@ contract RewardsAggregator {
     address public owner;
     bool private initialized;
 
-
-
     function initialize(address _epochManager, address _nodeRegistry) external {
         require(!initialized, "contract already initialized");
         // get whitelist nodes from registry and add epoch 0 into the metrics maaping
         epochManager = EpochManager(_epochManager);
         nodeRegistry = NodeRegistry(_nodeRegistry);
-        
+
         (bool success, bytes memory result) = address(_nodeRegistry).call(abi.encodeWithSignature("getWhitelist()"));
         require(success, "Failed to call function");
-        publicKeys = abi.decode(result, (string []));
+        publicKeys = abi.decode(result, (string[]));
         initialized = true;
     }
 
@@ -50,7 +48,7 @@ contract RewardsAggregator {
      * @param publicKey public key of the node
      * @param score performance score sent by validators
      */
-    function recordPerformanceScore(uint epoch, string calldata publicKey, uint256 score) external {
+    function recordPerformanceScore(uint256 epoch, string calldata publicKey, uint256 score) external {
         if (performanceScore[epoch][publicKey] <= 0) {
             performanceScore[epoch][publicKey] = score;
         }
@@ -75,7 +73,7 @@ contract RewardsAggregator {
         for (uint256 i = _startEpoch; i < _endEpoch; i++) {
             _sum += _getDataForEpoch(i);
         }
-        return _sum/daysForPotential;
+        return _sum / daysForPotential;
     }
 
     /**
@@ -92,7 +90,7 @@ contract RewardsAggregator {
      */
     function _getDataForEpoch(uint256 epoch) private view returns (uint256) {
         uint256 sum = 0;
-        for(uint256 i = 0; i < publicKeys.length; i++) {
+        for (uint256 i = 0; i < publicKeys.length; i++) {
             sum += DataServedInBytes[epoch][publicKeys[i]];
         }
         return sum;
