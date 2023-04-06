@@ -7,11 +7,14 @@ use crate::{
 use bytes::Bytes;
 use db::Store;
 use libipld_core::ipld::Ipld;
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
-    oneshot,
+use tokio::{
+    select,
+    sync::{
+        mpsc::{unbounded_channel, Receiver, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
 };
-use ursa_network::{GossipsubMessage, NetworkCommand};
+use ursa_network::{GossipsubMessage, NetworkCommand, NetworkEvent};
 
 use anyhow::{anyhow, Error, Result};
 
@@ -86,13 +89,15 @@ pub struct ProviderEngine<S> {
     /// provider config
     config: ProviderConfig,
     /// used by other processes to send message to provider engine
-    command_sender: Sender<ProviderCommand>,
+    command_sender: UnboundedSender<ProviderCommand>,
     /// Handles inbound messages to the provider engine
-    command_receiver: Receiver<ProviderCommand>,
+    command_receiver: UnboundedReceiver<ProviderCommand>,
     /// network command sender for communication with libp2p node
-    network_command_sender: Sender<NetworkCommand>,
+    network_command_sender: UnboundedSender<NetworkCommand>,
     /// List of addresses to submit to indexer.
     addresses: Vec<Multiaddr>,
+    /// Handles events from the network.
+    network_event_receiver: Receiver<NetworkEvent>,
 }
 
 impl<S> ProviderEngine<S>
@@ -104,8 +109,9 @@ where
         store: Arc<UrsaStore<S>>,
         provider_store: Arc<UrsaStore<S>>,
         config: ProviderConfig,
-        network_command_sender: Sender<NetworkCommand>,
+        network_command_sender: UnboundedSender<NetworkCommand>,
         addresses: Vec<Multiaddr>,
+        network_event_receiver: Receiver<NetworkEvent>,
     ) -> Self {
         let (command_sender, command_receiver) = unbounded_channel();
         ProviderEngine {
@@ -116,13 +122,14 @@ where
             provider: Provider::new(keypair, provider_store),
             store,
             addresses,
+            network_event_receiver,
         }
     }
-    pub fn command_sender(&self) -> Sender<ProviderCommand> {
+    pub fn command_sender(&self) -> UnboundedSender<ProviderCommand> {
         self.command_sender.clone()
     }
 
-    pub fn command_receiver(&mut self) -> &mut Receiver<ProviderCommand> {
+    pub fn command_receiver(&mut self) -> &mut UnboundedReceiver<ProviderCommand> {
         &mut self.command_receiver
     }
 
@@ -143,46 +150,60 @@ where
 
     pub async fn start(mut self) -> Result<()> {
         info!("Index provider engine starting up!");
-
         loop {
-            if let Some(command) = self.command_receiver.recv().await {
-                match command {
-                    ProviderCommand::Put {
-                        context_id,
-                        sender,
-                        size,
-                    } => {
-                        let cid = Cid::try_from(context_id).unwrap();
-                        if let Err(e) = sender.send(Ok(())) {
-                            error!("Provider Engine: {:?}", e);
-                        }
-                        let peer_id = PeerId::from(self.provider.keypair().public());
+            select! {
+                Some(command) = self.command_receiver.recv() => {
+                    match command {
+                        ProviderCommand::Put {
+                            context_id,
+                            sender,
+                            size,
+                        } => {
+                            let cid = Cid::try_from(context_id).unwrap();
+                            if let Err(e) = sender.send(Ok(())) {
+                                error!("Provider Engine: {:?}", e);
+                            }
+                            let peer_id = PeerId::from(self.provider.keypair().public());
 
-                        if let Err(e) = self.publish_local(cid, size).await {
-                            error!("Error while publishing the advertisement locally: {:?}", e)
-                        } else {
-                            match self
-                                .provider
-                                .create_announce_message(peer_id, self.addresses.clone())
-                            {
-                                Ok(announce_message) => {
-                                    if let Err(e) = self
-                                        .gossip_announce(announce_message.clone(), peer_id)
-                                        .await
-                                    {
-                                        warn!("there was an error while gossiping the announcement, will try to announce via http {:?}", e);
-                                        self.http_announce(announce_message).await;
+                            if let Err(e) = self.publish_local(cid, size).await {
+                                error!("Error while publishing the advertisement locally: {:?}", e)
+                            } else {
+                                match self
+                                    .provider
+                                    .create_announce_message(peer_id, self.addresses.clone())
+                                {
+                                    Ok(announce_message) => {
+                                        if let Err(e) = self
+                                            .gossip_announce(announce_message.clone(), peer_id)
+                                            .await
+                                        {
+                                            warn!("there was an error while gossiping the announcement, will try to announce via http {:?}", e);
+                                            self.http_announce(announce_message).await;
+                                        }
                                     }
+                                    Err(e) => warn!(
+                                        "There was a problem parsing announcement message: {:?}",
+                                        e
+                                    ),
                                 }
-                                Err(e) => warn!(
-                                    "There was a problem parsing announcement message: {:?}",
-                                    e
-                                ),
                             }
                         }
+                        // TODO: implement when cache eviction is implemented
+                        ProviderCommand::Remove { .. } => todo!(),
                     }
-                    // TODO: implement when cache eviction is implemented
-                    ProviderCommand::Remove { .. } => todo!(),
+                }
+                Some(network_event) = self.network_event_receiver.recv() => {
+                    if let NetworkEvent::PullComplete { cid, size } = network_event {
+                        let (sender, receiver) = oneshot::channel();
+                        if let Err(e) = self.command_sender.send(ProviderCommand::Put { context_id: cid.to_bytes(), size, sender }) {
+                            error!("Sending PUT command failed {e}");
+                        }
+                        tokio::task::spawn(async move {
+                            if let Err(e) = receiver.await {
+                                error!("Receiving failed {e}");
+                            }
+                        });
+                    }
                 }
             }
         }

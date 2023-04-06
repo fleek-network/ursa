@@ -128,7 +128,7 @@ where
         if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            return match self.store.db.put_obj(&chunk, Code::Blake2b256) {
+            return match self.store.db.put_obj(&chunk, Code::Blake3_256) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(cid));
                     Ok(())
@@ -152,7 +152,7 @@ where
             let cid = self
                 .store
                 .blockstore()
-                .put_obj(&ipld_ad, Code::Blake2b256)?;
+                .put_obj(&ipld_ad, Code::Blake3_256)?;
             self.store.db.write(HEAD_KEY, cid.to_bytes())?;
             *head = Some(cid);
             return Ok(ad);

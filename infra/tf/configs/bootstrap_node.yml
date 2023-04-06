@@ -1,38 +1,22 @@
 #cloud-config
 groups:
   - ubuntu: [root,sys]
-  - hashicorp
-
-# Add users to the system. Users are added after groups are added.
-users:
-  - default
-  - name: terraform
-    gecos: terraform
-    shell: /bin/bash
-    primary_group: hashicorp
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, admin
-    lock_passwd: false
-    ssh_authorized_keys:
-      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCnuMLreK14AhniBXXsBdtnqY2ZX+A5Nki5OSTWlmkBq3Kx/V5sGnxKzpeLjwiYO3LT/iWoxC+MYxGW5CkvnfO+YkytocZ10y3uGSsxwFJgkWKVib0nrbH2kwcB1IkUmDTMPYrOg6HzXPSdA6hF2i0Vu59KHWNKZ/5eTXoml8Xu1izEiQ0Sb4jHLwaM8++Ho4piMx5Vh2Ls7Lo6c9QyqK6dOq/o0fYAgnndd0kQ+s/TPDdsp0AKRG+lE5v5xguaojS+meGO955eGnaxBhkARHSJnMIhnCmYr0adHFK2Nz4/aqU7coyRpPTHfATjU0kHdAaWtb5zzo8EFUMavBImyQxFO84GYgbBcbclFzirCOLt1lgW3+oSuHQis3qEOcaq85YrdiKE1qlZ+HjY1a0eCMGL/kjrfhx7oLVWz3/5kxQmjCA5u2yl+TBJvalrAKUe2+oiVYjarR1qHBB0UOioHsnMBvk0CecyKWqUdCqwYq+2/dFn67GX29cqYFyf3zLqeb8= mahmoud@fleek.co
 
 runcmd:
-  # - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-  # - add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-  # - apt-get update -y
-  # - apt-get install -y docker-ce docker-ce-cli containerd.io
-  # - systemctl start docker
-  # - systemctl enable docker
-  # - curl -L "https://github.com/docker/compose/releases/download/${docker_compose_version}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  # - chmod +x /usr/local/bin/docker-compose
-  # - curl -fsSL https://get.docker.com -o get-docker.sh
-  # - sh get-docker.sh
-  # - sudo curl -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  # -sudo chmod +x /usr/local/bin/docker-compose
-  - sudo apt-get update
-  - apt-get install -y build-essential clang ocl-icd-opencl-dev 
-  # for docker build kit missing in version 20.04
-  - apt-get install docker-ce docker-ce-cli containerd.io -y
-  # - git clone https://github.com/fleek-network/ursa
-  # - cd ursa/ 
-  # - docker build -t ursa -f ./Dockerfile .
+  - apt-get install -y build-essential
+  - snap install yq
+  - mkdir -p /root/.ursa
+  - |
+    echo "
+    [server_config]
+    bootstrapper = true
+    bootstrap_nodes = []
+    " > /root/.ursa/config.toml
+  - cd /root && git clone https://github.com/fleek-network/ursa
+  - cd ursa/docker/full-node/
+  - yq -ie 'del(.services.ursa.build)' docker-compose.yml
+  - yq -i ".services.ursa.image = \"ghcr.io/fleek-network/ursa:latest\"" docker-compose.yml 
+  - yq -i ".services.ursa.volumes = [\"/root/.ursa:/root/.ursa:rw\"]" docker-compose.yml
+  - yq -ie 'del(.services.nginx)' docker-compose.yml
+  - yq -ie 'del(.services.nginxexporter)' docker-compose.yml
+  - docker compose up -d 
