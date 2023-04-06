@@ -8,9 +8,6 @@ contract RewardsAggregator {
     ///  epoch => Node publicKey => Data served
     mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
 
-    ///  epoch => Node publicKey => performance score
-    mapping(uint256 => mapping(string => uint256)) public performanceScore;
-
     NodeRegistry public nodeRegistry;
     EpochManager public epochManager;
 
@@ -32,6 +29,10 @@ contract RewardsAggregator {
         initialized = true;
     }
 
+    function getPublicKeys() public view returns (string[] memory) {
+        return publicKeys;
+    }
+
     /**
      * @dev record data served for given a node with given public key
      * @param epoch epoch for which the metrics are stored
@@ -43,23 +44,11 @@ contract RewardsAggregator {
     }
 
     /**
-     * @dev record erformance score for given a node with given public key
-     * @param epoch epoch for which the metrics are stored
-     * @param publicKey public key of the node
-     * @param score performance score sent by validators
-     */
-    function recordPerformanceScore(uint256 epoch, string calldata publicKey, uint256 score) external {
-        if (performanceScore[epoch][publicKey] <= 0) {
-            performanceScore[epoch][publicKey] = score;
-        }
-    }
-
-    /**
      * @dev get data served for given node and given epoch
      * @param publicKey public key of the node
      * @param epoch epoch for which data served to get
      */
-    function getDataServedForNode(string memory publicKey, uint256 epoch) public view returns (uint256) {
+    function getDataServedByNode(string memory publicKey, uint256 epoch) public view returns (uint256) {
         return DataServedInBytes[epoch][publicKey];
     }
 
@@ -71,7 +60,7 @@ contract RewardsAggregator {
         uint256 _startEpoch = _endEpoch - daysForPotential - 1;
         uint256 _sum = 0;
         for (uint256 i = _startEpoch; i < _endEpoch; i++) {
-            _sum += _getDataForEpoch(i);
+            _sum += getDataForEpoch(i);
         }
         return _sum / daysForPotential;
     }
@@ -81,14 +70,14 @@ contract RewardsAggregator {
      */
     function getDataServedCurrentEpoch() public view returns (uint256) {
         uint256 currentEpoch = epochManager.epoch();
-        return _getDataForEpoch(currentEpoch);
+        return getDataForEpoch(currentEpoch);
     }
 
     /**
      * @dev get data served by all nodes in any epoch
      * @param epoch epoch number for which served data is required
      */
-    function _getDataForEpoch(uint256 epoch) private view returns (uint256) {
+    function getDataForEpoch(uint256 epoch) public view returns (uint256) {
         uint256 sum = 0;
         for (uint256 i = 0; i < publicKeys.length; i++) {
             sum += DataServedInBytes[epoch][publicKeys[i]];

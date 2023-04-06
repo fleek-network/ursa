@@ -6,7 +6,7 @@ import "./Epoch.sol";
 import "./RewardsAgg.sol";
 import "./NodeRegistry.sol";
 import "./utils/MathUtils.sol";
-import {SD59x18, sd, intoInt256} from "prb/math/SD59x18.sol";
+import {SD59x18, sd, intoInt256, intoUint256, UNIT, convert} from "prb/math/SD59x18.sol";
 
 contract FleekReward {
     uint256 constant DAYS_IN_YEAR = 365;
@@ -59,33 +59,43 @@ contract FleekReward {
     function distributeRewards(uint256 epoch) public onlyOwner {
         require(epochManager.epoch() != epoch, "cannot distribute rewards for current epoch");
         require(!rewardsDistribution[epoch], "rewards already distributed for this epoch");
-        SD59x18 _mint_rate = _getMintRate();
-        // calculateRewards(epoch) calculate rewards based on rewards aggregator
-        // mint tokens to distribute the rewards to the nodes identified
+
+        SD59x18 _uActual = convert(int256(rewardsAggregator.getDataForEpoch(epoch)));
+        SD59x18 _uPotential = convert(int256(rewardsAggregator.getAvgUsageNEpochs()));
+
+        SD59x18 _total_mint = _getMintRate(_uActual, _uPotential);
+        string[] memory publicKeys = rewardsAggregator.getPublicKeys();
+
+        for (uint256 i = 0; i < publicKeys.length; i++) {
+            uint256 dataServedByNode = rewardsAggregator.getDataServedByNode(publicKeys[i], epoch);
+            SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(_uActual);
+            SD59x18 rewardsAmount = servedPercentage.mul(_total_mint);
+            (address _to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
+            fleekToken.mint(_to, intoUint256(rewardsAmount));
+        }
         rewardsDistribution[epoch] = true;
     }
 
     /**
-     * @dev calculate rewards for all the nodes in node registry
+     * @dev calculate the minting based actual usage and potential usage
+     * @param _uActual actual usage in the epoch for which the minting is calculated
+     * @param _uPotential potential usage in the epoch for which the minting is calculated
      */
-    function _getMintRate() private view returns (SD59x18) {
-        int256 _uActual = int256(rewardsAggregator.getDataServedCurrentEpoch());
-        int256 _uPotential = int256(rewardsAggregator.getAvgUsageNEpochs());
-        require(_uPotential != 0, "potential usage cannot be zero");
-
+    function _getMintRate(SD59x18 _uActual, SD59x18 _uPotential) private returns (SD59x18 totalMint) {
         // Equation 2 from the paper
         // delta U = (_uActual - _uPotential)/uPotential
-        SD59x18 _deltaUNumerator = sd((_uActual - _uPotential) * 1e18);
-        SD59x18 _deltaU = _deltaUNumerator.div(sd(_uPotential));
+        SD59x18 _deltaUNumerator = _uActual.sub(_uPotential);
+        SD59x18 _deltaU = _deltaUNumerator.div(_uPotential);
 
         // Equation 3 from the paper
-        SD59x18 potentialFactor = ((price.mul(sd(1e18))).div(cost)).mul(_deltaU);
-        int256 firstMax = 1e18 - (MathUtils.signedMax(intoInt256(potentialFactor), intoInt256(minInflationFactor)));
-        SD59x18 dynamicInflation = sd(firstMax).mul(inflationInLastEpoch);
+        SD59x18 potentialFactor = UNIT.sub(((price).div(cost)).mul(_deltaU));
+        SD59x18 firstMax = sd(MathUtils.signedMax(intoInt256(potentialFactor), intoInt256(minInflationFactor)));
+        SD59x18 dynamicInflation = firstMax.mul(inflationInLastEpoch);
         SD59x18 currentInflation = sd(MathUtils.signedMin(intoInt256(dynamicInflation), intoInt256(maxInflation)));
+        inflationInLastEpoch = currentInflation;
 
         // Equation 4 from the paper
         uint256 totalSupply = fleekToken.totalSupply();
-        return (sd(int256(totalSupply * 1e18))).mul(currentInflation).div((sd(int256(DAYS_IN_YEAR * 1e18))));
+        totalMint = ((convert(int256(totalSupply))).mul(currentInflation)).div(convert(int256(DAYS_IN_YEAR)));
     }
 }
