@@ -128,9 +128,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let token_address: Address = genesis.token.address.parse().unwrap();
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
-        let owner_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-            .parse()
-            .unwrap();
 
         //Build the account info for the contracts
         let token_contract = AccountInfo {
@@ -163,34 +160,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         state
             .db
             .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
-
-        //Build the abis to encode the init call params
-        let token_abi = BaseContract::from(
-            parse_abi(&["function initialize(uint256 totalSupply) external returns ()"]).unwrap(),
-        );
-        let staking_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address token, uint256 _minimumNodeStake, uint32 _elegibilityTime, uint32 _lockTime, uint32 _protocolPercentage) external returns ()"]).unwrap());
-        let registry_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address _stakingContract) external returns ()"]).unwrap());
-
-        //encode the init call params
-        let token_params = token_abi
-            .encode("initialize", UInt256::from_dec_str("1000000000").unwrap())
-            .unwrap();
-        let staking_params = staking_abi
-            .encode(
-                "initialize",
-                (
-                    owner_address,
-                    token_address,
-                    UInt256::from_dec_str("1000").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                ),
-            )
-            .unwrap();
-        let registry_params = registry_abi
-            .encode("initialize", (owner_address, staking_address))
-            .unwrap();
 
         drop(state);
 
