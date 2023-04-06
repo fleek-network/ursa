@@ -9,7 +9,7 @@ use abci::{
     types::*,
 };
 use anyhow::{bail, Result};
-use ethers::prelude::{NameOrAddress};
+use ethers::prelude::NameOrAddress;
 use ethers::types::{Address, TransactionRequest};
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
 use revm::{
