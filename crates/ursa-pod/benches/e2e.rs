@@ -5,8 +5,7 @@ use tokio::sync::oneshot;
 
 /* SERVER */
 
-const MAX_REQUESTS: usize = 5;
-
+const MAX_REQUESTS: usize = 64;
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
     &[0u8; 2 * 1024],
@@ -19,7 +18,6 @@ const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 256 * 1024],
     &[0u8; 512 * 1024],
 ];
-
 const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024 * 1024],
     &[0u8; 2 * 1024 * 1024],
@@ -32,11 +30,10 @@ const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 256 * 1024 * 1024],
     &[0u8; 512 * 1024 * 1024],
 ];
-
-fn benchmark<T: Measurement, C, S>(
+fn benchmark_sizes<T: Measurement, C, S>(
     g: &mut BenchmarkGroup<T>,
-    proto: &'static str,
     files: &[&'static [u8]],
+    unit: usize,
     client: impl Fn(String, usize) -> C,
     server: impl Fn(String, &'static [u8], oneshot::Sender<u16>) -> S,
 ) where
@@ -56,7 +53,8 @@ fn benchmark<T: Measurement, C, S>(
         let port = futures::executor::block_on(rx_started).unwrap();
         let addr = format!("127.0.0.1:{port}");
 
-        for num_requests in 1..=MAX_REQUESTS {
+        let mut num_requests = 1;
+        while num_requests <= MAX_REQUESTS {
             let len = file.len() * num_requests;
             g.throughput(Throughput::Bytes(len as u64));
 
@@ -68,16 +66,18 @@ fn benchmark<T: Measurement, C, S>(
             g.bench_with_input(
                 BenchmarkId::new(
                     format!(
-                        "{proto}/{num_requests} Request{}",
+                        "{num_requests} request{}",
                         if num_requests != 1 { "s" } else { "" }
                     ),
-                    file.len(),
+                    file.len() / unit,
                 ),
                 &num_requests,
                 |b, &n| {
                     b.to_async(&runtime).iter(|| client(addr.clone(), n));
                 },
             );
+
+            num_requests *= 2;
         }
 
         server_task.abort();
@@ -85,23 +85,33 @@ fn benchmark<T: Measurement, C, S>(
 }
 
 fn protocol_benchmarks(c: &mut Criterion) {
-    for (range, files) in [("Kilobyte", KILOBYTE_FILES), ("Megabyte", MEGABYTE_FILES)] {
-        let mut g = c.benchmark_group(range);
+    // benchmark file sizes
+    for (range, files, unit) in [
+        ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
+        ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
+    ] {
+        #[cfg(not(feature = "bench-hyper"))]
+        let proto = "TCP UFDP";
+        #[cfg(feature = "bench-hyper")]
+        let proto = "HTTP Hyper";
+
+        let mut g = c.benchmark_group(format!("{proto}/{range}"));
         g.sample_size(20);
 
-        benchmark(
+        #[cfg(not(feature = "bench-hyper"))]
+        benchmark_sizes(
             &mut g,
-            "TCP UFDP",
             files,
+            unit,
             tcp_ufdp::client_loop,
             tcp_ufdp::server_loop,
         );
 
         #[cfg(feature = "bench-hyper")]
-        benchmark(
+        benchmark_sizes(
             &mut g,
-            "HTTP Hyper",
             files,
+            unit,
             http_hyper::client_loop,
             http_hyper::server_loop,
         );
@@ -123,7 +133,7 @@ mod tcp_ufdp {
 
     const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: [u8; 32] = [3u8; 32];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
     #[derive(Clone, Copy)]
     struct DummyBackend {
