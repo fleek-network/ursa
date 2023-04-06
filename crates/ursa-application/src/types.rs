@@ -214,7 +214,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
 
         //Submit and commit the init txns to state
         let _token_res = state.execute(token_tx, false).await.unwrap();
-        let _staking_res = state.execute(staking_tx, false).await.unwrap();
         let _registry_res = state.execute(registry_tx, false).await.unwrap();
 
         drop(state);
