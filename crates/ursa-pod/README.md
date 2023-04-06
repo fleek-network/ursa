@@ -53,3 +53,31 @@ HTTP (Hyper 1.0):
 ```sh
 cargo bench --bench e2e --features bench-hyper
 ```
+
+### Binary Benchmarking
+
+All methods in the implementation are instrumented with a print line on the start and end of the call.
+This can be enabled with the crate feature `benchmarks`.
+
+#### Client
+
+The benchmarking client will make some concurrent requests, printing the logs for instrumented methods.
+File and block size are encoded into the cid bytes, parsed by the server.
+
+```sh
+cargo run \
+  --features benchmarks \
+  --bin client -- \
+  "127.0.0.1:6969" 256 16383 16383 \
+  > client.out
+```
+
+#### Server
+
+The benchmarking server will accept many requests, also printing the logs for instrumented methods.
+
+```sh
+cargo run \
+  --features benchmarks \
+  --bin server > server.out
+```

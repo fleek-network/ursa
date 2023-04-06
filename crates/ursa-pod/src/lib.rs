@@ -13,3 +13,7 @@ pub mod client;
 /// UFDP server implementation
 #[cfg(feature = "server")]
 pub mod server;
+
+/// Benchmarking and profiling instrument macro
+#[macro_use]
+pub mod instrument;

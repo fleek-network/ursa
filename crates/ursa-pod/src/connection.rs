@@ -400,7 +400,7 @@ where
                     let mut buf = ArrayVec::<u8, 33>::new_const();
 
                     buf.push(FrameTag::ContentRequest as u8);
-                    buf.write_all(&hash).unwrap();
+                    buf.write_all(&hash.0).unwrap();
 
                     self.stream.write_all(&buf).await?;
                 }
@@ -428,7 +428,7 @@ where
                     let mut buf = ArrayVec::<u8, 43>::new_const();
 
                     buf.push(FrameTag::ContentRangeRequest as u8);
-                    buf.write_all(&hash).unwrap();
+                    buf.write_all(&hash.0).unwrap();
                     buf.write_all(&chunk_start.to_be_bytes()).unwrap();
                     buf.write_all(&chunks.to_be_bytes()).unwrap();
 
@@ -586,7 +586,7 @@ where
             }
             FrameTag::ContentRequest => {
                 let buf = self.read_buffer.split_to(size_hint);
-                let hash = *array_ref!(buf, 1, 32);
+                let hash = Blake3Cid(*array_ref!(buf, 1, 32));
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
@@ -611,7 +611,7 @@ where
             }
             FrameTag::ContentRangeRequest => {
                 let buf = self.read_buffer.split_to(size_hint);
-                let hash = *array_ref!(buf, 1, 32);
+                let hash = Blake3Cid(*array_ref!(buf, 1, 32));
                 let chunk_start_bytes = *array_ref!(buf, 33, 8);
                 let chunk_start = u64::from_be_bytes(chunk_start_bytes);
                 let chunks = u16::from_be_bytes([buf[41], buf[42]]);

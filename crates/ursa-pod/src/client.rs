@@ -6,10 +6,9 @@ use tracing::debug;
 
 use crate::{
     connection::{consts::HANDSHAKE_RES_TAG, UfdpConnection, UrsaCodecError, UrsaFrame},
+    instrument,
     types::{Blake3Cid, BlsPublicKey},
 };
-
-const IO_CHUNK_SIZE: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub enum UfdpResponseState {
@@ -42,17 +41,19 @@ where
         let mut conn = UfdpConnection::new(stream);
 
         // send handshake
-        conn.write_frame(UrsaFrame::HandshakeRequest {
-            version: 0,
-            supported_compression_bitmap: 0,
-            lane,
-            pubkey,
-        })
-        .await
-        .expect("handshake request");
+        instrument!(
+            conn.write_frame(UrsaFrame::HandshakeRequest {
+                version: 0,
+                supported_compression_bitmap: 0,
+                lane,
+                pubkey,
+            })
+            .await?,
+            ""
+        );
 
         // receive handshake
-        match conn.read_frame(Some(HANDSHAKE_RES_TAG)).await? {
+        match instrument!(conn.read_frame(Some(HANDSHAKE_RES_TAG)).await?, "") {
             Some(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { conn, lane }),
             Some(_) => unreachable!(),
             None => Err(UrsaCodecError::Unknown),
@@ -61,14 +62,16 @@ where
 
     /// Send a request for content.
     pub async fn request(&mut self, hash: Blake3Cid) -> Result<usize, UrsaCodecError> {
-        self.conn
-            .write_frame(UrsaFrame::ContentRequest { hash })
-            .await?;
-        debug!("sent req");
+        instrument!(
+            self.conn
+                .write_frame(UrsaFrame::ContentRequest { hash })
+                .await?,
+            ""
+        );
         let mut size = 0;
 
         loop {
-            match self.conn.read_frame(None).await? {
+            match instrument!(self.conn.read_frame(None).await?, "") {
                 Some(UrsaFrame::ContentResponse {
                     proof_len,
                     block_len,
@@ -80,7 +83,7 @@ where
                     self.conn.take = len;
                     let mut proof_buf = BytesMut::with_capacity(len);
                     loop {
-                        match self.conn.read_frame(None).await? {
+                        match instrument!(self.conn.read_frame(None).await?, "") {
                             Some(UrsaFrame::Buffer(bytes)) => {
                                 debug!("recv proof chunk");
                                 proof_buf.put_slice(&bytes);
@@ -101,7 +104,7 @@ where
                     let mut block_buf = BytesMut::with_capacity(len);
                     size += len;
                     loop {
-                        match self.conn.read_frame(None).await? {
+                        match instrument!(self.conn.read_frame(None).await?, "") {
                             Some(UrsaFrame::Buffer(bytes)) => {
                                 block_buf.put_slice(&bytes);
                                 if block_buf.len() == len {
@@ -116,14 +119,17 @@ where
                     }
 
                     // send decryption key request
-                    self.conn
-                        .write_frame(UrsaFrame::DecryptionKeyRequest {
-                            delivery_acknowledgment: [1; 96],
-                        })
-                        .await?;
+                    instrument!(
+                        self.conn
+                            .write_frame(UrsaFrame::DecryptionKeyRequest {
+                                delivery_acknowledgment: [1; 96],
+                            })
+                            .await?,
+                        ""
+                    );
 
                     // recv decryption key
-                    match self.conn.read_frame(None).await? {
+                    match instrument!(self.conn.read_frame(None).await?, "") {
                         Some(UrsaFrame::DecryptionKeyResponse { .. }) => {}
                         _ => return Err(UrsaCodecError::Unknown),
                     }
