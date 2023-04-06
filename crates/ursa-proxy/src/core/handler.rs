@@ -139,7 +139,7 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    let response = match client.get(uri).await {
+    match client.get(uri).await {
         Ok(resp) => match resp.into_parts() {
             (
                 parts @ Parts {
@@ -172,11 +172,8 @@ pub async fn proxy_pass<C: Cache>(
                     BoxBody::new(StreamBody::new(ReaderStream::new(reader))),
                 )
             }
-            (parts, body) => {
-                return Response::from_parts(parts, BoxBody::new(StreamBody::new(body)))
-            }
+            (parts, body) => Response::from_parts(parts, BoxBody::new(StreamBody::new(body))),
         },
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-    response
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
