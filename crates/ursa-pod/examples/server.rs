@@ -45,19 +45,8 @@ async fn main() -> Result<(), UrsaCodecError> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let addr = "127.0.0.1:6969";
-
-    #[cfg(not(feature = "bench-hyper"))]
-    run_ufdp(addr).await;
-
-    #[cfg(feature = "bench-hyper")]
-    hyper::serve(addr).await;
-
     info!("Listening on port 6969");
 
-    Ok(())
-}
-
-async fn run_ufdp(addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
     loop {
         info!("accepted conn");
@@ -66,37 +55,6 @@ async fn run_ufdp(addr: &str) {
 
         if let Err(e) = handler.serve().await {
             error!("UFDP Session failed: {e:?}");
-        }
-    }
-}
-
-#[cfg(feature = "bench-hyper")]
-mod hyper {
-    use std::io::Error;
-
-    use bytes::Bytes;
-    use http_body_util::Full;
-    use hyper::{server::conn::http1, service::service_fn, Response};
-    use tokio::net::TcpListener;
-
-    pub async fn serve(addr: &str) {
-        let listener = TcpListener::bind(addr).await.unwrap();
-
-        loop {
-            let (stream, _) = listener.accept().await.unwrap();
-
-            let service = service_fn(move |_req| async move {
-                Ok::<_, Error>(Response::new(Full::new(Bytes::from(
-                    &[0u8; 100 * 1024 * 1024] as &[u8],
-                ))))
-            });
-
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(stream, service)
-                .await
-            {
-                println!("Error serving connection: {:?}", err);
-            }
         }
     }
 }
