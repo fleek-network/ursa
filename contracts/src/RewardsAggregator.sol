@@ -5,17 +5,16 @@ import "./NodeRegistry.sol";
 import "./Epoch.sol";
 
 contract RewardsAggregator {
-    ///  epoch => Node publicKey => Data served
-    mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
-
     NodeRegistry public nodeRegistry;
     EpochManager public epochManager;
 
     // Todo: this will change with an added multiplier if we decide to change the epoch time
-    uint16 public daysForPotential;
+    uint16 public daysForAveragePotential;
     string[] public publicKeys;
-    address public owner;
     bool private initialized;
+
+    ///  epoch => Node publicKey => Data served
+    mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
 
     function initialize(address _epochManager, address _nodeRegistry) external {
         require(!initialized, "contract already initialized");
@@ -29,6 +28,9 @@ contract RewardsAggregator {
         initialized = true;
     }
 
+    /**
+     * @dev get publicKeys array that store whitelisted node
+     */
     function getPublicKeys() public view returns (string[] memory) {
         return publicKeys;
     }
@@ -53,16 +55,16 @@ contract RewardsAggregator {
     }
 
     /**
-     * @dev get average data served per day over daysForPotential epochs
+     * @dev get average data served per day over daysForAveragePotential epochs
      */
     function getAvgUsageNEpochs() public view returns (uint256) {
         uint256 _endEpoch = epochManager.epoch();
-        uint256 _startEpoch = _endEpoch - daysForPotential - 1;
+        uint256 _startEpoch = _endEpoch - daysForAveragePotential - 1;
         uint256 _sum = 0;
         for (uint256 i = _startEpoch; i < _endEpoch; i++) {
             _sum += getDataForEpoch(i);
         }
-        return _sum / daysForPotential;
+        return _sum / daysForAveragePotential;
     }
 
     /**
