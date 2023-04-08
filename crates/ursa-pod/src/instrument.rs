@@ -10,12 +10,12 @@ macro_rules! instrument {
                 std::time::SystemTime::now()
                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_micros()
             }
             let identifiers = format!($($t)*);
-            println!("BENCH_START,{location},{time},{identifiers}", time = now());
+            let start = now();
             let val = { $e };
-            println!("BENCH_END,{location},{time},{identifiers}", time = now());
+            println!("SAMPLE,start={start},end={end},uid={location},{identifiers}", end = now());
             val
         }
         #[cfg(not(feature = "benchmarks"))]

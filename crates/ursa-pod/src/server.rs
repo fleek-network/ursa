@@ -32,29 +32,42 @@ pub trait Backend: Send + Sync + 'static {
 pub struct UfdpHandler<S: AsyncRead + AsyncWrite + Unpin, B: Backend> {
     pub conn: UfdpConnection<S>,
     backend: Arc<B>,
+    #[allow(unused)]
     session_id: u64,
 }
 
 impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     #[inline(always)]
-    pub fn new(stream: S, backend: B) -> Self {
+    pub fn new(stream: S, backend: B, session_id: u64) -> Self {
         Self {
             conn: UfdpConnection::new(stream),
             backend: Arc::new(backend),
-            session_id: 0,
+            session_id,
         }
     }
 
+    /// Begin serving a request. Accepts a handshake, and then begins the request loop.
     pub async fn serve(mut self) -> Result<(), UrsaCodecError> {
         // Step 1: Perform the handshake.
-        let _session_id = instrument!(self.handshake().await?, "");
+        instrument!(
+            self.handshake().await?,
+            "sid={},tag=handshake",
+            self.session_id
+        );
 
         // Step 2: Handle requests.
-        while let Some(frame) = instrument!(self.conn.read_frame(Some(CONTENT_REQ_TAG)).await?, "")
-        {
+        while let Some(frame) = instrument!(
+            self.conn.read_frame(Some(CONTENT_REQ_TAG)).await?,
+            "sid={},tag=read_content_req",
+            self.session_id
+        ) {
             match frame {
                 UrsaFrame::ContentRequest { hash } => {
-                    instrument!(self.deliver_content(hash).await?, "{hash}");
+                    instrument!(
+                        self.deliver_content(hash).await?,
+                        "sid={},tag=deliver_content,hash={hash}",
+                        self.session_id
+                    );
                 }
                 f => {
                     error!("Terminating, unexpected frame: {f:?}");
@@ -71,8 +84,12 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
 
     /// Await and respond to a handshake
     #[inline(always)]
-    pub async fn handshake(&mut self) -> Result<u64, UrsaCodecError> {
-        match instrument!(self.conn.read_frame(Some(HANDSHAKE_REQ_TAG)).await?, "") {
+    pub async fn handshake(&mut self) -> Result<(), UrsaCodecError> {
+        match instrument!(
+            self.conn.read_frame(Some(HANDSHAKE_REQ_TAG)).await?,
+            "sid={},tag=read_handshake_req",
+            self.session_id
+        ) {
             Some(UrsaFrame::HandshakeRequest { lane, .. }) => {
                 // send res frame
                 instrument!(
@@ -84,12 +101,11 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                             last: None,
                         })
                         .await?,
-                    ""
+                    "sid={},tag=write_handshake_res",
+                    self.session_id
                 );
-                // TEMP: just set session id as a u64 nonce
-                let session_id = self.session_id;
-                self.session_id += 1;
-                Ok(session_id)
+
+                Ok(())
             }
             Some(f) => {
                 error!("Terminating, unexpected frame: {f:?}");
@@ -106,7 +122,11 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     #[inline(always)]
     pub async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
         let mut block_number = 0;
-        while let Some(block) = instrument!(self.backend.raw_block(&cid, block_number), "") {
+        while let Some(block) = instrument!(
+            self.backend.raw_block(&cid, block_number),
+            "sid={},tag=backend_raw_block,hash={cid}",
+            self.session_id
+        ) {
             block_number += 1;
 
             let proof = BytesMut::from(b"dummy_proof".as_slice());
@@ -123,19 +143,29 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                         signature: [1u8; 64],
                     })
                     .await?,
-                ""
+                "sid={},tag=write_content_res,hash={cid}",
+                self.session_id
             );
 
-            instrument!(self.conn.write_frame(UrsaFrame::Buffer(proof)).await?, "");
+            instrument!(
+                self.conn.write_frame(UrsaFrame::Buffer(proof)).await?,
+                "sid={},tag=write_proof,hash={cid}",
+                self.session_id
+            );
             instrument!(
                 self.conn
                     .write_frame(UrsaFrame::Buffer(block.into()))
                     .await?,
-                ""
+                "sid={},tag=write_block,hash={cid}",
+                self.session_id
             );
 
             // wait for delivery acknowledgment
-            match instrument!(self.conn.read_frame(None).await?, "") {
+            match instrument!(
+                self.conn.read_frame(None).await?,
+                "sid={},tag=read_da,hash={cid}",
+                self.session_id
+            ) {
                 Some(UrsaFrame::DecryptionKeyRequest { .. }) => {
                     // todo: transaction manager (batch and store tx)
                 }
@@ -154,13 +184,15 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 self.conn
                     .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })
                     .await?,
-                ""
+                "sid={},tag=write_dk,hash={cid}",
+                self.session_id
             );
         }
 
         instrument!(
             self.conn.write_frame(UrsaFrame::EndOfRequestSignal).await?,
-            ""
+            "sid={},tag=write_eor,hash={cid}",
+            self.session_id
         );
 
         Ok(())

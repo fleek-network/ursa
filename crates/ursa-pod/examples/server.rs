@@ -51,7 +51,7 @@ async fn main() -> Result<(), UrsaCodecError> {
     loop {
         info!("accepted conn");
         let (stream, _) = listener.accept().await.unwrap();
-        let handler = UfdpHandler::new(stream, DummyBackend {});
+        let handler = UfdpHandler::new(stream, DummyBackend {}, 0);
 
         if let Err(e) = handler.serve().await {
             error!("UFDP Session failed: {e:?}");

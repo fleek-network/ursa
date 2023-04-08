@@ -62,13 +62,18 @@ impl Backend for BenchmarkBackend {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let listener = TcpListener::bind(ADDRESS).await.unwrap();
+    let mut session_id = 0;
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
 
         tokio::spawn(async move {
-            let handler = UfdpHandler::new(stream, BenchmarkBackend {});
-            instrument!(handler.serve().await.unwrap(), "");
+            let handler = UfdpHandler::new(stream, BenchmarkBackend {}, session_id);
+            instrument!(
+                handler.serve().await.unwrap(),
+                "sid={session_id},tag=session"
+            );
         });
+        session_id += 1;
     }
 }

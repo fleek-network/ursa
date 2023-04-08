@@ -9,7 +9,7 @@ pub struct Blake3Cid(pub [u8; 32]);
 impl Display for Blake3Cid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for byte in self.0 {
-            write!(f, "{byte:x}");
+            write!(f, "{byte:x}")?;
         }
         Ok(())
     }
