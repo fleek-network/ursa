@@ -1,4 +1,237 @@
+use arrayref::array_ref;
+use arrayvec::ArrayVec;
+use std::ptr;
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
+
+pub struct IncrementalTree {
+    cursor: *mut IncrementalTreeNode,
+    index: usize,
+    stack: ArrayVec<*mut IncrementalTreeNode, 2>,
+}
+
+struct IncrementalTreeNode {
+    parent: *mut IncrementalTreeNode,
+    left: *mut IncrementalTreeNode,
+    right: *mut IncrementalTreeNode,
+    hash: [u8; 32],
+}
+
+impl IncrementalTree {
+    pub fn new(root_hash: [u8; 32]) -> Self {
+        let node = Box::new(IncrementalTreeNode {
+            parent: ptr::null_mut(),
+            left: ptr::null_mut(),
+            right: ptr::null_mut(),
+            hash: root_hash,
+        });
+
+        Self {
+            cursor: Box::into_raw(node),
+            index: 0,
+            stack: ArrayVec::new(),
+        }
+    }
+
+    pub fn expand(&mut self, proof: &[u8]) {
+        // TODO(qti3e): Soft fail.
+        assert!(is_valid_proof_len(proof.len()));
+
+        if proof.is_empty() {
+            return;
+        }
+
+        for segment in proof.chunks(32 * 8 + 1) {
+            let sign = segment[0];
+
+            for (i, hash) in segment[1..].chunks_exact(32).enumerate() {
+                let should_flip = (1 << (8 - i - 1)) & sign != 0;
+                self.push(should_flip, *array_ref![hash, 0, 32]);
+            }
+        }
+
+        self.finalize_expansion();
+    }
+
+    fn push(&mut self, flip: bool, hash: [u8; 32]) {
+        if self.stack.is_full() {
+            self.merge_stack(false);
+        }
+
+        let node = Box::new(IncrementalTreeNode {
+            parent: ptr::null_mut(),
+            left: ptr::null_mut(),
+            right: ptr::null_mut(),
+            hash,
+        });
+
+        self.stack.push(Box::into_raw(node));
+
+        if flip {
+            self.stack.swap(0, 1);
+        }
+    }
+
+    fn finalize_expansion(&mut self) {
+        assert!(self.stack.is_full());
+
+        self.merge_stack(self.is_root());
+        debug_assert_eq!(self.stack.len(), 1);
+
+        let node = self.stack.pop().unwrap();
+
+        unsafe {
+            // the cursor *must* not have children.
+            debug_assert!((*self.cursor).left.is_null());
+            debug_assert!((*self.cursor).right.is_null());
+            // the new parent node *must* have children.
+            debug_assert!(!(*node).left.is_null());
+            debug_assert!(!(*node).right.is_null());
+        }
+
+        unsafe {
+            // TODO(qti3e): Make this check into a safe fail.
+            assert_eq!(&(*node).hash, self.current_hash());
+
+            // Set the left and right children of the current cursor.
+            (*self.cursor).left = (*node).left;
+            (*self.cursor).right = (*node).right;
+            // Update the parent of left and right to link to the cursor
+            // and not the new parent node.
+            (*(*node).left).parent = self.cursor;
+            (*(*node).right).parent = self.cursor;
+
+            // Remove the left and right node of the new node so we can
+            // drop it without dropping the children.
+            (*node).left = ptr::null_mut();
+            (*node).right = ptr::null_mut();
+
+            debug_assert!((*node).left.is_null());
+            debug_assert!((*node).right.is_null());
+            drop(Box::from_raw(node));
+        }
+
+        // Traverse the current cursor into the deepest newly added left node so that
+        // our guarantee about the cursor not having children is preserved.
+        unsafe {
+            while !(*self.cursor).left.is_null() {
+                self.cursor = (*self.cursor).left;
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn is_root(&self) -> bool {
+        debug_assert!(!self.cursor.is_null());
+        unsafe { (*self.cursor).parent.is_null() }
+    }
+
+    #[inline(always)]
+    fn current_hash(&self) -> &[u8; 32] {
+        unsafe { &(*self.cursor).hash }
+    }
+
+    /// Merge the current stack items into a new one.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the stack is not full. (i.e does not have 2 elements).
+    ///
+    /// # Guarantees
+    ///
+    /// After calling this function it is guranteed that:
+    ///
+    /// 1- The stack has exactly one item.
+    /// 2- The new node in the stack has both its left and right children set.
+    fn merge_stack(&mut self, is_root: bool) {
+        assert!(self.stack.is_full());
+
+        let right = self.stack.pop().unwrap();
+        let left = self.stack.pop().unwrap();
+        debug_assert!(!right.is_null(), "stack item is not supposed to be null.");
+        debug_assert!(!left.is_null(), "stack item is not supposed to be null.");
+
+        // SAFETY: The only function pushing to the stack is this same function
+        // and we can guarantee that these are not null;
+        let (left_cv, right_cv) = unsafe { (&(*left).hash, &(*right).hash) };
+
+        let parent_hash = blake3::ursa::merge(left_cv, right_cv, is_root);
+        let parent = Box::into_raw(Box::new(IncrementalTreeNode {
+            parent: ptr::null_mut(),
+            left,
+            right,
+            hash: parent_hash,
+        }));
+
+        // Push the new parent node into the stack.
+        self.stack.push(parent);
+
+        // SAFETY: The left and right are guranteed to not be null and they need to link to
+        // the parent, and the parent will be pushed to the stack right after this line which
+        // will result into its safe drop when the `IncrementalTree` is dropped.
+        unsafe {
+            debug_assert!(
+                (*left).parent.is_null(),
+                "parent node is supposed to be null."
+            );
+            debug_assert!(
+                (*right).parent.is_null(),
+                "parent node is supposed to be null."
+            );
+            (*left).parent = parent;
+            (*right).parent = parent;
+        }
+    }
+}
+
+impl Drop for IncrementalTree {
+    fn drop(&mut self) {
+        if self.cursor.is_null() {
+            return;
+        }
+
+        // SAFETY: Find the root of the tree from the current cursor by traversing
+        // the tree up as much as we can, and free the leaf. The Drop implementation
+        // of `IncrementalTreeNode` will be called recursively and will free the entire
+        // data owned by this tree.
+        unsafe {
+            let mut current = self.cursor;
+            while !(*current).parent.is_null() {
+                current = (*current).parent;
+            }
+            debug_assert!(!current.is_null());
+            debug_assert!((*current).parent.is_null());
+            drop(Box::from_raw(current));
+            self.cursor = ptr::null_mut();
+        }
+
+        dbg!(self.stack.len());
+
+        // If there are any items left in the stack also free those.
+        for pointer in self.stack.drain(..) {
+            // SAFETY: The stack owns its pending items.
+            unsafe {
+                drop(Box::from_raw(pointer));
+            }
+        }
+    }
+}
+
+impl Drop for IncrementalTreeNode {
+    fn drop(&mut self) {
+        // SAFETY: Each node owns its children and is responsible for
+        // dropping them when its being drooped.
+        unsafe {
+            if !self.left.is_null() {
+                drop(Box::from_raw(self.left));
+                self.left = ptr::null_mut();
+            }
+            if !self.right.is_null() {
+                drop(Box::from_raw(self.right));
+                self.right = ptr::null_mut();
+            }
+        }
+    }
+}
 
 /// A buffer containing a proof for a block of data.
 pub struct ProofBuf {
@@ -8,7 +241,8 @@ pub struct ProofBuf {
 }
 
 impl ProofBuf {
-    /// Construct a new proof for the given from the provided tree.
+    /// Construct a new proof for the given block index from the provided
+    /// tree.
     pub fn new(tree: &[[u8; 32]], block: usize) -> Self {
         let walker = TreeWalker::new(block, tree.len());
         let size = walker.size_hint().0;
@@ -138,6 +372,7 @@ impl ProofEncoder {
         // If we have consumed a multiple of 8 hashes so far, consume the sign byte
         // by moving the cursor.
         if self.size & 7 == 0 {
+            debug_assert!(self.cursor > 0);
             self.cursor -= 1;
             // If we have more data coming in, make sure the dirty byte which will
             // be used for the next sign byte is set to zero.
@@ -221,6 +456,12 @@ impl TreeWalker {
 
         walker
     }
+
+    /// Return the index of the target element in the array representation of the
+    /// complete tree.
+    pub fn tree_index(&self) -> usize {
+        self.target
+    }
 }
 
 /// The position of a element in an element in a binary tree.
@@ -303,13 +544,25 @@ fn previous_pow_of_two(n: usize) -> usize {
     n.next_power_of_two() / 2
 }
 
+#[inline(always)]
+fn is_valid_proof_len(n: usize) -> bool {
+    const SEG_SIZE: usize = 32 * 8 + 1;
+    let sign_bytes = (n + SEG_SIZE - 1) / SEG_SIZE;
+    let hash_bytes = n - sign_bytes;
+    hash_bytes & 31 == 0 && n != 1 && n <= 32 * 47 + 6
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn tree_walker() {
-        let mut walker = TreeWalker::new(3, 12);
+        let mut walker = TreeWalker::new(2, 7);
+        println!("{}", walker.current);
+        for item in walker {
+            println!("{:?}", item);
+        }
     }
 
     #[test]
@@ -382,5 +635,52 @@ mod tests {
         expected.extend_from_slice(&[0; 32]);
         assert_eq!(expected.len(), encoder.buffer.len());
         assert_eq!(encoder.finalize(), expected.as_slice());
+    }
+
+    #[test]
+    fn valid_proof_len() {
+        assert_eq!(is_valid_proof_len(0), true);
+        assert_eq!(is_valid_proof_len(1), false);
+        assert_eq!(is_valid_proof_len(2), false);
+        assert_eq!(is_valid_proof_len(32), false);
+        assert_eq!(is_valid_proof_len(33), true);
+        assert_eq!(is_valid_proof_len(40), false);
+        assert_eq!(is_valid_proof_len(64), false);
+        assert_eq!(is_valid_proof_len(65), true);
+
+        for full_seg in 0..5 {
+            let bytes = full_seg * 32 * 8 + full_seg;
+            assert_eq!(is_valid_proof_len(bytes), true, "failed for len={bytes}");
+
+            for partial_seg in 1..8 {
+                let bytes = bytes + 1 + partial_seg * 32;
+                assert_eq!(is_valid_proof_len(bytes), true, "failed for len={bytes}");
+                assert_eq!(
+                    is_valid_proof_len(bytes - 1),
+                    false,
+                    "failed for len={bytes}"
+                );
+                assert_eq!(
+                    is_valid_proof_len(bytes + 1),
+                    false,
+                    "failed for len={bytes}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn incremental_tree_basic() {
+        let mut tree_builder = blake3::ursa::HasherWithTree::new();
+        for i in 0..4 {
+            tree_builder.update(&[i; 256 * 1024]);
+        }
+        let output = tree_builder.finalize();
+
+        let proof = ProofBuf::new(&output.tree, 0);
+
+        let mut inc_tree = IncrementalTree::new(*output.hash.as_bytes());
+        inc_tree.expand(proof.as_slice());
+        println!("---");
     }
 }
