@@ -42,9 +42,10 @@ impl IncrementalTree {
 
         for segment in proof.chunks(32 * 8 + 1) {
             let sign = segment[0];
+            let n = (segment.len() - 1) / 32;
 
             for (i, hash) in segment[1..].chunks_exact(32).enumerate() {
-                let should_flip = (1 << (8 - i - 1)) & sign != 0;
+                let should_flip = (1 << (n - i - 1)) & sign != 0;
                 self.push(should_flip, *array_ref![hash, 0, 32]);
             }
         }
@@ -677,10 +678,10 @@ mod tests {
         }
         let output = tree_builder.finalize();
 
-        let proof = ProofBuf::new(&output.tree, 0);
-
-        let mut inc_tree = IncrementalTree::new(*output.hash.as_bytes());
-        inc_tree.expand(proof.as_slice());
-        println!("---");
+        for i in 0..4 {
+            let proof = ProofBuf::new(&output.tree, i);
+            let mut inc_tree = IncrementalTree::new(*output.hash.as_bytes());
+            inc_tree.expand(proof.as_slice());
+        }
     }
 }
