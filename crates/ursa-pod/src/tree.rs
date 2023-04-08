@@ -3,10 +3,13 @@ use arrayvec::ArrayVec;
 use std::ptr;
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 
-pub struct IncrementalTree {
+/// An incremental verifier that can consume a stream of proofs and content
+/// and verify the integrity of the content using a blake3 root hash.
+pub struct IncrementalVerifier {
     cursor: *mut IncrementalTreeNode,
     index: usize,
     stack: ArrayVec<*mut IncrementalTreeNode, 2>,
+    next_head: *mut IncrementalTreeNode,
 }
 
 struct IncrementalTreeNode {
@@ -16,7 +19,9 @@ struct IncrementalTreeNode {
     hash: [u8; 32],
 }
 
-impl IncrementalTree {
+impl IncrementalVerifier {
+    /// Create a new incremental verifier that verifies an stream of proofs and
+    /// content against the provided root hash.
     pub fn new(root_hash: [u8; 32]) -> Self {
         let node = Box::new(IncrementalTreeNode {
             parent: ptr::null_mut(),
@@ -29,10 +34,49 @@ impl IncrementalTree {
             cursor: Box::into_raw(node),
             index: 0,
             stack: ArrayVec::new(),
+            next_head: ptr::null_mut(),
         }
     }
 
-    pub fn expand(&mut self, proof: &[u8]) {
+    /// Verify a new
+    pub fn verify(&mut self, input: &[u8]) {
+        // 1. Hash the content using a block hasher with the current index.
+        // 2. Compare to the hash we have under the cursor.
+        // 3. Move to the next node.
+    }
+
+    /// Go to the next element in the tree.
+    fn next(&mut self) {
+        // To traverse to the next node in the tree we need to follow the
+        // following algorithm:
+        //
+        // - assume we're currently at node `i`.
+        // - `(leading_ones(i) + 1)P . 1R . *L`
+        // P: Go to parent node
+        // R: Go to the right node
+        // L: Go to the left node
+        // number on the left determines how many times to perform a step,
+        // and * means as much as we can.
+
+        // Step P:
+        for _ in 0..self.index.leading_ones() + 1 {
+            // TODO(qti3e): Make sure self.current.parent is not null.
+            self.cursor = unsafe { (*self.cursor).parent };
+        }
+
+        // TODO(qti3e): Here we can drop the left subtree since we no longer need
+        // it.
+
+        // Step R:
+        self.cursor = unsafe { (*self.cursor).right };
+
+        // Step L:
+        self.traverse_to_deepest_left_node();
+    }
+
+    /// Feed some new proof to the verifier which it can use to expand its internal
+    /// blake3 tree.
+    pub fn feed_proof(&mut self, proof: &[u8]) {
         // TODO(qti3e): Soft fail.
         assert!(is_valid_proof_len(proof.len()));
 
@@ -58,17 +102,23 @@ impl IncrementalTree {
             self.merge_stack(false);
         }
 
-        let node = Box::new(IncrementalTreeNode {
+        let node = Box::into_raw(Box::new(IncrementalTreeNode {
             parent: ptr::null_mut(),
             left: ptr::null_mut(),
             right: ptr::null_mut(),
             hash,
-        });
+        }));
 
-        self.stack.push(Box::into_raw(node));
+        self.stack.push(node);
 
-        if flip {
+        if flip && self.stack.is_full() {
             self.stack.swap(0, 1);
+        }
+
+        // Always remember the first node generated using a new proof, since this
+        // is where we want to go next if we're currently at root.
+        if self.next_head.is_null() {
+            self.next_head = node;
         }
     }
 
@@ -111,12 +161,17 @@ impl IncrementalTree {
             drop(Box::from_raw(node));
         }
 
-        // Traverse the current cursor into the deepest newly added left node so that
-        // our guarantee about the cursor not having children is preserved.
-        unsafe {
-            while !(*self.cursor).left.is_null() {
-                self.cursor = (*self.cursor).left;
-            }
+        // If we're at the root right now instead of traversing all the way to
+        // the deepest left node, we need to respect the value of `self.index`
+        // (in case it is not zero) and instead try to get to that node.
+        if self.is_root() && self.index != 0 {
+            debug_assert!(!self.next_head.is_null());
+            self.cursor = self.next_head;
+            self.next_head = ptr::null_mut();
+        } else {
+            // Traverse the current cursor into the deepest newly added left node so that
+            // our guarantee about the cursor not having children is preserved.
+            self.traverse_to_deepest_left_node();
         }
     }
 
@@ -129,6 +184,15 @@ impl IncrementalTree {
     #[inline(always)]
     fn current_hash(&self) -> &[u8; 32] {
         unsafe { &(*self.cursor).hash }
+    }
+
+    #[inline(always)]
+    fn traverse_to_deepest_left_node(&mut self) {
+        unsafe {
+            while !(*self.cursor).left.is_null() {
+                self.cursor = (*self.cursor).left;
+            }
+        }
     }
 
     /// Merge the current stack items into a new one.
@@ -184,7 +248,7 @@ impl IncrementalTree {
     }
 }
 
-impl Drop for IncrementalTree {
+impl Drop for IncrementalVerifier {
     fn drop(&mut self) {
         if self.cursor.is_null() {
             return;
@@ -204,8 +268,6 @@ impl Drop for IncrementalTree {
             drop(Box::from_raw(current));
             self.cursor = ptr::null_mut();
         }
-
-        dbg!(self.stack.len());
 
         // If there are any items left in the stack also free those.
         for pointer in self.stack.drain(..) {
@@ -680,8 +742,8 @@ mod tests {
 
         for i in 0..4 {
             let proof = ProofBuf::new(&output.tree, i);
-            let mut inc_tree = IncrementalTree::new(*output.hash.as_bytes());
-            inc_tree.expand(proof.as_slice());
+            let mut inc_tree = IncrementalVerifier::new(*output.hash.as_bytes());
+            inc_tree.feed_proof(proof.as_slice());
         }
     }
 }
