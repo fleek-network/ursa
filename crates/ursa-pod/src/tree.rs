@@ -1,22 +1,83 @@
-use std::cmp::Ordering;
+use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 
-pub struct ProofEncoder {
+/// A buffer containing a proof for a block of data.
+pub struct ProofBuf {
+    // The index at which the slice starts at in the boxed buffer.
+    index: usize,
     buffer: Box<[u8]>,
+}
+
+impl ProofBuf {
+    /// Construct a new proof for the given from the provided tree.
+    pub fn new(tree: &[[u8; 32]], block: usize) -> Self {
+        let walker = TreeWalker::new(block, tree.len());
+        let size = walker.size_hint().0;
+        let mut encoder = ProofEncoder::new(size);
+        for (direction, index) in walker {
+            debug_assert!(index < tree.len(), "Index overflow.");
+            encoder.insert(direction, &tree[index]);
+        }
+        encoder.finalize()
+    }
+
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buffer[self.index..]
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.buffer.len() - self.index
+    }
+}
+
+impl AsRef<[u8]> for ProofBuf {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl Borrow<[u8]> for ProofBuf {
+    #[inline(always)]
+    fn borrow(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl Debug for ProofBuf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(self.as_slice(), f)
+    }
+}
+
+impl PartialEq<&[u8]> for ProofBuf {
+    fn eq(&self, other: &&[u8]) -> bool {
+        self.as_slice().eq(*other)
+    }
+}
+
+/// An encoder that manages a reverse buffer which can be used to convert the
+/// root-to-leaf ordering of the [`TreeWalker`] to the proper stack ordering.
+pub struct ProofEncoder {
     cursor: usize,
     size: usize,
+    buffer: Box<[u8]>,
 }
 
 impl ProofEncoder {
     /// Create a new proof encoder for encoding a tree with the provided max number of
-    /// items.
+    /// items. An instance of ProofEncoder can not be used to encode more than the `n`
+    /// items specified here. Providing an `n` smaller than the actual number of nodes
+    /// can result in panics.
     pub fn new(n: usize) -> Self {
-        // Compute the byte capacity for this encoder, which is 32-byte per hash
-        // and 1 byte per 8 one of these.
+        // Compute the byte capacity for this encoder, which is 32-byte per hash and 1
+        // byte per 8 one of these.
         let capacity = n * 32 + (n + 8 - 1) / 8;
-        // Create a Vec<u8> with the given size and set its len to the byte capacity
-        // it is not important for us to take care of initializing the items since
-        // the type is a u8 and has no drop logic except the deallocatation of the
-        // slice itself.
+        // Create a `Vec<u8>` with the given size and set its len to the byte capacity
+        // it is not important for us to take care of initializing the items since the
+        // type is a u8 and has no drop logic except the deallocatation of the slice
+        // itself.
         let mut vec = Vec::<u8>::with_capacity(capacity);
         if capacity > 0 {
             // SAFETY: The note above explains the use case. The justification of this
@@ -46,8 +107,16 @@ impl ProofEncoder {
         }
     }
 
-    /// Insert a
+    /// Insert a new node into the tree, the direction determines whether or not we should
+    /// be flipping the stack order when we're trying to rebuild the tree later on (on the
+    /// client side).
+    ///
+    /// # Panics
+    ///
+    /// If more than the maximum number of times specified when constructing.
     pub fn insert(&mut self, direction: Direction, hash: &[u8; 32]) {
+        assert!(self.cursor > 0);
+
         // Get the current non-finalized sign byte.
         let mut sign = self.buffer[self.cursor - 1];
 
@@ -61,37 +130,55 @@ impl ProofEncoder {
 
         self.size += 1;
 
-        // Always put the sign as the leading byte of the data without
-        // moving the cursor, this way the finalize can return a valid
-        // proof for when it's called when the number of items does not
-        // divide 8.
+        // Always put the sign as the leading byte of the data without moving the
+        // cursor, this way the finalize can return a valid proof for when it's
+        // called when the number of items does not divide 8.
         self.buffer[self.cursor - 1] = sign;
 
-        // If we have consumed a multiple of 8 hashes so far, consume the
-        // sign byte by moving the cursor.
+        // If we have consumed a multiple of 8 hashes so far, consume the sign byte
+        // by moving the cursor.
         if self.size & 7 == 0 {
             self.cursor -= 1;
-            // If we have more data coming in, make sure the dirty which
-            // will be used for the next sign byte is set to zero.
+            // If we have more data coming in, make sure the dirty byte which will
+            // be used for the next sign byte is set to zero.
             if self.cursor > 0 {
                 self.buffer[self.cursor - 1] = 0;
             }
         }
     }
 
-    pub fn finalize(&self) -> &[u8] {
-        // Here we don't want to consume or get a mutable reference to the internal
-        // buffer we have, but also we might be called when the number of passed
-        // hashes does not divide 8. In this case we already have the current sign
-        // byte as the leading byte, so we need to return data start one byte before
-        // the cursor.
-        let mut cursor = self.cursor;
-
+    /// Finalize the result of the encoder and return the proof buffer.
+    pub fn finalize(self) -> ProofBuf {
+        // Here we don't want to consume or get a mutable reference to the internal buffer
+        // we have, but also we might be called when the number of passed hashes does not
+        // divide 8. In this case we already have the current sign byte as the leading byte,
+        // so we need to return data start one byte before the cursor.
+        //
+        // Furthermore we could have been returning a Vec here, but that would imply that the
+        // current allocated memory would needed to be copied first into the Vec (in case the
+        // cursor != 0) and then freed as well, which is not really suitable for this use case
+        // we want to provide the caller with the buffer in the valid range (starting from cursor)
+        // and at the same time avoid any memory copy and extra allocation and deallocation which
+        // might come with dropping the box and acquiring a vec.
+        //
+        // This way the caller will have access to the data, and can use it the way they want,
+        // for example sending it over the wire, and then once they are done with reading the
+        // data they can free the used memory.
+        //
+        // Another idea here is to also leverage a slab allocator on the Context object which we
+        // are gonna have down the line which may improve the performance (not sure how much).
         if self.size & 7 > 0 {
-            cursor -= 1;
+            debug_assert!(self.cursor > 0);
+            ProofBuf {
+                buffer: self.buffer,
+                index: self.cursor - 1,
+            }
+        } else {
+            ProofBuf {
+                buffer: self.buffer,
+                index: self.cursor,
+            }
         }
-
-        &self.buffer[cursor..]
     }
 }
 
@@ -111,7 +198,7 @@ impl TreeWalker {
     /// Construct a new [`TreeWalker`] to walk a tree of `tree_len` items (in the array
     /// representation), looking for the provided `target`-th leaf.
     pub fn new(target: usize, tree_len: usize) -> Self {
-        Self {
+        let mut walker = Self {
             // Compute the index of the n-th leaf in the array representation of the
             // tree.
             // see: https://oeis.org/A005187
@@ -124,7 +211,15 @@ impl TreeWalker {
             // the total number of all nodes, we can use the formula `k = ceil((n + 1) / 2)`
             // and we have `ceil(a / b) = floor((a + b - 1) / b)`.
             subtree_size: (tree_len + 2) / 2,
+        };
+
+        if walker.target > walker.current {
+            // If we know we're already out of bound, change the subtree_size to
+            // zero so that the size_hint can also return zero for the upper bound.
+            walker.subtree_size = 0;
         }
+
+        walker
     }
 }
 
@@ -220,8 +315,8 @@ mod tests {
     #[test]
     fn encoder_zero_capacity() {
         let encoder = ProofEncoder::new(0);
-        assert_eq!(encoder.finalize().len(), 0);
         assert_eq!(0, encoder.buffer.len());
+        assert_eq!(encoder.finalize().len(), 0);
     }
 
     #[test]
@@ -236,8 +331,8 @@ mod tests {
         encoder.insert(Direction::Left, &hash);
         expected.push(1); // sign byte
         expected.extend_from_slice(&hash);
-        assert_eq!(encoder.finalize(), expected.as_slice());
         assert_eq!(expected.len(), encoder.buffer.len());
+        assert_eq!(encoder.finalize(), expected.as_slice());
 
         // sign byte on the right
         let mut encoder = ProofEncoder::new(1);
@@ -285,7 +380,7 @@ mod tests {
         expected.push(0b10); // sign byte
         expected.extend_from_slice(&[1; 32]);
         expected.extend_from_slice(&[0; 32]);
-        assert_eq!(encoder.finalize(), expected.as_slice());
         assert_eq!(expected.len(), encoder.buffer.len());
+        assert_eq!(encoder.finalize(), expected.as_slice());
     }
 }

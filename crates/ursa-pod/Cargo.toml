@@ -7,9 +7,9 @@ authors = ["qti3e <i@parsa.oo>", "ossian <self@ossian.dev>"]
 [dependencies]
 rand.workspace = true
 anyhow.workspace = true
+blake3.workspace = true
 arrayref = "0.3"
 arrayvec = "0.7"
-blake3 = { version = "1.3", features = ["rayon"] }
 bytes = "1.4"
 elliptic-curve = { version = "0.13", default-features = false, features = ["hash2curve", "arithmetic"] }
 futures = { version = "0.3", optional = true }
