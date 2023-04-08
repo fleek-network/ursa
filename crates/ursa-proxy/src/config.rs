@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs::read_to_string, path::PathBuf};
+use std::{collections::HashMap, fs::read_to_string, path::PathBuf};
 
 pub const DEFAULT_URSA_PROXY_CONFIG_PATH: &str = ".ursa/proxy/config.toml";
 
@@ -25,6 +25,7 @@ pub struct ServerConfig {
     pub listen_addr: String,
     pub tls: Option<TlsConfig>,
     pub serve_dir_path: Option<PathBuf>,
+    pub add_header: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
