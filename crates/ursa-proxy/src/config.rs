@@ -19,12 +19,12 @@ pub struct ProxyConfig {
     pub admin: Option<AdminConfig>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerConfig {
     pub proxy_pass: String,
     pub listen_addr: String,
-    pub cert_path: String,
-    pub key_path: String,
+    pub tls: Option<TlsConfig>,
+    pub serve_dir_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -57,4 +57,10 @@ impl Default for AdminConfig {
             addr: "0.0.0.0:8881".to_string(),
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TlsConfig {
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
