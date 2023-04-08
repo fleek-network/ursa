@@ -1,5 +1,100 @@
 use std::cmp::Ordering;
 
+pub struct ProofEncoder {
+    buffer: Box<[u8]>,
+    cursor: usize,
+    size: usize,
+}
+
+impl ProofEncoder {
+    /// Create a new proof encoder for encoding a tree with the provided max number of
+    /// items.
+    pub fn new(n: usize) -> Self {
+        // Compute the byte capacity for this encoder, which is 32-byte per hash
+        // and 1 byte per 8 one of these.
+        let capacity = n * 32 + (n + 8 - 1) / 8;
+        // Create a Vec<u8> with the given size and set its len to the byte capacity
+        // it is not important for us to take care of initializing the items since
+        // the type is a u8 and has no drop logic except the deallocatation of the
+        // slice itself.
+        let mut vec = Vec::<u8>::with_capacity(capacity);
+        if capacity > 0 {
+            // SAFETY: The note above explains the use case. The justification of this
+            // customization over just using a regular vector is that we need to write
+            // from the end of the vector to the beginning (rev push), of course we can
+            // use a regular vector and just flip everything at the end, but that will
+            // be more complicated.
+            unsafe {
+                vec.set_len(capacity);
+                // Make sure the last item in the vec which is supposed to be holding the
+                // non-finalized sign byte is not dirty by setting it to zero.
+                *vec.get_unchecked_mut(capacity - 1) = 0;
+            }
+        }
+
+        let buffer = vec.into_boxed_slice();
+        debug_assert_eq!(
+            buffer.len(),
+            capacity,
+            "The buffer is smaller than expected."
+        );
+
+        Self {
+            buffer,
+            cursor: capacity,
+            size: 0,
+        }
+    }
+
+    /// Insert a
+    pub fn insert(&mut self, direction: Direction, hash: &[u8; 32]) {
+        // Get the current non-finalized sign byte.
+        let mut sign = self.buffer[self.cursor - 1];
+
+        self.cursor -= 32;
+        self.buffer[self.cursor..self.cursor + 32].copy_from_slice(hash);
+
+        // update the sign byte.
+        if direction == Direction::Left {
+            sign |= 1 << (self.size & 7);
+        }
+
+        self.size += 1;
+
+        // Always put the sign as the leading byte of the data without
+        // moving the cursor, this way the finalize can return a valid
+        // proof for when it's called when the number of items does not
+        // divide 8.
+        self.buffer[self.cursor - 1] = sign;
+
+        // If we have consumed a multiple of 8 hashes so far, consume the
+        // sign byte by moving the cursor.
+        if self.size & 7 == 0 {
+            self.cursor -= 1;
+            // If we have more data coming in, make sure the dirty which
+            // will be used for the next sign byte is set to zero.
+            if self.cursor > 0 {
+                self.buffer[self.cursor - 1] = 0;
+            }
+        }
+    }
+
+    pub fn finalize(&self) -> &[u8] {
+        // Here we don't want to consume or get a mutable reference to the internal
+        // buffer we have, but also we might be called when the number of passed
+        // hashes does not divide 8. In this case we already have the current sign
+        // byte as the leading byte, so we need to return data start one byte before
+        // the cursor.
+        let mut cursor = self.cursor;
+
+        if self.size & 7 > 0 {
+            cursor -= 1;
+        }
+
+        &self.buffer[cursor..]
+    }
+}
+
 /// The logic responsible for walking a full blake3 tree from top to bottom searching
 /// for a path.
 pub struct TreeWalker {
@@ -91,6 +186,19 @@ impl Iterator for TreeWalker {
             }
         }
     }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Return the upper bound as the result of the size estimation, the actual lower bound
+        // can be computed more accurately but we don't really care about the accuracy of the
+        // size estimate and the upper bound should be small enough for most use cases we have.
+        //
+        // This line is basically `ceil(log2(self.subtree_size)) + 1` which is the max depth of
+        // the current subtree and one additional element + 1.
+        let upper =
+            usize::BITS as usize - self.subtree_size.saturating_sub(1).leading_zeros() as usize + 1;
+        (upper, Some(upper))
+    }
 }
 
 /// Returns the previous power of two of a given number, the returned
@@ -101,4 +209,83 @@ fn previous_pow_of_two(n: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tree_walker() {
+        let mut walker = TreeWalker::new(3, 12);
+    }
+
+    #[test]
+    fn encoder_zero_capacity() {
+        let encoder = ProofEncoder::new(0);
+        assert_eq!(encoder.finalize().len(), 0);
+        assert_eq!(0, encoder.buffer.len());
+    }
+
+    #[test]
+    fn encoder_one_item() {
+        let mut expected = Vec::<u8>::new();
+        let mut hash = [0; 32];
+        hash[0] = 1;
+        hash[31] = 31;
+
+        // sign byte on the left
+        let mut encoder = ProofEncoder::new(1);
+        encoder.insert(Direction::Left, &hash);
+        expected.push(1); // sign byte
+        expected.extend_from_slice(&hash);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+        assert_eq!(expected.len(), encoder.buffer.len());
+
+        // sign byte on the right
+        let mut encoder = ProofEncoder::new(1);
+        encoder.insert(Direction::Right, &hash);
+        expected.clear();
+        expected.push(0); // sign byte
+        expected.extend_from_slice(&hash);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+    }
+
+    #[test]
+    fn encoder_two_item() {
+        let mut expected = Vec::<u8>::new();
+
+        let mut encoder = ProofEncoder::new(2);
+        encoder.insert(Direction::Right, &[0; 32]);
+        encoder.insert(Direction::Right, &[1; 32]);
+        expected.push(0); // sign byte
+        expected.extend_from_slice(&[1; 32]);
+        expected.extend_from_slice(&[0; 32]);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+
+        let mut encoder = ProofEncoder::new(2);
+        encoder.insert(Direction::Left, &[0; 32]);
+        encoder.insert(Direction::Right, &[1; 32]);
+        expected.clear();
+        expected.push(1); // sign byte
+        expected.extend_from_slice(&[1; 32]);
+        expected.extend_from_slice(&[0; 32]);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+
+        let mut encoder = ProofEncoder::new(2);
+        encoder.insert(Direction::Left, &[0; 32]);
+        encoder.insert(Direction::Left, &[1; 32]);
+        expected.clear();
+        expected.push(0b11); // sign byte
+        expected.extend_from_slice(&[1; 32]);
+        expected.extend_from_slice(&[0; 32]);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+
+        let mut encoder = ProofEncoder::new(2);
+        encoder.insert(Direction::Right, &[0; 32]);
+        encoder.insert(Direction::Left, &[1; 32]);
+        expected.clear();
+        expected.push(0b10); // sign byte
+        expected.extend_from_slice(&[1; 32]);
+        expected.extend_from_slice(&[0; 32]);
+        assert_eq!(encoder.finalize(), expected.as_slice());
+        assert_eq!(expected.len(), encoder.buffer.len());
+    }
+}
