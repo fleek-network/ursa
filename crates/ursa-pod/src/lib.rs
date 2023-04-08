@@ -4,6 +4,7 @@
 pub mod codec;
 pub mod keys;
 pub mod primitives;
+pub mod tree;
 /// UFDP types
 pub mod types;
 
