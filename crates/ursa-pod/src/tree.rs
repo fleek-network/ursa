@@ -2,6 +2,7 @@ use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use std::ptr;
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
+use thiserror::Error;
 
 /// An incremental verifier that can consume a stream of proofs and content
 /// and verify the integrity of the content using a blake3 root hash.
@@ -12,6 +13,16 @@ pub struct IncrementalVerifier {
     stack: ArrayVec<*mut IncrementalVerifierTreeNode, 2>,
     next_head: *mut IncrementalVerifierTreeNode,
     is_done: bool,
+}
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum IncrementalVerifierError {
+    #[error("The proof provided to the verifier does not have a valid length.")]
+    InvalidProofSize,
+    #[error("The proof provided did not belong to the tree.")]
+    HashMismatch,
+    #[error("Verifier has already finished its job.")]
+    VerifierTerminated,
 }
 
 struct IncrementalVerifierTreeNode {
@@ -59,9 +70,12 @@ impl IncrementalVerifier {
     }
 
     /// Verify the new content.
-    pub fn verify(&mut self, block: blake3::ursa::BlockHasher) {
+    pub fn verify(
+        &mut self,
+        block: blake3::ursa::BlockHasher,
+    ) -> Result<(), IncrementalVerifierError> {
         if self.is_done {
-            return;
+            return Err(IncrementalVerifierError::VerifierTerminated);
         }
 
         // 1. Hash the content using a block hasher with the current index.
@@ -69,7 +83,9 @@ impl IncrementalVerifier {
         // 3. Move to the next node.
 
         let hash = block.finalize(self.is_root());
-        assert_eq!(&hash, self.current_hash());
+        if &hash != self.current_hash() {
+            return Err(IncrementalVerifierError::HashMismatch);
+        }
 
         // If we're in the root node (when the data is one block or less), we
         // should not move to the next.
@@ -86,6 +102,8 @@ impl IncrementalVerifier {
                 self.finish();
             }
         }
+
+        Ok(())
     }
 
     /// Go to the next element in the tree.
@@ -155,12 +173,13 @@ impl IncrementalVerifier {
 
     /// Feed some new proof to the verifier which it can use to expand its internal
     /// blake3 tree.
-    pub fn feed_proof(&mut self, proof: &[u8]) {
-        // TODO(qti3e): Soft fail.
-        assert!(is_valid_proof_len(proof.len()));
+    pub fn feed_proof(&mut self, proof: &[u8]) -> Result<(), IncrementalVerifierError> {
+        if !is_valid_proof_len(proof.len()) {
+            return Err(IncrementalVerifierError::InvalidProofSize);
+        }
 
         if proof.is_empty() {
-            return;
+            return Ok(());
         }
 
         for segment in proof.chunks(32 * 8 + 1) {
@@ -172,7 +191,7 @@ impl IncrementalVerifier {
             }
         }
 
-        self.finalize_expansion();
+        self.finalize_expansion()
     }
 
     /// Push a new proof chunk to the stack of pending subtree and merge the
@@ -211,7 +230,7 @@ impl IncrementalVerifier {
     /// # Panics
     ///
     /// If the stack does not have two elements.
-    fn finalize_expansion(&mut self) {
+    fn finalize_expansion(&mut self) -> Result<(), IncrementalVerifierError> {
         assert!(self.stack.is_full());
 
         // SAFETY: This function is only called after validating the proof len and since the
@@ -243,8 +262,15 @@ impl IncrementalVerifier {
         // 2. `self.merge_stack` guarantees that the new node in the stack which we
         //     popped has both children set.
         unsafe {
-            // TODO(qti3e): Make this check into a safe fail.
-            assert_eq!(&(*node).hash, self.current_hash());
+            if &(*node).hash != self.current_hash() {
+                // This is an error and we need to return the error, we should also
+                // remember that `node` is not referenced by anyone anymore so we should
+                // remove it here before we return.
+                debug_assert!(!(*node).left.is_null());
+                debug_assert!(!(*node).right.is_null());
+                drop(Box::from_raw(node));
+                return Err(IncrementalVerifierError::HashMismatch);
+            }
 
             // Set the left and right children of the current cursor.
             (*self.cursor).left = (*node).left;
@@ -296,6 +322,8 @@ impl IncrementalVerifier {
             // our guarantee about the cursor not having children is preserved.
             self.move_to_leftmost();
         }
+
+        Ok(())
     }
 
     /// Returns true if the current cursor is pointing to the root of the tree.
@@ -1040,12 +1068,12 @@ mod tests {
         for i in 0..4 {
             let proof = ProofBuf::new(&output.tree, i);
             let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), i);
-            verifier.feed_proof(proof.as_slice());
+            verifier.feed_proof(proof.as_slice()).unwrap();
 
             let mut block = blake3::ursa::BlockHasher::new();
             block.set_block(i);
             block.update(&[i as u8; 256 * 1024]);
-            verifier.verify(block);
+            verifier.verify(block).unwrap();
 
             // for even blocks we should be able to also verify the next block without
             // the need to feed new proof.
@@ -1053,7 +1081,7 @@ mod tests {
                 let mut block = blake3::ursa::BlockHasher::new();
                 block.set_block(i + 1);
                 block.update(&[i as u8 + 1; 256 * 1024]);
-                verifier.verify(block);
+                verifier.verify(block).unwrap();
             }
         }
     }
@@ -1068,12 +1096,12 @@ mod tests {
         assert_eq!(proof.len(), 0);
 
         let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
 
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(0);
         block.update(&[17; 64]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
     }
 
     #[test]
@@ -1085,21 +1113,21 @@ mod tests {
         let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 0);
 
         let proof = ProofBuf::new(&output.tree, 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(0);
         block.update(&[0; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 1);
         assert_eq!(verifier.current_hash(), &output.tree[1]);
 
         let proof = ProofBuf::resume(&output.tree, 1);
         assert_eq!(proof.len(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 2);
 
         // now the cursor should have moved to 5.
@@ -1108,23 +1136,23 @@ mod tests {
         // 0    1   [3  4] <- pruned
         assert_eq!(verifier.current_hash(), &output.tree[5]);
         let proof = ProofBuf::resume(&output.tree, 2);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         assert_eq!(verifier.current_hash(), &output.tree[3]);
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 3);
         assert_eq!(verifier.current_hash(), &output.tree[4]);
 
         let proof = ProofBuf::resume(&output.tree, 3);
         assert_eq!(proof.len(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
 
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(3);
         block.update(&[3; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 4);
         assert_eq!(verifier.is_done, true);
         assert_eq!(verifier.is_root(), true);
@@ -1138,32 +1166,32 @@ mod tests {
         let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 0);
 
         let proof = ProofBuf::new(&output.tree, 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(0);
         block.update(&[0; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 1);
         assert_eq!(verifier.current_hash(), &output.tree[1]);
 
         let proof = ProofBuf::resume(&output.tree, 1);
         assert_eq!(proof.len(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 2);
 
         assert_eq!(verifier.current_hash(), &output.tree[3]);
         let proof = ProofBuf::resume(&output.tree, 2);
         assert_eq!(proof.len(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         assert_eq!(verifier.current_hash(), &output.tree[3]);
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 3);
         assert_eq!(verifier.is_root(), true);
         assert_eq!(verifier.is_done(), true);
@@ -1178,32 +1206,32 @@ mod tests {
         let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 1);
 
         let proof = ProofBuf::new(&output.tree, 1);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 2);
 
         assert_eq!(verifier.current_hash(), &output.tree[5]);
         let proof = ProofBuf::resume(&output.tree, 2);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
         assert_eq!(verifier.current_hash(), &output.tree[3]);
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 3);
         assert_eq!(verifier.current_hash(), &output.tree[4]);
 
         let proof = ProofBuf::resume(&output.tree, 3);
         assert_eq!(proof.len(), 0);
-        verifier.feed_proof(proof.as_slice());
+        verifier.feed_proof(proof.as_slice()).unwrap();
 
         let mut block = blake3::ursa::BlockHasher::new();
         block.set_block(3);
         block.update(&[3; 256 * 1024]);
-        verifier.verify(block);
+        verifier.verify(block).unwrap();
         assert_eq!(verifier.index, 4);
         assert_eq!(verifier.is_done, true);
         assert_eq!(verifier.is_root(), true);
