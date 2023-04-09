@@ -88,10 +88,9 @@ impl IncrementalVerifier {
 
         for segment in proof.chunks(32 * 8 + 1) {
             let sign = segment[0];
-            let n = (segment.len() - 1) / 32;
 
             for (i, hash) in segment[1..].chunks_exact(32).enumerate() {
-                let should_flip = (1 << (n - i - 1)) & sign != 0;
+                let should_flip = (1 << (8 - i - 1)) & sign != 0;
                 self.push(should_flip, *array_ref![hash, 0, 32]);
             }
         }
@@ -448,7 +447,7 @@ impl ProofEncoder {
     }
 
     /// Finalize the result of the encoder and return the proof buffer.
-    pub fn finalize(self) -> ProofBuf {
+    pub fn finalize(mut self) -> ProofBuf {
         // Here we don't want to consume or get a mutable reference to the internal buffer
         // we have, but also we might be called when the number of passed hashes does not
         // divide 8. In this case we already have the current sign byte as the leading byte,
@@ -469,6 +468,8 @@ impl ProofEncoder {
         // are gonna have down the line which may improve the performance (not sure how much).
         if self.size & 7 > 0 {
             debug_assert!(self.cursor > 0);
+            // shit the final sign byte.
+            self.buffer[self.cursor - 1] <<= 8 - (self.size & 7);
             ProofBuf {
                 buffer: self.buffer,
                 index: self.cursor - 1,
@@ -767,7 +768,7 @@ mod tests {
         // sign byte on the left
         let mut encoder = ProofEncoder::new(1);
         encoder.insert(Direction::Left, &hash);
-        expected.push(1); // sign byte
+        expected.push(0b10000000); // sign byte
         expected.extend_from_slice(&hash);
         assert_eq!(expected.len(), encoder.buffer.len());
         assert_eq!(encoder.finalize(), expected.as_slice());
@@ -797,7 +798,7 @@ mod tests {
         encoder.insert(Direction::Left, &[0; 32]);
         encoder.insert(Direction::Right, &[1; 32]);
         expected.clear();
-        expected.push(1); // sign byte
+        expected.push(0b01000000); // sign byte
         expected.extend_from_slice(&[1; 32]);
         expected.extend_from_slice(&[0; 32]);
         assert_eq!(encoder.finalize(), expected.as_slice());
@@ -806,7 +807,7 @@ mod tests {
         encoder.insert(Direction::Left, &[0; 32]);
         encoder.insert(Direction::Left, &[1; 32]);
         expected.clear();
-        expected.push(0b11); // sign byte
+        expected.push(0b11000000); // sign byte
         expected.extend_from_slice(&[1; 32]);
         expected.extend_from_slice(&[0; 32]);
         assert_eq!(encoder.finalize(), expected.as_slice());
@@ -815,7 +816,7 @@ mod tests {
         encoder.insert(Direction::Right, &[0; 32]);
         encoder.insert(Direction::Left, &[1; 32]);
         expected.clear();
-        expected.push(0b10); // sign byte
+        expected.push(0b10000000); // sign byte
         expected.extend_from_slice(&[1; 32]);
         expected.extend_from_slice(&[0; 32]);
         assert_eq!(expected.len(), encoder.buffer.len());
