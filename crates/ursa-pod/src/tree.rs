@@ -48,11 +48,22 @@ impl IncrementalVerifier {
 
         let hash = block.finalize(self.is_root());
         assert_eq!(&hash, self.current_hash());
-        self.next();
+
+        // If we're in the root node (when the data is one block or less), we
+        // should not move to the next.
+        if !self.is_root() {
+            self.next();
+        }
     }
 
     /// Go to the next element in the tree.
+    ///
+    /// # Assumes
+    ///
+    /// This function assumes that is not called on the `root` node.
     fn next(&mut self) {
+        debug_assert!(!self.is_root(), "Next should not be called on the root.");
+
         // To traverse to the next node in the tree we need to follow the
         // following algorithm:
         //
@@ -65,7 +76,11 @@ impl IncrementalVerifier {
         // and * means as much as we can.
 
         // Step P:
+        // Notice how this loop is always executed at least once.
         for _ in 0..self.index.leading_ones() + 1 {
+            // SAFETY: We can always assume that `self.cursor` is not null, so this
+            // is a safe dereference of self.cursor, and the intention of this step
+            // is to guard against setting the cursor to null in the next instructions.
             unsafe {
                 if (*self.cursor).parent.is_null() {
                     // TODO: Error
@@ -73,18 +88,37 @@ impl IncrementalVerifier {
                 }
             }
 
+            // SAFETY: As mentioned `self.cursor` is never null, and we also already
+            // checked for `self.cursor.parent` to not be null in the previous unsafe
+            // block.
             self.cursor = unsafe { (*self.cursor).parent };
         }
 
-        // TODO(qti3e): Here we can drop the left subtree since we no longer need
-        // it.
+        // SAFETY: Since the incremental verifier only moves to the right, this means
+        // we will never going to access the node on the left side of a node which we
+        // have already visited, so we can free the memory.
+        unsafe {
+            drop(Box::new((*self.cursor).left));
+            (*self.cursor).left = ptr::null_mut();
+        }
 
         // Step R:
+        // SAFETY: Since this function (`next`) is never called when we're in the root
+        // this means both of the left and right children are set during the initialization
+        // of the `IncrementalTreeNode`.
+        //
+        // And we only ever set the `left` children to null, so we can always assume that for
+        // a non-root/non-leaf node, the `right` child is *ALWAYS* set and is not null.
+        //
+        // And since we got to this current cursor by moving up the tree (on the left side)
+        // this simply means that the right side is also set. See the `for` loop a few lines
+        // ago where we always go through the branch at least 1 time before we reach this point
+        // in the code.
         self.cursor = unsafe { (*self.cursor).right };
         debug_assert!(!self.cursor.is_null());
 
         // Step L:
-        self.traverse_to_deepest_left_node();
+        self.move_to_leftmost();
     }
 
     /// Feed some new proof to the verifier which it can use to expand its internal
@@ -109,7 +143,15 @@ impl IncrementalVerifier {
         self.finalize_expansion();
     }
 
+    /// Push a new proof chunk to the stack of pending subtree and merge the
+    /// two previous pushed values if they are present.
+    ///
+    /// # Guarantees
+    ///
+    /// This function guarantees that after getting called the value of `self.next_head`
+    /// is no longer null.
     fn push(&mut self, flip: bool, hash: [u8; 32]) {
+        // Merge the two previous subtree as non-root hashes.
         if self.stack.is_full() {
             self.merge_stack(false);
         }
@@ -134,23 +176,40 @@ impl IncrementalVerifier {
         }
     }
 
+    /// # Panics
+    ///
+    /// If the stack does not have two elements.
     fn finalize_expansion(&mut self) {
         assert!(self.stack.is_full());
 
+        // SAFETY: This function is only called after validating the proof len and since the
+        // smallest valid proof (that goes through without early return) has two hashes, it
+        // is guranteed that the stack has at least two elements so this call to `merge_stack`
+        // will not panic.
         self.merge_stack(self.is_root());
         debug_assert_eq!(self.stack.len(), 1);
 
+        // SAFETY: `merge_stack` guarantees the stack has exactly one item.
         let node = self.stack.pop().unwrap();
+        debug_assert!(!node.is_null());
 
+        // SAFETY: This block only contains debug assertions.
         unsafe {
             // the cursor *must* not have children.
             debug_assert!((*self.cursor).left.is_null());
             debug_assert!((*self.cursor).right.is_null());
             // the new parent node *must* have children.
+            // This will always be true because a valid proof has at least two
+            // hashes, which means it will be merged into one node that has both
+            // a left and right child set.
             debug_assert!(!(*node).left.is_null());
             debug_assert!(!(*node).right.is_null());
         }
 
+        // SAFETY:
+        // 1. Dereferencing the `self.cursor` is safe since we don't set it to null.
+        // 2. `self.merge_stack` guarantees that the new node in the stack which we
+        //     popped has both children set.
         unsafe {
             // TODO(qti3e): Make this check into a safe fail.
             assert_eq!(&(*node).hash, self.current_hash());
@@ -158,16 +217,32 @@ impl IncrementalVerifier {
             // Set the left and right children of the current cursor.
             (*self.cursor).left = (*node).left;
             (*self.cursor).right = (*node).right;
+        }
+
+        // SAFETY: node.left and node.right are always set at this point and self.cursor is
+        // also never null.
+        unsafe {
             // Update the parent of left and right to link to the cursor
             // and not the new parent node.
             (*(*node).left).parent = self.cursor;
             (*(*node).right).parent = self.cursor;
+        }
 
+        // SAFETY: At this point of the code `self.cursor.left` and `self.cursor.right` are
+        // set to the `node.left` and `node.right` so by setting them to null here, we are
+        // not losing track of those pointers.
+        unsafe {
             // Remove the left and right node of the new node so we can
             // drop it without dropping the children.
             (*node).left = ptr::null_mut();
             (*node).right = ptr::null_mut();
+        }
 
+        // SAFETY: We no longer need this node, and since it was popped from the stack it
+        // is not referenced anywhere else, so we can free that memory, furthermore the
+        // left and right children on the node are set to null at this point so dropping
+        // the node will not drop those nodes.
+        unsafe {
             debug_assert!((*node).left.is_null());
             debug_assert!((*node).right.is_null());
             drop(Box::from_raw(node));
@@ -178,30 +253,44 @@ impl IncrementalVerifier {
         // (in case it is not zero) and instead try to get to that node.
         if self.is_root() && self.index != 0 {
             debug_assert!(!self.next_head.is_null());
+            // SAFETY: For any non-empty proof the `push` function is at least called once,
+            // and it is guranteed that self.next_head is set to non-null pointer after calling
+            // the `push` and since we are here in the code it means the stack was full which
+            // translates into `push` function being at least called once.
             self.cursor = self.next_head;
             self.next_head = ptr::null_mut();
         } else {
             // Traverse the current cursor into the deepest newly added left node so that
             // our guarantee about the cursor not having children is preserved.
-            self.traverse_to_deepest_left_node();
+            self.move_to_leftmost();
         }
     }
 
+    /// Returns true if the current cursor is pointing to the root of the tree.
     #[inline(always)]
     fn is_root(&self) -> bool {
         debug_assert!(!self.cursor.is_null(), "cursor is null");
+        // SAFETY: Dereferencing cursor is safe since we never set it a null value.
         unsafe { (*self.cursor).parent.is_null() }
     }
 
+    /// Returns the hash of the current node in the tree.
     #[inline(always)]
     fn current_hash(&self) -> &[u8; 32] {
         debug_assert!(!self.cursor.is_null(), "cursor is null");
+        // SAFETY: Dereferencing cursor is safe since we never set it a null value.
         unsafe { &(*self.cursor).hash }
     }
 
+    /// Moves the cursor to the leftmost node under the cursor.
     #[inline(always)]
-    fn traverse_to_deepest_left_node(&mut self) {
+    fn move_to_leftmost(&mut self) {
         debug_assert!(!self.cursor.is_null(), "cursor is null");
+        // SAFETY: We can always assume dereferencing the cursor is safe since
+        // we guarantee never setting it to null.
+        //
+        // And even here we change the cursor to a new value, after we're checking
+        // it's not null.
         unsafe {
             while !(*self.cursor).left.is_null() {
                 self.cursor = (*self.cursor).left;
@@ -523,7 +612,7 @@ impl TreeWalker {
     /// Construct a new [`TreeWalker`] to walk a tree of `tree_len` items (in the array
     /// representation), looking for the provided `target`-th leaf.
     pub fn new(target: usize, tree_len: usize) -> Self {
-        if tree_len < 1 {
+        if tree_len <= 1 {
             return Self::empty();
         }
 
@@ -691,12 +780,15 @@ fn previous_pow_of_two(n: usize) -> usize {
     n.next_power_of_two() / 2
 }
 
+/// Validates that the provided number of bytes is a valid number of bytes for a proof
+/// buffer. A valid proof is either
 #[inline(always)]
 fn is_valid_proof_len(n: usize) -> bool {
     const SEG_SIZE: usize = 32 * 8 + 1;
     let sign_bytes = (n + SEG_SIZE - 1) / SEG_SIZE;
     let hash_bytes = n - sign_bytes;
-    hash_bytes & 31 == 0 && n != 1 && n <= 32 * 47 + 6
+    dbg!(hash_bytes);
+    hash_bytes & 31 == 0 && n <= 32 * 47 + 6 && ((hash_bytes / 32) >= 2 || n == 0)
 }
 
 #[cfg(test)]
@@ -736,7 +828,7 @@ mod tests {
 
     #[test]
     fn tree_walker() {
-        for size in 1..100 {
+        for size in 2..100 {
             let tree = make_mock_tree(size);
 
             for start in 0..size {
@@ -773,6 +865,18 @@ mod tests {
                 assert_eq!(tree[tree.len() - 1], current);
             }
         }
+    }
+
+    #[test]
+    fn tree_walker_one_block() {
+        let walk = TreeWalker::new(0, 1).collect::<Vec<_>>();
+        assert_eq!(walk.len(), 0);
+    }
+
+    #[test]
+    fn tree_walker_out_of_bound() {
+        let walk = TreeWalker::new(2, 3).collect::<Vec<_>>();
+        assert_eq!(walk.len(), 0);
     }
 
     #[test]
@@ -853,7 +957,9 @@ mod tests {
         assert_eq!(is_valid_proof_len(1), false);
         assert_eq!(is_valid_proof_len(2), false);
         assert_eq!(is_valid_proof_len(32), false);
-        assert_eq!(is_valid_proof_len(33), true);
+        // [sign byte + 1 hash] -> not valid proof
+        // since it does not expand anything.
+        assert_eq!(is_valid_proof_len(33), false);
         assert_eq!(is_valid_proof_len(40), false);
         assert_eq!(is_valid_proof_len(64), false);
         assert_eq!(is_valid_proof_len(65), true);
@@ -864,7 +970,12 @@ mod tests {
 
             for partial_seg in 1..8 {
                 let bytes = bytes + 1 + partial_seg * 32;
-                assert_eq!(is_valid_proof_len(bytes), true, "failed for len={bytes}");
+                let is_valid = bytes > 64;
+                assert_eq!(
+                    is_valid_proof_len(bytes),
+                    is_valid,
+                    "failed for len={bytes}"
+                );
                 assert_eq!(
                     is_valid_proof_len(bytes - 1),
                     false,
@@ -906,5 +1017,23 @@ mod tests {
                 verifier.verify(block);
             }
         }
+    }
+
+    #[test]
+    fn incremental_verifier_small_data() {
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        tree_builder.update(&[17; 64]);
+        let output = tree_builder.finalize();
+
+        let proof = ProofBuf::new(&output.tree, 0);
+        assert_eq!(proof.len(), 0);
+
+        let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 0);
+        verifier.feed_proof(proof.as_slice());
+
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(0);
+        block.update(&[17; 64]);
+        verifier.verify(block);
     }
 }
