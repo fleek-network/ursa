@@ -1168,4 +1168,44 @@ mod tests {
         assert_eq!(verifier.is_root(), true);
         assert_eq!(verifier.is_done(), true);
     }
+
+    #[test]
+    fn incremental_verifier_range_req() {
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..4).for_each(|i| tree_builder.update(&[i; 256 * 1024]));
+        let output = tree_builder.finalize();
+
+        let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 1);
+
+        let proof = ProofBuf::new(&output.tree, 1);
+        verifier.feed_proof(proof.as_slice());
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(1);
+        block.update(&[1; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 2);
+
+        assert_eq!(verifier.current_hash(), &output.tree[5]);
+        let proof = ProofBuf::resume(&output.tree, 2);
+        verifier.feed_proof(proof.as_slice());
+        assert_eq!(verifier.current_hash(), &output.tree[3]);
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(2);
+        block.update(&[2; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 3);
+        assert_eq!(verifier.current_hash(), &output.tree[4]);
+
+        let proof = ProofBuf::resume(&output.tree, 3);
+        assert_eq!(proof.len(), 0);
+        verifier.feed_proof(proof.as_slice());
+
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(3);
+        block.update(&[3; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 4);
+        assert_eq!(verifier.is_done, true);
+        assert_eq!(verifier.is_root(), true);
+    }
 }
