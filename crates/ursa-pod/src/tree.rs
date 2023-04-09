@@ -11,6 +11,7 @@ pub struct IncrementalVerifier {
     index: usize,
     stack: ArrayVec<*mut IncrementalTreeNode, 2>,
     next_head: *mut IncrementalTreeNode,
+    done: bool,
 }
 
 struct IncrementalTreeNode {
@@ -37,11 +38,21 @@ impl IncrementalVerifier {
             index,
             stack: ArrayVec::new(),
             next_head: ptr::null_mut(),
+            done: false,
         }
+    }
+
+    /// Returns true if the stream is complete.
+    pub fn is_done(&self) -> bool {
+        self.done
     }
 
     /// Verify the new content.
     pub fn verify(&mut self, block: blake3::ursa::BlockHasher) {
+        if self.done {
+            return;
+        }
+
         // 1. Hash the content using a block hasher with the current index.
         // 2. Compare to the hash we have under the cursor.
         // 3. Move to the next node.
@@ -52,7 +63,9 @@ impl IncrementalVerifier {
         // If we're in the root node (when the data is one block or less), we
         // should not move to the next.
         if !self.is_root() {
-            self.next();
+            self.move_to_next();
+            self.index += 1;
+            debug_assert!(!self.cursor.is_null());
         }
     }
 
@@ -61,14 +74,14 @@ impl IncrementalVerifier {
     /// # Assumes
     ///
     /// This function assumes that is not called on the `root` node.
-    fn next(&mut self) {
+    fn move_to_next(&mut self) {
         debug_assert!(!self.is_root(), "Next should not be called on the root.");
 
         // To traverse to the next node in the tree we need to follow the
         // following algorithm:
         //
         // - assume we're currently at node `i`.
-        // - `(leading_ones(i) + 1)P . 1R . *L`
+        // - `(trailing_ones(i) + 1)P . 1R . *L`
         // P: Go to parent node
         // R: Go to the right node
         // L: Go to the left node
@@ -77,14 +90,14 @@ impl IncrementalVerifier {
 
         // Step P:
         // Notice how this loop is always executed at least once.
-        for _ in 0..self.index.leading_ones() + 1 {
+        for _ in 0..self.index.trailing_ones() + 1 {
             // SAFETY: We can always assume that `self.cursor` is not null, so this
             // is a safe dereference of self.cursor, and the intention of this step
             // is to guard against setting the cursor to null in the next instructions.
             unsafe {
                 if (*self.cursor).parent.is_null() {
-                    // TODO: Error
-                    panic!("invalid proof");
+                    self.done = true;
+                    return;
                 }
             }
 
@@ -787,7 +800,6 @@ fn is_valid_proof_len(n: usize) -> bool {
     const SEG_SIZE: usize = 32 * 8 + 1;
     let sign_bytes = (n + SEG_SIZE - 1) / SEG_SIZE;
     let hash_bytes = n - sign_bytes;
-    dbg!(hash_bytes);
     hash_bytes & 31 == 0 && n <= 32 * 47 + 6 && ((hash_bytes / 32) >= 2 || n == 0)
 }
 
@@ -1035,5 +1047,61 @@ mod tests {
         block.set_block(0);
         block.update(&[17; 64]);
         verifier.verify(block);
+    }
+
+    #[test]
+    fn incremental_verifier_resume_simple() {
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        for i in 0..4 {
+            tree_builder.update(&[i; 256 * 1024]);
+        }
+        let output = tree_builder.finalize();
+
+        let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 0);
+
+        let proof = ProofBuf::new(&output.tree, 0);
+        verifier.feed_proof(proof.as_slice());
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(0);
+        block.update(&[0; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 1);
+        assert_eq!(verifier.current_hash(), &output.tree[1]);
+
+        let proof = ProofBuf::resume(&output.tree, 1);
+        assert_eq!(proof.len(), 0);
+        verifier.feed_proof(proof.as_slice());
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(1);
+        block.update(&[1; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 2);
+
+        // now the cursor should have moved to 5.
+        //         6
+        //    2        5
+        // 0    1   [3  4] <- pruned
+        assert_eq!(verifier.current_hash(), &output.tree[5]);
+        let proof = ProofBuf::resume(&output.tree, 2);
+        verifier.feed_proof(proof.as_slice());
+        assert_eq!(verifier.current_hash(), &output.tree[3]);
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(2);
+        block.update(&[2; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 3);
+        assert_eq!(verifier.current_hash(), &output.tree[4]);
+
+        let proof = ProofBuf::resume(&output.tree, 3);
+        assert_eq!(proof.len(), 0);
+        verifier.feed_proof(proof.as_slice());
+
+        let mut block = blake3::ursa::BlockHasher::new();
+        block.set_block(3);
+        block.update(&[3; 256 * 1024]);
+        verifier.verify(block);
+        assert_eq!(verifier.index, 4);
+        assert_eq!(verifier.done, true);
+        assert_eq!(verifier.is_root(), true);
     }
 }
