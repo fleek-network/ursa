@@ -23,7 +23,7 @@ struct IncrementalTreeNode {
 impl IncrementalVerifier {
     /// Create a new incremental verifier that verifies an stream of proofs and
     /// content against the provided root hash.
-    pub fn new(root_hash: [u8; 32]) -> Self {
+    pub fn new(root_hash: [u8; 32], index: usize) -> Self {
         let node = Box::new(IncrementalTreeNode {
             parent: ptr::null_mut(),
             left: ptr::null_mut(),
@@ -34,7 +34,7 @@ impl IncrementalVerifier {
         Self {
             iv: blake3::ursa::IV::new(),
             cursor: Box::into_raw(node),
-            index: 0,
+            index,
             stack: ArrayVec::new(),
             next_head: ptr::null_mut(),
         }
@@ -45,6 +45,10 @@ impl IncrementalVerifier {
         // 1. Hash the content using a block hasher with the current index.
         // 2. Compare to the hash we have under the cursor.
         // 3. Move to the next node.
+
+        let hash = block.finalize(self.is_root());
+        assert_eq!(&hash, self.current_hash());
+        self.next();
     }
 
     /// Go to the next element in the tree.
@@ -62,7 +66,13 @@ impl IncrementalVerifier {
 
         // Step P:
         for _ in 0..self.index.leading_ones() + 1 {
-            // TODO(qti3e): Make sure self.current.parent is not null.
+            unsafe {
+                if (*self.cursor).parent.is_null() {
+                    // TODO: Error
+                    panic!("invalid proof");
+                }
+            }
+
             self.cursor = unsafe { (*self.cursor).parent };
         }
 
@@ -71,6 +81,7 @@ impl IncrementalVerifier {
 
         // Step R:
         self.cursor = unsafe { (*self.cursor).right };
+        debug_assert!(!self.cursor.is_null());
 
         // Step L:
         self.traverse_to_deepest_left_node();
@@ -178,17 +189,19 @@ impl IncrementalVerifier {
 
     #[inline(always)]
     fn is_root(&self) -> bool {
-        debug_assert!(!self.cursor.is_null());
+        debug_assert!(!self.cursor.is_null(), "cursor is null");
         unsafe { (*self.cursor).parent.is_null() }
     }
 
     #[inline(always)]
     fn current_hash(&self) -> &[u8; 32] {
+        debug_assert!(!self.cursor.is_null(), "cursor is null");
         unsafe { &(*self.cursor).hash }
     }
 
     #[inline(always)]
     fn traverse_to_deepest_left_node(&mut self) {
+        debug_assert!(!self.cursor.is_null(), "cursor is null");
         unsafe {
             while !(*self.cursor).left.is_null() {
                 self.cursor = (*self.cursor).left;
@@ -305,10 +318,7 @@ pub struct ProofBuf {
 }
 
 impl ProofBuf {
-    /// Construct a new proof for the given block index from the provided
-    /// tree.
-    pub fn new(tree: &[[u8; 32]], block: usize) -> Self {
-        let walker = TreeWalker::new(block, tree.len());
+    fn new_internal(tree: &[[u8; 32]], walker: TreeWalker) -> Self {
         let size = walker.size_hint().0;
         let mut encoder = ProofEncoder::new(size);
         for (direction, index) in walker {
@@ -318,11 +328,25 @@ impl ProofBuf {
         encoder.finalize()
     }
 
+    /// Construct a new proof for the given block index from the provided
+    /// tree.
+    pub fn new(tree: &[[u8; 32]], block: usize) -> Self {
+        Self::new_internal(tree, TreeWalker::new(block, tree.len()))
+    }
+
+    /// Construct proof for the given block number assuming that previous
+    /// blocks have already been sent.
+    pub fn resume(tree: &[[u8; 32]], block: usize) -> Self {
+        Self::new_internal(tree, TreeWalker::resume(block, tree.len()))
+    }
+
+    /// Return the proof as a slice.
     #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
         &self.buffer[self.index..]
     }
 
+    /// Return the length of the proof.
     #[inline]
     pub fn len(&self) -> usize {
         self.buffer.len() - self.index
@@ -587,7 +611,7 @@ impl TreeWalker {
 pub enum Direction {
     /// The element is the current root of the tree, it's neither on the
     /// left or right side.
-    Root,
+    Target,
     /// The element is on the left side of the tree.
     Left,
     /// The element is on the right side of the tree.
@@ -608,7 +632,7 @@ impl Iterator for TreeWalker {
 
         if self.current == self.target {
             self.subtree_size = 0;
-            return Some((Direction::Root, self.current));
+            return Some((Direction::Target, self.current));
         }
 
         // The left subtree in a blake3 tree is always guranteed to contain a power of two
@@ -719,7 +743,7 @@ mod tests {
                 let mut walk = TreeWalker::new(start as usize, tree.len()).collect::<Vec<_>>();
                 walk.reverse();
 
-                assert_eq!(walk[0].0, Direction::Root);
+                assert_eq!(walk[0].0, Direction::Target);
                 assert_eq!(tree[walk[0].1], (1 << start));
 
                 let mut current = tree[walk[0].1];
@@ -734,7 +758,7 @@ mod tests {
                     );
 
                     match direction {
-                        Direction::Root => panic!("Root should only appear at the start."),
+                        Direction::Target => panic!("Target should only appear at the start."),
                         Direction::Left => {
                             assert_eq!(((current >> 1) & node).count_ones(), 1);
                             current |= node;
@@ -856,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn incremental_tree_basic() {
+    fn incremental_verifier_basic() {
         let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
         for i in 0..4 {
             tree_builder.update(&[i; 256 * 1024]);
@@ -865,8 +889,22 @@ mod tests {
 
         for i in 0..4 {
             let proof = ProofBuf::new(&output.tree, i);
-            let mut inc_tree = IncrementalVerifier::new(*output.hash.as_bytes());
-            inc_tree.feed_proof(proof.as_slice());
+            let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), i);
+            verifier.feed_proof(proof.as_slice());
+
+            let mut block = blake3::ursa::BlockHasher::new();
+            block.set_block(i);
+            block.update(&[i as u8; 256 * 1024]);
+            verifier.verify(block);
+
+            // for even blocks we should be able to also verify the next block without
+            // the need to feed new proof.
+            if i % 2 == 0 {
+                let mut block = blake3::ursa::BlockHasher::new();
+                block.set_block(i + 1);
+                block.update(&[i as u8 + 1; 256 * 1024]);
+                verifier.verify(block);
+            }
         }
     }
 }
