@@ -6,6 +6,7 @@ use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 /// An incremental verifier that can consume a stream of proofs and content
 /// and verify the integrity of the content using a blake3 root hash.
 pub struct IncrementalVerifier {
+    iv: blake3::ursa::IV,
     cursor: *mut IncrementalTreeNode,
     index: usize,
     stack: ArrayVec<*mut IncrementalTreeNode, 2>,
@@ -31,6 +32,7 @@ impl IncrementalVerifier {
         });
 
         Self {
+            iv: blake3::ursa::IV::new(),
             cursor: Box::into_raw(node),
             index: 0,
             stack: ArrayVec::new(),
@@ -38,8 +40,8 @@ impl IncrementalVerifier {
         }
     }
 
-    /// Verify a new
-    pub fn verify(&mut self, input: &[u8]) {
+    /// Verify the new content.
+    pub fn verify(&mut self, block: blake3::ursa::BlockHasher) {
         // 1. Hash the content using a block hasher with the current index.
         // 2. Compare to the hash we have under the cursor.
         // 3. Move to the next node.
@@ -219,7 +221,7 @@ impl IncrementalVerifier {
         // and we can guarantee that these are not null;
         let (left_cv, right_cv) = unsafe { (&(*left).hash, &(*right).hash) };
 
-        let parent_hash = blake3::ursa::merge(left_cv, right_cv, is_root);
+        let parent_hash = self.iv.merge(left_cv, right_cv, is_root);
         let parent = Box::into_raw(Box::new(IncrementalTreeNode {
             parent: ptr::null_mut(),
             left,
@@ -496,7 +498,11 @@ impl TreeWalker {
     /// Construct a new [`TreeWalker`] to walk a tree of `tree_len` items (in the array
     /// representation), looking for the provided `target`-th leaf.
     pub fn new(target: usize, tree_len: usize) -> Self {
-        let mut walker = Self {
+        if tree_len < 1 {
+            return Self::empty();
+        }
+
+        let walker = Self {
             // Compute the index of the n-th leaf in the array representation of the
             // tree.
             // see: https://oeis.org/A005187
@@ -512,12 +518,60 @@ impl TreeWalker {
         };
 
         if walker.target > walker.current {
-            // If we know we're already out of bound, change the subtree_size to
-            // zero so that the size_hint can also return zero for the upper bound.
-            walker.subtree_size = 0;
+            return Self::empty();
         }
 
         walker
+    }
+
+    /// Construct a new [`TreeWalker`] to walk the tree assuming that a previous walk
+    /// to the previous block has been made, and does not visit the nodes that the previous
+    /// walker has visited.
+    ///
+    /// # Panics
+    ///
+    /// If target is zero. It doesn't make sense to call this function with target=zero since
+    /// we don't have a -1 block that is already visited.
+    pub fn resume(target: usize, tree_len: usize) -> Self {
+        assert_ne!(target, 0, "Block zero has no previous blocks.");
+
+        // Compute the index of the target in the tree representation.
+        let target_index = target * 2 - target.count_ones() as usize;
+        // If the target is not in this tree (out of bound) or the tree size is not
+        // large enough for a resume walk return the empty iterator.
+        if target_index >= tree_len || tree_len < 3 {
+            return Self::empty();
+        }
+
+        let distance_to_ancestor = target.trailing_zeros();
+        let mut ancestor = target_index + ((1 << (distance_to_ancestor + 1)) - 2);
+
+        let subtree_size = if ancestor >= tree_len - 2 {
+            ancestor = tree_len - 2;
+            let root_subtree_size = (tree_len + 2) / 2;
+            let left_subtree_size = previous_pow_of_two(root_subtree_size);
+            let right_subtree_size = root_subtree_size - left_subtree_size;
+            right_subtree_size
+        } else if distance_to_ancestor == 0 {
+            0
+        } else {
+            1 << distance_to_ancestor
+        };
+
+        Self {
+            target: target_index,
+            current: ancestor,
+            subtree_size,
+        }
+    }
+
+    #[inline(always)]
+    const fn empty() -> Self {
+        Self {
+            target: 0,
+            current: 0,
+            subtree_size: 0,
+        }
     }
 
     /// Return the index of the target element in the array representation of the
@@ -588,6 +642,11 @@ impl Iterator for TreeWalker {
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
+        // If we're done iterating return 0.
+        if self.subtree_size == 0 {
+            return (0, Some(0));
+        }
+
         // Return the upper bound as the result of the size estimation, the actual lower bound
         // can be computed more accurately but we don't really care about the accuracy of the
         // size estimate and the upper bound should be small enough for most use cases we have.
@@ -619,12 +678,75 @@ fn is_valid_proof_len(n: usize) -> bool {
 mod tests {
     use super::*;
 
+    /// Create a mock tree that has n leaf nodes, each leaf node `i` starting
+    /// from 1 has their `i`-th bit set to 1, and merging two nodes is done
+    /// via `|` operation.
+    fn make_mock_tree(n: u8) -> Vec<u128> {
+        let n = n as usize;
+        assert!(n > 0 && n <= 128);
+        let mut tree = Vec::with_capacity(n * 2 - 1);
+        let mut stack = Vec::with_capacity(8);
+        for counter in 0..n {
+            let mut node = 1u128 << counter;
+            let mut counter = counter;
+            while counter & 1 == 1 {
+                let prev = stack.pop().unwrap();
+                tree.push(node);
+                node = node | prev;
+                counter >>= 1;
+            }
+            stack.push(node);
+            tree.push(node);
+        }
+
+        while stack.len() >= 2 {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            tree.push(a | b);
+            stack.push(a | b);
+        }
+
+        tree
+    }
+
     #[test]
     fn tree_walker() {
-        let mut walker = TreeWalker::new(2, 7);
-        println!("{}", walker.current);
-        for item in walker {
-            println!("{:?}", item);
+        for size in 1..100 {
+            let tree = make_mock_tree(size);
+
+            for start in 0..size {
+                let mut walk = TreeWalker::new(start as usize, tree.len()).collect::<Vec<_>>();
+                walk.reverse();
+
+                assert_eq!(walk[0].0, Direction::Root);
+                assert_eq!(tree[walk[0].1], (1 << start));
+
+                let mut current = tree[walk[0].1];
+
+                for (direction, i) in &walk[1..] {
+                    let node = tree[*i];
+
+                    assert_eq!(
+                        node & current,
+                        0,
+                        "the node should not have common bits with the current node."
+                    );
+
+                    match direction {
+                        Direction::Root => panic!("Root should only appear at the start."),
+                        Direction::Left => {
+                            assert_eq!(((current >> 1) & node).count_ones(), 1);
+                            current |= node;
+                        }
+                        Direction::Right => {
+                            assert_eq!(((current << 1) & node).count_ones(), 1);
+                            current |= node;
+                        }
+                    }
+                }
+
+                assert_eq!(tree[tree.len() - 1], current);
+            }
         }
     }
 
@@ -734,7 +856,7 @@ mod tests {
 
     #[test]
     fn incremental_tree_basic() {
-        let mut tree_builder = blake3::ursa::HasherWithTree::new();
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
         for i in 0..4 {
             tree_builder.update(&[i; 256 * 1024]);
         }
