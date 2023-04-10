@@ -1,38 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "../registry/NodeRegistry.sol";
-import "../epoch/EpochManager.sol";
-
+/**
+ * @title Fleek Reward Aggreagator
+ * @dev This contract aggregates data served by each node in an epoch
+ */
 contract RewardsAggregator {
-    NodeRegistry public nodeRegistry;
-    EpochManager public epochManager;
-
-    // Todo: this will change with an added multiplier if we decide to change the epoch time
     uint16 public daysForAveragePotential;
-    string[] public publicKeys;
     bool private initialized;
 
     ///  epoch => Node publicKey => Data served
     mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
+    ///  epoch => Public key list
+    mapping(uint256 => string []) public publicKeys;
+    ///  epoch => public key => key added
+    mapping(uint256 => mapping(string => bool)) public publicKeyAdded;
 
-    function initialize(address _epochManager, address _nodeRegistry) external {
+
+    function initialize() external {
         require(!initialized, "contract already initialized");
-        // get whitelist nodes from registry and add epoch 0 into the metrics maaping
-        epochManager = EpochManager(_epochManager);
-        nodeRegistry = NodeRegistry(_nodeRegistry);
 
-        (bool success, bytes memory result) = address(_nodeRegistry).call(abi.encodeWithSignature("getWhitelist()"));
-        require(success, "Failed to call function");
-        publicKeys = abi.decode(result, (string[]));
         initialized = true;
     }
 
     /**
      * @dev get publicKeys array that store whitelisted node
      */
-    function getPublicKeys() public view returns (string[] memory) {
-        return publicKeys;
+    function getPublicKeys(uint256 _epoch) public view returns (string[] memory) {
+        return publicKeys[_epoch];
     }
 
     /**
@@ -42,6 +37,10 @@ contract RewardsAggregator {
      * @param dataServed data served from the pod transaction
      */
     function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external {
+        if (!publicKeyAdded[epoch][publicKey]) {
+            publicKeys[epoch].push(publicKey);
+            publicKeyAdded[epoch][publicKey] = true;
+        }
         DataServedInBytes[epoch][publicKey] += dataServed;
     }
 
@@ -57,22 +56,13 @@ contract RewardsAggregator {
     /**
      * @dev get average data served per day over daysForAveragePotential epochs
      */
-    function getAvgUsageNEpochs() public view returns (uint256) {
-        uint256 _endEpoch = epochManager.epoch();
-        uint256 _startEpoch = _endEpoch - daysForAveragePotential - 1;
+    function getAvgUsageNEpochs(uint256 _epoch) public view returns (uint256) {
+        uint256 _startEpoch = _epoch <= daysForAveragePotential ? 0 : _epoch - daysForAveragePotential;
         uint256 _sum = 0;
-        for (uint256 i = _startEpoch; i < _endEpoch; i++) {
+        for (uint256 i = _startEpoch; i < _epoch; i++) {
             _sum += getDataForEpoch(i);
         }
-        return _sum / daysForAveragePotential;
-    }
-
-    /**
-     * @dev get data served by all nodes in current epoch
-     */
-    function getDataServedCurrentEpoch() public view returns (uint256) {
-        uint256 currentEpoch = epochManager.epoch();
-        return getDataForEpoch(currentEpoch);
+        return _sum / (_epoch - _startEpoch);
     }
 
     /**
@@ -81,8 +71,8 @@ contract RewardsAggregator {
      */
     function getDataForEpoch(uint256 epoch) public view returns (uint256) {
         uint256 sum = 0;
-        for (uint256 i = 0; i < publicKeys.length; i++) {
-            sum += DataServedInBytes[epoch][publicKeys[i]];
+        for (uint256 i = 0; i < publicKeys[epoch].length; i++) {
+            sum += DataServedInBytes[epoch][publicKeys[epoch][i]];
         }
         return sum;
     }

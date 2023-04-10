@@ -8,6 +8,11 @@ import "./RewardsAggregator.sol";
 import "../utils/MathUtils.sol";
 import {SD59x18, sd, intoInt256, intoUint256, UNIT, convert} from "prb/math/SD59x18.sol";
 
+/**
+ * @title Fleek Reward Contract
+ * @dev This contract calculates and distributes the rewards
+ */
+
 contract FleekReward {
     uint256 constant DAYS_IN_YEAR = 365;
     FleekToken private fleekToken;
@@ -61,17 +66,22 @@ contract FleekReward {
         require(!rewardsDistribution[epoch], "rewards already distributed for this epoch");
 
         SD59x18 _uActual = convert(int256(rewardsAggregator.getDataForEpoch(epoch)));
-        SD59x18 _uPotential = convert(int256(rewardsAggregator.getAvgUsageNEpochs()));
+        SD59x18 _uPotential = convert(int256(rewardsAggregator.getAvgUsageNEpochs(epoch)));
 
-        SD59x18 _total_mint = _getMintRate(_uActual, _uPotential);
-        string[] memory publicKeys = rewardsAggregator.getPublicKeys();
+        SD59x18 _totalMint = _getMintRate(_uActual, _uPotential);
+        // todo: variable distribution
+        // 75% goes to edge node
+        SD59x18 _toEdgeNode = _totalMint.mul(sd(0.75e18));
+        string[] memory publicKeys = rewardsAggregator.getPublicKeys(epoch);
 
         for (uint256 i = 0; i < publicKeys.length; i++) {
             uint256 dataServedByNode = rewardsAggregator.getDataServedByNode(publicKeys[i], epoch);
             SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(_uActual);
-            SD59x18 rewardsAmount = servedPercentage.mul(_total_mint);
+            SD59x18 rewardsAmount = servedPercentage.mul(_toEdgeNode);
+            // check if the node with public key is white listed
             (address _to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
             fleekToken.mint(_to, intoUint256(rewardsAmount));
+            emit RewardMinted(_to, intoUint256(rewardsAmount));
         }
         rewardsDistribution[epoch] = true;
     }
