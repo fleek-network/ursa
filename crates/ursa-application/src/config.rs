@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApplicationConfig {
-    ///The address the application is listening on. defaults to "0.0.0.0:8003"
+    /// The address the application is listening on. defaults to "0.0.0.0:8003".
     #[serde(default = "ApplicationConfig::default_domain")]
     pub domain: String,
 }

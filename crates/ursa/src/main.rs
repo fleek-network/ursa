@@ -7,6 +7,7 @@ use scopeguard::defer;
 use std::sync::Arc;
 use std::{env, net::SocketAddr};
 use structopt::StructOpt;
+use tokio::sync::mpsc::channel;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
@@ -48,7 +49,7 @@ async fn run() -> Result<()> {
     // This instance should be cloned and passed down to whoever that needs it and not
     // reconstructed.
     let shutdown_controller = ShutdownController::default();
-    // register the shutdown controller to respect ctrl-c signal.
+    // Register the shutdown controller to respect ctrl-c signal.
     shutdown_controller.install_ctrl_c_handler();
 
     let config = match opts.to_config() {
@@ -72,11 +73,11 @@ async fn run() -> Result<()> {
         application_config,
     } = config;
 
-    // ursa service setup
+    // Ursa service setup.
     let im = match network_config.identity.as_str() {
-        // ephemeral random identity
+        // Ephemeral random identity.
         "random" => IdentityManager::random(),
-        // load or create a new identity
+        // Load or create a new identity.
         _ => IdentityManager::load_or_new(
             network_config.identity.clone(),
             network_config.keystore_path.resolve().to_path_buf(),
@@ -91,7 +92,13 @@ async fn run() -> Result<()> {
     let db = RocksDb::open(db_path, &RocksDbConfig::default())
         .expect("Opening blockstore RocksDB must succeed");
     let store = Arc::new(UrsaStore::new(Arc::clone(&Arc::new(db))));
-    let service = UrsaService::new(keypair.clone(), &network_config, Arc::clone(&store))?;
+    let (event_sender, event_receiver) = channel(4096);
+    let service = UrsaService::new(
+        keypair.clone(),
+        &network_config,
+        Arc::clone(&store),
+        event_sender,
+    )?;
 
     let provider_db = RocksDb::open(
         provider_config.database_path.resolve(),
@@ -107,21 +114,22 @@ async fn run() -> Result<()> {
         provider_config,
         service.command_sender(),
         server_config.addresses.clone(),
+        event_receiver,
     );
     let index_provider_router = index_provider_engine.router();
 
-    // Store the app address before passing to application so we can give to abci_engine
+    // Store the app address before passing to application so we can give to abci_engine.
     let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
     app_address.set_ip("0.0.0.0".parse()?);
 
-    // Start the application server
+    // Start the application server.
     let application_task = task::spawn(async move {
         if let Err(err) = application_start(application_config).await {
             error!("[application_task] - {:?}", err)
         }
     });
 
-    // server setup
+    // Server setup.
     let mempool_address = consensus_config.worker[0].transaction.clone();
     let mempool_port = mempool_address
         .iter()
@@ -134,15 +142,15 @@ async fn run() -> Result<()> {
 
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
 
-    // Create engine so we can grab senders
+    // Create engine so we can grab senders.
     let mut abci_engine = Engine::new(app_address).await;
 
-    // Store the senders from the engine
+    // Store the senders from the engine.
     let tx_abci_queries = abci_engine.get_abci_queries_sender();
     let tx_certificates = abci_engine.get_certificates_sender();
     let reconfigure_notify = abci_engine.get_reconfigure_notify();
 
-    //Spawn engine
+    // Spawn engine.
     let engine_shutdown = shutdown_controller.clone();
     let _abci_engine_task = task::spawn_blocking(|| {
         futures::executor::block_on(async move {
@@ -163,7 +171,7 @@ async fn run() -> Result<()> {
 
     let server = Server::new(interface);
 
-    // Start libp2p service
+    // Start libp2p service.
     let shutdown = shutdown_controller.clone();
     let service_task = task::spawn(async move {
         if let Err(err) = service.start().await {
@@ -175,7 +183,7 @@ async fn run() -> Result<()> {
     // todo(oz): spawn task to track storage/ram/cpu metrics
     let metrics = ursa_metrics::routes::init();
 
-    // Start multiplex server service (rpc, http, and metrics)
+    // Start multiplex server service (rpc, http, and metrics).
     let shutdown = shutdown_controller.clone();
     let rpc_task = task::spawn(async move {
         if let Err(err) = server
@@ -187,7 +195,7 @@ async fn run() -> Result<()> {
         }
     });
 
-    // Start index provider service
+    // Start index provider service.
     let shutdown = shutdown_controller.clone();
     let provider_task = task::spawn(async move {
         if let Err(err) = index_provider_engine.start().await {
@@ -209,10 +217,10 @@ async fn run() -> Result<()> {
         consensus_service.start().await;
     });
 
-    // wait for the shutdown.
+    // Wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
 
-    // Gracefully shutdown node & rpc
+    // Gracefully shutdown node & rpc.
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();

@@ -1,9 +1,6 @@
+use crate::measurements::types::{Bytes, BytesPerSecond, RequestId};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-
-pub type Bytes = u128;
-pub type BytesPerSecond = f64;
-pub type RequestId = String;
 
 #[derive(Clone)]
 pub struct Bandwidth {

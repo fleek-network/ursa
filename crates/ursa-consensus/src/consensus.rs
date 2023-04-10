@@ -32,35 +32,25 @@ use ursa_utils::transactions::{
 // - Restore the latest committee and epoch information from a persistent database.
 // - Restart the narwhal service for each new epoch.
 // - Execution engine with mpsc or a normal channel to deliver the transactions to abci.
-//
-// TBD:
-// - Do we need a catch up process here in this file?
-// - Where will we be doing the communication with execution engine from this file?
-//
-// But where should the config come from?
-
-// Dalton Notes:
-// - Epoch time should be gathered from application layer along with new committee on epoch change
-
-/// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 
 const STORE_NAME: &str = "narwhal-store";
 
+/// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 pub struct Consensus {
-    /// The state of the current Narwhal epoch
+    /// The state of the current Narwhal epoch.
     epoch_state: Mutex<Option<EpochState>>,
     /// The narwhal configuration.
     narwhal_args: NarwhalArgs,
-    /// This should not change ever so should be held in the outer layer
+    /// This should not change ever so should be held in the outer layer.
     parameters: Parameters,
-    /// Narwhal execution state
+    /// Narwhal execution state.
     execution_state: Arc<Execution>,
-    /// Path to the database used by the narwhal implementation
+    /// Path to the database used by the narwhal implementation.
     store_path: PathBuf,
-    /// The address to the worker mempool
+    /// The address to the worker mempool.
     mempool_address: String,
     /// Timestamp of the narwhal certificate that caused an epoch change
-    /// is sent through this channel to notify that epoch chould change
+    /// is sent through this channel to notify that epoch chould change.
     reconfigure_notify: Arc<Notify>,
     /// Called from the shutdown function to notify the start event loop to
     /// exit.
@@ -69,9 +59,9 @@ pub struct Consensus {
     tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
 }
 
-/// This struct contains mutable state only for the current epoch
+/// This struct contains mutable state only for the current epoch.
 struct EpochState {
-    /// The Narwhal service for the current epoch
+    /// The Narwhal service for the current epoch.
     narwhal: NarwhalService,
 }
 
@@ -85,7 +75,6 @@ impl Consensus {
     ) -> Result<Self> {
         let narwhal_args = NarwhalArgs::load(config.clone())?;
 
-        // TODO(dalton): Should the ABCI engine also become ExecutionState? Is there value in keeping them seperated?
         let execution_state = Execution::new(tx_certificates);
 
         let store_path = config.store_path.resolve().into_owned();
@@ -105,11 +94,11 @@ impl Consensus {
     }
 
     async fn start_current_epoch(&self) {
-        // Pull epoch info
-        // TODO(dalton): This shouldnt ever fail but we should just retry if it does
+        // Pull epoch info.
+        // TODO(dalton): This shouldnt ever fail but we should just retry if it does.
         let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
 
-        // If the this node is not on the committee, dont start narwhal start edge node logic
+        // If the this node is not on the committee, dont start narwhal start edge node logic.
         if !committee
             .authorities
             .contains_key(self.narwhal_args.primary_keypair.public())
@@ -118,7 +107,7 @@ impl Consensus {
             return;
         }
 
-        //make or open store specific to current epoch
+        // Make or open store specific to current epoch.
         let mut store_path = self.store_path.clone();
         store_path.set_file_name(format!("{}-{}", STORE_NAME, epoch));
         let store = NodeStorage::reopen(store_path);
@@ -139,13 +128,13 @@ impl Consensus {
         // TODO(Parsa/Dalton): We might want to add a assert requirment that ensures epoch time > now
         // This logic works now as joining in late would have you signal and continute consuming certificates
         // But may be good to put this restriction on this function to design around, So our checkpoint can hold this
-        // assertion true before calling start epoch
+        // assertion true before calling start epoch.
         let until_epoch_ends: u64 = (epoch_end_time as u128)
             .saturating_sub(now)
             .try_into()
             .unwrap();
 
-        // Start the timer to signal when your node thinks its ready to change epochs
+        // Start the timer to signal when your node thinks its ready to change epochs.
         let time_until_epoch_change = Duration::from_millis(until_epoch_ends);
         self.wait_to_signal_epoch_change(time_until_epoch_change)
             .await;
@@ -170,8 +159,9 @@ impl Consensus {
         let mempool_address = self.mempool_address.clone();
         task::spawn(async move {
             time::sleep(time_until_change).await;
-            // We shouldnt panic here lets repeatedly try
+            // We shouldnt panic here lets repeatedly try.
             loop {
+                //TODO(dalton):
                 time::sleep(Duration::from_secs(1)).await;
 
                 let txn = match serde_json::to_vec(&encode_signal_epoch_call(
@@ -232,10 +222,10 @@ impl Consensus {
     }
 }
 
-// Application Query Helpers
+// Application Query Helpers.
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
-        // Build transaction
+        // Build transaction.
         let txn = get_epoch_info_params();
         let query = Query::EthCall(txn);
 
@@ -248,14 +238,14 @@ impl Consensus {
             prove: None,
         };
 
-        // Construct one shot channel to recieve response
+        // Construct one shot channel to recieve response.
         let (tx, rx) = oneshot::channel();
 
-        // Send and wait for response
+        // Send and wait for response.
         self.tx_abci_queries.send((tx, abci_query)).await?;
         let response = rx.await.with_context(|| "Failure querying abci")?;
 
-        // decode response
+        // Decode response.
         let epoch_info = decode_epoch_info_return(response.value);
 
         let epoch = epoch_info.epoch.as_u64();

@@ -16,7 +16,7 @@ pub trait LoadOrCreate: Generate + Sized {
     ) -> anyhow::Result<Self>;
 }
 
-// implement the generate from random logic for KeyPair objects.
+// Implement the generate from random logic for KeyPair objects.
 impl<T: KeyPair> Generate for T {
     #[inline]
     fn generate_random<R: AllowedRng>(rng: &mut R) -> Self {
