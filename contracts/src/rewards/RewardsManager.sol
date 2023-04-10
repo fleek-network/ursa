@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "./FLK.sol";
-import "./Epoch.sol";
-import "./RewardsAgg.sol";
-import "./NodeRegistry.sol";
-import "./utils/MathUtils.sol";
+import "../token/FleekToken.sol";
+import "../registry/NodeRegistry.sol";
+import "../epoch/EpochManager.sol";
+import "./RewardsAggregator.sol";
+import "../utils/MathUtils.sol";
 import {SD59x18, sd, intoInt256, intoUint256, UNIT, convert} from "prb/math/SD59x18.sol";
 
 contract FleekReward {

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "./NodeRegistry.sol";
-import "./Epoch.sol";
+import "../registry/NodeRegistry.sol";
+import "../epoch/EpochManager.sol";
 
 contract RewardsAggregator {
     NodeRegistry public nodeRegistry;
