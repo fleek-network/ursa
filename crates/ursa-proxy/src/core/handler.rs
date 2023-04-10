@@ -3,7 +3,7 @@ use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
     headers::CacheControl,
-    http::{response::Parts, StatusCode, Uri},
+    http::{response::Parts, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
     Extension, Router, TypedHeader,
@@ -13,13 +13,13 @@ use hyper::{
     client::{self, HttpConnector},
     Body,
 };
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 use tokio::{
     io::{duplex, AsyncWriteExt},
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use tracing::{debug, error, info, warn};
 
 type Client = client::Client<HttpConnector, Body>;
@@ -30,6 +30,7 @@ pub fn init_server_app<C: Cache>(
     client: Client,
 ) -> Router {
     let mut user_app = Router::new();
+
     if let Some(path) = &server_config.serve_dir_path {
         let directory = if path.is_absolute() {
             path.strip_prefix("/")
@@ -48,11 +49,28 @@ pub fn init_server_app<C: Cache>(
         let route_path = format!("/{}", directory_str);
         user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
-    user_app
+
+    user_app = user_app
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(server_config))
+        .layer(Extension(server_config.clone()));
+
+    if let Some(headers) = &server_config.add_header {
+        for (header, values) in headers.iter() {
+            for value in values {
+                let value = value.clone();
+                user_app = user_app.layer(SetResponseHeaderLayer::appending(
+                    HeaderName::from_str(header).expect("Header name to be valid"),
+                    move |_: &Response| {
+                        Some(HeaderValue::from_str(&value).expect("Header value to be valid"))
+                    },
+                ));
+            }
+        }
+    }
+
+    user_app
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
@@ -121,10 +139,10 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    let reader = match client.get(uri).await {
+    match client.get(uri).await {
         Ok(resp) => match resp.into_parts() {
             (
-                Parts {
+                parts @ Parts {
                     status: StatusCode::OK,
                     ..
                 },
@@ -154,13 +172,13 @@ pub async fn proxy_pass<C: Cache>(
                     }
                     cache_client.insert(path, bytes);
                 });
-                reader
+                Response::from_parts(
+                    parts,
+                    BoxBody::new(StreamBody::new(ReaderStream::new(reader))),
+                )
             }
-            (parts, body) => {
-                return Response::from_parts(parts, BoxBody::new(StreamBody::new(body)))
-            }
+            (parts, body) => Response::from_parts(parts, BoxBody::new(StreamBody::new(body))),
         },
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-    StreamBody::new(ReaderStream::new(reader)).into_response()
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }

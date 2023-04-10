@@ -38,11 +38,11 @@ clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
 ctrlc = "3.2.4"
 db = { package = "forest_db", git = "https://github.com/ChainSafe/forest", rev = "3e682310482718182cb2495fbaec5e575e5884e5", features = ["rocksdb"] }
-dirs = "4"
+dirs = "5"
 dotenv = "0.15.0"
 ethers = "1.0.2"
 integer-encoding = "3.0.4"
-ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
+ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "21b3579cf19dccf428787304dd75ebcd0fb5adb7" }
 fastmurmur3 = "0.1.2"
 fnv = "1.0.7"
 futures = "0.3.25"
@@ -51,7 +51,7 @@ fvm_ipld_blockstore = "0.1"
 fvm_ipld_car = "0.6"
 fvm_ipld_encoding = "0.3.3"
 geoutils = "0.5"
-graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "b8728c7ad02aa42cc11954192e95875f14fc6380" }
+graphsync = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "21b3579cf19dccf428787304dd75ebcd0fb5adb7" }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-tls = "0.5.0"
 imara-diff = "0.1.5"
@@ -64,6 +64,7 @@ libp2p = { version = "0.50.1", default-features = false }
 libp2p-bitswap = "0.25.0"
 libipld-cbor = "0.14.0"
 libp2p-swarm = "0.42.0"
+lru = "0.10.0"
 maxminddb = "0.23"
 moka = "0.10"
 metrics = "0.20.1"
@@ -110,6 +111,7 @@ workspace-hack = { git = "https://github.com/fleek-network/empty-workspace-hack.
 
 [patch.'crates-io']
 libp2p = { git = "https://github.com/libp2p/rust-libp2p", rev = "d8de86e991ad540e6f69ca417c27f7407198944f" }
+snow = { git = "https://github.com/mcginty/snow", rev = "abf198913935decc5235e1c091571a3e1aebdf6c" }
 
 [profile.release]
 # 2 full, 0 nothing, 1 good enough.
