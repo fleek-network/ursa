@@ -1,0 +1,44 @@
+# You can set several servers.
+[[server]]
+# Sets the IP address and port on which the proxy will accept requests.
+listen_addr = "0.0.0.0:8080"
+# Sets address of the proxied server.
+proxy_pass = "127.0.0.1:4069"
+
+# Optionally, you can set heqders in the response.
+# For examples, the configuratio below will result
+# in the addition of the following set of headers:
+#   * content-type: application/vnd.ipld.raw
+#   * content-type: application/vnd.ipld.car
+#   * content-type: application/octet-stream
+#   * cache-control: public,max-age=31536000,immutable
+# These headers will be appended to the set of headers
+# sent by the proxied server.
+#[server.add_header]
+#content-type = ["application/vnd.ipld.raw", "application/vnd.ipld.car", "application/octet-stream"]
+#cache-control = ["public,max-age=31536000,immutable"]
+
+# Optionally, you can set the maximun size, in bytes,
+# of each entry in the cache. Defaults to 0.
+# max_size_cache_entry = 4096
+
+# Optionally, you can set directory to serve files from.
+#serve_dir_path = "/foo"
+
+# Optionally, you can set up certificates for the server when using HTTPS.
+#[server.tls]
+#cert_path = "path/to/cert"
+#key_path = "path/to/key"
+
+# Optionally, you can set parameters for the cache.
+# These are the defaults.
+#[moka]
+#max_capacity = 200_000_000
+#stream_buf = 1_000_000_000
+#time_to_idle = 300000       # Milliseconds.
+#time_to_live = 300000       # Milliseconds.
+
+# Optionally, you can set the address on
+# which the admin server will accept requests.
+#[admin]
+#addr = "0.0.0.0:8881"  # Default.
