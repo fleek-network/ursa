@@ -59,7 +59,7 @@ impl Stats {
 
         inputs.par_sort();
         let median = if count % 2 != 0 {
-            inputs[floor(count / 2)] as f64
+            inputs[(count + 1) / 2] as f64
         } else {
             let index = count / 2;
             let (v1, v2) = (inputs[index] as f64, inputs[index + 1] as f64);
