@@ -98,7 +98,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
         let mut g = c.benchmark_group(format!("{proto}/{range}"));
         g.sample_size(20);
 
-        #[cfg(not(feature = "bench-hyper"))]
+        #[cfg(all(not(feature = "bench-hyper"), not(feature = "bench-quic")))]
         benchmark_sizes(
             &mut g,
             files,
@@ -114,6 +114,15 @@ fn protocol_benchmarks(c: &mut Criterion) {
             unit,
             http_hyper::client_loop,
             http_hyper::server_loop,
+        );
+
+        #[cfg(feature = "bench-quic")]
+        benchmark_sizes(
+            &mut g,
+            files,
+            unit,
+            quic_ufdp::client_loop,
+            quic_ufdp::server_loop,
         );
     }
 }
@@ -264,6 +273,186 @@ mod http_hyper {
                     Err(e) => panic!("{e:?}"),
                 }
             }
+        }
+    }
+}
+
+#[cfg(feature = "bench-quic")]
+mod quic_ufdp {
+    use futures::future::join_all;
+    use quinn::{Endpoint, ServerConfig};
+    use std::io::Error;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+    use tokio::task;
+    use ursa_pod::{
+        client::UfdpClient,
+        connection::consts::MAX_BLOCK_SIZE,
+        server::{Backend, UfdpHandler},
+        types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
+    };
+
+    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+
+    #[derive(Clone, Copy)]
+    struct DummyBackend {
+        content: &'static [u8],
+    }
+
+    impl Backend for DummyBackend {
+        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+            let s = block as usize * MAX_BLOCK_SIZE;
+            if s < self.content.len() {
+                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
+                Some(&self.content[s..e])
+            } else {
+                None
+            }
+        }
+
+        fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
+            (DECRYPTION_KEY, 0)
+        }
+
+        fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
+            9001
+        }
+
+        fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct SkipServerVerification;
+
+    impl SkipServerVerification {
+        fn new() -> Arc<Self> {
+            Arc::new(Self)
+        }
+    }
+
+    impl rustls::client::ServerCertVerifier for SkipServerVerification {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &rustls::Certificate,
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            _now: std::time::SystemTime,
+        ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+            Ok(rustls::client::ServerCertVerified::assertion())
+        }
+    }
+
+    pub fn server_config() -> rustls::ServerConfig {
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls::PrivateKey(cert.serialize_private_key_der());
+        let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
+        let config = rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert, key)
+            .unwrap();
+        config
+    }
+
+    pub fn client_config() -> rustls::ClientConfig {
+        let config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_custom_certificate_verifier(SkipServerVerification::new())
+            .with_no_client_auth();
+        config
+    }
+
+    /// Simple QUIC server loop that replies with static content.
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<u16>,
+    ) {
+        let server = Endpoint::server(
+            ServerConfig::with_crypto(Arc::new(server_config())),
+            addr.parse().unwrap(),
+        )
+        .unwrap();
+        let port = server.local_addr().unwrap().port();
+
+        tx_started.send(port).unwrap();
+
+        loop {
+            let connection = server.accept().await.unwrap().await.unwrap();
+            let (tx, rx) = connection.accept_bi().await.unwrap();
+            let stream = QuicStream { tx, rx };
+            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            task::spawn(async move {
+                if let Err(e) = handler.serve().await {
+                    println!("server error: {e:?}");
+                }
+            });
+        }
+    }
+
+    /// Simple QUIC client loop that sends a request and loops over the
+    /// block stream dropping the bytes immediately.
+    pub async fn client_loop(addr: String, iterations: usize) {
+        let mut tasks = vec![];
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(client_config())));
+
+        for _ in 0..iterations {
+            let stream = endpoint
+                .connect(addr.parse().unwrap(), "localhost")
+                .unwrap()
+                .await
+                .unwrap();
+            let (tx, rx) = stream.open_bi().await.unwrap();
+            let stream = QuicStream { tx, rx };
+
+            let task = task::spawn(async {
+                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
+        }
+        join_all(tasks).await;
+    }
+
+    struct QuicStream {
+        tx: quinn::SendStream,
+        rx: quinn::RecvStream,
+    }
+
+    impl AsyncRead for QuicStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.rx).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for QuicStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<Result<usize, Error>> {
+            Pin::new(&mut self.tx).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+            Pin::new(&mut self.tx).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+            Pin::new(&mut self.tx).poll_shutdown(cx)
         }
     }
 }
