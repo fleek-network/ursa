@@ -2,3 +2,4 @@
 pub mod epoch_bindings;
 pub mod node_registry_bindings;
 pub mod reputation_score_bindings;
+pub mod fleek_reward_binding;
