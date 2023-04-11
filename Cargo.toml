@@ -40,7 +40,7 @@ ctrlc = "3.2.4"
 db = { package = "forest_db", git = "https://github.com/ChainSafe/forest", rev = "3e682310482718182cb2495fbaec5e575e5884e5", features = ["rocksdb"] }
 dirs = "5"
 dotenv = "0.15.0"
-ethers = "1.0.2"
+ethers = "2.0.0"
 integer-encoding = "3.0.4"
 ipld_traversal = { git = "https://github.com/kckeiks/rs-graphsync.git", rev = "21b3579cf19dccf428787304dd75ebcd0fb5adb7" }
 fastmurmur3 = "0.1.2"

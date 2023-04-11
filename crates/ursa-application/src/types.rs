@@ -74,7 +74,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
             },
             data: tx.data.clone().unwrap_or_default().0,
             chain_id: Some(self.env.cfg.chain_id.try_into().unwrap()),
-            nonce: Some(tx.nonce.unwrap_or_default().as_u64()),
+            nonce: None,
             value: tx.value.unwrap_or_default().into(),
             gas_price: tx.gas_price.unwrap_or_default().into(),
             gas_priority_fee: Some(tx.gas_price.unwrap_or_default().into()),
