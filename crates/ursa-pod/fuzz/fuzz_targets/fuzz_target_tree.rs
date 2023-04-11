@@ -22,7 +22,7 @@ fn block_data(n: usize) -> [u8; 256 * 1024] {
 }
 
 fuzz_target!(|data: FuzzInput| {
-    let size = (data.size % 512) as usize + 1;
+    let size = (data.size & ((1 << 12) - 1)) as usize + 1;
     let start = data.from as usize % size;
 
     let mut tree_builder = blake3::ursa::HashTreeBuilder::new();

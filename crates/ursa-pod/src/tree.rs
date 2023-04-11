@@ -139,10 +139,6 @@ impl IncrementalVerifier {
     }
 
     /// Go to the next element in the tree.
-    ///
-    /// # Assumes
-    ///
-    /// This function assumes that is not called on the `root` node.
     fn move_to_next(&mut self) {
         debug_assert!(!self.cursor.is_null());
 
