@@ -10,15 +10,6 @@ use crate::{
     types::{Blake3Cid, BlsPublicKey},
 };
 
-#[derive(Clone, Copy, Debug)]
-pub enum UfdpResponseState {
-    WaitingForHeader,
-    ReadingProof,
-    ReadingContent,
-    WaitingForDecryptionKey,
-    Done,
-}
-
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     conn: UfdpConnection<S>,
@@ -38,7 +29,7 @@ where
         pubkey: BlsPublicKey,
         lane: Option<u8>,
     ) -> Result<Self, UrsaCodecError> {
-        let mut conn = UfdpConnection::new(stream);
+        let mut conn = UfdpConnection::new(stream, 16 * 1024);
 
         // send handshake
         instrument!(
@@ -78,7 +69,7 @@ where
                     ..
                 }) => {
                     debug!("recvd response");
-                    // recv proof
+                    // receive proof
                     let len = proof_len as usize;
                     self.conn.take = len;
                     let mut proof_buf = BytesMut::with_capacity(len);
@@ -88,6 +79,7 @@ where
                                 debug!("recv proof chunk");
                                 proof_buf.put_slice(&bytes);
                                 if proof_buf.len() == len {
+                                    // todo: decode proof
                                     break;
                                 }
                             }
@@ -98,7 +90,7 @@ where
                         }
                     }
 
-                    // recv block
+                    // receive block
                     let len = block_len as usize;
                     self.conn.take = len;
                     let mut block_buf = BytesMut::with_capacity(len);
@@ -128,7 +120,7 @@ where
                         ""
                     );
 
-                    // recv decryption key
+                    // receive decryption key
                     match instrument!(self.conn.read_frame(None).await?, "") {
                         Some(UrsaFrame::DecryptionKeyResponse { .. }) => {}
                         _ => return Err(UrsaCodecError::Unknown),
