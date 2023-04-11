@@ -12,14 +12,18 @@ anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 axum-server.workspace = true
+axum-tracing-opentelemetry.workspace = true
 bytes.workspace = true
 moka.workspace = true
 toml.workspace = true
 tower = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["full"] }
 tracing.workspace = true
+tracing-opentelemetry.workspace = true
 clap.workspace = true
 hyper.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+ursa-telemetry = { path = "../ursa-telemetry" }
+

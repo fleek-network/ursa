@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Extension, Router, TypedHeader,
 };
+use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use bytes::BufMut;
 use hyper::{
     client::{self, HttpConnector},
@@ -19,6 +20,8 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
+use tower_http::normalize_path::NormalizePathLayer;
+use tower_http::trace::TraceLayer;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use tracing::{error, info, warn};
 
@@ -54,7 +57,10 @@ pub fn init_server_app<C: Cache>(
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(server_config.clone()));
+        .layer(Extension(server_config.clone()))
+        .layer(NormalizePathLayer::trim_trailing_slash())
+        .layer(TraceLayer::new_for_http())
+        .layer(opentelemetry_tracing_layer());
 
     if let Some(headers) = &server_config.add_header {
         for (header, values) in headers.iter() {
