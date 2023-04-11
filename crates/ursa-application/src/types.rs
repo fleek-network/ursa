@@ -127,12 +127,15 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let epoch_bytes = hex::decode(genesis.epoch.bytecode).unwrap();
         let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
         let rep_bytes = hex::decode(genesis.rep_scores.bytecode).unwrap();
+        let rewards_bytes = hex::decode(genesis.rewards.bytecode).unwrap();
         // Parse addresses for contracts.
         let token_address: Address = genesis.token.address.parse().unwrap();
         let staking_address: Address = genesis.staking.address.parse().unwrap();
         let registry_address: Address = genesis.registry.address.parse().unwrap();
         let epoch_address: Address = genesis.epoch.address.parse().unwrap();
         let rep_address: Address = genesis.rep_scores.address.parse().unwrap();
+        let rewards_address: Address = genesis.rewards.address.parse().unwrap();
+
 
         // Build the account info for the contracts.
         let token_contract = AccountInfo {
@@ -159,6 +162,10 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             code: Some(Bytecode::new_raw(rep_bytes.into())),
             ..Default::default()
         };
+        let rewards_contract = AccountInfo {
+            code: Some(Bytecode::new_raw(rewards_bytes.into())),
+            ..Default::default()
+        };
 
         // Insert into db.
         state
@@ -179,6 +186,9 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         state
             .db
             .insert_account_info(rep_address.to_fixed_bytes().into(), rep_scores_contract);
+        state
+        .db
+        .insert_account_info(rewards_address.to_fixed_bytes().into(), rewards_contract);
 
         // Call the init transactions.
         let registry_tx = TransactionRequest {

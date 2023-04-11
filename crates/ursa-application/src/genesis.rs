@@ -16,6 +16,8 @@ pub struct Genesis {
     pub epoch: GenesisContract,
     #[serde(default)]
     pub rep_scores: GenesisContract,
+    #[serde(default)]
+    pub rewards: GenesisContract,
 }
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct GenesisContract {
