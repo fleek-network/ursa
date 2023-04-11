@@ -20,6 +20,7 @@ on:
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
       - "**/Dockerfile*"
+    types: [review_requested, ready_for_review]
 
 env:
   REGISTRY: ghcr.io
