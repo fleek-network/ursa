@@ -61,7 +61,6 @@ harness = false
 [[bin]]
 name = "client"
 path = "benchmarks/client.rs"
-required-features = ["benchmarks"]
 
 [[bin]]
 name = "server"
