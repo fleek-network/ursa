@@ -177,7 +177,7 @@ mod tcp_ufdp {
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            let handler = UfdpHandler::new(stream, DummyBackend { content });
+            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
             task::spawn(async move {
                 if let Err(e) = handler.serve().await {
                     println!("server error: {e:?}");
