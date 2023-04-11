@@ -7,11 +7,29 @@ use thiserror::Error;
 /// An incremental verifier that can consume a stream of proofs and content
 /// and verify the integrity of the content using a blake3 root hash.
 pub struct IncrementalVerifier {
+    /// The configuration the Blake3.
     iv: blake3::ursa::IV,
+    /// The pointer to the current tree node we want to verify.
+    ///
+    /// # Guarantees
+    ///
+    /// 1. The cursor is never null in any valid execution path of the
+    ///    public methods.
+    ///
+    /// 2. The children of the cursor are always null. i.e we're always
+    ///    pointing to a leaf/non-internal node.
     cursor: *mut IncrementalVerifierTreeNode,
-    index: usize,
+    /// The index of the block we're verifying now, starting from zero.
+    block_counter: usize,
+    /// An stack used for when we're expanding the current node.
     stack: ArrayVec<*mut IncrementalVerifierTreeNode, 2>,
+    /// Contains the first node that gets created as result of an expansion
+    /// so that we can change the cursor to that node once the stack is merged
+    /// with the current cursor during the final phase of the feed_proof procedure.
     next_head: *mut IncrementalVerifierTreeNode,
+    /// Determines if we're done verifying all of the possible content,
+    /// or in other words if the rightmost node of the tree has already
+    /// been verified.
     is_done: bool,
 }
 
@@ -26,16 +44,24 @@ pub enum IncrementalVerifierError {
 }
 
 struct IncrementalVerifierTreeNode {
+    /// A non-owning pointer to the parent node in the tree, can be null if
+    /// the node is in pending state (part of stack), or is the root node.
     parent: *mut IncrementalVerifierTreeNode,
+    /// The left child of the node.
     left: *mut IncrementalVerifierTreeNode,
+    /// The right child of the node.
     right: *mut IncrementalVerifierTreeNode,
+    /// The Blake3 chaining value for nodes or the finalized root hash if
+    /// this is a root node.
     hash: [u8; 32],
 }
 
 impl IncrementalVerifier {
     /// Create a new incremental verifier that verifies an stream of proofs and
     /// content against the provided root hash.
-    pub fn new(root_hash: [u8; 32], index: usize) -> Self {
+    ///
+    /// The `starting_block` determines where the content stream will start from.
+    pub fn new(root_hash: [u8; 32], starting_block: usize) -> Self {
         let node = Box::new(IncrementalVerifierTreeNode {
             parent: ptr::null_mut(),
             left: ptr::null_mut(),
@@ -46,7 +72,7 @@ impl IncrementalVerifier {
         Self {
             iv: blake3::ursa::IV::new(),
             cursor: Box::into_raw(node),
-            index,
+            block_counter: starting_block,
             stack: ArrayVec::new(),
             next_head: ptr::null_mut(),
             is_done: false,
@@ -69,12 +95,12 @@ impl IncrementalVerifier {
         }
     }
 
-    /// Verify the new content.
+    /// Verify the new block.
     pub fn verify(
         &mut self,
         block: blake3::ursa::BlockHasher,
     ) -> Result<(), IncrementalVerifierError> {
-        if self.is_done {
+        if self.is_done() {
             return Err(IncrementalVerifierError::VerifierTerminated);
         }
 
@@ -87,20 +113,11 @@ impl IncrementalVerifier {
             return Err(IncrementalVerifierError::HashMismatch);
         }
 
-        // If we're in the root node (when the data is one block or less), we
-        // should not move to the next.
-        if !self.is_root() {
-            let curr = self.cursor;
-            self.move_to_next();
-            self.index += 1;
-            debug_assert!(!self.cursor.is_null());
+        self.move_to_next();
+        self.block_counter += 1;
 
-            // If after moving to the next node we're still at the same node
-            // this simply means that there is no more data, move to the done
-            // state.
-            if self.cursor == curr {
-                self.finish();
-            }
+        if self.is_root() {
+            self.finish();
         }
 
         Ok(())
@@ -112,38 +129,40 @@ impl IncrementalVerifier {
     ///
     /// This function assumes that is not called on the `root` node.
     fn move_to_next(&mut self) {
-        debug_assert!(!self.is_root(), "Next should not be called on the root.");
+        // Move to the next leaf node, to do this we:
+        // 1. Move up as long as we are the right child of our parent.
+        // 2. Move one more node up.
+        // 3. Drop the left child (we don't need it anymore)
+        // 4. Move right.
+        // 5. Move to the leftmost child.
+        // At any step if going to parent results in a null cursor, avoid it.
 
-        // To traverse to the next node in the tree we need to follow the
-        // following algorithm:
-        //
-        // - assume we're currently at node `i`.
-        // - `(trailing_ones(i) + 1)P . 1R . *L`
-        // P: Go to parent node
-        // R: Go to the right node
-        // L: Go to the left node
-        // number on the left determines how many times to perform a step,
-        // and * means as much as we can.
-
-        // Step P:
-        // Notice how this loop is always executed at least once.
-        for _ in 0..self.index.trailing_ones() + 1 {
-            // SAFETY: We can always assume that `self.cursor` is not null, so this
-            // is a safe dereference of self.cursor, and the intention of this step
-            // is to guard against setting the cursor to null in the next instructions.
-            unsafe {
+        // Step 1: Moving up the tree as long as we're the right child.
+        unsafe {
+            loop {
                 if (*self.cursor).parent.is_null() {
-                    self.finish();
                     return;
                 }
-            }
 
-            // SAFETY: As mentioned `self.cursor` is never null, and we also already
-            // checked for `self.cursor.parent` to not be null in the previous unsafe
-            // block.
-            self.cursor = unsafe { (*self.cursor).parent };
+                if (*(*self.cursor).parent).right != self.cursor {
+                    break;
+                }
+
+                self.cursor = (*self.cursor).parent;
+            }
         }
 
+        // Step 2: Moving one more node up, the next node is gonna be the
+        // leftmost child of right child of this node.
+        unsafe {
+            if (*self.cursor).parent.is_null() {
+                return;
+            }
+
+            self.cursor = (*self.cursor).parent;
+        }
+
+        // Step 3: Drop the left child.
         // SAFETY: Since the incremental verifier only moves to the right, this means
         // we will never going to access the node on the left side of a node which we
         // have already visited, so we can free the memory.
@@ -152,7 +171,7 @@ impl IncrementalVerifier {
             (*self.cursor).left = ptr::null_mut();
         }
 
-        // Step R:
+        // Step 4: Move right
         // SAFETY: Since this function (`next`) is never called when we're in the root
         // this means both of the left and right children are set during the initialization
         // of the `IncrementalVerifierTreeNode`.
@@ -167,13 +186,19 @@ impl IncrementalVerifier {
         self.cursor = unsafe { (*self.cursor).right };
         debug_assert!(!self.cursor.is_null());
 
-        // Step L:
+        // Step 5:
         self.move_to_leftmost();
     }
 
     /// Feed some new proof to the verifier which it can use to expand its internal
     /// blake3 tree.
-    pub fn feed_proof(&mut self, proof: &[u8]) -> Result<(), IncrementalVerifierError> {
+    pub fn feed_proof(&mut self, mut proof: &[u8]) -> Result<(), IncrementalVerifierError> {
+        const SEGMENT_SIZE: usize = 32 * 8 + 1;
+
+        if self.is_done() {
+            return Err(IncrementalVerifierError::VerifierTerminated);
+        }
+
         if !is_valid_proof_len(proof.len()) {
             return Err(IncrementalVerifierError::InvalidProofSize);
         }
@@ -182,16 +207,37 @@ impl IncrementalVerifier {
             return Ok(());
         }
 
-        for segment in proof.chunks(32 * 8 + 1) {
-            let sign = segment[0];
+        // Number of bytes to read per iteration. For the first iteration read
+        // the partial first segment and we will then start reading full segments.
+        let mut read = proof.len() % SEGMENT_SIZE;
+        // Handle the case where we have complete segments.
+        if read == 0 {
+            read = SEGMENT_SIZE;
+        }
 
-            for (i, hash) in segment[1..].chunks_exact(32).enumerate() {
+        while !proof.is_empty() {
+            // The `is_valid_proof_len` should not allow this to happen.
+            debug_assert!((read - 1) % 32 == 0);
+            debug_assert!(proof.len() >= read);
+
+            let sign = proof[0];
+
+            for (i, hash) in proof[1..read].chunks_exact(32).enumerate() {
                 let should_flip = (1 << (8 - i - 1)) & sign != 0;
                 self.push(should_flip, *array_ref![hash, 0, 32]);
             }
+
+            // Move to the next part of the proof.
+            proof = &proof[read..];
+
+            // After the first partial segment revert to reading full segments (8 hash at a time).
+            read = SEGMENT_SIZE;
         }
 
-        self.finalize_expansion()
+        let result = self.finalize_expansion();
+        debug_assert!(self.next_head.is_null());
+        debug_assert!(self.stack.is_empty());
+        result
     }
 
     /// Push a new proof chunk to the stack of pending subtree and merge the
@@ -235,7 +281,7 @@ impl IncrementalVerifier {
 
         // SAFETY: This function is only called after validating the proof len and since the
         // smallest valid proof (that goes through without early return) has two hashes, it
-        // is guranteed that the stack has at least two elements so this call to `merge_stack`
+        // is guaranteed that the stack has at least two elements so this call to `merge_stack`
         // will not panic.
         self.merge_stack(self.is_root());
         debug_assert_eq!(self.stack.len(), 1);
@@ -269,6 +315,8 @@ impl IncrementalVerifier {
                 debug_assert!(!(*node).left.is_null());
                 debug_assert!(!(*node).right.is_null());
                 drop(Box::from_raw(node));
+                // Also set the next_head to null since we no longer need it anymore.
+                self.next_head = ptr::null_mut();
                 return Err(IncrementalVerifierError::HashMismatch);
             }
 
@@ -309,20 +357,24 @@ impl IncrementalVerifier {
         // If we're at the root right now instead of traversing all the way to
         // the deepest left node, we need to respect the value of `self.index`
         // (in case it is not zero) and instead try to get to that node.
-        if self.is_root() && self.index != 0 {
+        if self.is_root() && self.block_counter != 0 {
             debug_assert!(!self.next_head.is_null());
             // SAFETY: For any non-empty proof the `push` function is at least called once,
             // and it is guranteed that self.next_head is set to non-null pointer after calling
             // the `push` and since we are here in the code it means the stack was full which
             // translates into `push` function being at least called once.
             self.cursor = self.next_head;
-            self.next_head = ptr::null_mut();
         } else {
             // Traverse the current cursor into the deepest newly added left node so that
             // our guarantee about the cursor not having children is preserved.
             self.move_to_leftmost();
+            // The leftmost node is the same as the cursor, but move_to_leftmost is cheap
+            // enough and easier to see its correctness, that is why it is preferred in
+            // this branch.
+            debug_assert_eq!(self.next_head, self.cursor);
         }
 
+        self.next_head = ptr::null_mut();
         Ok(())
     }
 
@@ -366,7 +418,7 @@ impl IncrementalVerifier {
     ///
     /// # Guarantees
     ///
-    /// After calling this function it is guranteed that:
+    /// After calling this function it is guaranteed that:
     ///
     /// 1- The stack has exactly one item.
     /// 2- The new node in the stack has both its left and right children set.
@@ -393,7 +445,7 @@ impl IncrementalVerifier {
         // Push the new parent node into the stack.
         self.stack.push(parent);
 
-        // SAFETY: The left and right are guranteed to not be null and they need to link to
+        // SAFETY: The left and right are guaranteed to not be null and they need to link to
         // the parent, and the parent will be pushed to the stack right after this line which
         // will result into its safe drop when the `IncrementalTree` is dropped.
         unsafe {
@@ -413,9 +465,7 @@ impl IncrementalVerifier {
 
 impl Drop for IncrementalVerifier {
     fn drop(&mut self) {
-        if self.cursor.is_null() {
-            return;
-        }
+        debug_assert!(!self.cursor.is_null());
 
         // SAFETY: Find the root of the tree from the current cursor by traversing
         // the tree up as much as we can, and free the leaf. The Drop implementation
@@ -584,7 +634,7 @@ impl ProofEncoder {
     ///
     /// # Panics
     ///
-    /// If more than the maximum number of times specified when constructing.
+    /// If called more than the number of times specified when it got constructed.
     pub fn insert(&mut self, direction: Direction, hash: &[u8; 32]) {
         assert!(self.cursor > 0);
 
@@ -718,23 +768,15 @@ impl TreeWalker {
         }
 
         let distance_to_ancestor = target.trailing_zeros();
-        let mut ancestor = target_index + ((1 << (distance_to_ancestor + 1)) - 2);
+        let subtree_size = (tree_len + 2) / 2;
+        let subtree_size = (1 << distance_to_ancestor).min(subtree_size - target);
+        let ancestor = target_index + (subtree_size << 1) - 2;
 
-        let subtree_size = if ancestor >= tree_len - 2 {
-            ancestor = tree_len - 2;
-            let root_subtree_size = (tree_len + 2) / 2;
-            let left_subtree_size = previous_pow_of_two(root_subtree_size);
-            let right_subtree_size = root_subtree_size - left_subtree_size;
-            right_subtree_size
-        } else if distance_to_ancestor == 0 {
-            0
-        } else {
-            1 << distance_to_ancestor
-        };
-
-        if subtree_size == 1 {
+        if subtree_size <= 1 {
             return Self::empty();
         }
+
+        debug_assert!(distance_to_ancestor >= 1);
 
         Self {
             target: target_index,
@@ -1075,6 +1117,8 @@ mod tests {
             block.update(&[i as u8; 256 * 1024]);
             verifier.verify(block).unwrap();
 
+            assert_eq!(verifier.is_done(), i > 2);
+
             // for even blocks we should be able to also verify the next block without
             // the need to feed new proof.
             if i % 2 == 0 {
@@ -1082,6 +1126,14 @@ mod tests {
                 block.set_block(i + 1);
                 block.update(&[i as u8 + 1; 256 * 1024]);
                 verifier.verify(block).unwrap();
+            }
+
+            assert_eq!(verifier.is_done(), i > 1);
+            if i > 1 {
+                assert_eq!(
+                    verifier.verify(blake3::ursa::BlockHasher::new()),
+                    Err(IncrementalVerifierError::VerifierTerminated)
+                );
             }
         }
     }
@@ -1102,6 +1154,13 @@ mod tests {
         block.set_block(0);
         block.update(&[17; 64]);
         verifier.verify(block).unwrap();
+
+        assert_eq!(verifier.is_done(), true);
+
+        assert_eq!(
+            verifier.verify(blake3::ursa::BlockHasher::new()),
+            Err(IncrementalVerifierError::VerifierTerminated)
+        );
     }
 
     #[test]
@@ -1118,7 +1177,7 @@ mod tests {
         block.set_block(0);
         block.update(&[0; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 1);
+        assert_eq!(verifier.block_counter, 1);
         assert_eq!(verifier.current_hash(), &output.tree[1]);
 
         let proof = ProofBuf::resume(&output.tree, 1);
@@ -1128,7 +1187,7 @@ mod tests {
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 2);
+        assert_eq!(verifier.block_counter, 2);
 
         // now the cursor should have moved to 5.
         //         6
@@ -1142,7 +1201,7 @@ mod tests {
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 3);
+        assert_eq!(verifier.block_counter, 3);
         assert_eq!(verifier.current_hash(), &output.tree[4]);
 
         let proof = ProofBuf::resume(&output.tree, 3);
@@ -1153,7 +1212,7 @@ mod tests {
         block.set_block(3);
         block.update(&[3; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 4);
+        assert_eq!(verifier.block_counter, 4);
         assert_eq!(verifier.is_done, true);
         assert_eq!(verifier.is_root(), true);
     }
@@ -1171,7 +1230,7 @@ mod tests {
         block.set_block(0);
         block.update(&[0; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 1);
+        assert_eq!(verifier.block_counter, 1);
         assert_eq!(verifier.current_hash(), &output.tree[1]);
 
         let proof = ProofBuf::resume(&output.tree, 1);
@@ -1181,7 +1240,7 @@ mod tests {
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 2);
+        assert_eq!(verifier.block_counter, 2);
 
         assert_eq!(verifier.current_hash(), &output.tree[3]);
         let proof = ProofBuf::resume(&output.tree, 2);
@@ -1192,7 +1251,7 @@ mod tests {
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 3);
+        assert_eq!(verifier.block_counter, 3);
         assert_eq!(verifier.is_root(), true);
         assert_eq!(verifier.is_done(), true);
     }
@@ -1211,7 +1270,7 @@ mod tests {
         block.set_block(1);
         block.update(&[1; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 2);
+        assert_eq!(verifier.block_counter, 2);
 
         assert_eq!(verifier.current_hash(), &output.tree[5]);
         let proof = ProofBuf::resume(&output.tree, 2);
@@ -1221,7 +1280,7 @@ mod tests {
         block.set_block(2);
         block.update(&[2; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 3);
+        assert_eq!(verifier.block_counter, 3);
         assert_eq!(verifier.current_hash(), &output.tree[4]);
 
         let proof = ProofBuf::resume(&output.tree, 3);
@@ -1232,8 +1291,263 @@ mod tests {
         block.set_block(3);
         block.update(&[3; 256 * 1024]);
         verifier.verify(block).unwrap();
-        assert_eq!(verifier.index, 4);
-        assert_eq!(verifier.is_done, true);
+        assert_eq!(verifier.block_counter, 4);
+        assert_eq!(verifier.is_done(), true);
         assert_eq!(verifier.is_root(), true);
+    }
+
+    #[test]
+    fn incremental_verifier_large_data_first_proof_only() {
+        #[inline(always)]
+        fn block_data(n: usize) -> [u8; 256 * 1024] {
+            let mut data = [0; 256 * 1024];
+            for i in data.chunks_exact_mut(2) {
+                i[0] = n as u8;
+                i[1] = (n / 256) as u8;
+            }
+            data
+        }
+
+        const SIZE: usize = 2702;
+
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..SIZE).for_each(|i| tree_builder.update(&block_data(i)));
+        let output = tree_builder.finalize();
+
+        for start in (0..SIZE).step_by(127) {
+            let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), start);
+
+            verifier
+                .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
+                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+
+            verifier
+                .verify({
+                    let mut block = blake3::ursa::BlockHasher::new();
+                    block.set_block(start);
+                    block.update(&block_data(start));
+                    block
+                })
+                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+        }
+    }
+
+    #[test]
+    fn incremental_verifier_large_data_first_one_resume() {
+        #[inline(always)]
+        fn block_data(n: usize) -> [u8; 256 * 1024] {
+            let mut data = [0; 256 * 1024];
+            for i in data.chunks_exact_mut(2) {
+                i[0] = n as u8;
+                i[1] = (n / 256) as u8;
+            }
+            data
+        }
+
+        const SIZE: usize = 654;
+
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..SIZE).for_each(|i| tree_builder.update(&block_data(i)));
+        let output = tree_builder.finalize();
+
+        for start in 0..SIZE - 1 {
+            let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), start);
+
+            verifier
+                .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
+                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+
+            verifier
+                .verify({
+                    let mut block = blake3::ursa::BlockHasher::new();
+                    block.set_block(start);
+                    block.update(&block_data(start));
+                    block
+                })
+                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+
+            verifier
+                .feed_proof(ProofBuf::resume(&output.tree, start + 1).as_slice())
+                .expect(&format!("Invalid Resume Proof: size={SIZE} start={start}"));
+
+            verifier
+                .verify({
+                    let mut block = blake3::ursa::BlockHasher::new();
+                    block.set_block(start + 1);
+                    block.update(&block_data(start + 1));
+                    block
+                })
+                .expect(&format!(
+                    "Invalid Resume Content: size={SIZE} start={start}"
+                ));
+        }
+    }
+
+    #[test]
+    fn incremental_verifier_large_data() {
+        #[inline(always)]
+        fn block_data(n: usize) -> [u8; 256 * 1024] {
+            let mut data = [0; 256 * 1024];
+            for i in data.chunks_exact_mut(2) {
+                i[0] = n as u8;
+                i[1] = (n / 256) as u8;
+            }
+            data
+        }
+
+        const SIZE: usize = 2702;
+
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..SIZE).for_each(|i| tree_builder.update(&block_data(i)));
+        let output = tree_builder.finalize();
+
+        for start in (0..SIZE).step_by(127) {
+            let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), start);
+
+            verifier
+                .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
+                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+
+            verifier
+                .verify({
+                    let mut block = blake3::ursa::BlockHasher::new();
+                    block.set_block(start);
+                    block.update(&block_data(start));
+                    block
+                })
+                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+
+            for i in start + 1..SIZE {
+                verifier
+                    .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
+                    .expect(&format!(
+                        "Invalid Proof on Resume: size={SIZE} start={start} i={i}"
+                    ));
+
+                verifier
+                    .verify({
+                        let mut block = blake3::ursa::BlockHasher::new();
+                        block.set_block(i);
+                        block.update(&block_data(i));
+                        block
+                    })
+                    .expect(&format!(
+                        "Invalid Content on Resume: size={SIZE} start={start} i={i}"
+                    ));
+            }
+
+            assert_eq!(
+                verifier.is_done(),
+                true,
+                "verifier not terminated: size={SIZE} start={start}"
+            );
+        }
+    }
+
+    #[test]
+    fn incremental_verifier_with_resume() {
+        #[inline(always)]
+        fn block_data(n: usize) -> [u8; 256 * 1024] {
+            let mut data = [0; 256 * 1024];
+            for i in data.chunks_exact_mut(2) {
+                i[0] = n as u8;
+                i[1] = (n / 256) as u8;
+            }
+            data
+        }
+
+        const SIZE: usize = 30;
+
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..SIZE).for_each(|i| tree_builder.update(&block_data(i)));
+        let output = tree_builder.finalize();
+        let start = 0;
+
+        let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), start);
+
+        verifier
+            .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
+            .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+
+        verifier
+            .verify({
+                let mut block = blake3::ursa::BlockHasher::new();
+                block.set_block(start);
+                block.update(&block_data(start));
+                block
+            })
+            .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+
+        for i in start + 1..SIZE {
+            verifier
+                .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
+                .expect(&format!(
+                    "Invalid Proof on Resume: size={SIZE} start={start} i={i}"
+                ));
+
+            verifier
+                .verify({
+                    let mut block = blake3::ursa::BlockHasher::new();
+                    block.set_block(i);
+                    block.update(&block_data(i));
+                    block
+                })
+                .expect(&format!(
+                    "Invalid Content on Resume: size={SIZE} start={start} i={i}"
+                ));
+        }
+
+        assert_eq!(
+            verifier.is_done(),
+            true,
+            "verifier not terminated: size={SIZE} start={start}"
+        );
+    }
+
+    #[test]
+    fn incremental_verifier_resume_654() {
+        #[inline(always)]
+        fn block_data(n: usize) -> [u8; 256 * 1024] {
+            let mut data = [0; 256 * 1024];
+            for i in data.chunks_exact_mut(2) {
+                i[0] = n as u8;
+                i[1] = (n / 256) as u8;
+            }
+            data
+        }
+
+        const SIZE: usize = 654;
+
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        (0..SIZE).for_each(|i| tree_builder.update(&block_data(i)));
+        let output = tree_builder.finalize();
+
+        let mut verifier = IncrementalVerifier::new(*output.hash.as_bytes(), 639);
+
+        verifier
+            .feed_proof(ProofBuf::new(&output.tree, 639).as_slice())
+            .expect(&format!("Invalid Proof: size={SIZE}"));
+
+        verifier
+            .verify({
+                let mut block = blake3::ursa::BlockHasher::new();
+                block.set_block(639);
+                block.update(&block_data(639));
+                block
+            })
+            .expect(&format!("Invalid Content: size={SIZE}"));
+
+        verifier
+            .feed_proof(ProofBuf::resume(&output.tree, 640).as_slice())
+            .expect(&format!("Invalid Proof on Resume: size={SIZE}"));
+
+        verifier
+            .verify({
+                let mut block = blake3::ursa::BlockHasher::new();
+                block.set_block(640);
+                block.update(&block_data(640));
+                block
+            })
+            .expect(&format!("Invalid Content on Resume: size={SIZE}"));
     }
 }

@@ -8,6 +8,7 @@ authors = ["qti3e <i@parsa.oo>", "ossian <self@ossian.dev>"]
 rand.workspace = true
 anyhow.workspace = true
 blake3.workspace = true
+thiserror.workspace = true
 arrayref = "0.3"
 arrayvec = "0.7"
 bytes = "1.4"
