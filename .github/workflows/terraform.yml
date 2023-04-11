@@ -12,7 +12,7 @@ on:
   pull_request:
     paths:
       - 'infra/tf-next/**'
-    types: [review_requested, ready_for_review]
+    types: [ready_for_review]
 
 jobs:
   terraform:
