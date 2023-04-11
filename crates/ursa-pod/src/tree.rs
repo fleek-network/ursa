@@ -95,11 +95,9 @@ impl IncrementalVerifier {
         }
     }
 
-    /// Verify the new block.
-    pub fn verify(
-        &mut self,
-        block: blake3::ursa::BlockHasher,
-    ) -> Result<(), IncrementalVerifierError> {
+    /// Verify the new block of data only by providing its hash, you should be aware of
+    /// what mode you have finalized the block at.
+    pub fn verify_hash(&mut self, hash: &[u8; 32]) -> Result<(), IncrementalVerifierError> {
         if self.is_done() {
             return Err(IncrementalVerifierError::VerifierTerminated);
         }
@@ -108,8 +106,7 @@ impl IncrementalVerifier {
         // 2. Compare to the hash we have under the cursor.
         // 3. Move to the next node.
 
-        let hash = block.finalize(self.is_root());
-        if &hash != self.current_hash() {
+        if hash != self.current_hash() {
             return Err(IncrementalVerifierError::HashMismatch);
         }
 
@@ -121,6 +118,19 @@ impl IncrementalVerifier {
         }
 
         Ok(())
+    }
+
+    /// Verify the new block.
+    pub fn verify(
+        &mut self,
+        block: blake3::ursa::BlockHasher,
+    ) -> Result<(), IncrementalVerifierError> {
+        if self.is_done() {
+            return Err(IncrementalVerifierError::VerifierTerminated);
+        }
+
+        let hash = block.finalize(self.is_root());
+        self.verify_hash(&hash)
     }
 
     /// Go to the next element in the tree.
