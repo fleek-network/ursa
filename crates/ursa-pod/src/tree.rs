@@ -4,6 +4,13 @@ use std::ptr;
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 use thiserror::Error;
 
+// Debug only code for testing against memory leaks.
+#[cfg(debug_assertions)]
+thread_local! {
+    /// Number of pointers that `IncrementalVerifierTreeNode` has allocated.
+    static POINTERS: std::cell::RefCell<usize> = std::cell::RefCell::new(0);
+}
+
 /// An incremental verifier that can consume a stream of proofs and content
 /// and verify the integrity of the content using a blake3 root hash.
 pub struct IncrementalVerifier {
@@ -27,10 +34,6 @@ pub struct IncrementalVerifier {
     /// so that we can change the cursor to that node once the stack is merged
     /// with the current cursor during the final phase of the feed_proof procedure.
     next_head: *mut IncrementalVerifierTreeNode,
-    /// Determines if we're done verifying all of the possible content,
-    /// or in other words if the rightmost node of the tree has already
-    /// been verified.
-    is_done: bool,
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -62,36 +65,38 @@ impl IncrementalVerifier {
     ///
     /// The `starting_block` determines where the content stream will start from.
     pub fn new(root_hash: [u8; 32], starting_block: usize) -> Self {
-        let node = Box::new(IncrementalVerifierTreeNode {
-            parent: ptr::null_mut(),
-            left: ptr::null_mut(),
-            right: ptr::null_mut(),
-            hash: root_hash,
-        });
-
         Self {
             iv: blake3::ursa::IV::new(),
-            cursor: Box::into_raw(node),
+            cursor: IncrementalVerifierTreeNode::leaf(root_hash),
             block_counter: starting_block,
             stack: ArrayVec::new(),
             next_head: ptr::null_mut(),
-            is_done: false,
         }
     }
 
     /// Returns true if the stream is complete.
     pub fn is_done(&self) -> bool {
-        self.is_done
+        self.cursor.is_null()
     }
 
     /// Moves the verifier to the finished state.
     #[inline(always)]
     fn finish(&mut self) {
-        self.is_done = true;
+        debug_assert!(!self.cursor.is_null());
+
+        // SAFETY: Find the root of the tree from the current cursor by traversing
+        // the tree up as much as we can, and free the leaf. The Drop implementation
+        // of `IncrementalVerifierTreeNode` will be called recursively and will free the entire
+        // data owned by this tree.
         unsafe {
-            while !(*self.cursor).parent.is_null() {
-                self.cursor = (*self.cursor).parent;
+            let mut current = self.cursor;
+            while !(*current).parent.is_null() {
+                current = (*current).parent;
             }
+            debug_assert!(!current.is_null());
+            debug_assert!((*current).parent.is_null());
+            IncrementalVerifierTreeNode::free(current);
+            self.cursor = ptr::null_mut();
         }
     }
 
@@ -139,6 +144,8 @@ impl IncrementalVerifier {
     ///
     /// This function assumes that is not called on the `root` node.
     fn move_to_next(&mut self) {
+        debug_assert!(!self.cursor.is_null());
+
         // Move to the next leaf node, to do this we:
         // 1. Move up as long as we are the right child of our parent.
         // 2. Move one more node up.
@@ -177,7 +184,7 @@ impl IncrementalVerifier {
         // we will never going to access the node on the left side of a node which we
         // have already visited, so we can free the memory.
         unsafe {
-            drop(Box::new((*self.cursor).left));
+            IncrementalVerifierTreeNode::free((*self.cursor).left);
             (*self.cursor).left = ptr::null_mut();
         }
 
@@ -258,18 +265,14 @@ impl IncrementalVerifier {
     /// This function guarantees that after getting called the value of `self.next_head`
     /// is no longer null.
     fn push(&mut self, flip: bool, hash: [u8; 32]) {
+        debug_assert!(!self.cursor.is_null());
+
         // Merge the two previous subtree as non-root hashes.
         if self.stack.is_full() {
             self.merge_stack(false);
         }
 
-        let node = Box::into_raw(Box::new(IncrementalVerifierTreeNode {
-            parent: ptr::null_mut(),
-            left: ptr::null_mut(),
-            right: ptr::null_mut(),
-            hash,
-        }));
-
+        let node = IncrementalVerifierTreeNode::leaf(hash);
         self.stack.push(node);
 
         if flip && self.stack.is_full() {
@@ -283,10 +286,13 @@ impl IncrementalVerifier {
         }
     }
 
+    /// Finalizes the stack operations of the current ongoing proof.
+    ///
     /// # Panics
     ///
     /// If the stack does not have two elements.
     fn finalize_expansion(&mut self) -> Result<(), IncrementalVerifierError> {
+        debug_assert!(!self.cursor.is_null());
         assert!(self.stack.is_full());
 
         // SAFETY: This function is only called after validating the proof len and since the
@@ -324,7 +330,7 @@ impl IncrementalVerifier {
                 // remove it here before we return.
                 debug_assert!(!(*node).left.is_null());
                 debug_assert!(!(*node).right.is_null());
-                drop(Box::from_raw(node));
+                IncrementalVerifierTreeNode::free(node);
                 // Also set the next_head to null since we no longer need it anymore.
                 self.next_head = ptr::null_mut();
                 return Err(IncrementalVerifierError::HashMismatch);
@@ -361,7 +367,7 @@ impl IncrementalVerifier {
         unsafe {
             debug_assert!((*node).left.is_null());
             debug_assert!((*node).right.is_null());
-            drop(Box::from_raw(node));
+            IncrementalVerifierTreeNode::free(node);
         }
 
         // If we're at the root right now instead of traversing all the way to
@@ -433,6 +439,7 @@ impl IncrementalVerifier {
     /// 1- The stack has exactly one item.
     /// 2- The new node in the stack has both its left and right children set.
     fn merge_stack(&mut self, is_root: bool) {
+        debug_assert!(!self.cursor.is_null(), "cursor is null");
         assert!(self.stack.is_full());
 
         let right = self.stack.pop().unwrap();
@@ -445,12 +452,7 @@ impl IncrementalVerifier {
         let (left_cv, right_cv) = unsafe { (&(*left).hash, &(*right).hash) };
 
         let parent_hash = self.iv.merge(left_cv, right_cv, is_root);
-        let parent = Box::into_raw(Box::new(IncrementalVerifierTreeNode {
-            parent: ptr::null_mut(),
-            left,
-            right,
-            hash: parent_hash,
-        }));
+        let parent = IncrementalVerifierTreeNode::new(left, right, parent_hash);
 
         // Push the new parent node into the stack.
         self.stack.push(parent);
@@ -473,30 +475,55 @@ impl IncrementalVerifier {
     }
 }
 
+impl IncrementalVerifierTreeNode {
+    #[inline(always)]
+    pub fn new(left: *mut Self, right: *mut Self, hash: [u8; 32]) -> *mut Self {
+        #[cfg(debug_assertions)]
+        POINTERS.with(|c| {
+            *c.borrow_mut() += 1;
+        });
+
+        Box::into_raw(Box::new(Self {
+            parent: ptr::null_mut(),
+            left,
+            right,
+            hash,
+        }))
+    }
+
+    #[inline(always)]
+    pub fn leaf(hash: [u8; 32]) -> *mut Self {
+        Self::new(ptr::null_mut(), ptr::null_mut(), hash)
+    }
+
+    #[inline(always)]
+    pub unsafe fn free(ptr: *mut Self) {
+        debug_assert!(!ptr.is_null(), "Attempted to free null pointer.");
+
+        #[cfg(debug_assertions)]
+        POINTERS.with(|c| {
+            let mut pointers_mut = c.borrow_mut();
+            if *pointers_mut == 0 {
+                panic!("Double free detected.");
+            }
+            *pointers_mut -= 1;
+        });
+
+        drop(Box::from_raw(ptr))
+    }
+}
+
 impl Drop for IncrementalVerifier {
     fn drop(&mut self) {
-        debug_assert!(!self.cursor.is_null());
-
-        // SAFETY: Find the root of the tree from the current cursor by traversing
-        // the tree up as much as we can, and free the leaf. The Drop implementation
-        // of `IncrementalVerifierTreeNode` will be called recursively and will free the entire
-        // data owned by this tree.
-        unsafe {
-            let mut current = self.cursor;
-            while !(*current).parent.is_null() {
-                current = (*current).parent;
-            }
-            debug_assert!(!current.is_null());
-            debug_assert!((*current).parent.is_null());
-            drop(Box::from_raw(current));
-            self.cursor = ptr::null_mut();
+        if !self.cursor.is_null() {
+            self.finish();
         }
 
         // If there are any items left in the stack also free those.
         for pointer in self.stack.drain(..) {
             // SAFETY: The stack owns its pending items.
             unsafe {
-                drop(Box::from_raw(pointer));
+                IncrementalVerifierTreeNode::free(pointer);
             }
         }
     }
@@ -508,11 +535,12 @@ impl Drop for IncrementalVerifierTreeNode {
         // dropping them when its being drooped.
         unsafe {
             if !self.left.is_null() {
-                drop(Box::from_raw(self.left));
+                IncrementalVerifierTreeNode::free(self.left);
                 self.left = ptr::null_mut();
             }
+
             if !self.right.is_null() {
-                drop(Box::from_raw(self.right));
+                IncrementalVerifierTreeNode::free(self.right);
                 self.right = ptr::null_mut();
             }
         }
@@ -906,6 +934,14 @@ fn is_valid_proof_len(n: usize) -> bool {
     hash_bytes & 31 == 0 && n <= 32 * 47 + 6 && ((hash_bytes / 32) >= 2 || n == 0)
 }
 
+fn assert_no_leak() {
+    #[cfg(debug_assertions)]
+    POINTERS.with(|c| {
+        let n = *c.borrow();
+        assert_eq!(n, 0, "Memory leak detected.");
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1145,6 +1181,9 @@ mod tests {
                     Err(IncrementalVerifierError::VerifierTerminated)
                 );
             }
+
+            drop(verifier);
+            assert_no_leak();
         }
     }
 
@@ -1171,6 +1210,9 @@ mod tests {
             verifier.verify(blake3::ursa::BlockHasher::new()),
             Err(IncrementalVerifierError::VerifierTerminated)
         );
+
+        drop(verifier);
+        assert_no_leak();
     }
 
     #[test]
@@ -1223,8 +1265,10 @@ mod tests {
         block.update(&[3; 256 * 1024]);
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 4);
-        assert_eq!(verifier.is_done, true);
-        assert_eq!(verifier.is_root(), true);
+        assert_eq!(verifier.is_done(), true);
+
+        drop(verifier);
+        assert_no_leak();
     }
 
     #[test]
@@ -1262,8 +1306,10 @@ mod tests {
         block.update(&[2; 256 * 1024]);
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 3);
-        assert_eq!(verifier.is_root(), true);
         assert_eq!(verifier.is_done(), true);
+
+        drop(verifier);
+        assert_no_leak();
     }
 
     #[test]
@@ -1303,7 +1349,9 @@ mod tests {
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 4);
         assert_eq!(verifier.is_done(), true);
-        assert_eq!(verifier.is_root(), true);
+
+        drop(verifier);
+        assert_no_leak();
     }
 
     #[test]
@@ -1339,6 +1387,9 @@ mod tests {
                     block
                 })
                 .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+
+            drop(verifier);
+            assert_no_leak();
         }
     }
 
@@ -1390,6 +1441,9 @@ mod tests {
                 .expect(&format!(
                     "Invalid Resume Content: size={SIZE} start={start}"
                 ));
+
+            drop(verifier);
+            assert_no_leak();
         }
     }
 
@@ -1451,6 +1505,9 @@ mod tests {
                 true,
                 "verifier not terminated: size={SIZE} start={start}"
             );
+
+            drop(verifier);
+            assert_no_leak();
         }
     }
 
@@ -1512,6 +1569,9 @@ mod tests {
             true,
             "verifier not terminated: size={SIZE} start={start}"
         );
+
+        drop(verifier);
+        assert_no_leak();
     }
 
     #[test]
@@ -1559,5 +1619,8 @@ mod tests {
                 block
             })
             .expect(&format!("Invalid Content on Resume: size={SIZE}"));
+
+        drop(verifier);
+        assert_no_leak();
     }
 }
