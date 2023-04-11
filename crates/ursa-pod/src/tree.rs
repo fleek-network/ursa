@@ -28,7 +28,7 @@ pub struct IncrementalVerifier {
     cursor: *mut IncrementalVerifierTreeNode,
     /// The index of the block we're verifying now, starting from zero.
     block_counter: usize,
-    /// An stack used for when we're expanding the current node.
+    /// A stack used for when we're expanding the current node.
     stack: ArrayVec<*mut IncrementalVerifierTreeNode, 2>,
     /// Contains the first node that gets created as result of an expansion
     /// so that we can change the cursor to that node once the stack is merged
