@@ -7,7 +7,7 @@ use serde::Serialize;
 use std::time::SystemTime;
 use std::{env, fs};
 use ursa_application::genesis::Genesis;
-use ursa_utils::contract_bindings::epoch_bindings::{EpochCalls, InitializeCall};
+use ursa_utils::contract_bindings::epoch_bindings::{EpochManagerCalls, InitializeCall};
 use ursa_utils::contract_bindings::node_registry_bindings::Worker;
 use ursa_utils::contract_bindings::node_registry_bindings::{
     InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
@@ -45,7 +45,7 @@ async fn main() {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_millis();
-
+    
     let initialize_call = InitializeCall {
         node_registry: registry_address,
         first_epoch_start: UInt256::from_dec_str(&now.to_string()).unwrap(),
@@ -53,7 +53,7 @@ async fn main() {
         max_committee_size: UInt256::from_dec_str("100").unwrap(),
     };
 
-    let epoch_bytes = EpochCalls::Initialize(initialize_call).encode();
+    let epoch_bytes = EpochManagerCalls::Initialize(initialize_call).encode();
 
     let raw = include_str!("./genesis_committee.toml");
     let genesis: GenesisCommittee = toml::from_str(raw).unwrap();
