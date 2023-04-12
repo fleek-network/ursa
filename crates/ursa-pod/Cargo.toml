@@ -40,7 +40,7 @@ criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
 tracing-subscriber = "0.2"
 
 [features]
-default = ["client", "server", "parser"]
+default = ["client", "server", "benchmarks"]
 client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
