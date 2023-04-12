@@ -27,15 +27,15 @@ contract FleekReward is Controlled {
     mapping(uint256 => bool) public rewardsDistribution;
 
     uint256 constant DAYS_IN_YEAR = 365;
-    // these can go in governance/controlled contracts
+
     // min factor by which the inflation can go down based on usage in %
-    SD59x18 minInflationFactor;
+    SD59x18 public minInflationFactor;
     // max inflation for the year in %
-    SD59x18 maxInflation;
-    // price per byte in 1/18th USD
-    SD59x18 price;
-    // Cost of running node per byte in 1/18th USD
-    SD59x18 cost;
+    SD59x18 public maxInflation;
+    // price per byte
+    SD59x18 public price;
+    // Cost of running node
+    SD59x18 public cost;
 
     event RewardMinted(address indexed account, uint256 amount);
 
@@ -51,6 +51,22 @@ contract FleekReward is Controlled {
         rewardsAggregator = RewardsAggregator(_aggregator);
         inflationInLastEpoch = maxInflation;
         initialized = true;
+    }
+
+    function setInflationRate(SD59x18 _inflationRate) external onlyParameter {
+        maxInflation = _inflationRate;
+    }
+
+    function setMinInflationFactor(SD59x18 _minInflationFactor) external onlyParameter {
+        minInflationFactor = _minInflationFactor;
+    }
+
+    function setPrice(SD59x18 _price) external onlyParameter {
+        price = _price;
+    }
+
+    function setCost(SD59x18 _cost) external onlyParameter {
+        cost = _cost;
     }
 
     /**
