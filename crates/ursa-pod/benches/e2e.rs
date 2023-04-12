@@ -90,10 +90,12 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        #[cfg(not(feature = "bench-hyper"))]
+        #[cfg(all(not(feature = "bench-hyper"), not(feature = "bench-quic")))]
         let proto = "TCP UFDP";
         #[cfg(feature = "bench-hyper")]
         let proto = "HTTP Hyper";
+        #[cfg(feature = "bench-quic")]
+        let proto = "QUIC UFDP";
 
         let mut g = c.benchmark_group(format!("{proto}/{range}"));
         g.sample_size(20);
@@ -353,19 +355,21 @@ mod quic_ufdp {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let key = rustls::PrivateKey(cert.serialize_private_key_der());
         let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
-        let config = rustls::ServerConfig::builder()
+        let mut config = rustls::ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(cert, key)
             .unwrap();
+        config.alpn_protocols = vec![b"ufdp".to_vec()];
         config
     }
 
     pub fn client_config() -> rustls::ClientConfig {
-        let config = rustls::ClientConfig::builder()
+        let mut config = rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_custom_certificate_verifier(SkipServerVerification::new())
             .with_no_client_auth();
+        config.alpn_protocols = vec![b"ufdp".to_vec()];
         config
     }
 
@@ -401,7 +405,7 @@ mod quic_ufdp {
     /// block stream dropping the bytes immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        let mut endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
         endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(client_config())));
 
         for _ in 0..iterations {
@@ -451,7 +455,10 @@ mod quic_ufdp {
             Pin::new(&mut self.tx).poll_flush(cx)
         }
 
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Error>> {
             Pin::new(&mut self.tx).poll_shutdown(cx)
         }
     }
