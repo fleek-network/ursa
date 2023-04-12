@@ -103,14 +103,22 @@ cat server.out |\
 
 Statistics can then be traversed using a tool like `jq`:
 
-- Get stats for all `deliver_content` tags
+- Get stats for everything under the `deliver_content` tag
 
 ```sh
-jq '.parameters."tag=deliver_content".stats' stats.json
+jq '.params.tag.deliver_content.stats' stats.json
 ```
 
-- For session 0, get stats for the `deliver_content` tag
+- For session id `0`, get stats for the `deliver_content` tag
 
 ```sh
-jq '.parameters."sid=0".parameters."tag=deliver_content".stats' stats.json
+jq '.params.sid.0.params.tag.deliver_content.stats' stats.json
 ```
+
+- Get available param keys for something:
+
+```sh
+jq '.params | keys' stats.json
+jq '.params.tag.deliver_content | keys' stats.json
+```
+
