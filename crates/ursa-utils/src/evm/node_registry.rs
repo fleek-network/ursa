@@ -19,15 +19,7 @@ pub struct NodeInfo {
     pub workers: ::std::vec::Vec<Worker>,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EthCall,
-    EthDisplay,
-    Default,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, EthCall, EthDisplay, Default)]
 #[ethcall(
     name = "initialize",
     abi = "initialize((address,string,string,string,(string,string,string)[])[])"

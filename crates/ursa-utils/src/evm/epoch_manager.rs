@@ -14,9 +14,9 @@ lazy_static! {
     pub static ref EPOCH_ADDRESS: Address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
         .parse::<Address>()
         .unwrap();
-    pub static ref EPOCH_INFO_CALL: Vec<u8> = vec![186, 188, 57, 79];
 }
 
+pub const EPOCH_INFO_CALL: [u8; 4] = [186, 188, 57, 79];
 const SIGNAL_EPOCH_ABI: &str = "signalEpochChange(string):(bool)";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, EthAbiType, EthAbiCodec)]
@@ -46,26 +46,10 @@ pub struct EpochInformation {
     epoch: u64,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EthAbiType,
-    EthAbiCodec,
-    Default,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, EthAbiType, EthAbiCodec, Default)]
 pub struct SignalEpochChangeReturn(pub bool);
 
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EthCall,
-    EthDisplay,
-    Default,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, EthCall, EthDisplay, Default)]
 #[ethcall(
     name = "initialize",
     abi = "initialize(address,uint256,uint256,uint256)"
@@ -80,7 +64,7 @@ pub struct InitializeCall {
 pub fn get_epoch_info_call() -> TransactionRequest {
     TransactionRequest::new()
         .to(*EPOCH_ADDRESS)
-        .data(EPOCH_INFO_CALL.clone())
+        .data(EPOCH_INFO_CALL)
 }
 
 pub fn get_signal_epoch_change_call(public_key: String) -> TransactionRequest {

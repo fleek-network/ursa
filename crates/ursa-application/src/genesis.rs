@@ -4,19 +4,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct Genesis {
-    #[serde(default)]
-    pub hello: GenesisContract,
-    #[serde(default)]
-    pub token: GenesisContract,
-    #[serde(default)]
-    pub staking: GenesisContract,
-    #[serde(default)]
-    pub registry: GenesisContract,
-    #[serde(default)]
-    pub epoch: GenesisContract,
+    pub precompiles: Vec<GenesisContract>,
 }
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct GenesisContract {
+    pub name: String,
     pub address: String,
     pub bytecode: String,
     pub init_params: Option<Bytes>,

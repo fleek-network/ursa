@@ -11,6 +11,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 clap.workspace = true
+futures.workspace = true
 resolve-path.workspace = true
 serde_json.workspace = true
 serde.workspace = true
