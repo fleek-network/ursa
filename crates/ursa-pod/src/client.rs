@@ -21,7 +21,7 @@ pub enum UfdpResponseState {
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    conn: UfdpConnection<S>,
+    pub conn: UfdpConnection<S>,
     lane: u8,
 }
 

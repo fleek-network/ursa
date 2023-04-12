@@ -320,7 +320,7 @@ impl From<UrsaCodecError> for std::io::Error {
 
 /// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
 pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
-    stream: T,
+    pub stream: T,
     read_buffer: BytesMut,
     pub take: usize,
     chunk_size: usize,

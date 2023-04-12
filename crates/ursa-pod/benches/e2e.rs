@@ -282,11 +282,13 @@ mod http_hyper {
 #[cfg(feature = "bench-quic")]
 mod quic_ufdp {
     use futures::future::join_all;
-    use quinn::{Endpoint, ServerConfig};
-    use std::io::Error;
-    use std::pin::Pin;
-    use std::sync::Arc;
-    use std::task::{Context, Poll};
+    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig};
+    use std::{
+        io::Error,
+        pin::Pin,
+        sync::Arc,
+        task::{Context, Poll},
+    };
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
     use tokio::task;
     use ursa_pod::{
@@ -373,29 +375,57 @@ mod quic_ufdp {
         config
     }
 
+    fn transport_config() -> TransportConfig {
+        let mut config = TransportConfig::default();
+        config.max_concurrent_uni_streams(100u32.into());
+        config.max_concurrent_bidi_streams(100u32.into());
+        config
+    }
+
     /// Simple QUIC server loop that replies with static content.
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
-        let server = Endpoint::server(
-            ServerConfig::with_crypto(Arc::new(server_config())),
-            addr.parse().unwrap(),
-        )
-        .unwrap();
+        let mut server_config = ServerConfig::with_crypto(Arc::new(server_config()));
+        server_config.transport_config(Arc::new(transport_config()));
+        let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
         tx_started.send(port).unwrap();
 
         loop {
             let connection = server.accept().await.unwrap().await.unwrap();
-            let (tx, rx) = connection.accept_bi().await.unwrap();
-            let stream = QuicStream { tx, rx };
-            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            let content_clone = content.clone();
             task::spawn(async move {
-                if let Err(e) = handler.serve().await {
-                    println!("server error: {e:?}");
+                loop {
+                    match connection.accept_bi().await {
+                        Ok((tx, rx)) => {
+                            task::spawn(async {
+                                let stream = BiStream { tx, rx };
+                                let handler = UfdpHandler::new(
+                                    stream,
+                                    DummyBackend {
+                                        content: content_clone,
+                                    },
+                                    0,
+                                );
+
+                                if let Err(e) = handler.serve().await {
+                                    println!("server error: {e:?}");
+                                }
+                            });
+                        }
+                        Err(ConnectionError::ApplicationClosed(_)) => {
+                            // Client closed the connection.
+                            break;
+                        }
+                        Err(e) => {
+                            println!("QUINN ERROR {e:?}");
+                            break;
+                        }
+                    }
                 }
             });
         }
@@ -405,34 +435,37 @@ mod quic_ufdp {
     /// block stream dropping the bytes immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
-        let mut endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
-        endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(client_config())));
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        let mut client_config = quinn::ClientConfig::new(Arc::new(client_config()));
+        client_config.transport_config(Arc::new(transport_config()));
+        endpoint.set_default_client_config(client_config);
+        let stream = endpoint
+            .connect(addr.parse().unwrap(), "localhost")
+            .unwrap()
+            .await
+            .unwrap();
 
         for _ in 0..iterations {
-            let stream = endpoint
-                .connect(addr.parse().unwrap(), "localhost")
-                .unwrap()
-                .await
-                .unwrap();
             let (tx, rx) = stream.open_bi().await.unwrap();
-            let stream = QuicStream { tx, rx };
+            let stream = BiStream { tx, rx };
 
-            let task = task::spawn(async {
+            let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
-
                 client.request(CID).await.unwrap();
+                client.conn.stream.tx.finish().await.unwrap();
             });
             tasks.push(task);
         }
         join_all(tasks).await;
     }
 
-    struct QuicStream {
-        tx: quinn::SendStream,
-        rx: quinn::RecvStream,
+    // Bidirectional QUIC stream for sending one request.
+    struct BiStream {
+        tx: SendStream,
+        rx: RecvStream,
     }
 
-    impl AsyncRead for QuicStream {
+    impl AsyncRead for BiStream {
         fn poll_read(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -442,7 +475,7 @@ mod quic_ufdp {
         }
     }
 
-    impl AsyncWrite for QuicStream {
+    impl AsyncWrite for BiStream {
         fn poll_write(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
