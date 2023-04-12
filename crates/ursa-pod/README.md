@@ -4,6 +4,8 @@ Implementation for the Ursa Fair Delivery Protocol, used to collect and batch pr
 
 ## Examples
 
+Request and serve 10GB of content over UFDP
+
 1. Run the server
 
 ```sh
