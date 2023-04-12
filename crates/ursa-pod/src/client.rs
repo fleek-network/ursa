@@ -29,7 +29,7 @@ where
         pubkey: BlsPublicKey,
         lane: Option<u8>,
     ) -> Result<Self, UrsaCodecError> {
-        let mut conn = UfdpConnection::new(stream, 16 * 1024);
+        let mut conn = UfdpConnection::new(stream);
 
         // send handshake
         instrument!(

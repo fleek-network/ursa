@@ -40,7 +40,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     #[inline(always)]
     pub fn new(stream: S, backend: B, session_id: u64) -> Self {
         Self {
-            conn: UfdpConnection::new(stream, 16 * 1024),
+            conn: UfdpConnection::new(stream),
             backend: Arc::new(backend),
             session_id,
         }

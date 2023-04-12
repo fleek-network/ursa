@@ -323,19 +323,17 @@ pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
     stream: T,
     read_buffer: BytesMut,
     pub take: usize,
-    chunk_size: usize,
 }
 
 impl<T> UfdpConnection<T>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
-    pub fn new(stream: T, chunk_size: usize) -> Self {
+    pub fn new(stream: T) -> Self {
         Self {
             stream,
             read_buffer: BytesMut::with_capacity(16 * 1024),
             take: 0,
-            chunk_size,
         }
     }
 
@@ -511,7 +509,7 @@ where
 
         // should we be reading a chunk right now?
         if self.take > 0 {
-            let take = self.take.min(self.chunk_size);
+            let take = self.take.min(self.read_buffer.len());
             return Ok(if len >= take {
                 self.take -= take;
                 Some(UrsaFrame::Buffer(self.read_buffer.split_to(take)))
