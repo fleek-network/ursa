@@ -33,7 +33,7 @@ use ursa_utils::evm::epoch_manager::{
 // - Restart the narwhal service for each new epoch.
 // - Execution engine with mpsc or a normal channel to deliver the transactions to abci.
 
-const STORE_NAME: &str = "narwhal-store";
+const STORE_NAME: &str = "narwhal-epochs";
 
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 pub struct Consensus {
@@ -77,15 +77,18 @@ impl Consensus {
 
         let execution_state = Execution::new(tx_certificates);
 
-        let store_path = config.store_path.resolve().into_owned();
-        std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
+        let mut store_path = config.store_path.clone();
+        store_path.push(STORE_NAME);
+        let absolute_store_path = store_path.resolve().into_owned();
+        std::fs::create_dir_all(&absolute_store_path)
+            .context("Could not create the store directory.")?;
 
         Ok(Consensus {
             epoch_state: Mutex::new(None),
             narwhal_args,
             parameters: config.parameters,
             execution_state: Arc::new(execution_state),
-            store_path,
+            store_path: absolute_store_path,
             mempool_address,
             reconfigure_notify,
             shutdown_notify: Notify::new(),
@@ -109,7 +112,7 @@ impl Consensus {
 
         // Make or open store specific to current epoch.
         let mut store_path = self.store_path.clone();
-        store_path.set_file_name(format!("{}-{}", STORE_NAME, epoch));
+        store_path.push(format!("{epoch}"));
         let store = NodeStorage::reopen(store_path);
 
         let service = NarwhalService::new(

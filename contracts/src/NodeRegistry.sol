@@ -75,6 +75,7 @@ contract NodeRegistry {
     }
 
     function _removeNode(string calldata _nodePublicKey) private {
+        require(whitelist[_nodePublicKey].owner != address(0), "Node is not on the whitelist");
         whitelist[whitelist[_nodePublicKey].previous].next = whitelist[_nodePublicKey].next;
         whitelist[whitelist[_nodePublicKey].next].previous = whitelist[_nodePublicKey].previous;
         whitelist[_nodePublicKey].owner = address(0);

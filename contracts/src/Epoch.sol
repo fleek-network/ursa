@@ -87,12 +87,8 @@ contract EpochManager {
                 revert();
             }
         }
-        uint256 roundUp;
-        if (currentCommitteeSize * 2 / 3 > 0) {
-            roundUp = 1;
-        }
 
-        if (readyToChange >= (currentCommitteeSize * 2 / 3) + roundUp) {
+        if (readyToChange >= (currentCommitteeSize * 2 / 3) + 1) {
             _changeEpoch();
             return (true);
         } else {
