@@ -10,7 +10,6 @@ on:
 
 jobs:
   build:
-    if: '! github.event.pull_request.draft'
     name: Docker build and publish ${{ matrix.make.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
