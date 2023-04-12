@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use fnv::FnvHashMap;
-use rayon::slice::ParallelSliceMut;
+use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::stat;
@@ -70,7 +70,7 @@ impl Stats {
 
         let mean = stat::mean(&*inputs);
         let std_dev = stat::stddev(&*inputs, Some(mean));
-        let sum: u128 = inputs.iter().map(|n| *n as u128).sum();
+        let sum: u128 = inputs.par_iter().map(|n| *n as u128).sum();
 
         Self {
             count,
