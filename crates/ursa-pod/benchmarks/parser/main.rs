@@ -19,16 +19,18 @@ mod stat;
 #[derive(Default)]
 pub struct Filtered {
     inputs: RefCell<Vec<u64>>,
-    parameters: FnvHashMap<String, Filtered>,
+    parameters: FnvHashMap<String, FnvHashMap<String, Filtered>>,
 }
 
 impl Filtered {
-    pub fn feed(&mut self, input: u64, parameters: &[String]) {
+    pub fn feed(&mut self, input: u64, parameters: &[(String, String)]) {
         self.inputs.borrow_mut().push(input);
         if !parameters.is_empty() {
-            for (i, param) in parameters[1..].iter().enumerate() {
+            for (i, (param, value)) in parameters[1..].iter().enumerate() {
                 self.parameters
                     .entry(param.clone())
+                    .or_default()
+                    .entry(value.clone())
                     .or_default()
                     .feed(input, &parameters[i + 1..]);
             }
@@ -44,7 +46,7 @@ impl Serialize for Filtered {
         #[derive(Serialize)]
         struct FilteredAggr<'a> {
             stats: Stats,
-            params: &'a FnvHashMap<String, Filtered>,
+            params: &'a FnvHashMap<String, FnvHashMap<String, Filtered>>,
         }
 
         let aggr = FilteredAggr {
@@ -93,12 +95,19 @@ fn main() {
         let end = u64::from_str(&vals[2].replace("end=", "")).unwrap();
         let elapsed = end - start;
 
-        let location = vals[3].to_string();
-        //let id = u128::from_str(&vals[4].replace("sid=", "")).unwrap();
-
-        let mut params = vec![location];
-        let mut p2: Vec<String> = vals[4..].iter().map(|s| s.to_string()).collect();
-        params.append(&mut p2);
+        let mut params = vec![];
+        let mut p = vals[2..]
+            .iter()
+            .map(|s| {
+                let v: Vec<String> = s.split('=').map(|s| s.to_string()).collect();
+                if v.len() != 2 {
+                    (String::new(), v[0].clone())
+                } else {
+                    (v[0].clone(), v[1].clone())
+                }
+            })
+            .collect();
+        params.append(&mut p);
         filter.feed(elapsed, &params);
     }
 
