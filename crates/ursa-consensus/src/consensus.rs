@@ -21,8 +21,8 @@ use crate::{
     narwhal::{NarwhalArgs, NarwhalService},
 };
 use ursa_application::types::Query;
-use ursa_utils::transactions::{
-    decode_committee, decode_epoch_info_return, encode_signal_epoch_call, get_epoch_info_params,
+use ursa_utils::evm::epoch_manager::{
+    decode_committee, decode_epoch_info_return, get_epoch_info_call, get_signal_epoch_change_call,
 };
 
 // what do we need for this file to work and be complete?
@@ -163,7 +163,7 @@ impl Consensus {
             loop {
                 time::sleep(Duration::from_secs(1)).await;
 
-                let txn = match serde_json::to_vec(&encode_signal_epoch_call(
+                let txn = match serde_json::to_vec(&get_signal_epoch_change_call(
                     primary_public_key.to_string(),
                 )) {
                     Ok(txn) => txn,
@@ -225,7 +225,7 @@ impl Consensus {
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
         // Build transaction.
-        let txn = get_epoch_info_params();
+        let txn = get_epoch_info_call();
         let query = Query::EthCall(txn);
 
         let query_string = serde_json::to_string(&query)?;
@@ -245,7 +245,7 @@ impl Consensus {
         let response = rx.await.with_context(|| "Failure querying abci")?;
 
         // Decode response.
-        let epoch_info = decode_epoch_info_return(response.value);
+        let epoch_info = decode_epoch_info_return(response.value)?;
 
         let epoch = epoch_info.epoch.as_u64();
         let epoch_timestamp = epoch_info.current_epoch_end_ms.as_u64();

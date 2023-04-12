@@ -22,8 +22,7 @@ use revm::{
 use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use ursa_utils::contract_bindings::epoch_bindings::SignalEpochChangeReturn;
-use ursa_utils::transactions::EPOCH_ADDRESS;
+use ursa_utils::evm::epoch_manager::{EPOCH_ADDRESS, SignalEpochChangeReturn};
 
 #[derive(Clone, Debug)]
 pub struct State<Db> {
@@ -220,7 +219,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Resolve the `to`.
         match tx.to {
             Some(NameOrAddress::Address(addr)) => {
-                if addr == EPOCH_ADDRESS.parse::<Address>().unwrap() {
+                if addr == *EPOCH_ADDRESS {
                     to_epoch_contract = true;
                 }
                 tx.to = Some(addr.into())
