@@ -33,12 +33,12 @@ impl Serialize for Filtered {
         #[derive(Serialize)]
         struct FilteredAggr<'a> {
             stats: Stats,
-            parameters: &'a FnvHashMap<String, Filtered>,
+            params: &'a FnvHashMap<String, Filtered>,
         }
 
         let aggr = FilteredAggr {
             stats: Stats::new(&mut self.inputs.borrow_mut()),
-            parameters: &self.parameters,
+            params: &self.parameters,
         };
 
         aggr.serialize(serializer)
