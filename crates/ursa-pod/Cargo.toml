@@ -44,8 +44,7 @@ default = ["client", "server", "parser"]
 client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
-benchmarks = []
-parser = ["serde", "serde_json", "rayon", "fnv"]
+benchmarks = ["serde", "serde_json", "rayon", "fnv"]
 
 [[bench]]
 name = "encrypt"
@@ -75,4 +74,4 @@ required-features = ["benchmarks"]
 [[bin]]
 name = "parser"
 path = "benchmarks/parser/main.rs"
-required-features = ["parser"]
+required-features = ["benchmarks"]
