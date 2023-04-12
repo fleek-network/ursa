@@ -12,10 +12,9 @@ contract RewardsAggregator {
     ///  epoch => Node publicKey => Data served
     mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
     ///  epoch => Public key list
-    mapping(uint256 => string []) public publicKeys;
+    mapping(uint256 => string[]) public publicKeys;
     ///  epoch => public key => key added
     mapping(uint256 => mapping(string => bool)) public publicKeyAdded;
-
 
     function initialize() external {
         require(!initialized, "contract already initialized");

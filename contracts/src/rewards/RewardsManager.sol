@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
+import "../management/Controlled.sol";
 import "../token/FleekToken.sol";
 import "../registry/NodeRegistry.sol";
 import "../epoch/EpochManager.sol";
@@ -13,8 +14,7 @@ import {SD59x18, sd, intoInt256, intoUint256, UNIT, convert} from "prb/math/SD59
  * @dev This contract calculates and distributes the rewards
  */
 
-contract FleekReward {
-    uint256 constant DAYS_IN_YEAR = 365;
+contract FleekReward is Controlled {
     FleekToken private fleekToken;
     RewardsAggregator public rewardsAggregator;
     EpochManager public epochManager;
@@ -22,11 +22,11 @@ contract FleekReward {
     SD59x18 public inflationInLastEpoch;
 
     bool private initialized;
-    address public owner;
 
     // epoch number => bool
     mapping(uint256 => bool) public rewardsDistribution;
 
+    uint256 constant DAYS_IN_YEAR = 365;
     // these can go in governance/controlled contracts
     // min factor by which the inflation can go down based on usage in %
     SD59x18 minInflationFactor;
@@ -39,29 +39,25 @@ contract FleekReward {
 
     event RewardMinted(address indexed account, uint256 amount);
 
-    function initialize(address _fleekToken, address _epochManager, address _rewardsAggregator, address _nodeRegistry)
+    function initialize(address _controller, address _token, address _epoch, address _aggregator, address _registry)
         external
     {
         require(!initialized, "Rewards contract already initialized");
-        owner = msg.sender;
-        fleekToken = FleekToken(_fleekToken);
-        nodeRegistry = NodeRegistry(_nodeRegistry);
-        epochManager = EpochManager(_epochManager);
-        rewardsAggregator = RewardsAggregator(_rewardsAggregator);
+
+        Controlled._init(_controller);
+        fleekToken = FleekToken(_token);
+        nodeRegistry = NodeRegistry(_registry);
+        epochManager = EpochManager(_epoch);
+        rewardsAggregator = RewardsAggregator(_aggregator);
         inflationInLastEpoch = maxInflation;
         initialized = true;
-    }
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call this function");
-        _;
     }
 
     /**
      * @dev Distribute reward tokens to addresses.
      * @param epoch epoch for which the rewards to be distributed
      */
-    function distributeRewards(uint256 epoch) public onlyOwner {
+    function distributeRewards(uint256 epoch) public onlyController {
         require(epochManager.epoch() != epoch, "cannot distribute rewards for current epoch");
         require(!rewardsDistribution[epoch], "rewards already distributed for this epoch");
 

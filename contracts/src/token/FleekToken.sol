@@ -2,11 +2,10 @@
 pragma solidity ^0.8.15;
 
 import "solmate/tokens/ERC20.sol";
+import "../management/Controlled.sol";
 
-contract FleekToken is ERC20 {
+contract FleekToken is ERC20, Controlled {
     /* STATE */
-
-    address public owner;
     mapping(address => bool) private _minters;
 
     /* EVENTS */
@@ -14,19 +13,14 @@ contract FleekToken is ERC20 {
     event MinterAdded(address indexed account);
     event MinterRemoved(address indexed account);
 
-    constructor(uint256 _initialSupply) ERC20("Fleek", "FLK", 18) {
-        owner = msg.sender;
+    constructor(address _controller, uint256 _initialSupply) ERC20("Fleek", "FLK", 18) {
+        Controlled._init(_controller);
         _mint(msg.sender, _initialSupply);
         _addMinter(msg.sender);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can perform this action");
-        _;
-    }
-
     modifier onlyMinter() {
-        require(_minters[msg.sender], "Address not allowed");
+        require(_minters[msg.sender], "Address not allowed to mint");
         _;
     }
 
@@ -34,7 +28,7 @@ contract FleekToken is ERC20 {
      * @dev Add a new minter.
      * @param _account Address of the minter
      */
-    function addMinter(address _account) external onlyOwner {
+    function addMinter(address _account) external onlyController {
         _addMinter(_account);
     }
 
@@ -42,7 +36,7 @@ contract FleekToken is ERC20 {
      * @dev Remove a minter.
      * @param _account Address of the minter
      */
-    function removeMinter(address _account) external onlyOwner {
+    function removeMinter(address _account) external onlyController {
         _removeMinter(_account);
     }
 
