@@ -63,15 +63,15 @@ name = "e2e"
 harness = false
 
 [[bin]]
-name = "client"
+name = "ufdp-bench-client"
 path = "benchmarks/client.rs"
 
 [[bin]]
-name = "server"
+name = "ufdp-bench-server"
 path = "benchmarks/server.rs"
 required-features = ["benchmarks"]
 
 [[bin]]
-name = "parser"
+name = "ufdp-bench-parser"
 path = "benchmarks/parser/main.rs"
 required-features = ["benchmarks"]
