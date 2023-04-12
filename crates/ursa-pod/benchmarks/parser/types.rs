@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use fnv::FnvHashMap;
 use rayon::slice::ParallelSliceMut;
 use serde::Serialize;
@@ -6,13 +8,13 @@ use crate::stat;
 
 #[derive(Default)]
 pub struct Filtered {
-    inputs: Vec<u64>,
+    inputs: RefCell<Vec<u64>>,
     parameters: FnvHashMap<String, Filtered>,
 }
 
 impl Filtered {
     pub fn feed(&mut self, input: u64, parameters: &[String]) {
-        self.inputs.push(input);
+        self.inputs.borrow_mut().push(input);
         if !parameters.is_empty() {
             for (i, param) in parameters[1..].iter().enumerate() {
                 self.parameters
@@ -36,7 +38,7 @@ impl Serialize for Filtered {
         }
 
         let aggr = FilteredAggr {
-            stats: Stats::new(&mut self.inputs.clone()),
+            stats: Stats::new(&mut self.inputs.borrow_mut()),
             parameters: &self.parameters,
         };
 
