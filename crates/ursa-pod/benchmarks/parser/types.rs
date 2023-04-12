@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 
 use fnv::FnvHashMap;
-use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::stat;
@@ -49,28 +48,18 @@ impl Serialize for Filtered {
 #[derive(Serialize)]
 struct Stats {
     count: usize,
+    sum: u128,
     mean: f64,
     median: f64,
     std_dev: f64,
-    sum: u128,
 }
 
 impl Stats {
     pub fn new(inputs: &mut [u64]) -> Self {
         let count = inputs.len();
-
-        inputs.par_sort();
-        let median = if count % 2 != 0 {
-            inputs[(count + 1) / 2] as f64
-        } else {
-            let index = count / 2;
-            let (v1, v2) = (inputs[index] as f64, inputs[index + 1] as f64);
-            (v1 + v2) / 2.0
-        };
-
-        let mean = stat::mean(&*inputs);
+        let (sum, mean) = stat::sum_mean(&*inputs);
         let std_dev = stat::stddev(&*inputs, Some(mean));
-        let sum: u128 = inputs.par_iter().map(|n| *n as u128).sum();
+        let median = stat::median(inputs);
 
         Self {
             count,
