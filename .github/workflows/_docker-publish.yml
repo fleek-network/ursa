@@ -7,10 +7,10 @@ on:
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
-    types: [ready_for_review]
 
 jobs:
   build:
+    if: '! github.event.pull_request.draft'
     name: Docker build and publish ${{ matrix.make.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:

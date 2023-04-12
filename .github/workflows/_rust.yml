@@ -7,10 +7,10 @@ on:
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
-    types: [ready_for_review]
 
 jobs:
   tests:
+    if: '! github.event.pull_request.draft'
     name: Matrix tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -26,6 +26,7 @@ jobs:
       - run: echo "No rust or workflow modifications, skipped!"
 
   clippy:
+    if: '! github.event.pull_request.draft'
     name: Lint with clippy
     runs-on: ubuntu-latest
     strategy:
@@ -35,6 +36,7 @@ jobs:
       - run: echo "No rust or workflow modifications, skipped!"
 
   coverage:
+    if: '! github.event.pull_request.draft'
     name: Tests coverage
     runs-on: ubuntu-latest
     strategy:
@@ -44,6 +46,7 @@ jobs:
       - run: echo "No rust or workflow modifications, skipped!"
 
   rustfmt:
+    if: '! github.event.pull_request.draft'
     name: Code formatting
     runs-on: ubuntu-latest
     strategy:

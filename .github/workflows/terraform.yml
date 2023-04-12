@@ -12,10 +12,10 @@ on:
   pull_request:
     paths:
       - 'infra/tf-next/**'
-    types: [ready_for_review]
 
 jobs:
   terraform:
+    if: '! github.event.pull_request.draft'
     name: "Terraform"
     runs-on: ubuntu-latest
     defaults:
