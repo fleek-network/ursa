@@ -509,13 +509,9 @@ where
 
         // should we be reading a chunk right now?
         if self.take > 0 {
-            let take = self.take.min(self.read_buffer.len());
-            return Ok(if len >= take {
-                self.take -= take;
-                Some(UrsaFrame::Buffer(self.read_buffer.split_to(take)))
-            } else {
-                None
-            });
+            let take = len.min(self.take);
+            self.take -= take;
+            return Ok(Some(UrsaFrame::Buffer(self.read_buffer.split_to(take))));
         }
 
         // first frame byte is the tag
