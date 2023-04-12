@@ -421,10 +421,7 @@ mod quic_ufdp {
                             // Client closed the connection.
                             break;
                         }
-                        Err(e) => {
-                            println!("QUINN ERROR {e:?}");
-                            break;
-                        }
+                        Err(e) => panic!("{e:?}"),
                     }
                 }
             });
@@ -452,6 +449,8 @@ mod quic_ufdp {
             let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
                 client.request(CID).await.unwrap();
+                // TODO: Fix. Server does a read which will return an error
+                // if we don't shut down the stream properly.
                 client.conn.stream.tx.finish().await.unwrap();
             });
             tasks.push(task);
