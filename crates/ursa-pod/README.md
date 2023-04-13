@@ -76,7 +76,7 @@ File and block size are encoded into the cid bytes, parsed by the server. These 
 # Run 64 concurrent requests for 1MiB of content, in 256KiB blocks
 cargo run \
   --bin ufdp-bench-client -- \
-  "127.0.0.1:6969" 64 1048576 262144
+  "127.0.0.1:6969" 64 262144 1048576 
 ```
 
 #### Server
