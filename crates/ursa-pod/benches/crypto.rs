@@ -72,24 +72,12 @@ fn bench_primitives(c: &mut Criterion) {
         g.throughput(Throughput::Bytes(size as u64));
 
         g.bench_with_input(
-            BenchmarkId::new("blake3::update_rayon", size),
+            BenchmarkId::new("hash_ciphertext", size),
             &size,
             |b, size| {
                 let input = random_vec(*size);
                 b.iter(|| {
-                    let hash = blake3::Hasher::new().update_rayon(&input).finalize();
-                    black_box(hash);
-                })
-            },
-        );
-
-        g.bench_with_input(
-            BenchmarkId::new("blake3::update", size),
-            &size,
-            |b, size| {
-                let input = random_vec(*size);
-                b.iter(|| {
-                    let hash = blake3::Hasher::new().update(&input).finalize();
+                    let hash = hash_ciphertext(&input);
                     black_box(hash);
                 })
             },
@@ -110,5 +98,45 @@ fn bench_primitives(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_primitives);
+fn bench_routines(c: &mut Criterion) {
+    let mut g = c.benchmark_group("Routines");
+    g.sample_size(20);
+
+    let sizes = [
+        1,
+        16,
+        32,
+        48,
+        63,
+        64,
+        512,
+        1 * 1024,
+        4 * 1024,
+        8 * 1024,
+        1 * 16 * 1024,
+        2 * 16 * 1024,
+        3 * 16 * 1024,
+        4 * 16 * 1024,
+        8 * 16 * 1024,
+        12 * 16 * 1024,
+        16 * 16 * 1024, // 256KiB
+    ];
+
+    for size in sizes {
+        g.throughput(Throughput::Bytes(size as u64));
+
+        g.bench_with_input(BenchmarkId::new("encrypt_block", size), &size, |b, size| {
+            let mut output = mk_vec(*size + 64);
+            let input = random_vec(*size);
+            let sk = SecretKey::random(OsRng);
+            let req = RequestInfo::rand(OsRng);
+            b.iter(|| {
+                encrypt_block(&sk, &req, &input, &mut output);
+                black_box(&output);
+            })
+        });
+    }
+}
+
+criterion_group!(benches, bench_primitives, bench_routines);
 criterion_main!(benches);

@@ -1,6 +1,6 @@
 use crate::{
     keys::SecretKey,
-    types::{Blake3Cid, BlsPublicKey, SchnorrSignature},
+    types::{Blake3Cid, BlsPublicKey, SchnorrSignature, Secp256k1PublicKey},
 };
 use arrayvec::ArrayVec;
 use blake3::keyed_hash;
@@ -15,6 +15,8 @@ use rand_core::RngCore;
 pub struct RequestInfo {
     /// The root content id that was requested.
     pub cid: Blake3Cid,
+    /// The server's public key.
+    pub server: Secp256k1PublicKey,
     /// The client's public key.
     pub client: BlsPublicKey,
     /// Nonce assigned to the session.
@@ -27,8 +29,9 @@ impl RequestInfo {
     /// Returns the hash of the request info.
     #[inline]
     pub fn hash(&self) -> [u8; 32] {
-        let mut bytes = ArrayVec::<u8, { 32 + 48 + 32 + 8 }>::new();
+        let mut bytes = ArrayVec::<u8, { 32 + 33 + 48 + 32 + 8 }>::new();
         bytes.try_extend_from_slice(&self.cid).unwrap();
+        bytes.try_extend_from_slice(&self.server).unwrap();
         bytes.try_extend_from_slice(&self.client).unwrap();
         bytes.try_extend_from_slice(&self.session_nonce).unwrap();
         bytes
@@ -41,6 +44,11 @@ impl RequestInfo {
     pub fn rand(mut rng: impl RngCore) -> Self {
         Self {
             cid: rng.gen(),
+            server: {
+                let mut ret = [0; 33];
+                rng.fill_bytes(&mut ret);
+                ret
+            },
             client: {
                 let mut ret = [0; 48];
                 rng.fill_bytes(&mut ret);
@@ -128,12 +136,49 @@ pub fn sign_ciphertext(
         let mut buffer = ArrayVec::<u8, { 32 + 32 }>::new();
         buffer.try_extend_from_slice(ciphertext_hash).unwrap();
         buffer.try_extend_from_slice(request_info_hash).unwrap();
-        *keyed_hash(&ufdp_keys::SCHNORR_CHALLENGE_KEY, &buffer).as_bytes()
+        *keyed_hash(&ufdp_keys::CIPHERTEXT_COMMITMENT_KEY, &buffer).as_bytes()
     };
 
     let msg = secp256k1::Message::from_slice(&hash).unwrap();
     *sk.as_secp256k1_key_pair().sign_schnorr(msg).as_ref()
 }
+
+/// Hash the ciphertext with Blake3 under the protocol specified DST.
+#[inline]
+pub fn hash_ciphertext(cipher: &[u8]) -> [u8; 32] {
+    *blake3::Hasher::new_keyed(&ufdp_keys::CIPHERTEXT_DIGEST_KEY)
+        .update_rayon(cipher)
+        .finalize()
+        .as_bytes()
+}
+
+/// Encrypt a block of data for the given request and write the result to the output buffer.
+///
+/// # Panics
+///
+/// If `output.len() != input.len() + 64`.
+pub fn encrypt_block(sk: &SecretKey, req_info: &RequestInfo, input: &[u8], output: &mut [u8]) {
+    assert_eq!(output.len(), input.len() + 64);
+
+    // Hash the request info using the DST.
+    let request_info_hash = req_info.hash();
+    // Encrypt the data using AES.
+    let symmetric_key = generate_symmetric_key(sk, &request_info_hash);
+    apply_aes_128_ctr(
+        Mode::Encrypt,
+        symmetric_key,
+        input,
+        &mut output[0..input.len()],
+    );
+
+    // Put a publicly verifiable commitment to the ciphertext at the end of the
+    // data.
+    let ciphertext_hash = hash_ciphertext(&output[..input.len()]);
+    let commitment = sign_ciphertext(sk, &ciphertext_hash, &request_info_hash);
+    output[input.len()..].copy_from_slice(&commitment);
+}
+
+pub fn verify_encrypted_block() {}
 
 /// The pre-computed protocol specific unique domain separators.
 pub mod ufdp_keys {
@@ -147,13 +192,18 @@ pub mod ufdp_keys {
     pub const HASH_TO_FIELD_KEY: [u8; 32] =
         hex!("8A4F67FA3FFF7BB0D0226F0E960A79691263D9DA1F340BA0DFEDEF6CB969AC6C");
 
-    /// Used for when we hash things to the field element.
+    /// Used for generating the hashes to drive a symmetric key.
     pub const HASH_TO_SYMMETRIC_KEY_KEY: [u8; 32] =
         hex!("F9C8329F93E84FFE57AB9963D86B1F8369665FB741381671AF8B335C9F0907DA");
 
-    /// Used for when we hash things to the field element.
-    pub const SCHNORR_CHALLENGE_KEY: [u8; 32] =
-        hex!("7d169ac59f0c512273d77859f0349c9efedc1524f83851ae0f06fa2d04b0b73e");
+    /// Key for hashing the ciphertext.
+    pub const CIPHERTEXT_DIGEST_KEY: [u8; 32] =
+        hex!("4D4B3F8801E1C8A92DD137E5A546EC8C6147357ADA43B399FB681E929C57ED9B");
+
+    /// Used for hashing the message for schnorr signature used as a ciphertext
+    /// commitment.
+    pub const CIPHERTEXT_COMMITMENT_KEY: [u8; 32] =
+        hex!("9EA73937117EE63FDFE7D69C8A02A189062A2686F36D4BDFD6DFAE2FA8A50442");
 
     #[cfg(test)]
     mod tests {
@@ -194,11 +244,22 @@ pub mod ufdp_keys {
         }
 
         #[test]
-        fn schnorr_challenge_key() {
-            let key = derive_key("SCHNORR_CHALLENGE", b"FLEEK-NETWORK-UFDP");
+        fn ciphertext_hash_key() {
+            let key = derive_key("CIPHERTEXT_DIGEST", b"FLEEK-NETWORK-UFDP");
             assert_eq!(
                 key,
-                SCHNORR_CHALLENGE_KEY,
+                CIPHERTEXT_DIGEST_KEY,
+                "expected='{}'",
+                blake3::Hash::from(key).to_hex()
+            );
+        }
+
+        #[test]
+        fn ciphertext_commitment_key() {
+            let key = derive_key("CIPHERTEXT_COMMITMENT", b"FLEEK-NETWORK-UFDP");
+            assert_eq!(
+                key,
+                CIPHERTEXT_COMMITMENT_KEY,
                 "expected='{}'",
                 blake3::Hash::from(key).to_hex()
             );

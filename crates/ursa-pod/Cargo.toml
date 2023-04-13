@@ -16,11 +16,11 @@ elliptic-curve = { version = "0.13", default-features = false, features = ["hash
 futures = { version = "0.3", optional = true }
 k256 = { version = "0.13", default-features = false, features = ["arithmetic", "hash2curve", "expose-field"] }
 rand_core = "0.6"
-rand_hc = "0.3"
 sha2 = "0.10"
-hex-literal = "0.4.1"
+hex-literal = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
-secp256k1 = { version = "0.27", features = ["bitcoin-hashes", "global-context", "rand-std"] }
+secp256k1 = { version = "0.27", features = ["global-context", "rand-std"] }
+blst = "0.3"
 
 # client/server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }
