@@ -116,7 +116,7 @@ impl RpcCommands {
                 match eth_call(txn).await {
                     Ok(result) => match function_abi.decode_output(&result) {
                         Ok(tokens) => info!("Returned data is: {tokens:?}"),
-                        Err(err) => error!("Error decoding output: {err:?}"),
+                        Err(_) => error!("Error decoding output: {result:?}"),
                     },
                     Err(_e) => {
                         error!("There was an error while calling the rpc server. Please Check Server Logs")

@@ -13,6 +13,7 @@ use ursa_utils::contract_bindings::node_registry_bindings::{
     InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
 };
 use ursa_utils::transactions::REGISTRY_ADDRESS;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct GenesisNode {
     owner: Address,
@@ -38,8 +39,8 @@ async fn main() {
         Some(time) => time,
         None => "300000",
     };
-
     let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
+    
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -77,7 +78,6 @@ async fn main() {
     let init_call = RegistryInitCall { genesis_committee };
 
     let registry_bytes = NodeRegistryCalls::Initialize(init_call).encode();
-
 
     let mut genesis = Genesis::load().unwrap();
     genesis.epoch.init_params = Some(Bytes::from(epoch_bytes));
