@@ -4,20 +4,19 @@ use ethers::prelude::U256 as UInt256;
 use ethers::types::Bytes;
 use serde::Deserialize;
 use serde::Serialize;
-use ursa_utils::rewards::REWARDS_AGG_ADDRESS;
 use std::time::SystemTime;
 use std::{env, fs};
 use ursa_application::genesis::Genesis;
 use ursa_utils::contract_bindings::epoch_bindings::{EpochCalls, InitializeCall};
+use ursa_utils::contract_bindings::fleek_reward_binding::{
+    FleekRewardCalls, InitializeCall as RewardsInitCall,
+};
 use ursa_utils::contract_bindings::node_registry_bindings::Worker;
 use ursa_utils::contract_bindings::node_registry_bindings::{
     InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
 };
-use ursa_utils::contract_bindings::fleek_reward_binding::{InitializeCall as RewardsInitCall, FleekRewardCalls };
-use ursa_utils::{
-    transactions::{ REGISTRY_ADDRESS, EPOCH_ADDRESS }
-
-};
+use ursa_utils::rewards::REWARDS_AGG_ADDRESS;
+use ursa_utils::transactions::{EPOCH_ADDRESS, REGISTRY_ADDRESS};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GenesisNode {
@@ -47,7 +46,9 @@ async fn main() {
     let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
     let epoch_address: Address = EPOCH_ADDRESS.parse().unwrap();
     let rewards_aggregator_address: Address = REWARDS_AGG_ADDRESS.parse().unwrap();
-    let fleek_token_address: Address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".parse().unwrap();
+    let fleek_token_address: Address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        .parse()
+        .unwrap();
 
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

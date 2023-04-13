@@ -4,6 +4,12 @@ pragma solidity ^0.8.15;
 import {SD59x18} from "prb/math/SD59x18.sol";
 import "../rewards/RewardsManager.sol";
 
+/**
+ * @title Parameters Contracts
+ * @dev This contract exposes all the parameters used in the economic model
+ * this contract is the only way to update the parameters
+ */
+
 contract Parameters {
     FleekReward private rewards;
     bool private initialized;
@@ -14,7 +20,6 @@ contract Parameters {
         initialized = true;
     }
 
-    // max inflation for the year in %
     function inflationRate() external view returns (SD59x18) {
         return rewards.maxInflation();
     }

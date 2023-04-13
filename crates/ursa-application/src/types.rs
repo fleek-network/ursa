@@ -138,7 +138,6 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let rewards_address: Address = genesis.rewards.address.parse().unwrap();
         let rewards_agg_address: Address = genesis.rewards_aggregator.address.parse().unwrap();
 
-
         // Build the account info for the contracts.
         let token_contract = AccountInfo {
             code: Some(Bytecode::new_raw(token_bytes.into())),
@@ -193,11 +192,12 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             .db
             .insert_account_info(rep_address.to_fixed_bytes().into(), rep_scores_contract);
         state
-        .db
-        .insert_account_info(rewards_address.to_fixed_bytes().into(), rewards_contract);
-        state
-        .db
-        .insert_account_info(rewards_agg_address.to_fixed_bytes().into(), rewards_agg_contract);
+            .db
+            .insert_account_info(rewards_address.to_fixed_bytes().into(), rewards_contract);
+        state.db.insert_account_info(
+            rewards_agg_address.to_fixed_bytes().into(),
+            rewards_agg_contract,
+        );
 
         // Call the init transactions.
         let registry_tx = TransactionRequest {

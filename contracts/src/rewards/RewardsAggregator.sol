@@ -6,6 +6,7 @@ import "../management/Controlled.sol";
  * @title Fleek Reward Aggreagator
  * @dev This contract aggregates data served by each node in an epoch
  */
+
 contract RewardsAggregator is Controlled {
     uint16 public daysForAveragePotential;
     bool private initialized;

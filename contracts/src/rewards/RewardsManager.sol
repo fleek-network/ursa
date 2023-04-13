@@ -39,13 +39,8 @@ contract FleekReward is Controlled {
 
     event RewardMinted(address indexed account, uint256 amount);
 
-    function initialize(
-        address _controller,
-        address _token,
-        address _epoch,
-        address _aggregator,
-        address _registry
-        ) external
+    function initialize(address _controller, address _token, address _epoch, address _aggregator, address _registry)
+        external
     {
         require(!initialized, "Rewards contract already initialized");
         Controlled._init(_controller);
@@ -57,7 +52,7 @@ contract FleekReward is Controlled {
         initialized = true;
     }
 
-    function setInflationRate(SD59x18 _inflationRate) external{
+    function setInflationRate(SD59x18 _inflationRate) external {
         maxInflation = _inflationRate;
     }
 

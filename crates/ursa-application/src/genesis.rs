@@ -19,7 +19,7 @@ pub struct Genesis {
     #[serde(default)]
     pub rewards: GenesisContract,
     #[serde(default)]
-    pub rewards_aggregator: GenesisContract
+    pub rewards_aggregator: GenesisContract,
 }
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct GenesisContract {
