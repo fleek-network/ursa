@@ -78,15 +78,16 @@ pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> 
 }
 
 /// Apply the AES_256_GCM to the buffer in place.
-pub fn apply_cipher_in_place(key: [u8; 32], buffer: &mut [u8]) {
-    let ring_nonce = ring::aead::Nonce::assume_unique_for_key([0u8; 12]);
-    let ring_ad = ring::aead::Aad::from(&[0; 32]);
-    let ring_key_aes = ring::aead::LessSafeKey::new(
-        ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, &key).unwrap(),
-    );
-    let _ = ring_key_aes
-        .seal_in_place_separate_tag(ring_nonce, ring_ad, buffer)
-        .unwrap();
+pub fn apply_cipher_in_place(key: [u8; 32], input: &[u8], output: &mut [u8]) {
+    let mut encrypter = openssl::symm::Crypter::new(
+        openssl::symm::Cipher::aes_128_ctr(),
+        openssl::symm::Mode::Encrypt,
+        &key[0..16],
+        Some(&key[16..]),
+    )
+    .unwrap();
+
+    encrypter.update(input, output).unwrap();
 }
 
 pub fn sign_response(

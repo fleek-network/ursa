@@ -100,10 +100,12 @@ fn bench_primitives(c: &mut Criterion) {
             BenchmarkId::new("apply_cipher_in_place", size),
             &size,
             |b, size| {
-                let mut result = mk_vec(*size);
+                let block_size = boring::symm::Cipher::aes_128_cbc().block_size();
+                let mut output = mk_vec(*size);
+                let input = random_vec(*size);
                 b.iter(|| {
-                    apply_cipher_in_place([0; 32], &mut result);
-                    black_box(&result);
+                    apply_cipher_in_place([0; 32], &input, &mut output);
+                    black_box(&output);
                 })
             },
         );
