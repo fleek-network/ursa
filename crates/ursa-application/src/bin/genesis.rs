@@ -8,17 +8,11 @@ use std::time::SystemTime;
 use std::{env, fs};
 use ursa_application::genesis::Genesis;
 use ursa_utils::contract_bindings::epoch_bindings::{EpochManagerCalls, InitializeCall};
-use ursa_utils::contract_bindings::fleek_reward_binding::{
-    FleekRewardCalls, InitializeCall as RewardsInitCall,
-};
-
 use ursa_utils::contract_bindings::node_registry_bindings::Worker;
 use ursa_utils::contract_bindings::node_registry_bindings::{
     InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
 };
-use ursa_utils::rewards::REWARDS_AGG_ADDRESS;
-use ursa_utils::transactions::{EPOCH_ADDRESS, REGISTRY_ADDRESS};
-
+use ursa_utils::transactions::REGISTRY_ADDRESS;
 #[derive(Serialize, Deserialize, Debug)]
 struct GenesisNode {
     owner: Address,
@@ -44,13 +38,8 @@ async fn main() {
         Some(time) => time,
         None => "300000",
     };
-    let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
-    let epoch_address: Address = EPOCH_ADDRESS.parse().unwrap();
-    let rewards_aggregator_address: Address = REWARDS_AGG_ADDRESS.parse().unwrap();
-    let fleek_token_address: Address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        .parse()
-        .unwrap();
 
+    let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -89,18 +78,10 @@ async fn main() {
 
     let registry_bytes = NodeRegistryCalls::Initialize(init_call).encode();
 
-    let rewards_init_call = RewardsInitCall {
-        fleek_token: fleek_token_address,
-        epoch_manager: epoch_address,
-        rewards_aggregator: rewards_aggregator_address,
-        node_registry: registry_address,
-    };
-    let rewards_bytes = FleekRewardCalls::Initialize(rewards_init_call).encode();
 
     let mut genesis = Genesis::load().unwrap();
     genesis.epoch.init_params = Some(Bytes::from(epoch_bytes));
     genesis.registry.init_params = Some(Bytes::from(registry_bytes));
-    genesis.rewards.init_params = Some(Bytes::from(rewards_bytes));
 
     let genesis_toml = toml::to_string(&genesis).unwrap();
     fs::write(env::current_dir().unwrap().join(GENESIS_PATH), genesis_toml).unwrap();
