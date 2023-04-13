@@ -60,7 +60,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
         &mut self,
         tx: TransactionRequest,
         read_only: bool,
-    ) -> Result<ExecutionResult> {
+    ) -> Result<ExecutionResult>{
         let mut evm = revm::EVM::new();
         evm.env = self.env.clone();
         evm.env.tx = TxEnv {
@@ -74,7 +74,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
             },
             data: tx.data.clone().unwrap_or_default().0,
             chain_id: Some(self.env.cfg.chain_id.try_into().unwrap()),
-            nonce: Some(tx.nonce.unwrap_or_default().as_u64()),
+            nonce: None,
             value: tx.value.unwrap_or_default().into(),
             gas_price: tx.gas_price.unwrap_or_default().into(),
             gas_priority_fee: Some(tx.gas_price.unwrap_or_default().into()),
@@ -85,7 +85,8 @@ impl<Db: DatabaseCommit + Database> State<Db> {
 
         let results = match evm.transact() {
             Ok(data) => data,
-            Err(_) => bail!("theres an err"),
+            Err(_) => bail!("theres an err")
+    
         };
         if !read_only {
             self.db.commit(results.state);
@@ -214,7 +215,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Submit and commit the init txns to state.
         let _registry_res = state.execute(registry_tx, false).await.unwrap();
         let _epoch_res = state.execute(epoch_tx, false).await.unwrap();
-
+        
         drop(state);
 
         self.commit(RequestCommit {}).await;

@@ -1,5 +1,5 @@
 use crate::contract_bindings::epoch_bindings::{
-    CommitteeMember, EpochCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
+    CommitteeMember, EpochManagerCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
     SignalEpochChangeCall,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
@@ -88,7 +88,7 @@ pub fn encode_params(func: &Function, args: &[impl AsRef<str>]) -> Result<Vec<u8
 pub fn get_epoch_info_params() -> TransactionRequest {
     // safe unwrap
     let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
-    let data = EpochCalls::GetCurrentEpochInfo(GetCurrentEpochInfoCall::default()).encode();
+    let data = EpochManagerCalls::GetCurrentEpochInfo(GetCurrentEpochInfoCall::default()).encode();
     TransactionRequest::new().to(to).data(data)
 }
 
@@ -119,7 +119,7 @@ pub fn decode_committee(
 
 pub fn encode_signal_epoch_call(public_key: String) -> TransactionRequest {
     let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
-    let data = EpochCalls::SignalEpochChange(SignalEpochChangeCall {
+    let data = EpochManagerCalls::SignalEpochChange(SignalEpochChangeCall {
         committee_member: public_key,
     })
     .encode();
