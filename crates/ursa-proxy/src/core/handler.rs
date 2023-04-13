@@ -1,4 +1,5 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
+use axum::routing::IntoMakeService;
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
@@ -6,7 +7,7 @@ use axum::{
     http::{response::Parts, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Extension, Router, TypedHeader,
+    Extension, Router, ServiceExt, TypedHeader,
 };
 use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use bytes::BufMut;
@@ -20,10 +21,10 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::normalize_path::NormalizePathLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::normalize_path::NormalizePath;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Level};
 
 type Client = client::Client<HttpConnector, Body>;
 
@@ -31,7 +32,7 @@ pub fn init_server_app<C: Cache>(
     server_config: Arc<ServerConfig>,
     cache: C,
     client: Client,
-) -> Router {
+) -> IntoMakeService<NormalizePath<Router>> {
     let mut user_app = Router::new();
 
     if let Some(path) = &server_config.serve_dir_path {
@@ -58,8 +59,16 @@ pub fn init_server_app<C: Cache>(
         .layer(Extension(cache))
         .layer(Extension(client))
         .layer(Extension(server_config.clone()))
-        .layer(NormalizePathLayer::trim_trailing_slash())
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .include_headers(true)
+                        .latency_unit(tower_http::LatencyUnit::Micros),
+                ),
+        )
         .layer(opentelemetry_tracing_layer());
 
     if let Some(headers) = &server_config.add_header {
@@ -76,7 +85,7 @@ pub fn init_server_app<C: Cache>(
         }
     }
 
-    user_app
+    NormalizePath::trim_trailing_slash(user_app).into_make_service()
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
