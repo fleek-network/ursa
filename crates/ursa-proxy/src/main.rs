@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
 
-    TelemetryConfig::new("ursa-gateway")
+    TelemetryConfig::new("ursa-proxy")
         // TODO: Make configurable.
         .with_log_level("INFO")
         .with_pretty_log()
