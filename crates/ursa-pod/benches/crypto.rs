@@ -102,7 +102,7 @@ fn bench_primitives(c: &mut Criterion) {
             |b, size| {
                 let mut result = mk_vec(*size);
                 b.iter(|| {
-                    apply_cipher_in_place([0; 32], &mut result);
+                    apply_cipher_in_place([0; 32], 0, &mut result);
                     black_box(&result);
                 })
             },

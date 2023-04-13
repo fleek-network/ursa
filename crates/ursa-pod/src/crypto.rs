@@ -2,6 +2,7 @@ use crate::{
     keys::SecretKey,
     types::{Blake3Cid, BlsPublicKey, SchnorrSignature},
 };
+use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use blake3::keyed_hash;
 use elliptic_curve::{
@@ -76,51 +77,13 @@ pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> 
     .as_bytes()
 }
 
-/// Apply the HC-128 to the buffer in place.
-pub fn apply_cipher_in_place(key: [u8; 32], buffer: &mut [u8]) {
-    let mut hc_block = [0u32; 16];
-    let mut hc_rng = rand_hc::Hc128Core::from_seed(key);
-    let mut iter = buffer.chunks_exact_mut(64);
+/// Apply the ChaCha8 to the buffer in place.
+pub fn apply_cipher_in_place(key: [u8; 32], nonce: u64, buffer: &mut [u8]) {
+    use c2_chacha::stream_cipher::{NewStreamCipher, SyncStreamCipher};
+    use c2_chacha::ChaCha8;
 
-    for chunk in &mut iter {
-        hc_rng.generate(&mut hc_block);
-
-        // If we're not on a little endian machine, convert from the current
-        // endianness to little endian to preserve the correct byte ordering.
-        if cfg!(not(target_endian = "little")) {
-            for i in 0..16 {
-                hc_block[i] = hc_block[i].to_le();
-            }
-        }
-
-        // We know the byte ordering is correct, get a raw slice pointer
-        // to this data.
-        let ptr = hc_block.as_ptr() as *const u8;
-        debug_assert_eq!(hc_block.len() * core::mem::size_of::<u32>(), 64);
-        let slice = unsafe { core::slice::from_raw_parts(ptr, 64) };
-
-        for i in 0..64 {
-            chunk[i] ^= slice[i];
-        }
-    }
-
-    // Now take the slow path for the remaining data...
-    let mut rem = iter.into_remainder();
-    if rem.len() > 0 {
-        hc_rng.generate(&mut hc_block);
-
-        'outer: for h in hc_block {
-            let h: [u8; 4] = h.to_le_bytes();
-            for i in 0..4 {
-                rem[0] ^= h[i];
-                rem = &mut rem[1..];
-
-                if rem.len() == 0 {
-                    break 'outer;
-                }
-            }
-        }
-    }
+    let mut cipher = ChaCha8::new(&key.into(), &nonce.to_le_bytes().into());
+    cipher.apply_keystream(buffer);
 }
 
 pub fn sign_response(
