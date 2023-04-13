@@ -23,6 +23,7 @@ c2-chacha = "0.3.3"
 ring = "0.16"
 boring = "2.1.0"
 openssl = { version = "0.10", features = ["vendored"] }
+secp256k1 = { version = "0.27", features = ["bitcoin-hashes", "global-context", "rand-std"] }
 
 # client/server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }

@@ -77,8 +77,22 @@ pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> 
     .as_bytes()
 }
 
-/// Apply the AES_256_GCM to the buffer in place.
-pub fn apply_cipher_in_place(key: [u8; 32], input: &[u8], output: &mut [u8]) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Encrypt,
+    Decrypt,
+}
+
+impl From<Mode> for openssl::symm::Mode {
+    fn from(value: Mode) -> Self {
+        match value {
+            Mode::Encrypt => openssl::symm::Mode::Encrypt,
+            Mode::Decrypt => openssl::symm::Mode::Decrypt,
+        }
+    }
+}
+
+pub fn apply_cipher_in_place(key: [u8; 32], buffer: &mut [u8]) {
     let mut encrypter = openssl::symm::Crypter::new(
         openssl::symm::Cipher::aes_128_ctr(),
         openssl::symm::Mode::Encrypt,
@@ -87,47 +101,30 @@ pub fn apply_cipher_in_place(key: [u8; 32], input: &[u8], output: &mut [u8]) {
     )
     .unwrap();
 
-    encrypter.update(input, output).unwrap();
+    unsafe {
+        let len = buffer.len();
+        let ptr = buffer.as_ptr();
+        let input = std::slice::from_raw_parts(ptr, len);
+        let output = std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), len);
+
+        encrypter.update(input, output).unwrap();
+    }
 }
 
 pub fn sign_response(
-    sk: &SecretKey,
+    kp: &secp256k1::KeyPair,
     ciphertext_hash: &[u8; 32],
     request_info_hash: &[u8; 32],
 ) -> SchnorrSignature {
-    // # Schnorr commitment to the encrypted data.
-    // To commit to a certain encryption, we simply produce a Schnorr signature with out private
-    // key, the message is $ m = REQUEST_INFO_HASH . CIPHERTEXT_HASH $.
-
-    let k = k256::Scalar::random(OsRng);
-    let r = (k256::AffinePoint::GENERATOR * k).to_affine();
-
-    // Compute the challenge. It is basically the hash of everything that's publicly available.
-    let e = {
-        let mut buffer = ArrayVec::<u8, { 33 + 32 + 32 }>::new();
-        let r_encoded = r.to_encoded_point(true);
-        debug_assert_eq!(r_encoded.as_bytes().len(), 33);
-        buffer.try_extend_from_slice(r_encoded.as_bytes()).unwrap();
+    let hash = {
+        let mut buffer = ArrayVec::<u8, { 32 + 32 }>::new();
         buffer.try_extend_from_slice(ciphertext_hash).unwrap();
         buffer.try_extend_from_slice(request_info_hash).unwrap();
-
-        let mut okm: [u8; 48] = [0; 48];
-        blake3::Hasher::new_keyed(&ufdp_keys::SCHNORR_CHALLENGE_KEY)
-            .update(&buffer)
-            .finalize_xof()
-            .fill(&mut okm);
-
-        k256::Scalar::from_okm(&okm.into())
+        *blake3::keyed_hash(&ufdp_keys::SCHNORR_CHALLENGE_KEY, &buffer).as_bytes()
     };
 
-    let s = k - e * sk.as_scalar();
-
-    // The response is a 64-byte tag, the two 32-byte chunks are the (e, s) of the schnorr
-    // signature in big endian representation.
-    let mut ret = [0; 64];
-    ret[0..32].copy_from_slice(&e.to_bytes());
-    ret[32..].copy_from_slice(&s.to_bytes());
-    ret
+    let msg = secp256k1::Message::from_slice(&hash).unwrap();
+    *kp.sign_schnorr(msg).as_ref()
 }
 
 pub fn encrypt_in_place(sk: &SecretKey, req: &RequestInfo, buffer: &mut [u8]) -> SchnorrSignature {

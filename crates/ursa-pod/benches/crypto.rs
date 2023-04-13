@@ -60,9 +60,9 @@ fn bench_primitives(c: &mut Criterion) {
     });
 
     g.bench_function("sign_response", |b| {
-        let sk = SecretKey::random(OsRng);
+        let kp = secp256k1::KeyPair::new_global(&mut OsRng);
         b.iter(|| {
-            let ret = sign_response(&sk, &[0; 32], &[0; 32]);
+            let ret = sign_response(&kp, &[0; 32], &[0; 32]);
             black_box(ret);
         })
     });
@@ -104,7 +104,7 @@ fn bench_primitives(c: &mut Criterion) {
                 let mut output = mk_vec(*size);
                 let input = random_vec(*size);
                 b.iter(|| {
-                    apply_cipher_in_place([0; 32], &input, &mut output);
+                    apply_cipher_in_place([0; 32], &mut output);
                     black_box(&output);
                 })
             },
