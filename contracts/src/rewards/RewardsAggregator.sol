@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
+import "../management/Controlled.sol";
 /**
  * @title Fleek Reward Aggreagator
  * @dev This contract aggregates data served by each node in an epoch
  */
-contract RewardsAggregator {
+contract RewardsAggregator is Controlled {
     uint16 public daysForAveragePotential;
     bool private initialized;
 
@@ -16,8 +17,9 @@ contract RewardsAggregator {
     ///  epoch => public key => key added
     mapping(uint256 => mapping(string => bool)) public publicKeyAdded;
 
-    function initialize() external {
-        require(!initialized, "contract already initialized");
+    function initialize(address _controller) external {
+        require(!initialized, "Rewards contract already initialized");
+        Controlled._init(_controller);
 
         initialized = true;
     }
@@ -35,7 +37,7 @@ contract RewardsAggregator {
      * @param publicKey public key of the node
      * @param dataServed data served from the pod transaction
      */
-    function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external {
+    function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external onlyController {
         if (!publicKeyAdded[epoch][publicKey]) {
             publicKeys[epoch].push(publicKey);
             publicKeyAdded[epoch][publicKey] = true;
