@@ -18,6 +18,7 @@ k256 = { version = "0.13", default-features = false, features = ["arithmetic", "
 rand_core = "0.6"
 rand_hc = "0.3"
 sha2 = "0.10"
+hex-literal = "0.4.1"
 
 # client/server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }
@@ -45,4 +46,8 @@ harness = false
 
 [[bench]]
 name = "tree"
+harness = false
+
+[[bench]]
+name = "crypto"
 harness = false

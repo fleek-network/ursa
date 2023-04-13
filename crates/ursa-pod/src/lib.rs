@@ -7,6 +7,7 @@ pub mod primitives;
 pub mod tree;
 /// UFDP types
 pub mod types;
+pub mod crypto;
 
 /// UFDP client implementation
 #[cfg(feature = "client")]
