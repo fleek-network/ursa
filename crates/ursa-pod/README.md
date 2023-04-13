@@ -97,11 +97,13 @@ The parser will collect the output from the log instrumentation, computing the s
 ```sh
 cat server.out |\
   cargo run --features benchmarks \
-  --bin ufdp-bench-parser \
-  > stats.json
+  --bin ufdp-bench-parser --\
+  parse > stats.json
 ```
 
-Statistics can then be traversed using a tool like `jq`:
+##### Querying statistics
+
+Statistics can be traversed using a tool like `jq`:
 
 - Get stats for everything under the `deliver_content` tag
 
@@ -122,3 +124,17 @@ jq '.params | keys' stats.json
 jq '.params.tag.deliver_content | keys' stats.json
 ```
 
+##### Plotting statistics
+
+> Requires `gnuplot4` to be installed.
+
+The parser is able to generate plots for params with f64 values.
+
+- Plot time elapsed for `content_size`, and select only the `deliver_content` tag.
+
+```sh
+jq '.params.tag.deliver_content' stats.json |\
+  cargo run --features benchmarks \
+  -- bin ufdp-bench-parser --\
+  plot content_size
+```
