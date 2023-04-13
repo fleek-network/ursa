@@ -77,13 +77,16 @@ pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> 
     .as_bytes()
 }
 
-/// Apply the ChaCha8 to the buffer in place.
-pub fn apply_cipher_in_place(key: [u8; 32], nonce: u64, buffer: &mut [u8]) {
-    use c2_chacha::stream_cipher::{NewStreamCipher, SyncStreamCipher};
-    use c2_chacha::ChaCha8;
-
-    let mut cipher = ChaCha8::new(&key.into(), &nonce.to_le_bytes().into());
-    cipher.apply_keystream(buffer);
+/// Apply the AES_256_GCM to the buffer in place.
+pub fn apply_cipher_in_place(key: [u8; 32], buffer: &mut [u8]) {
+    let ring_nonce = ring::aead::Nonce::assume_unique_for_key([0u8; 12]);
+    let ring_ad = ring::aead::Aad::from(&[0; 32]);
+    let ring_key_aes = ring::aead::LessSafeKey::new(
+        ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, &key).unwrap(),
+    );
+    let _ = ring_key_aes
+        .seal_in_place_separate_tag(ring_nonce, ring_ad, buffer)
+        .unwrap();
 }
 
 pub fn sign_response(
