@@ -51,18 +51,17 @@ fn bench_primitives(c: &mut Criterion) {
         })
     });
 
-    g.bench_function("generate_encryption_key", |b| {
+    g.bench_function("generate_symmetric_key", |b| {
         let sk = SecretKey::random(OsRng);
         b.iter(|| {
-            let ret = generate_encryption_key(&sk, &[0; 32]);
+            let ret = generate_symmetric_key(&sk, &[0; 32]);
             black_box(ret);
         })
     });
-
-    g.bench_function("sign_response", |b| {
-        let kp = secp256k1::KeyPair::new_global(&mut OsRng);
+    g.bench_function("sign_ciphertext", |b| {
+        let sk = SecretKey::random(OsRng);
         b.iter(|| {
-            let ret = sign_response(&kp, &[0; 32], &[0; 32]);
+            let ret = sign_ciphertext(&sk, &[0; 32], &[0; 32]);
             black_box(ret);
         })
     });
@@ -97,14 +96,13 @@ fn bench_primitives(c: &mut Criterion) {
         );
 
         g.bench_with_input(
-            BenchmarkId::new("apply_cipher_in_place", size),
+            BenchmarkId::new("apply_aes_128_ctr", size),
             &size,
             |b, size| {
-                let block_size = boring::symm::Cipher::aes_128_cbc().block_size();
                 let mut output = mk_vec(*size);
                 let input = random_vec(*size);
                 b.iter(|| {
-                    apply_cipher_in_place([0; 32], &mut output);
+                    apply_aes_128_ctr(Mode::Encrypt, [0; 32], &input, &mut output);
                     black_box(&output);
                 })
             },

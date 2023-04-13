@@ -2,25 +2,29 @@ use crate::{
     keys::SecretKey,
     types::{Blake3Cid, BlsPublicKey, SchnorrSignature},
 };
-use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use blake3::keyed_hash;
 use elliptic_curve::{
     hash2curve::{FromOkm, MapToCurve},
     sec1::ToEncodedPoint,
-    Field,
 };
 use rand::Rng;
-use rand_core::{block::BlockRngCore, OsRng, RngCore, SeedableRng};
+use rand_core::RngCore;
 
+/// The information about a singe block request.
 pub struct RequestInfo {
+    /// The root content id that was requested.
     pub cid: Blake3Cid,
+    /// The client's public key.
     pub client: BlsPublicKey,
+    /// Nonce assigned to the session.
     pub session_nonce: [u8; 32],
+    /// Determines the block index which the user has requested.
     pub block_counter: u64,
 }
 
 impl RequestInfo {
+    /// Returns the hash of the request info.
     #[inline]
     pub fn hash(&self) -> [u8; 32] {
         let mut bytes = ArrayVec::<u8, { 32 + 48 + 32 + 8 }>::new();
@@ -33,6 +37,7 @@ impl RequestInfo {
         *keyed_hash(&ufdp_keys::HASH_REQUEST_INFO_KEY, &bytes).as_bytes()
     }
 
+    /// Used for testing purposes to generate a random request info.
     pub fn rand(mut rng: impl RngCore) -> Self {
         Self {
             cid: rng.gen(),
@@ -65,8 +70,9 @@ pub fn hash_to_curve(input: &[u8]) -> k256::ProjectivePoint {
     q0 + q1
 }
 
+/// Generate the encryption key that should be used for a request.
 #[inline]
-pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> [u8; 32] {
+pub fn generate_symmetric_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> [u8; 32] {
     let request_info_on_curve = hash_to_curve(request_info_hash);
     let encryption_key = request_info_on_curve * sk.as_scalar();
     let encoded_point = encryption_key.to_affine().to_encoded_point(true);
@@ -77,13 +83,17 @@ pub fn generate_encryption_key(sk: &SecretKey, request_info_hash: &[u8; 32]) -> 
     .as_bytes()
 }
 
+/// The cipher's mode of operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
+    /// Run the cipher to encrypt data.
     Encrypt,
+    /// Run the cipher to decrypt data.
     Decrypt,
 }
 
 impl From<Mode> for openssl::symm::Mode {
+    #[inline(always)]
     fn from(value: Mode) -> Self {
         match value {
             Mode::Encrypt => openssl::symm::Mode::Encrypt,
@@ -92,27 +102,25 @@ impl From<Mode> for openssl::symm::Mode {
     }
 }
 
-pub fn apply_cipher_in_place(key: [u8; 32], buffer: &mut [u8]) {
+/// Implementation of the `AES-128-CTR` using openssl.
+// TODO(qti3e) we may want to provide a pure rust non-openssl implementation as well as a
+// crate feature.
+#[inline]
+pub fn apply_aes_128_ctr(mode: Mode, key: [u8; 32], input: &[u8], output: &mut [u8]) {
     let mut encrypter = openssl::symm::Crypter::new(
         openssl::symm::Cipher::aes_128_ctr(),
-        openssl::symm::Mode::Encrypt,
+        mode.into(),
         &key[0..16],
         Some(&key[16..]),
     )
     .unwrap();
-
-    unsafe {
-        let len = buffer.len();
-        let ptr = buffer.as_ptr();
-        let input = std::slice::from_raw_parts(ptr, len);
-        let output = std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), len);
-
-        encrypter.update(input, output).unwrap();
-    }
+    encrypter.update(input, output).unwrap();
 }
 
-pub fn sign_response(
-    kp: &secp256k1::KeyPair,
+/// Create a signature committing to the integrity of a ciphertext.
+#[inline]
+pub fn sign_ciphertext(
+    sk: &SecretKey,
     ciphertext_hash: &[u8; 32],
     request_info_hash: &[u8; 32],
 ) -> SchnorrSignature {
@@ -120,15 +128,11 @@ pub fn sign_response(
         let mut buffer = ArrayVec::<u8, { 32 + 32 }>::new();
         buffer.try_extend_from_slice(ciphertext_hash).unwrap();
         buffer.try_extend_from_slice(request_info_hash).unwrap();
-        *blake3::keyed_hash(&ufdp_keys::SCHNORR_CHALLENGE_KEY, &buffer).as_bytes()
+        *keyed_hash(&ufdp_keys::SCHNORR_CHALLENGE_KEY, &buffer).as_bytes()
     };
 
     let msg = secp256k1::Message::from_slice(&hash).unwrap();
-    *kp.sign_schnorr(msg).as_ref()
-}
-
-pub fn encrypt_in_place(sk: &SecretKey, req: &RequestInfo, buffer: &mut [u8]) -> SchnorrSignature {
-    todo!()
+    *sk.as_secp256k1_key_pair().sign_schnorr(msg).as_ref()
 }
 
 /// The pre-computed protocol specific unique domain separators.
