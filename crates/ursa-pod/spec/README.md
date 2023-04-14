@@ -235,3 +235,116 @@ flowchart TB
 ### Request
 ### Retrieve
 ### Lane
+
+## Codec
+
+Each request or response is prefixed by a frame tag and followed by the data as specified:
+
+### Handshake Request
+
+Client request to initiate a UFDP connection.
+
+```
+[ TAG . b"URSA" . version (1) . supported compression algorithm bitmap (1) . session lane . pubkey (48) ]
+```
+size: 56 bytes
+
+Clients can optionally resume a previous lane in the event of a disconnection.
+To let the node select the lane automatically, `lane` should be set to `0xFF`.
+
+### Handshake Response
+
+Node response to confirm a UFDP connection.
+
+```
+[ TAG . lane (1) . epoch nonce (8) . pubkey (32) ] [ 0x00 (1) || 0x80 (1) . u64 (8) . bls signature (96) ]
+```
+size: 44 bytes or 148 bytes
+
+Node will set a lane if unspecified by the client, or reuse an existing lane, providing the last lane data (lane number, last received delivery acknowledgment).
+
+### Content Request 
+
+Client request for content
+
+```
+[ TAG . blake3hash (32) ]
+```
+size: 33 bytes
+
+### Content Range Request 
+
+Client request for a range of chunks of content
+
+```
+[ TAG . blake3hash (32) . u64 (8) . u16 (2) ]
+```
+size: 43 bytes
+
+### Content Response
+
+Node response for content.
+
+The frame is always followed by the raw proof and content bytes.
+
+```
+[ TAG . compression (1) . proof length (8) . block length (8) . signature (64) ] [ proof .. ] [ content .. ]
+```
+size: 82 bytes + proof len (max 16KB) + content len (max 256KB)
+
+### Decryption Key Request
+
+Client request for a decryption key.
+
+```
+[ TAG . bls signature (96) ]
+```
+size: 97 bytes
+
+The BLS signature, aka the delivery acknowledgment, is batched and submitted by the node for rewards.
+
+### Decryption Key response
+
+Node response for a decryption key.
+
+```
+[ TAG . decryption key (33) ]
+```
+size: 34 bytes
+
+The client will use the key to decrypt and get the final block of data.
+
+### Signals
+
+Signals are a special type of frame that can be sent at any time. 
+In most cases, signals are sent from the server to the client.
+
+#### Update Epoch
+
+Signal from the node an epoch has changed during a connection.
+
+```
+[ TAG . epoch nonce (8) ]
+```
+size: 9 bytes
+
+Clients should sign the next delivery acknowledgments with this new epoch.
+
+#### End of request
+
+Signal from the node the request is finished and no more blocks will be sent
+
+```
+[ TAG ]
+```
+size: 1 byte
+
+#### Termination
+
+Signal from the node the connection was terminated, with a reason.
+
+```
+[ TAG . reason (1) ]
+```
+size: 2 bytes
+
