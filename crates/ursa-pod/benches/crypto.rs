@@ -51,6 +51,56 @@ fn bench_blake3(c: &mut Criterion) {
     }
 }
 
+fn bench_blake3_rayon_noise(c: &mut Criterion) {
+    let noises = [
+        -2048, -1538, -1024, -512, -256, -128, 0, 128, 256, 512, 1024, 1536, 2048,
+    ];
+
+    for base in [64 * 1024, 128 * 1024, 256 * 1024] {
+        let mut g = c.benchmark_group(format!("Blake3RayonNoise[base={}KiB]", base / 1024));
+        g.sample_size(20);
+
+        for noise in noises {
+            let size = (base + noise) as usize;
+            g.throughput(Throughput::Bytes(size as u64));
+
+            g.bench_with_input(BenchmarkId::new("blake3::hash", noise), &size, |b, size| {
+                let input = random_vec(*size);
+                b.iter(|| {
+                    let hash = blake3::hash(&input);
+                    black_box(hash);
+                })
+            });
+
+            g.bench_with_input(
+                BenchmarkId::new("blake3::update", noise),
+                &size,
+                |b, size| {
+                    let input = random_vec(*size);
+                    b.iter(|| {
+                        let hash = blake3::Hasher::new().update(&input).finalize();
+                        black_box(hash);
+                    })
+                },
+            );
+
+            g.bench_with_input(
+                BenchmarkId::new("blake3::update_rayon", noise),
+                &size,
+                |b, size| {
+                    let input = random_vec(*size);
+                    b.iter(|| {
+                        let hash = blake3::Hasher::new().update_rayon(&input).finalize();
+                        black_box(hash);
+                    })
+                },
+            );
+        }
+
+        g.finish();
+    }
+}
+
 fn bench_primitives(c: &mut Criterion) {
     let mut g = c.benchmark_group("Primitives");
     g.sample_size(50);
@@ -224,5 +274,11 @@ fn bench_routines(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_blake3, bench_primitives, bench_routines);
+criterion_group!(
+    benches,
+    bench_blake3,
+    bench_blake3_rayon_noise,
+    bench_primitives,
+    bench_routines
+);
 criterion_main!(benches);
