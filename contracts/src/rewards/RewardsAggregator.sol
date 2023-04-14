@@ -12,7 +12,7 @@ contract RewardsAggregator is Controlled {
     bool private initialized;
 
     ///  epoch => Node publicKey => Data served
-    mapping(uint256 => mapping(string => uint256)) public DataServedInBytes;
+    mapping(uint256 => mapping(string => uint256)) public dataServedInBytes;
     ///  epoch => Public key list
     mapping(uint256 => string[]) public publicKeys;
     ///  epoch => public key => key added
@@ -43,7 +43,7 @@ contract RewardsAggregator is Controlled {
             publicKeys[epoch].push(publicKey);
             publicKeyAdded[epoch][publicKey] = true;
         }
-        DataServedInBytes[epoch][publicKey] += dataServed;
+        dataServedInBytes[epoch][publicKey] += dataServed;
     }
 
     /**
@@ -52,7 +52,7 @@ contract RewardsAggregator is Controlled {
      * @param epoch epoch for which data served to get
      */
     function getDataServedByNode(string memory publicKey, uint256 epoch) public view returns (uint256) {
-        return DataServedInBytes[epoch][publicKey];
+        return dataServedInBytes[epoch][publicKey];
     }
 
     /**
@@ -74,7 +74,7 @@ contract RewardsAggregator is Controlled {
     function getDataForEpoch(uint256 epoch) public view returns (uint256) {
         uint256 sum = 0;
         for (uint256 i = 0; i < publicKeys[epoch].length; i++) {
-            sum += DataServedInBytes[epoch][publicKeys[epoch][i]];
+            sum += dataServedInBytes[epoch][publicKeys[epoch][i]];
         }
         return sum;
     }
