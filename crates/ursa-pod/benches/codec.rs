@@ -32,6 +32,7 @@ mod transport {
             _cx: &mut std::task::Context<'_>,
             buf: &mut tokio::io::ReadBuf<'_>,
         ) -> std::task::Poll<std::io::Result<()>> {
+            // always return the same frame
             let bytes = self.in_buf.clone();
             buf.put_slice(&bytes);
             std::task::Poll::Ready(Ok(()))
@@ -44,6 +45,7 @@ mod transport {
             _cx: &mut std::task::Context<'_>,
             buf: &[u8],
         ) -> std::task::Poll<Result<usize, std::io::Error>> {
+            // store the last thing written to out_buf
             let out_buf = &mut self.get_mut().out_buf;
             *out_buf = BytesMut::from(buf);
             std::task::Poll::Ready(Ok(out_buf.len()))
@@ -85,7 +87,7 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
     let transport = block_on(async move {
         let mut conn = UfdpConnection::new(transport);
         conn.write_frame(frame.clone()).await.unwrap();
-        // out_buf contains the encoded frame, so we'll set it to be what's decoded
+        // out_buf contains the encoded frame, so we take that into in_buf to be decoded
         conn.stream.in_buf = conn.stream.out_buf.split();
         conn.stream
     });
