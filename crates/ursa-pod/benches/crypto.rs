@@ -6,15 +6,18 @@ use rand::Rng;
 use rand_core::OsRng;
 use ursa_pod::{crypto::*, keys::SecretKey};
 
+fn sizes() -> Vec<usize> {
+    let mut sizes = Vec::new();
+    sizes.extend_from_slice(&[1, 16, 32, 48, 63, 64, 512, 1024]);
+    sizes.extend((8..=256).step_by(8).map(|i| i * 1024));
+    sizes
+}
+
 fn bench_blake3(c: &mut Criterion) {
     let mut g = c.benchmark_group("Blake3");
     g.sample_size(30);
 
-    let mut sizes = Vec::new();
-    sizes.extend_from_slice(&[1, 16, 32, 48, 63, 64, 512, 1024]);
-    sizes.extend((8..256).step_by(8).map(|i| i * 1024));
-
-    for size in sizes {
+    for size in sizes() {
         g.throughput(Throughput::Bytes(size as u64));
 
         g.bench_with_input(BenchmarkId::new("blake3::hash", size), &size, |b, size| {
@@ -105,35 +108,6 @@ fn bench_primitives(c: &mut Criterion) {
     let mut g = c.benchmark_group("Primitives");
     g.sample_size(50);
 
-    let sizes = [
-        1,
-        16,
-        32,
-        48,
-        63,
-        64,
-        512,
-        1 * 1024,
-        4 * 1024,
-        8 * 1024,
-        1 * 16 * 1024,
-        2 * 16 * 1024,
-        3 * 16 * 1024,
-        4 * 16 * 1024,
-        5 * 16 * 1024,
-        6 * 16 * 1024,
-        7 * 16 * 1024,
-        8 * 16 * 1024,
-        9 * 16 * 1024,
-        10 * 16 * 1024,
-        11 * 16 * 1024,
-        12 * 16 * 1024,
-        13 * 16 * 1024,
-        14 * 16 * 1024,
-        15 * 16 * 1024,
-        16 * 16 * 1024, // 256KiB
-    ];
-
     g.bench_function("hash_request_info", |b| {
         let req = RequestInfo::rand(OsRng);
         b.iter(|| {
@@ -163,9 +137,12 @@ fn bench_primitives(c: &mut Criterion) {
         })
     });
 
+    g.finish();
+
+    let mut g = c.benchmark_group("Primitive Stream");
     g.sample_size(20);
 
-    for size in sizes {
+    for size in sizes() {
         g.throughput(Throughput::Bytes(size as u64));
 
         g.bench_with_input(
