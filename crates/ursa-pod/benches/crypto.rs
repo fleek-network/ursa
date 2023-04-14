@@ -2,6 +2,7 @@
 
 use benchmarks_utils::*;
 use criterion::*;
+use rand::Rng;
 use rand_core::OsRng;
 use ursa_pod::{crypto::*, keys::SecretKey};
 
@@ -135,6 +136,45 @@ fn bench_routines(c: &mut Criterion) {
                 black_box(&output);
             })
         });
+
+        g.bench_with_input(
+            BenchmarkId::new("encrypt_per_session_ec", size),
+            &size,
+            |b, size| {
+                let mut output = mk_vec(*size + 64);
+                let input = random_vec(*size);
+                let sk = SecretKey::random(OsRng);
+                let req = RequestInfo::rand(OsRng);
+                let session_secret_key_hash: [u8; 32] = OsRng.gen();
+
+                b.iter(|| {
+                    let request_info_hash = req.hash();
+
+                    let nonce: [u8; 32] = rand::thread_rng().gen();
+                    let symmetric_key = {
+                        let mut buffer = arrayvec::ArrayVec::<u8, 64>::new();
+                        buffer
+                            .try_extend_from_slice(&session_secret_key_hash)
+                            .unwrap();
+                        buffer.try_extend_from_slice(&nonce).unwrap();
+                        *blake3::hash(&buffer).as_bytes()
+                    };
+
+                    apply_aes_128_ctr(
+                        Mode::Encrypt,
+                        symmetric_key,
+                        &input,
+                        &mut output[0..input.len()],
+                    );
+
+                    let ciphertext_hash = hash_ciphertext(&output[..input.len()]);
+                    let commitment = sign_ciphertext(&sk, &ciphertext_hash, &request_info_hash);
+                    output[input.len()..].copy_from_slice(&commitment);
+
+                    nonce
+                })
+            },
+        );
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    keys::SecretKey,
+    keys::{PublicKey, SecretKey},
     types::{Blake3Cid, BlsPublicKey, SchnorrSignature, Secp256k1PublicKey},
 };
 use arrayvec::ArrayVec;
@@ -178,7 +178,12 @@ pub fn encrypt_block(sk: &SecretKey, req_info: &RequestInfo, input: &[u8], outpu
     output[input.len()..].copy_from_slice(&commitment);
 }
 
-pub fn verify_encrypted_block() {}
+pub fn verify_encrypted_block(pk: &PublicKey, _req_info: &RequestInfo, _buffer: &[u8]) -> bool {
+    // TODO
+    todo!()
+}
+
+pub fn decrypt_block(buffer: &mut [u8]) {}
 
 /// The pre-computed protocol specific unique domain separators.
 pub mod ufdp_keys {
@@ -264,5 +269,48 @@ pub mod ufdp_keys {
                 blake3::Hash::from(key).to_hex()
             );
         }
+    }
+}
+
+pub mod per_session_poc {
+    // The idea here is to have only one Elliptic Curve operation at the beginning of a session
+    // this way there is no heavy doing per block, which is currently what's slowing us down,
+    // we will still need to have the schnorr commitments, but those are insanely fast.
+
+    use rand::Rng;
+
+    use crate::keys::SecretKey;
+
+    pub fn encrypt(
+        sk: &SecretKey,
+        session_secret_key_hash: &[u8; 32],
+        req: super::RequestInfo,
+        input: &[u8],
+        output: &mut [u8],
+    ) -> [u8; 32] {
+        let request_info_hash = req.hash();
+
+        let nonce: [u8; 32] = rand::thread_rng().gen();
+        let symmetric_key = {
+            let mut buffer = arrayvec::ArrayVec::<u8, 64>::new();
+            buffer
+                .try_extend_from_slice(session_secret_key_hash)
+                .unwrap();
+            buffer.try_extend_from_slice(&nonce).unwrap();
+            *blake3::hash(&buffer).as_bytes()
+        };
+
+        super::apply_aes_128_ctr(
+            super::Mode::Encrypt,
+            symmetric_key,
+            input,
+            &mut output[0..input.len()],
+        );
+
+        let ciphertext_hash = super::hash_ciphertext(&output[..input.len()]);
+        let commitment = super::sign_ciphertext(sk, &ciphertext_hash, &request_info_hash);
+        output[input.len()..].copy_from_slice(&commitment);
+
+        nonce
     }
 }
