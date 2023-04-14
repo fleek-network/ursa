@@ -3,9 +3,8 @@ use futures::Future;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
-/* SERVER */
-
 const MAX_REQUESTS: usize = 64;
+
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
     &[0u8; 2 * 1024],
@@ -30,6 +29,7 @@ const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 256 * 1024 * 1024],
     &[0u8; 512 * 1024 * 1024],
 ];
+
 fn benchmark_sizes<T: Measurement, C, S>(
     g: &mut BenchmarkGroup<T>,
     files: &[&'static [u8]],
@@ -85,47 +85,48 @@ fn benchmark_sizes<T: Measurement, C, S>(
 }
 
 fn protocol_benchmarks(c: &mut Criterion) {
-    // benchmark file sizes
+    // benchmark different file sizes
     for (range, files, unit) in [
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        #[cfg(all(not(feature = "bench-hyper"), not(feature = "bench-quic")))]
-        let proto = "TCP UFDP";
-        #[cfg(feature = "bench-hyper")]
-        let proto = "HTTP Hyper";
-        #[cfg(feature = "bench-quic")]
-        let proto = "QUIC UFDP";
-
-        let mut g = c.benchmark_group(format!("{proto}/{range}"));
-        g.sample_size(20);
-
-        #[cfg(all(not(feature = "bench-hyper"), not(feature = "bench-quic")))]
-        benchmark_sizes(
-            &mut g,
-            files,
-            unit,
-            tcp_ufdp::client_loop,
-            tcp_ufdp::server_loop,
-        );
+        {
+            let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                unit,
+                tcp_ufdp::client_loop,
+                tcp_ufdp::server_loop,
+            );
+        }
 
         #[cfg(feature = "bench-hyper")]
-        benchmark_sizes(
-            &mut g,
-            files,
-            unit,
-            http_hyper::client_loop,
-            http_hyper::server_loop,
-        );
+        {
+            let mut g = c.benchmark_group(format!("HTTP Hyper/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                unit,
+                http_hyper::client_loop,
+                http_hyper::server_loop,
+            );
+        }
 
         #[cfg(feature = "bench-quic")]
-        benchmark_sizes(
-            &mut g,
-            files,
-            unit,
-            quic_ufdp::client_loop,
-            quic_ufdp::server_loop,
-        );
+        {
+            let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                unit,
+                quic_ufdp::client_loop,
+                quic_ufdp::server_loop,
+            );
+        }
     }
 }
 

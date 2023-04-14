@@ -28,8 +28,9 @@ impl Backend for BenchmarkBackend {
 
         if block < block_max {
             // return remainder if it's the last block and the size is less than 1 block
-            let take = if block + 1 == block_max && file_size != block_size {
-                file_size % block_size
+            let rem = file_size % block_size;
+            let take = if block + 1 == block_max && rem != 0 {
+                rem
             } else {
                 block_size
             };

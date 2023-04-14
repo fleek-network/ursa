@@ -323,7 +323,6 @@ pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
     pub stream: T,
     read_buffer: BytesMut,
     pub take: usize,
-    chunk_size: usize,
 }
 
 impl<T> UfdpConnection<T>
@@ -335,7 +334,6 @@ where
             stream,
             read_buffer: BytesMut::with_capacity(16 * 1024),
             take: 0,
-            chunk_size: 16 * 1024,
         }
     }
 
@@ -349,131 +347,129 @@ where
 
     #[inline(always)]
     pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
-        if let UrsaFrame::Buffer(bytes) = frame {
-            // write directly to stream
-            self.stream.write_all(&bytes).await?;
-        } else {
-            match frame {
-                UrsaFrame::HandshakeRequest {
-                    version,
-                    pubkey,
-                    supported_compression_bitmap,
-                    lane,
-                } => {
-                    let mut buf = ArrayVec::<u8, 56>::new_const();
-                    debug_assert_eq!(NETWORK.len(), 4);
+        match frame {
+            UrsaFrame::Buffer(bytes) => {
+                // write directly to stream
+                self.stream.write_all(&bytes).await?;
+            }
+            UrsaFrame::HandshakeRequest {
+                version,
+                pubkey,
+                supported_compression_bitmap,
+                lane,
+            } => {
+                let mut buf = ArrayVec::<u8, 56>::new_const();
+                debug_assert_eq!(NETWORK.len(), 4);
 
-                    buf.push(FrameTag::HandshakeRequest as u8);
-                    buf.write_all(&NETWORK).unwrap();
-                    buf.push(version);
-                    buf.push(supported_compression_bitmap);
-                    buf.push(lane.unwrap_or(0xFF));
-                    buf.write_all(&pubkey).unwrap();
+                buf.push(FrameTag::HandshakeRequest as u8);
+                buf.write_all(&NETWORK).unwrap();
+                buf.push(version);
+                buf.push(supported_compression_bitmap);
+                buf.push(lane.unwrap_or(0xFF));
+                buf.write_all(&pubkey).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::HandshakeResponse {
-                    pubkey,
-                    epoch_nonce,
-                    lane,
-                    last,
-                } => {
-                    let mut buf = ArrayVec::<u8, 147>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::HandshakeResponse {
+                pubkey,
+                epoch_nonce,
+                lane,
+                last,
+            } => {
+                let mut buf = ArrayVec::<u8, 148>::new_const();
 
-                    buf.push(FrameTag::HandshakeResponse as u8);
-                    buf.push(lane);
-                    buf.write_all(&epoch_nonce.to_be_bytes()).unwrap();
-                    buf.write_all(&pubkey).unwrap();
+                buf.push(FrameTag::HandshakeResponse as u8);
+                buf.push(lane);
+                buf.write_all(&epoch_nonce.to_be_bytes()).unwrap();
+                buf.write_all(&pubkey).unwrap();
 
-                    match last {
-                        None => buf.push(0x00),
-                        Some(data) => {
-                            buf.push(0x80);
-                            buf.write_all(&data.bytes.to_be_bytes()).unwrap();
-                            buf.write_all(&data.signature).unwrap()
-                        }
-                    };
+                match last {
+                    None => buf.push(0x00),
+                    Some(data) => {
+                        buf.push(0x80);
+                        buf.write_all(&data.bytes.to_be_bytes()).unwrap();
+                        buf.write_all(&data.signature).unwrap()
+                    }
+                };
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::ContentRequest { hash } => {
-                    let mut buf = ArrayVec::<u8, 33>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentRequest { hash } => {
+                let mut buf = ArrayVec::<u8, 33>::new_const();
 
-                    buf.push(FrameTag::ContentRequest as u8);
-                    buf.write_all(&hash.0).unwrap();
+                buf.push(FrameTag::ContentRequest as u8);
+                buf.write_all(&hash.0).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::ContentResponse {
-                    compression,
-                    proof_len,
-                    block_len,
-                    signature,
-                } => {
-                    let mut buf = ArrayVec::<u8, 82>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentResponse {
+                compression,
+                proof_len,
+                block_len,
+                signature,
+            } => {
+                let mut buf = ArrayVec::<u8, 82>::new_const();
 
-                    buf.push(FrameTag::ContentResponse as u8);
-                    buf.push(compression);
-                    buf.write_all(&proof_len.to_be_bytes()).unwrap();
-                    buf.write_all(&block_len.to_be_bytes()).unwrap();
-                    buf.write_all(&signature).unwrap();
+                buf.push(FrameTag::ContentResponse as u8);
+                buf.push(compression);
+                buf.write_all(&proof_len.to_be_bytes()).unwrap();
+                buf.write_all(&block_len.to_be_bytes()).unwrap();
+                buf.write_all(&signature).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::ContentRangeRequest {
-                    hash,
-                    chunk_start,
-                    chunks,
-                } => {
-                    let mut buf = ArrayVec::<u8, 43>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentRangeRequest {
+                hash,
+                chunk_start,
+                chunks,
+            } => {
+                let mut buf = ArrayVec::<u8, 43>::new_const();
 
-                    buf.push(FrameTag::ContentRangeRequest as u8);
-                    buf.write_all(&hash.0).unwrap();
-                    buf.write_all(&chunk_start.to_be_bytes()).unwrap();
-                    buf.write_all(&chunks.to_be_bytes()).unwrap();
+                buf.push(FrameTag::ContentRangeRequest as u8);
+                buf.write_all(&hash.0).unwrap();
+                buf.write_all(&chunk_start.to_be_bytes()).unwrap();
+                buf.write_all(&chunks.to_be_bytes()).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::UpdateEpochSignal(nonce) => {
-                    let mut buf = ArrayVec::<u8, 9>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::UpdateEpochSignal(nonce) => {
+                let mut buf = ArrayVec::<u8, 9>::new_const();
 
-                    buf.push(FrameTag::UpdateEpochSignal as u8);
-                    buf.write_all(&nonce.to_be_bytes()).unwrap();
+                buf.push(FrameTag::UpdateEpochSignal as u8);
+                buf.write_all(&nonce.to_be_bytes()).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::DecryptionKeyRequest {
-                    delivery_acknowledgment,
-                } => {
-                    let mut buf = ArrayVec::<u8, 97>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::DecryptionKeyRequest {
+                delivery_acknowledgment,
+            } => {
+                let mut buf = ArrayVec::<u8, 97>::new_const();
 
-                    buf.push(FrameTag::DecryptionKeyRequest as u8);
-                    buf.write_all(&delivery_acknowledgment).unwrap();
+                buf.push(FrameTag::DecryptionKeyRequest as u8);
+                buf.write_all(&delivery_acknowledgment).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::DecryptionKeyResponse { decryption_key } => {
-                    let mut buf = ArrayVec::<u8, 34>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
+                let mut buf = ArrayVec::<u8, 34>::new_const();
 
-                    buf.push(FrameTag::DecryptionKeyResponse as u8);
-                    buf.write_all(&decryption_key).unwrap();
+                buf.push(FrameTag::DecryptionKeyResponse as u8);
+                buf.write_all(&decryption_key).unwrap();
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::EndOfRequestSignal => {
-                    self.stream
-                        .write_u8(FrameTag::EndOfRequestSignal as u8)
-                        .await?
-                }
-                UrsaFrame::TerminationSignal(reason) => {
-                    let mut buf = ArrayVec::<u8, 2>::new_const();
+                self.stream.write_all(&buf).await?;
+            }
+            UrsaFrame::EndOfRequestSignal => {
+                self.stream
+                    .write_u8(FrameTag::EndOfRequestSignal as u8)
+                    .await?
+            }
+            UrsaFrame::TerminationSignal(reason) => {
+                let mut buf = ArrayVec::<u8, 2>::new_const();
 
-                    buf.push(FrameTag::TerminationSignal as u8);
-                    buf.push(reason as u8);
+                buf.push(FrameTag::TerminationSignal as u8);
+                buf.push(reason as u8);
 
-                    self.stream.write_all(&buf).await?;
-                }
-                UrsaFrame::Buffer(_) => unreachable!(),
+                self.stream.write_all(&buf).await?;
             }
         }
 
@@ -513,13 +509,9 @@ where
 
         // should we be reading a chunk right now?
         if self.take > 0 {
-            let take = self.take.min(self.chunk_size);
-            return Ok(if len >= take {
-                self.take -= take;
-                Some(UrsaFrame::Buffer(self.read_buffer.split_to(take)))
-            } else {
-                None
-            });
+            let take = len.min(self.take);
+            self.take -= take;
+            return Ok(Some(UrsaFrame::Buffer(self.read_buffer.split_to(take))));
         }
 
         // first frame byte is the tag
@@ -661,177 +653,130 @@ where
     }
 }
 
-#[cfg(disabled)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        sync::mpsc::channel,
+    };
+
     type TResult = Result<(), UrsaCodecError>;
 
-    fn run(encoded: &[u8], decoded: UrsaFrame) -> TResult {
-        let mut codec = UrsaCodec::default();
-        let mut buf = BytesMut::new();
-        codec.encode(decoded.clone(), &mut buf)?;
-        assert_eq!(buf, encoded);
+    async fn encode_decode(frame: UrsaFrame) -> TResult {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
 
-        buf.clear();
+        // accept a single connection
+        let (tx, mut rx) = channel(1);
+        tokio::task::spawn(async move {
+            let (s, _) = listener.accept().await.unwrap();
+            tx.send(s).await.unwrap();
+        });
 
-        // simulate calling as bytes stream into the buffer
-        for byte in encoded {
-            self.stream.write_u8(*byte);
-            if let Some(frame) = codec.decode(&mut buf)? {
-                assert_eq!(frame, decoded);
-                assert!(buf.is_empty());
-            }
-        }
+        // create streams
+        let alice_stream = TcpStream::connect(addr).await?;
+        let bob_stream = rx.recv().await.unwrap();
+
+        // create a raw ufdp connection to encode/decode with
+        let mut alice = UfdpConnection::new(alice_stream);
+        let mut bob = UfdpConnection::new(bob_stream);
+
+        // write/read the frame, comparing the result afterwards
+        alice.write_frame(frame.clone()).await?;
+        let recv_frame = bob.read_frame(None).await?.unwrap();
+        assert_eq!(frame, recv_frame);
 
         Ok(())
     }
 
-    #[test]
-    fn handshake_req() -> TResult {
-        run(
-            b"\x01URSA\0\0\xff\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01", 
-            UrsaFrame::HandshakeRequest {
-                version: 0,
-                supported_compression_bitmap: 0,
-                lane: None,
-                pubkey: [1u8; 48],
-            }
-        )
+    #[tokio::test]
+    async fn handshake_req() -> TResult {
+        encode_decode(UrsaFrame::HandshakeRequest {
+            version: 0,
+            supported_compression_bitmap: 0,
+            lane: None,
+            pubkey: [1u8; 48],
+        })
+        .await
     }
 
-    #[test]
-    fn handshake_res() -> TResult {
-        run(
-            b"\x81\0\0\0\0\0\0\0\x03\xe8\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\0",
-            UrsaFrame::HandshakeResponse {
-                lane: 0,
-                epoch_nonce: 1000,
-                pubkey: [1; 33],
-                last: None,
-            },
-        )?;
+    #[tokio::test]
+    async fn handshake_res() -> TResult {
+        encode_decode(UrsaFrame::HandshakeResponse {
+            lane: 0,
+            epoch_nonce: 1000,
+            pubkey: [1; 33],
+            last: None,
+        })
+        .await?;
 
-        run(
-            b"\x81\0\0\0\0\0\0\0\x03\xe8\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x80\0\0\0\0\0\0\0\x40\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03",
-            UrsaFrame::HandshakeResponse {
-                lane: 0,
-                epoch_nonce: 1000,
-                pubkey: [2; 33],
-                last: Some(LastLaneData {
-                    bytes: 64,
-                    signature: [3; 96],
-                }),
-            },
-        )
+        encode_decode(UrsaFrame::HandshakeResponse {
+            lane: 0,
+            epoch_nonce: 1000,
+            pubkey: [2; 33],
+            last: Some(LastLaneData {
+                bytes: 64,
+                signature: [3; 96],
+            }),
+        })
+        .await
     }
 
-    #[test]
-    fn content_req() -> TResult {
-        run(
-                b"\x02\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
-                UrsaFrame::ContentRequest { hash: [1; 32] }
-            )
+    #[tokio::test]
+    async fn content_req() -> TResult {
+        encode_decode(UrsaFrame::ContentRequest {
+            hash: Blake3Cid([1; 32]),
+        })
+        .await
     }
 
-    #[test]
-    fn content_range_req() -> TResult {
-        run(
-                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x02",
-                UrsaFrame::ContentRangeRequest {
-                    hash: [0u8; 32],
-                    chunk_start: 1u64,
-                    chunks: 2u16,
-                },
-            )
+    #[tokio::test]
+    async fn content_range_req() -> TResult {
+        encode_decode(UrsaFrame::ContentRangeRequest {
+            hash: Blake3Cid([0u8; 32]),
+            chunk_start: 1u64,
+            chunks: 2u16,
+        })
+        .await
     }
 
-    #[test]
-    fn content_res() -> TResult {
+    #[tokio::test]
+    async fn content_res() -> TResult {
         // frame header decode
-        run(
-                b"\x82\0\0\0\0\0\0\0\0\x40\0\0\0\0\0\0\0\x40\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
-                UrsaFrame::ContentResponse {
-                    compression: 0,
-                    signature: [1u8; 64],
-                    proof_len: 64,
-                    block_len: 64,
-                },
-            )?;
-
-        // test frame chunk decode
-        let mut codec = UrsaCodec::default();
-        let mut buf = BytesMut::new();
-        self.stream.write_all(&[1u8; 64]); // proof
-        self.stream.write_all(&[2u8; 64]); // content
-
-        // decode proof stream
-        let mut count = 0;
-        codec.read_buffer(64, 16);
-        loop {
-            match codec.decode(&mut buf) {
-                Ok(Some(UrsaFrame::Buffer(data))) => {
-                    count += 1;
-                    assert_eq!(data, BytesMut::from([1u8; 16].as_slice()));
-                }
-                Ok(None) => continue,
-                other => unreachable!("{other:?}"),
-            }
-            if count > 3 {
-                break;
-            }
-        }
-
-        // decode content stream
-        count = 0;
-        codec.read_buffer(64, 16);
-        loop {
-            match codec.decode(&mut buf) {
-                Ok(Some(UrsaFrame::Buffer(data))) => {
-                    count += 1;
-                    assert_eq!(data, BytesMut::from([2u8; 16].as_slice()));
-                }
-                Ok(None) => continue,
-                other => unreachable!("{other:?}"),
-            }
-            if count > 3 {
-                break;
-            }
-        }
-
-        Ok(())
+        encode_decode(UrsaFrame::ContentResponse {
+            compression: 0,
+            signature: [1u8; 64],
+            proof_len: 64,
+            block_len: 64,
+        })
+        .await
     }
 
-    #[test]
-    fn decryption_key_req() -> TResult {
-        run(
-                b"\x08\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
-                UrsaFrame::DecryptionKeyRequest {
-                    delivery_acknowledgment: [1; 96],
-                },
-            )
+    #[tokio::test]
+    async fn decryption_key_req() -> TResult {
+        encode_decode(UrsaFrame::DecryptionKeyRequest {
+            delivery_acknowledgment: [1; 96],
+        })
+        .await
     }
 
-    #[test]
-    fn decryption_key_res() -> TResult {
-        run(
-                b"\x88\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01",
-                UrsaFrame::DecryptionKeyResponse {
-                    decryption_key: [1; 33],
-                },
-            )
+    #[tokio::test]
+    async fn decryption_key_res() -> TResult {
+        encode_decode(UrsaFrame::DecryptionKeyResponse {
+            decryption_key: [1; 33],
+        })
+        .await
     }
 
-    #[test]
-    fn update_epoch_signal() -> TResult {
-        run(
-            b"\x90\0\0\0\0\0\0\x04\0",
-            UrsaFrame::UpdateEpochSignal(1024),
-        )
+    #[tokio::test]
+    async fn update_epoch_signal() -> TResult {
+        encode_decode(UrsaFrame::UpdateEpochSignal(1024)).await
     }
 
-    #[test]
-    fn termination_signal() -> TResult {
-        run(b"\xc0\xff", UrsaFrame::TerminationSignal(Reason::Unknown))
+    #[tokio::test]
+    async fn termination_signal() -> TResult {
+        encode_decode(UrsaFrame::TerminationSignal(Reason::Unknown)).await
     }
 }

@@ -63,9 +63,19 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         ) {
             match frame {
                 UrsaFrame::ContentRequest { hash } => {
+                    #[cfg(feature = "benchmarks")]
+                    let (content_size, block_size) = {
+                        let bytes = hash.0;
+                        let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
+                        let block_size = u64::from_be_bytes(*block_size_bytes);
+                        let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
+                        let content_size = u64::from_be_bytes(*content_size_bytes);
+                        (content_size, block_size)
+                    };
+
                     instrument!(
                         self.deliver_content(hash).await?,
-                        "sid={},tag=deliver_content,hash={hash}",
+                        "sid={},tag=deliver_content,content_size={content_size},block_size={block_size}",
                         self.session_id
                     );
                 }
@@ -121,10 +131,20 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     /// Begin delivering content
     #[inline(always)]
     pub async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
+        #[cfg(feature = "benchmarks")]
+        let (content_size, block_size) = {
+            let bytes = cid.0;
+            let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
+            let block_size = u64::from_be_bytes(*block_size_bytes);
+            let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
+            let content_size = u64::from_be_bytes(*content_size_bytes);
+            (content_size, block_size)
+        };
+
         let mut block_number = 0;
         while let Some(block) = instrument!(
             self.backend.raw_block(&cid, block_number),
-            "sid={},tag=backend_raw_block,hash={cid}",
+            "sid={},tag=backend_raw_block,content_size={content_size},block_size={block_size}",
             self.session_id
         ) {
             block_number += 1;
@@ -143,27 +163,27 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                         signature: [1u8; 64],
                     })
                     .await?,
-                "sid={},tag=write_content_res,hash={cid}",
+                "sid={},tag=write_content_res,content_size={content_size},block_size={block_size}",
                 self.session_id
             );
 
             instrument!(
                 self.conn.write_frame(UrsaFrame::Buffer(proof)).await?,
-                "sid={},tag=write_proof,hash={cid}",
+                "sid={},tag=write_proof,content_size={content_size},block_size={block_size}",
                 self.session_id
             );
             instrument!(
                 self.conn
                     .write_frame(UrsaFrame::Buffer(block.into()))
                     .await?,
-                "sid={},tag=write_block,hash={cid}",
+                "sid={},tag=write_block,content_size={content_size},block_size={block_size}",
                 self.session_id
             );
 
             // wait for delivery acknowledgment
             match instrument!(
                 self.conn.read_frame(None).await?,
-                "sid={},tag=read_da,hash={cid}",
+                "sid={},tag=read_da,content_size={content_size},block_size={block_size}",
                 self.session_id
             ) {
                 Some(UrsaFrame::DecryptionKeyRequest { .. }) => {
@@ -184,14 +204,14 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 self.conn
                     .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })
                     .await?,
-                "sid={},tag=write_dk,hash={cid}",
+                "sid={},tag=write_dk,content_size={content_size},block_size={block_size}",
                 self.session_id
             );
         }
 
         instrument!(
             self.conn.write_frame(UrsaFrame::EndOfRequestSignal).await?,
-            "sid={},tag=write_eor,hash={cid}",
+            "sid={},tag=write_eor,content_size={content_size},block_size={block_size}",
             self.session_id
         );
 

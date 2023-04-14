@@ -4,6 +4,8 @@ Implementation for the Ursa Fair Delivery Protocol, used to collect and batch pr
 
 ## Examples
 
+Request and serve 10GB of content over UFDP
+
 1. Run the server
 
 ```sh
@@ -32,10 +34,16 @@ cargo bench
 cargo bench --bench codec
 ```
 
-#### Encrypt
+#### Encryption
 
 ```sh
 cargo bench --bench encrypt
+```
+
+#### Blake3 Tree
+
+```sh
+cargo bench --bench tree
 ```
 
 #### End to End
@@ -54,22 +62,21 @@ HTTP (Hyper 1.0):
 cargo bench --bench e2e --features bench-hyper
 ```
 
-### Binary Benchmarking
+### UFDP Binary Benchmarking
 
-All methods in the implementation are instrumented with a print line on the start and end of the call.
-This can be enabled with the crate feature `benchmarks`.
+All methods in the implementation are instrumented with a print line containing the start and end of the call, 
+as well as some parameters. This can be enabled with the crate feature `benchmarks`.
 
 #### Client
 
-The benchmarking client will make some concurrent requests, printing the logs for instrumented methods.
-File and block size are encoded into the cid bytes, parsed by the server.
+The benchmarking client will make some concurrent requests to a ufdp server.
+File and block size are encoded into the cid bytes, parsed by the server. These are not accurate blake3 hashes, and only used for testing against the bench server.
 
 ```sh
+# Run 64 concurrent requests for 1MiB of content, in 256KiB blocks
 cargo run \
-  --features benchmarks \
-  --bin client -- \
-  "127.0.0.1:6969" 256 16383 16383 \
-  > client.out
+  --bin ufdp-bench-client -- \
+  "127.0.0.1:6969" 64 262144 1048576 
 ```
 
 #### Server
@@ -79,5 +86,60 @@ The benchmarking server will accept many requests, also printing the logs for in
 ```sh
 cargo run \
   --features benchmarks \
-  --bin server > server.out
+  --bin ufdp-bench-server \
+  > server.out
+```
+
+#### Parsing
+
+The parser will collect the output from the log instrumentation, computing the sum/mean/median/std deviation, and outputting a json document.
+
+```sh
+cat server.out |\
+  cargo run --features benchmarks \
+  --bin ufdp-bench-parser --\
+  parse > stats.json
+```
+
+##### Querying statistics
+
+Statistics can be traversed using a tool like `jq`:
+
+- Get stats for everything under the `deliver_content` tag
+
+```sh
+jq '.params.tag.deliver_content.stats' stats.json
+```
+
+- For session id `0`, get stats for the `deliver_content` tag
+
+```sh
+jq '.params.sid.0.params.tag.deliver_content.stats' stats.json
+```
+
+- Get available param values for something:
+
+```sh
+jq '.params.tag | keys' stats.json
+```
+
+- Get available params for something:
+
+```sh
+jq '.params.tag.deliver_content.params | keys' stats.json
+```
+
+##### Plotting statistics
+
+> Requires `gnuplot4` to be installed.
+
+The parser is able to generate plots for params with f64 values.
+
+- Plot time elapsed for `content_size`, and select only the `deliver_content` tag.
+
+```sh
+jq '.params.tag.deliver_content' stats.json |\
+  cargo run --features benchmarks \
+  -- bin ufdp-bench-parser --\
+  plot content_size
 ```

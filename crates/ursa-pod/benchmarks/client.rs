@@ -1,8 +1,7 @@
 use std::{env, process::exit, str::FromStr};
 
 use tokio::net::TcpStream;
-use tracing::info;
-use ursa_pod::{client::UfdpClient, connection::UrsaCodecError};
+use ursa_pod::{client::UfdpClient, connection::UrsaCodecError, instrument};
 
 const PUB_KEY: [u8; 48] = [2u8; 48];
 
@@ -15,8 +14,8 @@ async fn main() -> Result<(), UrsaCodecError> {
     }
     let address = &args[1];
     let requests = u64::from_str(&args[2]).expect("parse num requests");
-    let file_size = u64::from_str(&args[3]).expect("parse file size");
-    let block_size = u64::from_str(&args[4]).expect("parse block size");
+    let block_size = u64::from_str(&args[3]).expect("parse block size");
+    let file_size = u64::from_str(&args[4]).expect("parse file size");
 
     let mut cid = [0u8; 32];
     cid[0..8].copy_from_slice(&block_size.to_be_bytes());
@@ -24,20 +23,20 @@ async fn main() -> Result<(), UrsaCodecError> {
 
     let mut handles = vec![];
 
-    for _ in 0..requests {
+    for _id in 0..requests {
         let address = address.clone();
-        handles.push(tokio::spawn(async move {
-            let time = std::time::Instant::now();
-            let stream = TcpStream::connect(address).await.unwrap();
-            let mut client = UfdpClient::new(stream, PUB_KEY, None).await.unwrap();
-            let size = client
-                .request(ursa_pod::types::Blake3Cid(cid))
-                .await
-                .unwrap();
-            assert_eq!(file_size as usize, size);
-            let elapsed = time.elapsed().as_nanos();
-            info!("request_completed,{elapsed},{block_size},{file_size}");
-        }));
+        handles.push(tokio::spawn(instrument!(
+            async move {
+                let stream = TcpStream::connect(address).await.unwrap();
+                let mut client = UfdpClient::new(stream, PUB_KEY, None).await.unwrap();
+                let size = client
+                    .request(ursa_pod::types::Blake3Cid(cid))
+                    .await
+                    .unwrap();
+                assert_eq!(file_size as usize, size);
+            },
+            "sid={_id}",
+        )));
     }
 
     futures::future::join_all(handles).await;

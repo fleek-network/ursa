@@ -7,9 +7,10 @@ authors = ["qti3e <i@parsa.oo>", "ossian <self@ossian.dev>"]
 [dependencies]
 rand.workspace = true
 anyhow.workspace = true
+blake3.workspace = true
+thiserror.workspace = true
 arrayref = "0.3"
 arrayvec = "0.7"
-blake3 = { version = "1.3", features = ["rayon"] }
 bytes = "1.4"
 elliptic-curve = { version = "0.13", default-features = false, features = ["hash2curve", "arithmetic"] }
 futures = { version = "0.3", optional = true }
@@ -35,6 +36,8 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 rayon  = { version = "1.7", optional = true }
 fnv = { version = "1.0", optional = true }
+clap = { version = "4.2", features = ["derive"], optional = true }
+gnuplot = { version = "0.0.37", optional = true }
 
 [dev-dependencies]
 benchmarks_utils = { git = "https://github.com/qti3e/benchmarks", rev = "c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package = "benchmarks" }
@@ -42,16 +45,19 @@ criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
 tracing-subscriber = "0.2"
 
 [features]
-default = ["client", "server", "parser"]
+default = ["client", "server"]
 client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
+benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
 bench-quic = ["tokio", "quinn", "rcgen", "rustls"]
-benchmarks = []
-parser = ["serde", "serde_json", "rayon", "fnv"]
 
 [[bench]]
 name = "encrypt"
+harness = false
+
+[[bench]]
+name = "tree"
 harness = false
 
 [[bench]]
@@ -63,15 +69,15 @@ name = "e2e"
 harness = false
 
 [[bin]]
-name = "client"
+name = "ufdp-bench-client"
 path = "benchmarks/client.rs"
 
 [[bin]]
-name = "server"
+name = "ufdp-bench-server"
 path = "benchmarks/server.rs"
 required-features = ["benchmarks"]
 
 [[bin]]
-name = "parser"
+name = "ufdp-bench-parser"
 path = "benchmarks/parser/main.rs"
-required-features = ["parser"]
+required-features = ["benchmarks"]

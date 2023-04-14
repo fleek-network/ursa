@@ -10,15 +10,6 @@ use crate::{
     types::{Blake3Cid, BlsPublicKey},
 };
 
-#[derive(Clone, Copy, Debug)]
-pub enum UfdpResponseState {
-    WaitingForHeader,
-    ReadingProof,
-    ReadingContent,
-    WaitingForDecryptionKey,
-    Done,
-}
-
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     pub conn: UfdpConnection<S>,
@@ -49,11 +40,14 @@ where
                 pubkey,
             })
             .await?,
-            ""
+            "tag=write_handshake_req"
         );
 
         // receive handshake
-        match instrument!(conn.read_frame(Some(HANDSHAKE_RES_TAG)).await?, "") {
+        match instrument!(
+            conn.read_frame(Some(HANDSHAKE_RES_TAG)).await?,
+            "tag=read_handshake_res"
+        ) {
             Some(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { conn, lane }),
             Some(_) => unreachable!(),
             None => Err(UrsaCodecError::Unknown),
@@ -66,28 +60,31 @@ where
             self.conn
                 .write_frame(UrsaFrame::ContentRequest { hash })
                 .await?,
-            ""
+            "tag=write_content_req"
         );
         let mut size = 0;
 
         loop {
-            match instrument!(self.conn.read_frame(None).await?, "") {
+            match instrument!(self.conn.read_frame(None).await?, "tag=read_content_res") {
                 Some(UrsaFrame::ContentResponse {
                     proof_len,
                     block_len,
                     ..
                 }) => {
-                    debug!("recvd response");
-                    // recv proof
+                    // receive proof
                     let len = proof_len as usize;
                     self.conn.take = len;
                     let mut proof_buf = BytesMut::with_capacity(len);
                     loop {
-                        match instrument!(self.conn.read_frame(None).await?, "") {
+                        match instrument!(
+                            self.conn.read_frame(None).await?,
+                            "tag=read_proof_buffer"
+                        ) {
                             Some(UrsaFrame::Buffer(bytes)) => {
                                 debug!("recv proof chunk");
                                 proof_buf.put_slice(&bytes);
                                 if proof_buf.len() == len {
+                                    // todo: decode proof
                                     break;
                                 }
                             }
@@ -98,13 +95,16 @@ where
                         }
                     }
 
-                    // recv block
+                    // receive block
                     let len = block_len as usize;
                     self.conn.take = len;
                     let mut block_buf = BytesMut::with_capacity(len);
                     size += len;
                     loop {
-                        match instrument!(self.conn.read_frame(None).await?, "") {
+                        match instrument!(
+                            self.conn.read_frame(None).await?,
+                            "tag=read_block_buffer"
+                        ) {
                             Some(UrsaFrame::Buffer(bytes)) => {
                                 block_buf.put_slice(&bytes);
                                 if block_buf.len() == len {
@@ -125,11 +125,11 @@ where
                                 delivery_acknowledgment: [1; 96],
                             })
                             .await?,
-                        ""
+                        "tag=write_dk_req"
                     );
 
-                    // recv decryption key
-                    match instrument!(self.conn.read_frame(None).await?, "") {
+                    // receive decryption key
+                    match instrument!(self.conn.read_frame(None).await?, "tag=read_dk_res") {
                         Some(UrsaFrame::DecryptionKeyResponse { .. }) => {}
                         _ => return Err(UrsaCodecError::Unknown),
                     }
