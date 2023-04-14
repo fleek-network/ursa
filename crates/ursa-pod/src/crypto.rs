@@ -146,10 +146,16 @@ pub fn sign_ciphertext(
 /// Hash the ciphertext with Blake3 under the protocol specified DST.
 #[inline]
 pub fn hash_ciphertext(cipher: &[u8]) -> [u8; 32] {
-    *blake3::Hasher::new_keyed(&ufdp_keys::CIPHERTEXT_DIGEST_KEY)
-        .update_rayon(cipher)
-        .finalize()
-        .as_bytes()
+    let len = cipher.len();
+    if len >= 256 * 1024 || (len >= 128 * 1024 && len <= 138 * 1023) {
+        // Use rayon on specific sizes that actually improves the performance.
+        *blake3::Hasher::new_keyed(&ufdp_keys::CIPHERTEXT_DIGEST_KEY)
+            .update_rayon(cipher)
+            .finalize()
+            .as_bytes()
+    } else {
+        *keyed_hash(&ufdp_keys::CIPHERTEXT_DIGEST_KEY, cipher).as_bytes()
+    }
 }
 
 /// Encrypt a block of data for the given request and write the result to the output buffer.
