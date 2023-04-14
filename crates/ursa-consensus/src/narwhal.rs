@@ -1,23 +1,19 @@
+use std::sync::Arc;
+
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
-
-use crate::config::{GenesisAuthority, GenesisCommittee};
 use crate::keys::LoadOrCreate;
 use crate::{config::ConsensusConfig, validator::Validator};
-use anyhow::Context;
 use fastcrypto::traits::KeyPair as _;
 use multiaddr::Multiaddr;
 use mysten_metrics::RegistryService;
-use narwhal_config::{Committee, Parameters, WorkerCache, WorkerInfo};
+use narwhal_config::{Committee, Parameters, WorkerCache};
 use narwhal_crypto::{KeyPair, NetworkKeyPair};
 use narwhal_executor::ExecutionState;
 use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStorage};
 use prometheus::Registry;
 use rand::thread_rng;
 use resolve_path::PathResolveExt;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::{path::PathBuf, sync::Arc};
 use tokio::{sync::Mutex, time::Instant};
 use tracing::{error, info};
 
@@ -25,25 +21,23 @@ use tracing::{error, info};
 const MAX_RETRIES: u32 = 2;
 
 /// Manages running the narwhal and bullshark as a service.
-pub struct ConsensusService {
-    arguments: ServiceArgs,
+pub struct NarwhalService {
+    arguments: NarwhalArgs,
     store: NodeStorage,
     primary: PrimaryNode,
     worker_node: WorkerNode,
+    committee: Committee,
+    worker_cache: WorkerCache,
     status: Mutex<Status>,
 }
 
 /// Arguments used to run a consensus service.
-pub struct ServiceArgs {
-    pub parameters: Parameters,
+pub struct NarwhalArgs {
     pub primary_keypair: KeyPair,
     pub primary_network_keypair: NetworkKeyPair,
     pub worker_keypair: NetworkKeyPair,
     pub primary_address: Multiaddr,
     pub worker_address: Multiaddr,
-    pub store_path: PathBuf,
-    pub committee: Committee,
-    pub worker_cache: WorkerCache,
     pub registry_service: RegistryService,
 }
 
@@ -53,33 +47,32 @@ enum Status {
     Stopped,
 }
 
-impl ConsensusService {
-    /// Create a new consensus service using the provided arguments.
-    pub fn new(arguments: ServiceArgs) -> Self {
-        let store = NodeStorage::reopen(&arguments.store_path);
+impl NarwhalService {
+    /// Create a new narwhal service using the provided arguments.
+    pub fn new(
+        arguments: NarwhalArgs,
+        store: NodeStorage,
+        committee: Committee,
+        worker_cache: WorkerCache,
+        parameters: Parameters,
+    ) -> Self {
+        let primary =
+            PrimaryNode::new(parameters.clone(), true, arguments.registry_service.clone());
 
-        let primary = PrimaryNode::new(
-            arguments.parameters.clone(),
-            true,
-            arguments.registry_service.clone(),
-        );
-
-        let worker_node = WorkerNode::new(
-            0,
-            arguments.parameters.clone(),
-            arguments.registry_service.clone(),
-        );
+        let worker_node = WorkerNode::new(0, parameters, arguments.registry_service.clone());
 
         Self {
             arguments,
             store,
             primary,
             worker_node,
+            committee,
+            worker_cache,
             status: Mutex::new(Status::Stopped),
         }
     }
 
-    /// Start the consensus process by starting the Narwhal's primary and worker.
+    /// Start the narwhal process by starting the Narwhal's primary and worker.
     ///
     /// # Panics
     ///
@@ -90,15 +83,15 @@ impl ConsensusService {
     {
         let mut status = self.status.lock().await;
         if *status == Status::Running {
-            error!("ConsensusService is already running.");
+            error!("NarwhalService is already running.");
             return;
         }
 
         let name = self.arguments.primary_keypair.public().clone();
         let execution_state = Arc::new(state);
 
-        let epoch = self.arguments.committee.epoch();
-        info!("Starting ConsensusService for epoch {}", epoch);
+        let epoch = self.committee.epoch;
+        info!("Starting NarwhalService for epoch {}", epoch);
 
         let mut running = false;
         for i in 0..MAX_RETRIES {
@@ -112,8 +105,8 @@ impl ConsensusService {
                 .start(
                     self.arguments.primary_keypair.copy(),
                     self.arguments.primary_network_keypair.copy(),
-                    self.arguments.committee.clone(),
-                    self.arguments.worker_cache.clone(),
+                    self.committee.clone(),
+                    self.worker_cache.clone(),
                     &self.store,
                     execution_state.clone(),
                 )
@@ -141,8 +134,8 @@ impl ConsensusService {
                 .start(
                     name.clone(),
                     self.arguments.worker_keypair.copy(),
-                    self.arguments.committee.clone(),
-                    self.arguments.worker_cache.clone(),
+                    self.committee.clone(),
+                    self.worker_cache.clone(),
                     &self.store,
                     Validator::new(),
                     None,
@@ -172,11 +165,11 @@ impl ConsensusService {
         }
 
         let now = Instant::now();
-        let epoch = self.arguments.committee.epoch();
+        let epoch = self.committee.epoch;
         info!("Shutting down Narwhal epoch {:?}", epoch);
 
         self.worker_node.shutdown().await;
-        self.worker_node.shutdown().await;
+        self.primary.shutdown().await;
 
         info!(
             "Narwhal shutdown for epoch {:?} is complete - took {} seconds",
@@ -188,7 +181,8 @@ impl ConsensusService {
     }
 }
 
-impl ServiceArgs {
+impl NarwhalArgs {
+    // TODO(dalton): should this be renamed, maybe load_genesis?
     /// Load a service arguments from a raw configuration.
     pub fn load(config: ConsensusConfig) -> anyhow::Result<Self> {
         // Load or create all of the keys.
@@ -199,76 +193,26 @@ impl ServiceArgs {
         let worker_keypair =
             NetworkKeyPair::load_or_create(&mut rng, &config.worker[0].keypair.resolve())?;
 
-        // Load the committee.json file.
-        let genesis_committee: GenesisCommittee =
-            load_or_create_json(config.genesis_committee.resolve(), || GenesisCommittee {
-                authorities: [(
-                    primary_keypair.public().clone(),
-                    GenesisAuthority {
-                        stake: 1,
-                        primary_address: config.address.clone(),
-                        network_key: primary_network_keypair.public().clone(),
-                        workers: [WorkerInfo {
-                            name: worker_keypair.public().clone(),
-                            transactions: config.worker[0].transaction.clone(),
-                            worker_address: config.worker[0].address.clone(),
-                        }],
-                    },
-                )]
-                .into_iter()
-                .collect(),
-            })
-            .context("Could not load the genesis committee.")?;
-
-        let committee = Committee::from(&genesis_committee);
-        let worker_cache = WorkerCache::from(&genesis_committee);
-
-        // create the directory for the store.
-        let store_path = config.store_path.resolve().into_owned();
-        std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
-
         Ok(Self {
-            parameters: config.parameters,
             primary_keypair,
             primary_network_keypair,
             worker_keypair,
             primary_address: config.address,
             worker_address: config.worker[0].address.clone(),
-            store_path,
-            committee,
-            worker_cache,
             registry_service: RegistryService::new(Registry::new()),
         })
     }
 }
 
-// TODO(qti3e) Move this to somewhere else.
-fn load_or_create_json<T, P: AsRef<std::path::Path>, F>(path: P, default_fn: F) -> anyhow::Result<T>
-where
-    F: Fn() -> T,
-    T: Serialize + DeserializeOwned,
-{
-    let path = path.as_ref();
-
-    if path.exists() {
-        let bytes =
-            std::fs::read(path).with_context(|| format!("Could not read the file: '{path:?}'"))?;
-
-        serde_json::from_slice(bytes.as_slice())
-            .with_context(|| format!("Could not deserialize the file: '{path:?}'"))
-    } else {
-        let value = default_fn();
-        let bytes = serde_json::to_vec_pretty(&value).context("Serialization failed.")?;
-
-        let parent = path
-            .parent()
-            .context("Could not resolve the parent directory.")?;
-
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Could not create the directory: '{parent:?}'"))?;
-
-        std::fs::write(path, bytes).with_context(|| format!("Could not write to '{path:?}'."))?;
-
-        Ok(value)
+impl Clone for NarwhalArgs {
+    fn clone(&self) -> Self {
+        Self {
+            primary_keypair: self.primary_keypair.copy(),
+            primary_network_keypair: self.primary_network_keypair.copy(),
+            worker_keypair: self.worker_keypair.copy(),
+            primary_address: self.primary_address.clone(),
+            worker_address: self.worker_address.clone(),
+            registry_service: self.registry_service.clone(),
+        }
     }
 }
