@@ -6,6 +6,51 @@ use rand::Rng;
 use rand_core::OsRng;
 use ursa_pod::{crypto::*, keys::SecretKey};
 
+fn bench_blake3(c: &mut Criterion) {
+    let mut g = c.benchmark_group("Blake3");
+    g.sample_size(30);
+
+    let mut sizes = Vec::new();
+    sizes.extend_from_slice(&[1, 16, 32, 48, 63, 64, 512, 1024]);
+    sizes.extend((8..256).step_by(8).map(|i| i * 1024));
+
+    for size in sizes {
+        g.throughput(Throughput::Bytes(size as u64));
+
+        g.bench_with_input(BenchmarkId::new("blake3::hash", size), &size, |b, size| {
+            let input = random_vec(*size);
+            b.iter(|| {
+                let hash = blake3::hash(&input);
+                black_box(hash);
+            })
+        });
+
+        g.bench_with_input(
+            BenchmarkId::new("blake3::update", size),
+            &size,
+            |b, size| {
+                let input = random_vec(*size);
+                b.iter(|| {
+                    let hash = blake3::Hasher::new().update(&input).finalize();
+                    black_box(hash);
+                })
+            },
+        );
+
+        g.bench_with_input(
+            BenchmarkId::new("blake3::update_rayon", size),
+            &size,
+            |b, size| {
+                let input = random_vec(*size);
+                b.iter(|| {
+                    let hash = blake3::Hasher::new().update(&input).finalize();
+                    black_box(hash);
+                })
+            },
+        );
+    }
+}
+
 fn bench_primitives(c: &mut Criterion) {
     let mut g = c.benchmark_group("Primitives");
     g.sample_size(50);
@@ -59,6 +104,7 @@ fn bench_primitives(c: &mut Criterion) {
             black_box(ret);
         })
     });
+
     g.bench_function("sign_ciphertext", |b| {
         let sk = SecretKey::random(OsRng);
         b.iter(|| {
@@ -178,5 +224,5 @@ fn bench_routines(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_primitives, bench_routines);
+criterion_group!(benches, bench_blake3, bench_primitives, bench_routines);
 criterion_main!(benches);
