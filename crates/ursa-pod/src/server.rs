@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use arrayref::array_ref;
 use bytes::BytesMut;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
@@ -67,9 +66,9 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                     #[cfg(feature = "benchmarks")]
                     let (content_size, block_size) = {
                         let bytes = hash.0;
-                        let block_size_bytes = array_ref!(bytes, 0, 8);
+                        let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
                         let block_size = u64::from_be_bytes(*block_size_bytes);
-                        let content_size_bytes = array_ref!(bytes, 8, 8);
+                        let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
                         let content_size = u64::from_be_bytes(*content_size_bytes);
                         (content_size, block_size)
                     };
@@ -135,9 +134,9 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         #[cfg(feature = "benchmarks")]
         let (content_size, block_size) = {
             let bytes = cid.0;
-            let block_size_bytes = array_ref!(bytes, 0, 8);
+            let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
             let block_size = u64::from_be_bytes(*block_size_bytes);
-            let content_size_bytes = array_ref!(bytes, 8, 8);
+            let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
             let content_size = u64::from_be_bytes(*content_size_bytes);
             (content_size, block_size)
         };
