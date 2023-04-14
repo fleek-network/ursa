@@ -53,10 +53,10 @@ fn bench_blake3(c: &mut Criterion) {
 
 fn bench_blake3_rayon_noise(c: &mut Criterion) {
     let noises = [
-        -2048, -1538, -1024, -512, -256, -128, 0, 128, 256, 512, 1024, 1536, 2048,
+        -128, 0, 128, 256, 512, 1024, 1536, 2048, 4095, 8192, 10240, 12288, 13312,
     ];
 
-    for base in [64 * 1024, 128 * 1024, 256 * 1024] {
+    for base in [128 * 1024, 256 * 1024] {
         let mut g = c.benchmark_group(format!("Blake3RayonNoise[base={}KiB]", base / 1024));
         g.sample_size(20);
 
