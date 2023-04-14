@@ -43,7 +43,7 @@ fn bench_blake3(c: &mut Criterion) {
             |b, size| {
                 let input = random_vec(*size);
                 b.iter(|| {
-                    let hash = blake3::Hasher::new().update(&input).finalize();
+                    let hash = blake3::Hasher::new().update_rayon(&input).finalize();
                     black_box(hash);
                 })
             },
