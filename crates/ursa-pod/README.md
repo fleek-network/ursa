@@ -117,11 +117,16 @@ jq '.params.tag.deliver_content.stats' stats.json
 jq '.params.sid.0.params.tag.deliver_content.stats' stats.json
 ```
 
-- Get available param keys for something:
+- Get available param values for something:
 
 ```sh
-jq '.params | keys' stats.json
-jq '.params.tag.deliver_content | keys' stats.json
+jq '.params.tag | keys' stats.json
+```
+
+- Get available params for something:
+
+```sh
+jq '.params.tag.deliver_content.params | keys' stats.json
 ```
 
 ##### Plotting statistics
