@@ -48,13 +48,13 @@ pub async fn start<C: Cache>(
             workers.spawn(
                 axum_server::bind_rustls(bind_addr, tls_config)
                     .handle(handle.clone())
-                    .serve(server_app.into_make_service()),
+                    .serve(server_app),
             );
         } else {
             workers.spawn(
                 axum_server::bind(bind_addr)
                     .handle(handle.clone())
-                    .serve(server_app.into_make_service()),
+                    .serve(server_app),
             );
         }
         info!("Listening on {bind_addr:?}");

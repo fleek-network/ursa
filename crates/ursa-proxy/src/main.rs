@@ -20,6 +20,7 @@ use ursa_proxy::{
     config::load_config,
     core,
 };
+use ursa_telemetry::TelemetryConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -27,6 +28,13 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
+
+    TelemetryConfig::new("ursa-proxy")
+        .with_log_level("INFO")
+        .with_pretty_log()
+        .with_jaeger_tracer()
+        .init()?;
+
     let moka_config = config.moka.clone().unwrap_or_default();
     let cache = MokaCache::new(moka_config);
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
@@ -61,6 +69,7 @@ async fn main() -> Result<()> {
         }
     }
     info!("Proxy shut down successfully");
+    TelemetryConfig::teardown();
     Ok(())
 }
 

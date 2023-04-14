@@ -12,7 +12,7 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
-use tracing::{info, warn};
+use tracing::{info, info_span, warn, Instrument};
 
 #[derive(Clone)]
 pub struct MokaCache {
@@ -40,11 +40,12 @@ impl Cache for MokaCache {
         let mut response = None;
         if let Some(data) = self.inner.get(&key) {
             let (mut w, r) = duplex(self.stream_buf as usize);
-            task::spawn(async move {
+            let fut = async move {
                 if let Err(e) = w.write_all(data.as_ref()).await {
                     warn!("Failed to write to stream: {e:?}");
                 }
-            });
+            };
+            task::spawn(fut.instrument(info_span!("stream_from_cache")));
             response = Some(StreamBody::new(ReaderStream::new(r)).into_response());
         }
         response
