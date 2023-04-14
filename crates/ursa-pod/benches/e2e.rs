@@ -90,7 +90,6 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        #[cfg(not(feature = "bench-quinn"))]
         {
             let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
             g.sample_size(20);
@@ -116,7 +115,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             );
         }
 
-        #[cfg(feature = "bench-quinn")]
+        #[cfg(feature = "bench-s2n-quic")]
         {
             let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
             g.sample_size(20);
@@ -124,8 +123,8 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 &mut g,
                 files,
                 unit,
-                quinn_ufdp::client_loop,
-                quinn_ufdp::server_loop,
+                s2n_quic_ufdp::client_loop,
+                s2n_quic_ufdp::server_loop,
             );
         }
     }
@@ -283,6 +282,7 @@ mod http_hyper {
 
 #[cfg(feature = "bench-quinn")]
 mod quinn_ufdp {
+    use super::tls_utils::{client_config, server_config};
     use futures::future::join_all;
     use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig};
     use std::{
@@ -331,50 +331,6 @@ mod quinn_ufdp {
         fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
             Ok(())
         }
-    }
-
-    struct SkipServerVerification;
-
-    impl SkipServerVerification {
-        fn new() -> Arc<Self> {
-            Arc::new(Self)
-        }
-    }
-
-    impl rustls::client::ServerCertVerifier for SkipServerVerification {
-        fn verify_server_cert(
-            &self,
-            _end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
-            _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
-        ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-            Ok(rustls::client::ServerCertVerified::assertion())
-        }
-    }
-
-    pub fn server_config() -> rustls::ServerConfig {
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-        let key = rustls::PrivateKey(cert.serialize_private_key_der());
-        let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
-        let mut config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(cert, key)
-            .unwrap();
-        config.alpn_protocols = vec![b"ufdp".to_vec()];
-        config
-    }
-
-    pub fn client_config() -> rustls::ClientConfig {
-        let mut config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_custom_certificate_verifier(SkipServerVerification::new())
-            .with_no_client_auth();
-        config.alpn_protocols = vec![b"ufdp".to_vec()];
-        config
     }
 
     fn transport_config() -> TransportConfig {
@@ -495,6 +451,197 @@ mod quinn_ufdp {
         ) -> Poll<Result<(), Error>> {
             Pin::new(&mut self.tx).poll_shutdown(cx)
         }
+    }
+}
+
+#[cfg(feature = "bench-s2n-quic")]
+mod s2n_quic_ufdp {
+    use super::tls_utils::{client_config, server_config};
+    use futures::future::join_all;
+    use s2n_quic::{client::Connect, provider::tls, Client, Server};
+    use std::net::SocketAddr;
+    use tokio::task;
+    use ursa_pod::{
+        client::UfdpClient,
+        connection::consts::MAX_BLOCK_SIZE,
+        server::{Backend, UfdpHandler},
+        types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
+    };
+
+    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+
+    #[derive(Clone, Copy)]
+    struct DummyBackend {
+        content: &'static [u8],
+    }
+
+    impl Backend for DummyBackend {
+        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+            let s = block as usize * MAX_BLOCK_SIZE;
+            if s < self.content.len() {
+                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
+                Some(&self.content[s..e])
+            } else {
+                None
+            }
+        }
+
+        fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
+            (DECRYPTION_KEY, 0)
+        }
+
+        fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
+            9001
+        }
+
+        fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    pub struct TlsProvider;
+
+    impl tls::Provider for TlsProvider {
+        type Server = tls::rustls::Server;
+        type Client = tls::rustls::Client;
+        type Error = rustls::Error;
+
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
+            Ok(server_config().into())
+        }
+
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
+            Ok(client_config().into())
+        }
+    }
+
+    /// Simple QUIC server loop that replies with static content.
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<u16>,
+    ) {
+        let mut server = Server::builder()
+            // TODO: Add certificates.
+            .with_tls(TlsProvider)
+            .unwrap()
+            .with_io(addr.as_str())
+            .unwrap()
+            .start()
+            .unwrap();
+
+        tx_started
+            .send(server.local_addr().unwrap().port())
+            .unwrap();
+
+        while let Some(mut conn) = server.accept().await {
+            let content_clone = content.clone();
+            task::spawn(async move {
+                loop {
+                    match conn.accept_bidirectional_stream().await {
+                        Ok(stream) => match stream {
+                            None => break,
+                            Some(stream) => {
+                                task::spawn(async {
+                                    let handler = UfdpHandler::new(
+                                        stream,
+                                        DummyBackend {
+                                            content: content_clone,
+                                        },
+                                        0,
+                                    );
+
+                                    if let Err(e) = handler.serve().await {
+                                        println!("server error: {e:?}");
+                                    }
+                                });
+                            }
+                        },
+                        Err(s2n_quic::connection::Error::Application { .. }) => break,
+                        Err(e) => panic!("{e:?}"),
+                    }
+                }
+            });
+        }
+    }
+
+    /// Simple QUIC client loop that sends a request and loops over the
+    /// block stream dropping the bytes immediately.
+    pub async fn client_loop(addr: String, iterations: usize) {
+        let mut tasks = vec![];
+        // let tls_client = s2n_quic::provider::tls::rustls::Client::builder().
+        let client = Client::builder()
+            .with_tls(TlsProvider)
+            .unwrap()
+            .with_io("0.0.0.0:0")
+            .unwrap()
+            .start()
+            .unwrap();
+        let addr: SocketAddr = addr.parse().unwrap();
+        let mut connection = client
+            .connect(Connect::new(addr).with_server_name("localhost"))
+            .await
+            .unwrap();
+        for _ in 0..iterations {
+            let stream = connection.open_bidirectional_stream().await.unwrap();
+            let task = task::spawn(async move {
+                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
+        }
+        join_all(tasks).await;
+    }
+}
+
+#[cfg(any(feature = "bench-quinn", feature = "bench-s2n-quic"))]
+mod tls_utils {
+    use std::sync::Arc;
+
+    pub struct SkipServerVerification;
+
+    impl SkipServerVerification {
+        fn new() -> Arc<Self> {
+            Arc::new(Self)
+        }
+    }
+
+    impl rustls::client::ServerCertVerifier for SkipServerVerification {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &rustls::Certificate,
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            _now: std::time::SystemTime,
+        ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+            Ok(rustls::client::ServerCertVerified::assertion())
+        }
+    }
+
+    pub fn server_config() -> rustls::ServerConfig {
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls::PrivateKey(cert.serialize_private_key_der());
+        let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
+        let mut config = rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert, key)
+            .unwrap();
+        config.alpn_protocols = vec![b"ufdp".to_vec()];
+        config
+    }
+
+    pub fn client_config() -> rustls::ClientConfig {
+        let mut config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_custom_certificate_verifier(SkipServerVerification::new())
+            .with_no_client_auth();
+        config.alpn_protocols = vec![b"ufdp".to_vec()];
+        config
     }
 }
 
