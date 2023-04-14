@@ -36,4 +36,25 @@ library MathUtils {
     function min(uint256 x, uint256 y) internal pure returns (uint256) {
         return x <= y ? x : y;
     }
+
+    /**
+     * @dev Returns the min of two signed numbers
+     */
+    function signedMin(int256 x, int256 y) internal pure returns (int256) {
+        return x <= y ? x : y;
+    }
+
+    /**
+     * @dev Returns the max of two numbers.
+     */
+    function max(uint256 x, uint256 y) internal pure returns (uint256) {
+        return x >= y ? x : y;
+    }
+
+    /**
+     * @dev Returns the max of two signed numbers
+     */
+    function signedMax(int256 x, int256 y) internal pure returns (int256) {
+        return x >= y ? x : y;
+    }
 }

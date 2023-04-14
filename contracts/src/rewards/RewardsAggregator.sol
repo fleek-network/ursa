@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.15;
+
+import "../management/Controlled.sol";
+/**
+ * @title Fleek Reward Aggreagator
+ * @dev This contract aggregates data served by each node in an epoch
+ */
+
+contract RewardsAggregator is Controlled {
+    uint16 public daysForAveragePotential;
+    bool private initialized;
+
+    ///  epoch => Node publicKey => Data served
+    mapping(uint256 => mapping(string => uint256)) public dataServedInBytes;
+    ///  epoch => Public key list
+    mapping(uint256 => string[]) public publicKeys;
+
+
+    function initialize(address _controller) external {
+        require(!initialized, "Rewards contract already initialized");
+        Controlled._init(_controller);
+
+        initialized = true;
+    }
+
+    /**
+     * @dev get publicKeys array that store whitelisted node
+     */
+    function getPublicKeys(uint256 _epoch) public view returns (string[] memory) {
+        return publicKeys[_epoch];
+    }
+
+    /**
+     * @dev record data served for given a node with given public key
+     * @param epoch epoch for which the metrics are stored
+     * @param publicKey public key of the node
+     * @param dataServed data served from the pod transaction
+     */
+    function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external onlyController {
+        if (dataServedInBytes[epoch][publicKey] == 0) {
+            publicKeys[epoch].push(publicKey);
+        }
+        dataServedInBytes[epoch][publicKey] += dataServed;
+    }
+
+    /**
+     * @dev get data served for given node and given epoch
+     * @param publicKey public key of the node
+     * @param epoch epoch for which data served to get
+     */
+    function getDataServedByNode(string calldata publicKey, uint256 epoch) public view returns (uint256) {
+        return dataServedInBytes[epoch][publicKey];
+    }
+
+    /**
+     * @dev get average data served per day over daysForAveragePotential epochs
+     */
+    function getAvgUsageNEpochs(uint256 _epoch) public view returns (uint256) {
+        uint256 _startEpoch = _epoch <= daysForAveragePotential ? 0 : _epoch - daysForAveragePotential;
+        uint256 _sum = 0;
+        for (uint256 i = _startEpoch; i < _epoch; i++) {
+            _sum += getDataForEpoch(i);
+        }
+        return _sum / (_epoch - _startEpoch);
+    }
+
+    /**
+     * @dev get data served by all nodes in any epoch
+     * @param epoch epoch number for which served data is required
+     */
+    function getDataForEpoch(uint256 epoch) public view returns (uint256) {
+        uint256 sum = 0;
+        uint256 len = publicKeys[epoch].length;
+        for (uint256 i = 0; i < len;) {
+            sum += dataServedInBytes[epoch][publicKeys[epoch][i]];
+            unchecked {
+                i += 1;
+            }
+        }
+        return sum;
+    }
+}

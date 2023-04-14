@@ -40,7 +40,7 @@ async fn main() {
         None => "300000",
     };
     let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
-
+    
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()

@@ -16,6 +16,10 @@ pub struct Genesis {
     pub epoch: GenesisContract,
     #[serde(default)]
     pub reputation_scores: GenesisContract,
+    #[serde(default)]
+    pub rewards: GenesisContract,
+    #[serde(default)]
+    pub rewards_aggregator: GenesisContract,
 }
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct GenesisContract {
