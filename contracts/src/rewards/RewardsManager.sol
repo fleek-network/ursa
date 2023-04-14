@@ -92,7 +92,7 @@ contract FleekReward is Controlled {
             SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(_uActual);
             SD59x18 rewardsAmount = servedPercentage.mul(_toEdgeNode);
             // check if the node with public key is white listed
-            (address _to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
+            (address to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
             fleekToken.mint(_to, intoUint256(rewardsAmount));
             emit RewardMinted(_to, intoUint256(rewardsAmount));
                         

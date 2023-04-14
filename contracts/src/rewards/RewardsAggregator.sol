@@ -49,7 +49,7 @@ contract RewardsAggregator is Controlled {
      * @param publicKey public key of the node
      * @param epoch epoch for which data served to get
      */
-    function getDataServedByNode(string memory publicKey, uint256 epoch) public view returns (uint256) {
+    function getDataServedByNode(string calldata publicKey, uint256 epoch) public view returns (uint256) {
         return dataServedInBytes[epoch][publicKey];
     }
 
