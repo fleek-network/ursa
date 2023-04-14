@@ -84,8 +84,10 @@ contract FleekReward is Controlled {
         // 75% goes to edge node
         SD59x18 _toEdgeNode = _totalMint.mul(sd(0.75e18));
         string[] memory publicKeys = rewardsAggregator.getPublicKeys(epoch);
+        uint256 pkLen =  publicKeys.length;
+        rewardsDistribution[epoch] = true;
 
-        for (uint256 i = 0; i < publicKeys.length; i++) {
+        for (uint256 i = 0; i < pkLen;) {
             uint256 dataServedByNode = rewardsAggregator.getDataServedByNode(publicKeys[i], epoch);
             SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(_uActual);
             SD59x18 rewardsAmount = servedPercentage.mul(_toEdgeNode);
@@ -93,8 +95,11 @@ contract FleekReward is Controlled {
             (address _to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
             fleekToken.mint(_to, intoUint256(rewardsAmount));
             emit RewardMinted(_to, intoUint256(rewardsAmount));
+                        
+            unchecked {
+                i += 1;
+            }
         }
-        rewardsDistribution[epoch] = true;
     }
 
     /**

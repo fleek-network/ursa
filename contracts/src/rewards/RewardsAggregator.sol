@@ -15,8 +15,7 @@ contract RewardsAggregator is Controlled {
     mapping(uint256 => mapping(string => uint256)) public dataServedInBytes;
     ///  epoch => Public key list
     mapping(uint256 => string[]) public publicKeys;
-    ///  epoch => public key => key added
-    mapping(uint256 => mapping(string => bool)) public publicKeyAdded;
+
 
     function initialize(address _controller) external {
         require(!initialized, "Rewards contract already initialized");
@@ -39,9 +38,8 @@ contract RewardsAggregator is Controlled {
      * @param dataServed data served from the pod transaction
      */
     function recordDataServed(uint256 epoch, string calldata publicKey, uint256 dataServed) external onlyController {
-        if (!publicKeyAdded[epoch][publicKey]) {
+        if (dataServedInBytes[epoch][publicKey] == 0) {
             publicKeys[epoch].push(publicKey);
-            publicKeyAdded[epoch][publicKey] = true;
         }
         dataServedInBytes[epoch][publicKey] += dataServed;
     }
@@ -73,8 +71,12 @@ contract RewardsAggregator is Controlled {
      */
     function getDataForEpoch(uint256 epoch) public view returns (uint256) {
         uint256 sum = 0;
-        for (uint256 i = 0; i < publicKeys[epoch].length; i++) {
+        uint256 len = publicKeys[epoch].length;
+        for (uint256 i = 0; i < len;) {
             sum += dataServedInBytes[epoch][publicKeys[epoch][i]];
+            unchecked {
+                i += 1;
+            }
         }
         return sum;
     }
