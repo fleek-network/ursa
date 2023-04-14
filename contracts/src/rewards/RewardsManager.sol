@@ -110,14 +110,14 @@ contract FleekReward is Controlled {
     function _getMintRate(SD59x18 _uActual, SD59x18 _uPotential) private returns (SD59x18 totalMint) {
         // Equation 2 from the paper
         // delta U = (_uActual - _uPotential)/uPotential
-        SD59x18 _deltaUNumerator = _uActual.sub(_uPotential);
-        SD59x18 _deltaU = _deltaUNumerator.div(_uPotential);
+        SD59x18 deltaUNumerator = _uActual.sub(_uPotential);
+        SD59x18 deltaU = deltaUNumerator.div(_uPotential);
 
         // Equation 3 from the paper
-        SD59x18 potentialFactor = UNIT.sub(((price).div(cost)).mul(_deltaU));
-        SD59x18 firstMax = sd(MathUtils.signedMax(intoInt256(potentialFactor), intoInt256(minInflationFactor)));
-        SD59x18 dynamicInflation = firstMax.mul(inflationInLastEpoch);
-        SD59x18 currentInflation = sd(MathUtils.signedMin(intoInt256(dynamicInflation), intoInt256(maxInflation)));
+        SD59x18 expectedInflation = (UNIT.sub(((price).div(cost)).mul(deltaU))).mul(inflationInLastEpoch);
+        SD59x18 currentInflation = deltaU.gte(sd(0e18)) ? 
+            sd(MathUtils.signedMax(intoInt256(expectedInflation), intoInt256(minInflationFactor.mul(maxInflation))))
+            : sd(MathUtils.signedMin(intoInt256(expectedInflation), intoInt256(maxInflation)));
         inflationInLastEpoch = currentInflation;
 
         // Equation 4 from the paper
