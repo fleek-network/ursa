@@ -255,4 +255,4 @@ criterion_group!(
     bench_routines,
     bench_nacl
 );
-crierion_main!(benches);
+criterion_main!(benches);
