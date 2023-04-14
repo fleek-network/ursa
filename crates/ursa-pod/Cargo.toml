@@ -50,7 +50,7 @@ client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
 benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
-bench-quic = ["tokio", "quinn", "rcgen", "rustls"]
+bench-quinn = ["tokio", "quinn", "rcgen", "rustls"]
 
 [[bench]]
 name = "encrypt"

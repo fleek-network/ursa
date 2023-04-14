@@ -90,6 +90,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
+        #[cfg(not(feature = "bench-quinn"))]
         {
             let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
             g.sample_size(20);
@@ -115,7 +116,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             );
         }
 
-        #[cfg(feature = "bench-quic")]
+        #[cfg(feature = "bench-quinn")]
         {
             let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
             g.sample_size(20);
@@ -123,8 +124,8 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 &mut g,
                 files,
                 unit,
-                quic_ufdp::client_loop,
-                quic_ufdp::server_loop,
+                quinn_ufdp::client_loop,
+                quinn_ufdp::server_loop,
             );
         }
     }
@@ -280,8 +281,8 @@ mod http_hyper {
     }
 }
 
-#[cfg(feature = "bench-quic")]
-mod quic_ufdp {
+#[cfg(feature = "bench-quinn")]
+mod quinn_ufdp {
     use futures::future::join_all;
     use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig};
     use std::{
