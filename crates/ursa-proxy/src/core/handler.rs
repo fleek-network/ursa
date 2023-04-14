@@ -5,9 +5,10 @@ use axum::{
     headers::CacheControl,
     http::{response::Parts, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{get, post},
-    Extension, Router, TypedHeader,
+    routing::{get, post, IntoMakeService},
+    Extension, Router, ServiceExt, TypedHeader,
 };
+use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use bytes::BufMut;
 use hyper::{
     client::{self, HttpConnector},
@@ -19,8 +20,13 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
-use tracing::{debug, error, info, warn};
+use tower_http::{
+    normalize_path::NormalizePath,
+    services::ServeDir,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+};
+use tracing::{debug, error, info, info_span, warn, Instrument, Level};
 
 type Client = client::Client<HttpConnector, Body>;
 
@@ -28,7 +34,7 @@ pub fn init_server_app<C: Cache>(
     server_config: Arc<ServerConfig>,
     cache: C,
     client: Client,
-) -> Router {
+) -> IntoMakeService<NormalizePath<Router>> {
     let mut user_app = Router::new();
 
     if let Some(path) = &server_config.serve_dir_path {
@@ -54,7 +60,18 @@ pub fn init_server_app<C: Cache>(
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
         .layer(Extension(client))
-        .layer(Extension(server_config.clone()));
+        .layer(Extension(server_config.clone()))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .include_headers(true)
+                        .latency_unit(tower_http::LatencyUnit::Micros),
+                ),
+        )
+        .layer(opentelemetry_tracing_layer());
 
     if let Some(headers) = &server_config.add_header {
         for (header, values) in headers.iter() {
@@ -70,7 +87,7 @@ pub fn init_server_app<C: Cache>(
         }
     }
 
-    user_app
+    NormalizePath::trim_trailing_slash(user_app).into_make_service()
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
@@ -139,7 +156,11 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    match client.get(uri).await {
+    match client
+        .get(uri)
+        .instrument(info_span!("request_upstream"))
+        .await
+    {
         Ok(resp) => match resp.into_parts() {
             (
                 parts @ Parts {
@@ -150,7 +171,7 @@ pub async fn proxy_pass<C: Cache>(
             ) => {
                 let max_size_cache_entry = config.max_size_cache_entry.unwrap_or(0);
                 let (mut writer, reader) = duplex(100);
-                task::spawn(async move {
+                let stream_body_fut = async move {
                     let mut bytes = Vec::new();
                     while let Some(buf) = body.data().await {
                         match buf {
@@ -171,7 +192,8 @@ pub async fn proxy_pass<C: Cache>(
                         }
                     }
                     cache_client.insert(path, bytes);
-                });
+                };
+                task::spawn(stream_body_fut.instrument(info_span!("stream_body_from_upstream")));
                 Response::from_parts(
                     parts,
                     BoxBody::new(StreamBody::new(ReaderStream::new(reader))),
