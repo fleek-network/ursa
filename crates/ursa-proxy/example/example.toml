@@ -1,3 +1,7 @@
+# Optionally, you can set the log level of the proxy.
+# Defaults to "INFO".
+#log_level = "INFO"
+
 # You can set several servers.
 [[server]]
 # Sets the IP address and port on which the proxy will accept requests.
@@ -24,6 +28,11 @@ proxy_pass = "127.0.0.1:4069"
 
 # Optionally, you can set directory to serve files from.
 #serve_dir_path = "/foo"
+
+# Optionally, you can set the size of the buffer used
+# when streaming data from upstream. Note: buffering is used
+# to read data and save in cache. Defaults to 2MB.
+#upstream_buf_size = 2_000_000
 
 # Optionally, you can set up certificates for the server when using HTTPS.
 #[server.tls]

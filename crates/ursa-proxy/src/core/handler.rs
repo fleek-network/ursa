@@ -1,4 +1,8 @@
-use crate::{cache::Cache, config::ServerConfig, core::Server};
+use crate::{
+    cache::Cache,
+    config::{ServerConfig, DEFAULT_UPSTREAM_BUF_SIZE},
+    core::Server,
+};
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
@@ -170,7 +174,11 @@ pub async fn proxy_pass<C: Cache>(
                 mut body,
             ) => {
                 let max_size_cache_entry = config.max_size_cache_entry.unwrap_or(0);
-                let (mut writer, reader) = duplex(100);
+                let (mut writer, reader) = duplex(
+                    config
+                        .upstream_buf_size
+                        .unwrap_or(DEFAULT_UPSTREAM_BUF_SIZE),
+                );
                 let stream_body_fut = async move {
                     let mut bytes = Vec::new();
                     while let Some(buf) = body.data().await {

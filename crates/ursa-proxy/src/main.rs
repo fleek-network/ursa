@@ -17,7 +17,7 @@ use tracing::{error, info};
 use ursa_proxy::{
     cache::moka_cache::MokaCache,
     cli::{Cli, Commands},
-    config::load_config,
+    config::{load_config, DEFAULT_LOG_LEVEL},
     core,
 };
 use ursa_telemetry::TelemetryConfig;
@@ -30,7 +30,12 @@ async fn main() -> Result<()> {
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
 
     TelemetryConfig::new("ursa-proxy")
-        .with_log_level("INFO")
+        .with_log_level(
+            config
+                .log_level
+                .as_ref()
+                .unwrap_or(&DEFAULT_LOG_LEVEL.to_string()),
+        )
         .with_pretty_log()
         .with_jaeger_tracer()
         .init()?;

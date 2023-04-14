@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::read_to_string, path::PathBuf};
 
 pub const DEFAULT_URSA_PROXY_CONFIG_PATH: &str = ".ursa/proxy/config.toml";
+pub const DEFAULT_UPSTREAM_BUF_SIZE: usize = 2_000_000; // 2MB.
+pub const DEFAULT_LOG_LEVEL: &str = "INFO";
 
 pub fn load_config(path: &PathBuf) -> Result<ProxyConfig> {
     if !path.exists() {
@@ -17,6 +19,7 @@ pub struct ProxyConfig {
     pub server: Vec<ServerConfig>,
     pub moka: Option<MokaConfig>,
     pub admin: Option<AdminConfig>,
+    pub log_level: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -27,6 +30,7 @@ pub struct ServerConfig {
     pub serve_dir_path: Option<PathBuf>,
     pub max_size_cache_entry: Option<usize>,
     pub add_header: Option<HashMap<String, Vec<String>>>,
+    pub upstream_buf_size: Option<usize>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
