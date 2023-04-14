@@ -4,6 +4,7 @@ use benchmarks_utils::*;
 use criterion::*;
 use rand::Rng;
 use rand_core::OsRng;
+use sodiumoxide::crypto::sign;
 use ursa_pod::{crypto::*, keys::SecretKey};
 
 fn sizes() -> Vec<usize> {
@@ -176,27 +177,7 @@ fn bench_routines(c: &mut Criterion) {
     let mut g = c.benchmark_group("Routines");
     g.sample_size(20);
 
-    let sizes = [
-        1,
-        16,
-        32,
-        48,
-        63,
-        64,
-        512,
-        1 * 1024,
-        4 * 1024,
-        8 * 1024,
-        1 * 16 * 1024,
-        2 * 16 * 1024,
-        3 * 16 * 1024,
-        4 * 16 * 1024,
-        8 * 16 * 1024,
-        12 * 16 * 1024,
-        16 * 16 * 1024, // 256KiB
-    ];
-
-    for size in sizes {
+    for size in sizes() {
         g.throughput(Throughput::Bytes(size as u64));
 
         g.bench_with_input(BenchmarkId::new("encrypt_block", size), &size, |b, size| {
@@ -251,11 +232,27 @@ fn bench_routines(c: &mut Criterion) {
     }
 }
 
+fn bench_nacl(c: &mut Criterion) {
+    let mut g = c.benchmark_group("NaCl");
+    g.sample_size(30);
+
+    g.bench_function("ed25519", |b| {
+        let (_pk, sk) = sign::gen_keypair();
+        let data: [u8; 32] = OsRng.gen();
+
+        b.iter(|| {
+            let signed_data = sign::sign(&data, &sk);
+            black_box(signed_data);
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_blake3,
     bench_blake3_rayon_noise,
     bench_primitives,
-    bench_routines
+    bench_routines,
+    bench_nacl
 );
-criterion_main!(benches);
+crierion_main!(benches);

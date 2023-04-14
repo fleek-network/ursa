@@ -21,6 +21,7 @@ hex-literal = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
 secp256k1 = { version = "0.27", features = ["global-context", "rand-std"] }
 blst = "0.3"
+sodiumoxide = "0.2.7"
 
 # client/server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }
