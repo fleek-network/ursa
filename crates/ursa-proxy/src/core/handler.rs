@@ -1,12 +1,11 @@
 use crate::{cache::Cache, config::ServerConfig, core::Server};
-use axum::routing::IntoMakeService;
 use axum::{
     body::{BoxBody, HttpBody, StreamBody},
     extract::Path,
     headers::CacheControl,
     http::{response::Parts, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, IntoMakeService},
     Extension, Router, ServiceExt, TypedHeader,
 };
 use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
@@ -21,10 +20,13 @@ use tokio::{
     task,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::normalize_path::NormalizePath;
-use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
-use tracing::{error, info, warn, Level};
+use tower_http::{
+    normalize_path::NormalizePath,
+    services::ServeDir,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+};
+use tracing::{error, info, info_span, warn, Instrument, Level};
 
 type Client = client::Client<HttpConnector, Body>;
 
@@ -154,7 +156,11 @@ pub async fn proxy_pass<C: Cache>(
     };
     info!("Sending request to {endpoint}");
 
-    match client.get(uri).await {
+    match client
+        .get(uri)
+        .instrument(info_span!("request_upstream"))
+        .await
+    {
         Ok(resp) => match resp.into_parts() {
             (
                 parts @ Parts {
@@ -164,7 +170,7 @@ pub async fn proxy_pass<C: Cache>(
                 mut body,
             ) => {
                 let (mut writer, reader) = duplex(100);
-                task::spawn(async move {
+                let stream_body_fut = async move {
                     let mut bytes = Vec::new();
                     while let Some(buf) = body.data().await {
                         match buf {
@@ -181,7 +187,8 @@ pub async fn proxy_pass<C: Cache>(
                         }
                     }
                     cache_client.insert(path, bytes);
-                });
+                };
+                task::spawn(stream_body_fut.instrument(info_span!("stream_body_from_upstream")));
                 Response::from_parts(
                     parts,
                     BoxBody::new(StreamBody::new(ReaderStream::new(reader))),
