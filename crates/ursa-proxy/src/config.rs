@@ -25,6 +25,7 @@ pub struct ServerConfig {
     pub listen_addr: String,
     pub tls: Option<TlsConfig>,
     pub serve_dir_path: Option<PathBuf>,
+    pub max_size_cache_entry: Option<usize>,
     pub add_header: Option<HashMap<String, Vec<String>>>,
 }
 
