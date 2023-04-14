@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
 
     TelemetryConfig::new("ursa-proxy")
         .with_log_level(
-            &config
+            config
                 .log_level
                 .as_ref()
                 .unwrap_or(&DEFAULT_LOG_LEVEL.to_string()),
