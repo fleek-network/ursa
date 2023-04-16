@@ -61,7 +61,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
         &mut self,
         tx: TransactionRequest,
         read_only: bool,
-    ) -> Result<ExecutionResult>{
+    ) -> Result<ExecutionResult> {
         let mut evm = revm::EVM::new();
         evm.env = self.env.clone();
         evm.env.tx = TxEnv {
@@ -86,8 +86,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
 
         let results = match evm.transact() {
             Ok(data) => data,
-            Err(_) => bail!("theres an err")
-    
+            Err(_) => bail!("theres an err"),
         };
         if !read_only {
             self.db.commit(results.state);

@@ -39,13 +39,9 @@ contract FleekReward is Controlled {
 
     event RewardMinted(address indexed account, uint256 amount);
 
-    function initialize(
-        address _controller,
-        address _token,
-        address _epoch,
-        address _aggregator,
-        address _registry
-    ) external {
+    function initialize(address _controller, address _token, address _epoch, address _aggregator, address _registry)
+        external
+    {
         require(!initialized, "Rewards contract already initialized");
         Controlled._init(_controller);
         fleekToken = FleekToken(_token);
@@ -77,21 +73,11 @@ contract FleekReward is Controlled {
      * @param epoch epoch for which the rewards to be distributed
      */
     function distributeRewards(uint256 epoch) public onlyController {
-        require(
-            epochManager.epoch() != epoch,
-            "cannot distribute rewards for current epoch"
-        );
-        require(
-            !rewardsDistribution[epoch],
-            "rewards already distributed for this epoch"
-        );
+        require(epochManager.epoch() != epoch, "cannot distribute rewards for current epoch");
+        require(!rewardsDistribution[epoch], "rewards already distributed for this epoch");
 
-        SD59x18 _uActual = convert(
-            int256(rewardsAggregator.getDataForEpoch(epoch))
-        );
-        SD59x18 _uPotential = convert(
-            int256(rewardsAggregator.getAvgUsageNEpochs(epoch))
-        );
+        SD59x18 _uActual = convert(int256(rewardsAggregator.getDataForEpoch(epoch)));
+        SD59x18 _uPotential = convert(int256(rewardsAggregator.getAvgUsageNEpochs(epoch)));
 
         SD59x18 _totalMint = _getMintRate(_uActual, _uPotential);
         // todo: variable distribution
@@ -101,17 +87,12 @@ contract FleekReward is Controlled {
         uint256 pkLen = publicKeys.length;
         rewardsDistribution[epoch] = true;
 
-        for (uint256 i = 0; i < pkLen; ) {
-            uint256 dataServedByNode = rewardsAggregator.getDataServedByNode(
-                publicKeys[i],
-                epoch
-            );
-            SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(
-                _uActual
-            );
+        for (uint256 i = 0; i < pkLen;) {
+            uint256 dataServedByNode = rewardsAggregator.getDataServedByNode(publicKeys[i], epoch);
+            SD59x18 servedPercentage = convert(int256(dataServedByNode)).div(_uActual);
             SD59x18 rewardsAmount = servedPercentage.mul(_toEdgeNode);
             // check if the node with public key is white listed
-            (address to, , , , ) = nodeRegistry.whitelist(publicKeys[i]);
+            (address to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
             fleekToken.mint(to, intoUint256(rewardsAmount));
             emit RewardMinted(to, intoUint256(rewardsAmount));
 
@@ -126,37 +107,21 @@ contract FleekReward is Controlled {
      * @param _uActual actual usage in the epoch for which the minting is calculated
      * @param _uPotential potential usage in the epoch for which the minting is calculated
      */
-    function _getMintRate(SD59x18 _uActual, SD59x18 _uPotential)
-        private
-        returns (SD59x18 totalMint)
-    {
+    function _getMintRate(SD59x18 _uActual, SD59x18 _uPotential) private returns (SD59x18 totalMint) {
         // Equation 2 from the paper
         // delta U = (_uActual - _uPotential)/uPotential
         SD59x18 deltaUNumerator = _uActual.sub(_uPotential);
         SD59x18 deltaU = deltaUNumerator.div(_uPotential);
 
         // Equation 3 from the paper
-        SD59x18 expectedInflation = (UNIT.sub(((price).div(cost)).mul(deltaU)))
-            .mul(inflationInLastEpoch);
+        SD59x18 expectedInflation = (UNIT.sub(((price).div(cost)).mul(deltaU))).mul(inflationInLastEpoch);
         SD59x18 currentInflation = deltaU.gte(sd(0e18))
-            ? sd(
-                MathUtils.signedMax(
-                    intoInt256(expectedInflation),
-                    intoInt256(minInflationFactor.mul(maxInflation))
-                )
-            )
-            : sd(
-                MathUtils.signedMin(
-                    intoInt256(expectedInflation),
-                    intoInt256(maxInflation)
-                )
-            );
+            ? sd(MathUtils.signedMax(intoInt256(expectedInflation), intoInt256(minInflationFactor.mul(maxInflation))))
+            : sd(MathUtils.signedMin(intoInt256(expectedInflation), intoInt256(maxInflation)));
         inflationInLastEpoch = currentInflation;
 
         // Equation 4 from the paper
         uint256 totalSupply = fleekToken.totalSupply();
-        totalMint = ((convert(int256(totalSupply))).mul(currentInflation)).div(
-            convert(int256(DAYS_IN_YEAR))
-        );
+        totalMint = ((convert(int256(totalSupply))).mul(currentInflation)).div(convert(int256(DAYS_IN_YEAR)));
     }
 }

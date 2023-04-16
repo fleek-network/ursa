@@ -1,12 +1,12 @@
-use anyhow::{ bail, Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use ethers::{
     abi::{
         token::{LenientTokenizer, Tokenizer},
-         AbiParser, Function, ParamType,
+        AbiParser, Function, ParamType,
     },
     types::{Address, TransactionRequest, U256},
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 pub const REGISTRY_ADDRESS: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";

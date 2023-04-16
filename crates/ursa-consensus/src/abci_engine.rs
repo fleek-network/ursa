@@ -9,7 +9,6 @@ use ursa_utils::shutdown::ShutdownController;
 use narwhal_types::{Batch, Transaction};
 
 // Tendermint Types
-use ursa_utils::transactions::AbciQueryQuery;
 use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
@@ -17,6 +16,7 @@ use tendermint_proto::abci::{
 };
 use tendermint_proto::types::Header;
 use ursa_application::ExecutionResponse;
+use ursa_utils::transactions::AbciQueryQuery;
 
 pub const CHANNEL_CAPACITY: usize = 1_000;
 

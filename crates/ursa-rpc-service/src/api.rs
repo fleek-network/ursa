@@ -30,10 +30,10 @@ use tokio::sync::{
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
-use ursa_utils::transactions::AbciQueryQuery;
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
 use ursa_store::UrsaStore;
+use ursa_utils::transactions::AbciQueryQuery;
 
 use crate::config::OriginConfig;
 

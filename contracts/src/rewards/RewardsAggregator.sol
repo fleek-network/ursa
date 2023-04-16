@@ -16,7 +16,6 @@ contract RewardsAggregator is Controlled {
     ///  epoch => Public key list
     mapping(uint256 => string[]) public publicKeys;
 
-
     function initialize(address _controller) external {
         require(!initialized, "Rewards contract already initialized");
         Controlled._init(_controller);
