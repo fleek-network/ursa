@@ -51,11 +51,17 @@ contract EpochManager {
     function getCurrentEpochInfo()
         public
         view
-        returns (uint256 _epoch, uint256 _currentEpochEndMs, CommitteeMember[] memory _committeeMembers)
+        returns (
+            uint256 _epoch,
+            uint256 _currentEpochEndMs,
+            CommitteeMember[] memory _committeeMembers
+        )
     {
         _committeeMembers = new CommitteeMember[](currentCommitteeSize);
-        for (uint256 i; i < currentCommitteeSize;) {
-            NodeRegistry.Node memory node = nodeRegistry.getNodeInfo(committee[epoch][i]);
+        for (uint256 i; i < currentCommitteeSize; ) {
+            NodeRegistry.Node memory node = nodeRegistry.getNodeInfo(
+                committee[epoch][i]
+            );
             _committeeMembers[i].publicKey = committee[epoch][i];
             _committeeMembers[i].primaryAddress = node.primaryAddress;
             _committeeMembers[i].networkKey = node.networkKey;
@@ -73,9 +79,16 @@ contract EpochManager {
         return committee[epoch];
     }
 
-    function signalEpochChange(string memory committeeMember) external returns (bool) {
-        for (uint256 i;;) {
-            if (keccak256(abi.encodePacked(committee[epoch][i])) == keccak256(abi.encodePacked(committeeMember))) {
+    function signalEpochChange(string memory committeeMember, uint256 _epoch)
+        external
+        returns (bool)
+    {
+        require(epoch == _epoch, "not currently in this epoch");
+        for (uint256 i; ; ) {
+            if (
+                keccak256(abi.encodePacked(committee[epoch][i])) ==
+                keccak256(abi.encodePacked(committeeMember))
+            ) {
                 readyToChange++;
                 break;
             }
@@ -86,12 +99,8 @@ contract EpochManager {
                 revert();
             }
         }
-        uint256 roundUp;
-        if (currentCommitteeSize * 2 / 3 > 0) {
-            roundUp = 1;
-        }
 
-        if (readyToChange >= (currentCommitteeSize * 2 / 3) + roundUp) {
+        if (readyToChange >= ((currentCommitteeSize * 2) / 3) + 1) {
             _changeEpoch();
             return (true);
         } else {
@@ -105,9 +114,14 @@ contract EpochManager {
         committee[epoch] = _chooseNewCommittee();
         currentEpochEndStampMs = currentEpochEndStampMs + epochDurationMs;
         currentCommitteeSize = committee[epoch].length;
+        readyToChange = 0;
     }
 
-    function _chooseNewCommittee() private view returns (string[] memory _committee) {
+    function _chooseNewCommittee()
+        private
+        view
+        returns (string[] memory _committee)
+    {
         //TODO: actual randomnes
         uint256 nodeCount = nodeRegistry.whitelistCount();
         string[] memory allNodes = nodeRegistry.getWhitelist();
@@ -115,8 +129,10 @@ contract EpochManager {
             return allNodes;
         }
 
-        for (uint256 i;;) {
-            uint256 randomNumber = uint256(keccak256(abi.encodePacked(i, blockhash(block.number - 1)))) % nodeCount;
+        for (uint256 i; ; ) {
+            uint256 randomNumber = uint256(
+                keccak256(abi.encodePacked(i, blockhash(block.number - 1)))
+            ) % nodeCount;
             if (bytes(allNodes[randomNumber]).length > 0) {
                 _committee[i] = allNodes[randomNumber];
                 //set chosen node to 0 so it doesnt get chosen again

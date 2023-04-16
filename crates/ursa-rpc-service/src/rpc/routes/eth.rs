@@ -2,8 +2,7 @@ use bytes::Bytes;
 use jsonrpc_v2::{Data, Error, Params};
 use narwhal_types::TransactionProto;
 use std::sync::Arc;
-use ursa_application::types::Query;
-use ursa_consensus::AbciQueryQuery;
+use ursa_utils::transactions::{AbciQueryQuery, Query};
 
 use crate::api::{EthSendTransactionParams, NetworkInterface};
 use crate::routes::network::Result;

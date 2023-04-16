@@ -9,7 +9,7 @@ use ursa_utils::shutdown::ShutdownController;
 use narwhal_types::{Batch, Transaction};
 
 // Tendermint Types
-use crate::AbciQueryQuery;
+use ursa_utils::transactions::AbciQueryQuery;
 use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,

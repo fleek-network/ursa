@@ -37,7 +37,7 @@ async fn main() {
         Some(time) => time,
         None => "300000",
     };
-    let registry_address: Address = *REGISTRY_ADDRESS;
+    let registry_address: Address = REGISTRY_ADDRESS;
 
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

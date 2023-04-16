@@ -1,22 +1,31 @@
-use crate::contract_bindings::epoch_bindings::{
-    CommitteeMember, EpochManagerCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
-    SignalEpochChangeCall,
-};
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{ bail, Context as _, Result};
 use ethers::{
     abi::{
         token::{LenientTokenizer, Tokenizer},
-        AbiDecode, AbiEncode, AbiParser, Function, ParamType,
+         AbiParser, Function, ParamType,
     },
-    types::{Address, Bytes, TransactionRequest, U256},
+    types::{Address, TransactionRequest, U256},
 };
-use fastcrypto::traits::EncodeDecodeBase64;
-use narwhal_config::{Authority, Committee, WorkerCache, WorkerIndex, WorkerInfo};
-use narwhal_crypto::{NetworkPublicKey, PublicKey};
-use std::{collections::BTreeMap, str::FromStr};
+use serde::{Serialize, Deserialize};
+use std::str::FromStr;
 
 pub const REGISTRY_ADDRESS: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
 pub const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
+
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum Query {
+    EthCall(TransactionRequest),
+    Balance(Address),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AbciQueryQuery {
+    pub path: String,
+    pub data: String,
+    pub height: Option<usize>,
+    pub prove: Option<bool>,
+}
 
 /// This will take in strings of address, human readable function abi, and args. And return ethers function abi and filled out transaction request with encoded params
 /// example of human readable function abi is "myFunction(string, uint256):(uin256)" parenthesis after : are the return

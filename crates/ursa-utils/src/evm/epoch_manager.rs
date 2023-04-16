@@ -4,20 +4,22 @@ use anyhow::{anyhow, Context, Result};
 use ethers::abi::{AbiDecode, AbiParser, Token};
 use ethers::contract::{EthAbiCodec, EthAbiType, EthCall, EthDisplay};
 use ethers::core::types::U256;
-use ethers::types::{Address, Bytes, TransactionRequest};
+use ethers::types::{Address, Bytes, TransactionRequest, H160};
 use fastcrypto::traits::EncodeDecodeBase64;
-use lazy_static::lazy_static;
-use narwhal_config::{Authority, Committee, WorkerCache, WorkerIndex, WorkerInfo};
+use hex_literal::hex;
+use narwhal_config::{Authority, Committee, Epoch, WorkerCache, WorkerIndex, WorkerInfo};
 use narwhal_crypto::{NetworkPublicKey, PublicKey};
+use tendermint_proto::abci::ResponseQuery;
+use tokio::sync::{mpsc, oneshot};
 
-lazy_static! {
-    pub static ref EPOCH_ADDRESS: Address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"
-        .parse::<Address>()
-        .unwrap();
-}
+use crate::transactions::AbciQueryQuery;
+
+use super::{query_application, send_txn_to_application};
+
+pub const EPOCH_ADDRESS: Address = H160(hex!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"));
 
 pub const EPOCH_INFO_CALL: [u8; 4] = [186, 188, 57, 79];
-const SIGNAL_EPOCH_ABI: &str = "signalEpochChange(string):(bool)";
+const SIGNAL_EPOCH_ABI: &str = "signalEpochChange(string, uint256):(bool)";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, EthAbiType, EthAbiCodec)]
 pub struct CommitteeMember {
@@ -61,22 +63,41 @@ pub struct InitializeCall {
     pub max_committee_size: U256,
 }
 
-pub fn get_epoch_info_call() -> TransactionRequest {
-    TransactionRequest::new()
-        .to(*EPOCH_ADDRESS)
-        .data(EPOCH_INFO_CALL)
+pub async fn get_epoch_info(
+    tx_abci_queries: &mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+) -> Result<(Committee, WorkerCache, Epoch, u64)> {
+    let txn = TransactionRequest::new()
+        .to(EPOCH_ADDRESS)
+        .data(EPOCH_INFO_CALL);
+
+    let response = query_application(tx_abci_queries, txn).await?;
+
+    let epoch_info = decode_epoch_info_return(response)?;
+
+    let epoch = epoch_info.epoch.as_u64();
+    let epoch_timestamp = epoch_info.current_epoch_end_ms.as_u64();
+
+    let (committee, worker_cache) = decode_committee(epoch_info.committee_members, epoch);
+
+    Ok((committee, worker_cache, epoch, epoch_timestamp))
 }
 
-pub fn get_signal_epoch_change_call(public_key: String) -> TransactionRequest {
+pub async fn signal_epoch_change(
+    public_key: String,
+    epoch: Epoch,
+    mempool_address: String,
+) -> Result<()> {
     // Safe unwrap, const valid ABI
     let function = AbiParser::default()
         .parse_function(SIGNAL_EPOCH_ABI)
         .unwrap();
 
     // Safe unwrap since only a String can be passed in here.
-    let data = function.encode_input(&[Token::String(public_key)]).unwrap();
+    let data = function.encode_input(&[Token::String(public_key), Token::Uint(epoch.into())])?;
 
-    TransactionRequest::new().to(*EPOCH_ADDRESS).data(data)
+    let txn = TransactionRequest::new().to(EPOCH_ADDRESS).data(data);
+
+    send_txn_to_application(mempool_address, txn).await
 }
 
 pub fn decode_epoch_info_return(output: Vec<u8>) -> Result<EpochInfoReturn> {

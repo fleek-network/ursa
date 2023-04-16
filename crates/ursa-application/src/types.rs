@@ -24,6 +24,7 @@ use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use ursa_utils::evm::epoch_manager::{SignalEpochChangeReturn, EPOCH_ADDRESS};
+use ursa_utils::transactions::Query;
 
 #[derive(Clone, Debug)]
 pub struct State<Db> {
@@ -195,7 +196,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Resolve the `to`.
         match tx.to {
             Some(NameOrAddress::Address(addr)) => {
-                if addr == *EPOCH_ADDRESS {
+                if addr == EPOCH_ADDRESS {
                     to_epoch_contract = true;
                 }
                 tx.to = Some(addr.into())
@@ -275,13 +276,6 @@ impl MempoolTrait for Mempool {
 #[derive(Debug, Clone)]
 pub struct Info<Db> {
     pub state: Arc<Mutex<State<Db>>>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum Query {
-    EthCall(TransactionRequest),
-    Balance(Address),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

@@ -11,6 +11,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+bytes.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 ethers.workspace = true
@@ -19,4 +20,7 @@ serde.workspace = true
 serde_json.workspace = true
 narwhal-config = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-config" }
 narwhal-crypto = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-crypto" }
+narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-types" }
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9fbe55e9d477eac6a6d13e872e1dee19b0c83f53" }
+hex-literal = "0.4.1"
+tendermint-proto = "0.23.7"
