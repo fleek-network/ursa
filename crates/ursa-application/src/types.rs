@@ -12,6 +12,7 @@ use anyhow::{bail, Result};
 use ethers::abi::AbiDecode;
 use ethers::prelude::NameOrAddress;
 use ethers::types::{Address, TransactionRequest};
+use futures::executor;
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
 use revm::{
     self,
@@ -22,8 +23,7 @@ use revm::{
 use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use ursa_utils::contract_bindings::epoch_bindings::SignalEpochChangeReturn;
-use ursa_utils::transactions::EPOCH_ADDRESS;
+use ursa_utils::evm::epoch_manager::{SignalEpochChangeReturn, EPOCH_ADDRESS};
 
 #[derive(Clone, Debug)]
 pub struct State<Db> {
@@ -122,100 +122,47 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Load the bytecode for the contracts we need on genesis block.
         let genesis = Genesis::load().unwrap();
 
-        let token_bytes = hex::decode(genesis.token.bytecode).unwrap();
-        let staking_bytes = hex::decode(genesis.staking.bytecode).unwrap();
-        let registry_bytes = hex::decode(genesis.registry.bytecode).unwrap();
-        let epoch_bytes = hex::decode(genesis.epoch.bytecode).unwrap();
-        let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
-        let rep_bytes = hex::decode(genesis.reputation_scores.bytecode).unwrap();
-        let rewards_bytes = hex::decode(genesis.rewards.bytecode).unwrap();
-        let rewards_agg_bytes = hex::decode(genesis.rewards_aggregator.bytecode).unwrap();
-        // Parse addresses for contracts.
-        let token_address: Address = genesis.token.address.parse().unwrap();
-        let staking_address: Address = genesis.staking.address.parse().unwrap();
-        let registry_address: Address = genesis.registry.address.parse().unwrap();
-        let epoch_address: Address = genesis.epoch.address.parse().unwrap();
-        let rep_address: Address = genesis.reputation_scores.address.parse().unwrap();
-        let rewards_address: Address = genesis.rewards.address.parse().unwrap();
-        let rewards_agg_address: Address = genesis.rewards_aggregator.address.parse().unwrap();
+        genesis.precompiles.iter().for_each(|contract| {
+            let address: Address = contract.address.parse().unwrap_or_else(|_| {
+                panic!(
+                    "Invalid genesis.toml: Invalid address({}) on precompile {}",
+                    contract.address, contract.name
+                )
+            });
+            let bytes = hex::decode(&contract.bytecode).unwrap_or_else(|_| {
+                panic!(
+                    "Invalid genesis.toml: Invalid bytecode on precompile {}",
+                    contract.name
+                )
+            });
 
-        // Build the account info for the contracts.
-        let token_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(token_bytes.into())),
-            ..Default::default()
-        };
-        let staking_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(staking_bytes.into())),
-            ..Default::default()
-        };
-        let registry_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(registry_bytes.into())),
-            ..Default::default()
-        };
-        let epoch_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(epoch_bytes.into())),
-            ..Default::default()
-        };
-        let hello_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(hello_bytes.into())),
-            ..Default::default()
-        };
-        let rep_scores_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(rep_bytes.into())),
-            ..Default::default()
-        };
-        let rewards_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(rewards_bytes.into())),
-            ..Default::default()
-        };
-        let rewards_agg_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(rewards_agg_bytes.into())),
-            ..Default::default()
-        };
+            //Insert into db
+            state.db.insert_account_info(
+                address.to_fixed_bytes().into(),
+                AccountInfo {
+                    code: Some(Bytecode::new_raw(bytes.into())),
+                    ..Default::default()
+                },
+            );
 
-        // Insert into db.
-        state
-            .db
-            .insert_account_info(token_address.to_fixed_bytes().into(), token_contract);
-        state
-            .db
-            .insert_account_info(staking_address.to_fixed_bytes().into(), staking_contract);
-        state
-            .db
-            .insert_account_info(registry_address.to_fixed_bytes().into(), registry_contract);
-        state
-            .db
-            .insert_account_info(epoch_address.to_fixed_bytes().into(), epoch_contract);
-        state
-            .db
-            .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
-        state
-            .db
-            .insert_account_info(rep_address.to_fixed_bytes().into(), rep_scores_contract);
-        state
-            .db
-            .insert_account_info(rewards_address.to_fixed_bytes().into(), rewards_contract);
-        state.db.insert_account_info(
-            rewards_agg_address.to_fixed_bytes().into(),
-            rewards_agg_contract,
-        );
+            // If precompile has init_params call init
+            if let Some(bytes) = &contract.init_params {
+                // Call the init transactions.
+                let tx = TransactionRequest {
+                    to: Some(address.into()),
+                    data: Some(bytes.clone()),
+                    ..Default::default()
+                };
 
-        // Call the init transactions.
-        let registry_tx = TransactionRequest {
-            to: Some(registry_address.into()),
-            data: genesis.registry.init_params,
-            ..Default::default()
-        };
-        let epoch_tx = TransactionRequest {
-            to: Some(epoch_address.into()),
-            data: genesis.epoch.init_params,
-            ..Default::default()
-        };
+                let _results = executor::block_on(state.execute(tx, false)).unwrap_or_else(|_| {
+                    panic!(
+                        "Invalid genesis.toml: Invalid init params on precompile {}",
+                        contract.name
+                    )
+                });
+            }
+        });
 
-        // Submit and commit the init txns to state.
-        let _registry_res = state.execute(registry_tx, false).await.unwrap();
-        let _epoch_res = state.execute(epoch_tx, false).await.unwrap();
-        
         drop(state);
 
         self.commit(RequestCommit {}).await;
@@ -248,7 +195,7 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         // Resolve the `to`.
         match tx.to {
             Some(NameOrAddress::Address(addr)) => {
-                if addr == EPOCH_ADDRESS.parse::<Address>().unwrap() {
+                if addr == *EPOCH_ADDRESS {
                     to_epoch_contract = true;
                 }
                 tx.to = Some(addr.into())

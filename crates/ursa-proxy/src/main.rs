@@ -17,9 +17,10 @@ use tracing::{error, info};
 use ursa_proxy::{
     cache::moka_cache::MokaCache,
     cli::{Cli, Commands},
-    config::load_config,
-    core::start,
+    config::{load_config, DEFAULT_LOG_LEVEL},
+    core,
 };
+use ursa_telemetry::TelemetryConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -27,12 +28,24 @@ async fn main() -> Result<()> {
         command: Commands::Daemon(opts),
     } = Cli::parse();
     let config = load_config(&opts.config.parse::<PathBuf>()?)?;
+
+    TelemetryConfig::new("ursa-proxy")
+        .with_log_level(
+            config
+                .log_level
+                .as_ref()
+                .unwrap_or(&DEFAULT_LOG_LEVEL.to_string()),
+        )
+        .with_pretty_log()
+        .with_jaeger_tracer()
+        .init()?;
+
     let moka_config = config.moka.clone().unwrap_or_default();
     let cache = MokaCache::new(moka_config);
     let (signal_shutdown_tx, signal_shutdown_rx) = mpsc::channel(1);
     let (proxy_error_tx, proxy_error_rx) = oneshot::channel();
     let proxy = task::spawn(async move {
-        if let Err(e) = start(config, cache, signal_shutdown_rx).await {
+        if let Err(e) = core::start(config, cache, signal_shutdown_rx).await {
             proxy_error_tx.send(e).expect("Sending to succeed");
         }
     });
@@ -61,6 +74,7 @@ async fn main() -> Result<()> {
         }
     }
     info!("Proxy shut down successfully");
+    TelemetryConfig::teardown();
     Ok(())
 }
 

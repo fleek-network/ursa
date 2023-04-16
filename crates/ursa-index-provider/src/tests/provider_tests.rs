@@ -42,7 +42,7 @@ mod tests {
 
             for i in 0..count {
                 let b = Into::<i32>::into(i).to_ne_bytes();
-                let mh = Code::Blake2b256.digest(&b);
+                let mh = Code::Blake3_256.digest(&b);
                 entries.push(Ipld::Bytes(mh.to_bytes()))
             }
             let bytes = fvm_ipld_encoding::to_vec(&entries)?;
