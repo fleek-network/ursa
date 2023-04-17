@@ -28,8 +28,9 @@ plan:
 deploy:
 	terraform apply
 
-destroy:
+clean:
 	terraform destroy
+	rm benchmark_key*
 
 exec:
 	@for ip in $(IPS); do \

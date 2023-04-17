@@ -56,7 +56,7 @@ resource "aws_instance" "ufdp_benchmark_client" {
     destination = "client"
   }
 
-  # put our binary in /usr/bin/client 
+  # put our binary in /usr/bin/client
   provisioner "remote-exec" {
     inline = [
       "chmod +x client",

@@ -79,6 +79,8 @@ cargo run \
   "127.0.0.1:6969" 64 262144 1048576 
 ```
 
+For multiple clients, there is a terraform configuration provided to deploy and provision a few AWS instances, see [infra/ufdp-benchmark](../../infra/ufdp-benchmark/README.md)
+
 #### Server
 
 The benchmarking server will accept many requests, also printing the logs for instrumented methods.
