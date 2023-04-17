@@ -1,31 +1,19 @@
 version: '3'
 
 services:
-  nginx:
-    image: nginx:latest
+  ursa-proxy:
+    image: ursa-proxy
+    build:
+      context: ../../.
+      dockerfile: Dockerfile-proxy
     restart: unless-stopped
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
-    volumes:
-      - ./data/nginx:/etc/nginx/conf.d
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-      - ./data/nginx/cache:/cache:rw
     ports:
       - "80:80"
       - "443:443"
     expose:
-      - 80
+      - 443
     depends_on:
       - certbot
-
-  nginxexporter:
-    image: fish/nginx-exporter
-    command:
-    - '-nginx.scrape_uri=http://nginx:80/stub_status'
-    expose:
-      - 9113
-    depends_on:
-      - nginx
 
   certbot:
     image: certbot/certbot
