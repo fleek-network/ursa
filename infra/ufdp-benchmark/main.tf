@@ -53,14 +53,14 @@ resource "aws_instance" "ufdp_benchmark_client" {
   # upload our client binary
   provisioner "file" {
     source      = "../../target/release/ufdp-bench-client"
-    destination = "ufdp-bench-client"
+    destination = "client"
   }
 
-  # make it executable
+  # put our binary in /usr/bin/client 
   provisioner "remote-exec" {
     inline = [
-      "chmod +x ufdp-bench-client",
-      "sudo mv ufdp-bench-client /usr/bin"
+      "chmod +x client",
+      "sudo mv client /usr/bin"
     ]
   }
 }
