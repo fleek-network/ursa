@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile-proxy
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
+      - ./data/certbot/conf:/etc/letsencrypt
     restart: unless-stopped
     ports:
       - "80:80"
