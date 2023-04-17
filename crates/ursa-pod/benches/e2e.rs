@@ -90,7 +90,6 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        #[cfg(all(not(feature = "bench-quinn"), not(feature = "bench-s2n-quic")))]
         {
             let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
             g.sample_size(20);
@@ -113,6 +112,19 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 unit,
                 http_hyper::client_loop,
                 http_hyper::server_loop,
+            );
+        }
+
+        #[cfg(feature = "bench-quinn")]
+        {
+            let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                unit,
+                quinn_ufdp::client_loop,
+                quinn_ufdp::server_loop,
             );
         }
 
@@ -334,28 +346,19 @@ mod quinn_ufdp {
         }
     }
 
-    fn transport_config() -> TransportConfig {
-        let mut config = TransportConfig::default();
-        config.max_concurrent_uni_streams(100u32.into());
-        config.max_concurrent_bidi_streams(100u32.into());
-        config
-    }
-
-    /// Simple QUIC server loop that replies with static content.
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
         let mut server_config = ServerConfig::with_crypto(Arc::new(server_config()));
-        server_config.transport_config(Arc::new(transport_config()));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
         tx_started.send(port).unwrap();
 
-        loop {
-            let connection = server.accept().await.unwrap().await.unwrap();
+        while let Some(connecting) = server.accept().await {
+            let connection = connecting.await.unwrap();
             let content_clone = content.clone();
             task::spawn(async move {
                 loop {
@@ -370,7 +373,6 @@ mod quinn_ufdp {
                                     },
                                     0,
                                 );
-
                                 if let Err(e) = handler.serve().await {
                                     println!("server error: {e:?}");
                                 }
@@ -387,24 +389,19 @@ mod quinn_ufdp {
         }
     }
 
-    /// Simple QUIC client loop that sends a request and loops over the
-    /// block stream dropping the bytes immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
         let mut client_config = quinn::ClientConfig::new(Arc::new(client_config()));
-        client_config.transport_config(Arc::new(transport_config()));
         endpoint.set_default_client_config(client_config);
         let stream = endpoint
             .connect(addr.parse().unwrap(), "localhost")
             .unwrap()
             .await
             .unwrap();
-
         for _ in 0..iterations {
             let (tx, rx) = stream.open_bi().await.unwrap();
             let stream = BiStream { tx, rx };
-
             let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
                 client.request(CID).await.unwrap();
@@ -518,7 +515,6 @@ mod s2n_quic_ufdp {
         }
     }
 
-    /// Simple QUIC server loop that replies with static content.
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
@@ -564,8 +560,6 @@ mod s2n_quic_ufdp {
         }
     }
 
-    /// Simple QUIC client loop that sends a request and loops over the
-    /// block stream dropping the bytes immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
         let client = Client::builder()
