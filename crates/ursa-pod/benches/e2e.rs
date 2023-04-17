@@ -90,6 +90,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
+        #[cfg(all(not(feature = "bench-quinn"), not(feature = "bench-s2n-quic")))]
         {
             let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
             g.sample_size(20);
@@ -524,7 +525,6 @@ mod s2n_quic_ufdp {
         tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
         let mut server = Server::builder()
-            // TODO: Add certificates.
             .with_tls(TlsProvider)
             .unwrap()
             .with_io(addr.as_str())
@@ -541,25 +541,22 @@ mod s2n_quic_ufdp {
             task::spawn(async move {
                 loop {
                     match conn.accept_bidirectional_stream().await {
-                        Ok(stream) => match stream {
-                            None => break,
-                            Some(stream) => {
-                                task::spawn(async {
-                                    let handler = UfdpHandler::new(
-                                        stream,
-                                        DummyBackend {
-                                            content: content_clone,
-                                        },
-                                        0,
-                                    );
-
-                                    if let Err(e) = handler.serve().await {
-                                        println!("server error: {e:?}");
-                                    }
-                                });
-                            }
-                        },
-                        Err(s2n_quic::connection::Error::Application { .. }) => break,
+                        Ok(Some(stream)) => {
+                            task::spawn(async {
+                                let handler = UfdpHandler::new(
+                                    stream,
+                                    DummyBackend {
+                                        content: content_clone,
+                                    },
+                                    0,
+                                );
+                                if let Err(e) = handler.serve().await {
+                                    println!("server error: {e:?}");
+                                }
+                            });
+                        }
+                        Ok(None) => break,
+                        Err(s2n_quic::connection::Error::Closed { .. }) => break,
                         Err(e) => panic!("{e:?}"),
                     }
                 }
@@ -571,7 +568,6 @@ mod s2n_quic_ufdp {
     /// block stream dropping the bytes immediately.
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
-        // let tls_client = s2n_quic::provider::tls::rustls::Client::builder().
         let client = Client::builder()
             .with_tls(TlsProvider)
             .unwrap()
