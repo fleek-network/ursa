@@ -12,16 +12,15 @@ thiserror.workspace = true
 arrayref = "0.3"
 arrayvec = "0.7"
 bytes = "1.4"
-elliptic-curve = { version = "0.13", default-features = false, features = ["hash2curve", "arithmetic"] }
 futures = { version = "0.3", optional = true }
-k256 = { version = "0.13", default-features = false, features = ["arithmetic", "hash2curve", "expose-field"] }
 rand_core = "0.6"
-sha2 = "0.10"
 hex-literal = "0.4"
+
+# cryptography dependencies
 openssl = { version = "0.10", features = ["vendored"] }
-secp256k1 = { version = "0.27", features = ["global-context", "rand-std"] }
 blst = "0.3"
-sodiumoxide = "0.2.7"
+alkali = { version = "0.3", features = ["hazmat", "optimized"] }
+zeroize = "1.6"
 
 # client/server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }

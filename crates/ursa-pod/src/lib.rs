@@ -15,9 +15,6 @@ pub mod server;
 /// for UFDP.
 pub mod crypto;
 
-/// The secret key.
-pub mod keys;
-
 /// The primitives for the verifiable streaming on top of Blake3.
 pub mod tree;
 
