@@ -6,6 +6,8 @@ services:
     build:
       context: ../../.
       dockerfile: Dockerfile-proxy
+    volumes:
+      - ${HOME}/.ursa/:/root/.ursa/:rw
     restart: unless-stopped
     ports:
       - "80:80"
