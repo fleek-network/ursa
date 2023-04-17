@@ -117,7 +117,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
 
         #[cfg(feature = "bench-quinn")]
         {
-            let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
+            let mut g = c.benchmark_group(format!("S2N-QUIC UFDP/{range}"));
             g.sample_size(20);
             benchmark_sizes(
                 &mut g,
@@ -130,7 +130,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
 
         #[cfg(feature = "bench-s2n-quic")]
         {
-            let mut g = c.benchmark_group(format!("QUIC UFDP/{range}"));
+            let mut g = c.benchmark_group(format!("QUINN UFDP/{range}"));
             g.sample_size(20);
             benchmark_sizes(
                 &mut g,
