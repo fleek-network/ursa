@@ -11,6 +11,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 clap.workspace = true
+futures.workspace = true
 resolve-path.workspace = true
 serde_json.workspace = true
 serde.workspace = true
@@ -19,14 +20,15 @@ toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-error.workspace = true
+ethers.workspace = true
 
 abci-rs = { version = "0.11.3", features = ["async-api"] }
-ethers = { git = "https://github.com/gakonst/ethers-rs" }
-revm = { version = "3.0.0", features = [
+revm = { version = "3.1.0", features = [
     "serde",
 ] }
 hex = "0.4.3"
 tendermint-abci = { version = "0.23.7", features = ["client"] }
 tendermint-proto = "0.23.7"
 reqwest = "0.11.11"
+ursa-utils = { path = "../ursa-utils" }
 

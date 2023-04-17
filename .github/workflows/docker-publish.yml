@@ -10,6 +10,7 @@ on:
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
+      - "**/Dockerfile*"
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -18,6 +19,7 @@ on:
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
+      - "**/Dockerfile*"
 
 env:
   REGISTRY: ghcr.io

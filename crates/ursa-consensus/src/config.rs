@@ -20,7 +20,7 @@ pub struct ConsensusConfig {
     /// The address in which the primary will listen for incoming requests on. This MUST
     /// be a UDP address.
     pub address: Multiaddr,
-    ///The address to receive ABCI connections to defaults too
+    ///The address to receive ABCI connections to defaults too.
     pub rpc_domain: String,
     /// Path to the BLS12381 private key for the primary.
     pub keypair: PathBuf,

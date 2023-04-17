@@ -10,7 +10,7 @@ use tokio::sync::Notify;
 /// with graceful shutdowns.
 #[derive(Clone, Default)]
 pub struct ShutdownController {
-    notify: Arc<Notify>,
+    pub notify: Arc<Notify>,
 }
 
 impl ShutdownController {

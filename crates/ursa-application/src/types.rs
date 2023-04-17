@@ -9,11 +9,10 @@ use abci::{
     types::*,
 };
 use anyhow::{bail, Result};
-use ethers::abi::parse_abi;
-use ethers::contract::BaseContract;
-use ethers::prelude::{NameOrAddress, U256 as UInt256};
+use ethers::abi::AbiDecode;
+use ethers::prelude::NameOrAddress;
 use ethers::types::{Address, TransactionRequest};
-use revm::db::DatabaseRef;
+use futures::executor;
 use revm::primitives::{AccountInfo, Bytecode, CreateScheme, TransactTo, B160, U256};
 use revm::{
     self,
@@ -21,8 +20,10 @@ use revm::{
     primitives::{Env, ExecutionResult, TxEnv},
     Database, DatabaseCommit,
 };
+use revm::{db::DatabaseRef, primitives::Output};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use ursa_utils::evm::epoch_manager::{SignalEpochChangeReturn, EPOCH_ADDRESS};
 
 #[derive(Clone, Debug)]
 pub struct State<Db> {
@@ -73,7 +74,7 @@ impl<Db: DatabaseCommit + Database> State<Db> {
             },
             data: tx.data.clone().unwrap_or_default().0,
             chain_id: Some(self.env.cfg.chain_id.try_into().unwrap()),
-            nonce: Some(tx.nonce.unwrap_or_default().as_u64()),
+            nonce: None,
             value: tx.value.unwrap_or_default().into(),
             gas_price: tx.gas_price.unwrap_or_default().into(),
             gas_priority_fee: Some(tx.gas_price.unwrap_or_default().into()),
@@ -117,105 +118,49 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         tracing::trace!("initing the chain");
         let mut state = self.current_state.lock().await;
 
-        //Load the bytecode for the contracts we need on genesis block
+        // Load the bytecode for the contracts we need on genesis block.
         let genesis = Genesis::load().unwrap();
-        let token_bytes = hex::decode(genesis.token.bytecode).unwrap();
-        let staking_bytes = hex::decode(genesis.staking.bytecode).unwrap();
-        let registry_bytes = hex::decode(genesis.registry.bytecode).unwrap();
-        let hello_bytes = hex::decode(genesis.hello.bytecode).unwrap();
 
-        //Parse addresses for contracts
-        let token_address: Address = genesis.token.address.parse().unwrap();
-        let staking_address: Address = genesis.staking.address.parse().unwrap();
-        let registry_address: Address = genesis.registry.address.parse().unwrap();
-        let owner_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-            .parse()
-            .unwrap();
+        genesis.precompiles.iter().for_each(|contract| {
+            let address: Address = contract.address.parse().unwrap_or_else(|_| {
+                panic!(
+                    "Invalid genesis.toml: Invalid address({}) on precompile {}",
+                    contract.address, contract.name
+                )
+            });
+            let bytes = hex::decode(&contract.bytecode).unwrap_or_else(|_| {
+                panic!(
+                    "Invalid genesis.toml: Invalid bytecode on precompile {}",
+                    contract.name
+                )
+            });
 
-        //Build the account info for the contracts
-        let token_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(token_bytes.into())),
-            ..Default::default()
-        };
-        let staking_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(staking_bytes.into())),
-            ..Default::default()
-        };
-        let registry_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(registry_bytes.into())),
-            ..Default::default()
-        };
-        let hello_contract = AccountInfo {
-            code: Some(Bytecode::new_raw(hello_bytes.into())),
-            ..Default::default()
-        };
+            //Insert into db
+            state.db.insert_account_info(
+                address.to_fixed_bytes().into(),
+                AccountInfo {
+                    code: Some(Bytecode::new_raw(bytes.into())),
+                    ..Default::default()
+                },
+            );
 
-        //Insert into db
-        state
-            .db
-            .insert_account_info(token_address.to_fixed_bytes().into(), token_contract);
-        state
-            .db
-            .insert_account_info(staking_address.to_fixed_bytes().into(), staking_contract);
-        state
-            .db
-            .insert_account_info(registry_address.to_fixed_bytes().into(), registry_contract);
-        state
-            .db
-            .insert_account_info(genesis.hello.address.parse().unwrap(), hello_contract);
+            // If precompile has init_params call init
+            if let Some(bytes) = &contract.init_params {
+                // Call the init transactions.
+                let tx = TransactionRequest {
+                    to: Some(address.into()),
+                    data: Some(bytes.clone()),
+                    ..Default::default()
+                };
 
-        //Build the abis to encode the init call params
-        let token_abi = BaseContract::from(
-            parse_abi(&["function initialize(uint256 totalSupply) external returns ()"]).unwrap(),
-        );
-        let staking_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address token, uint256 _minimumNodeStake, uint32 _elegibilityTime, uint32 _lockTime, uint32 _protocolPercentage) external returns ()"]).unwrap());
-        let registry_abi = BaseContract::from(parse_abi(&["function initialize(address _controller, address _stakingContract) external returns ()"]).unwrap());
-
-        //encode the init call params
-        let token_params = token_abi
-            .encode("initialize", UInt256::from_dec_str("1000000000").unwrap())
-            .unwrap();
-        let staking_params = staking_abi
-            .encode(
-                "initialize",
-                (
-                    owner_address,
-                    token_address,
-                    UInt256::from_dec_str("1000").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                    UInt256::from_dec_str("10").unwrap(),
-                ),
-            )
-            .unwrap();
-        let registry_params = registry_abi
-            .encode("initialize", (owner_address, staking_address))
-            .unwrap();
-
-        //Call the init transactions
-        let token_tx = TransactionRequest {
-            to: Some(token_address.into()),
-            from: Some(owner_address),
-            data: Some(token_params),
-            ..Default::default()
-        };
-        let staking_tx = TransactionRequest {
-            to: Some(staking_address.into()),
-            from: Some(owner_address),
-            data: Some(staking_params),
-            ..Default::default()
-        };
-        let registry_tx = TransactionRequest {
-            to: Some(registry_address.into()),
-            from: Some(owner_address),
-            data: Some(registry_params),
-            ..Default::default()
-        };
-
-        //Submit and commit the init txns to state
-        let _token_res = state.execute(token_tx, false).await.unwrap();
-        let _staking_res = state.execute(staking_tx, false).await.unwrap();
-        let _registry_res = state.execute(registry_tx, false).await.unwrap();
+                let _results = executor::block_on(state.execute(tx, false)).unwrap_or_else(|_| {
+                    panic!(
+                        "Invalid genesis.toml: Invalid init params on precompile {}",
+                        contract.name
+                    )
+                });
+            }
+        });
 
         drop(state);
 
@@ -245,9 +190,15 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
             }
         };
 
-        // resolve the `to`
+        let mut to_epoch_contract: bool = false;
+        // Resolve the `to`.
         match tx.to {
-            Some(NameOrAddress::Address(addr)) => tx.to = Some(addr.into()),
+            Some(NameOrAddress::Address(addr)) => {
+                if addr == *EPOCH_ADDRESS {
+                    to_epoch_contract = true;
+                }
+                tx.to = Some(addr.into())
+            }
             None => (),
             _ => panic!("not an address"),
         };
@@ -255,8 +206,25 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
         let result = state.execute(tx, false).await.unwrap();
         tracing::trace!("executed tx");
 
+        if to_epoch_contract {
+            if let ExecutionResult::Success {
+                output: Output::Call(bytes),
+                ..
+            } = &result
+            {
+                let results = SignalEpochChangeReturn::decode(bytes)
+                    .unwrap_or(SignalEpochChangeReturn(false));
+
+                if results.0 {
+                    return ResponseDeliverTx {
+                        data: serde_json::to_vec(&ExecutionResponse::ChangeEpoch).unwrap(),
+                        ..Default::default()
+                    };
+                }
+            }
+        }
         ResponseDeliverTx {
-            data: serde_json::to_vec(&result).unwrap(),
+            data: serde_json::to_vec(&ExecutionResponse::Transaction).unwrap(),
             ..Default::default()
         }
     }
@@ -289,6 +257,12 @@ impl<Db: AbciDb> ConsensusTrait for Consensus<Db> {
 
 #[derive(Debug, Clone, Default)]
 pub struct Mempool;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub enum ExecutionResponse {
+    ChangeEpoch,
+    Transaction,
+}
 
 #[async_trait]
 impl MempoolTrait for Mempool {
@@ -346,7 +320,7 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
         }
     }
 
-    // replicate the eth_call interface
+    // Replicate the eth_call interface.
     async fn query(&self, query_request: RequestQuery) -> ResponseQuery {
         let mut state = self.state.lock().await;
 
@@ -361,26 +335,32 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
             }
         };
 
-        let res = match query {
-            Query::EthCall(mut tx) => {
-                match tx.to {
-                    Some(NameOrAddress::Address(addr)) => tx.to = Some(addr.into()),
-                    _ => panic!("not an address"),
-                };
-
+        let resp = match query {
+            Query::EthCall(tx) => {
                 let result = state.execute(tx, true).await.unwrap();
 
-                QueryResponse::Tx(result)
+                if let ExecutionResult::Success {
+                    output: Output::Call(bytes),
+                    ..
+                } = result
+                {
+                    bytes.to_vec()
+                } else {
+                    "Call was not succesful".into()
+                }
             }
             Query::Balance(address) => match state.db.basic(address.to_fixed_bytes().into()) {
-                Ok(info) => QueryResponse::Balance(info.unwrap_or_default().balance),
-                _ => panic!("error retrieving balance"),
+                Ok(info) => {
+                    let res = QueryResponse::Balance(info.unwrap_or_default().balance);
+                    serde_json::to_vec(&res).unwrap()
+                }
+                _ => "error retrieving balance".into(),
             },
         };
 
         ResponseQuery {
             key: query_request.data,
-            value: serde_json::to_vec(&res).unwrap(),
+            value: resp,
             ..Default::default()
         }
     }

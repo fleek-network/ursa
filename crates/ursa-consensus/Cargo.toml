@@ -11,37 +11,39 @@ repository.workspace = true
 resolve-path.workspace = true
 serde_json.workspace = true
 tokio-util.workspace = true
+ursa-utils = { path = "../ursa-utils" }
+ursa-application = { path = "../ursa-application" }
 anyhow       = "1.0"
 arc-swap     = { version = "1.6.0", features = ["serde"] }
 async-trait  = "0.1"
 bytes = "1.3.0"
 
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9a41ba511899c0d7efd9e047af2e968cdc54f77d" }
-fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9a41ba511899c0d7efd9e047af2e968cdc54f77d", package = "fastcrypto-zkp" }
-fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9a41ba511899c0d7efd9e047af2e968cdc54f77d", package = "fastcrypto-tbls" }
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9fbe55e9d477eac6a6d13e872e1dee19b0c83f53" }
+fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9fbe55e9d477eac6a6d13e872e1dee19b0c83f53", package = "fastcrypto-zkp" }
+fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9fbe55e9d477eac6a6d13e872e1dee19b0c83f53", package = "fastcrypto-tbls" }
 
 futures      = "0.3.23"
 multiaddr = "0.17.0"
-mysten-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "mysten-metrics" }
-mysten-network  = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "mysten-network" }
+mysten-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "mysten-metrics" }
+mysten-network  = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "mysten-network" }
 
-narwhal-config = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-config" }
-narwhal-consensus = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-consensus" }
-narwhal-crypto = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-crypto" }
-narwhal-executor = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-executor" }
-narwhal-node = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-node" }
-narwhal-primary = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-primary" }
-narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-types" }
-narwhal-worker   = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "narwhal-worker" }
+narwhal-config = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-config" }
+narwhal-consensus = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-consensus" }
+narwhal-crypto = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-crypto" }
+narwhal-executor = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-executor" }
+narwhal-node = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-node" }
+narwhal-primary = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-primary" }
+narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-types" }
+narwhal-worker   = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-worker" }
 prometheus = "0.13.3"
 rand = "0.8.5"
 serde        = { version = "1.0", features = ["derive"] }
 tempfile = "3.3.0"
 tendermint-abci = { version = "0.23.7", features = ["client"] }
 tendermint-proto = "0.23.7"
-tokio = { version = "1.24.2", features = ["sync", "rt", "macros"] }
+tokio = { version = "1.24.2", features = ["sync", "rt", "macros","time"] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tracing = "0.1.37"
 
 warp = "0.3.2"
-workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "3fe872b7a48995651b2a6a4167d32aeab69b7ca0", package = "workspace-hack" }
+workspace-hack = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "workspace-hack" }
