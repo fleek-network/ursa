@@ -9,7 +9,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::Cbor;
 use libipld::{codec::Encode, multihash::Code, Cid};
 use libipld_cbor::DagCborCodec;
 use libipld_core::{ipld::Ipld, serde::to_ipld};
@@ -129,7 +128,7 @@ where
         if let Some(ad) = self.temp_ads.get_mut(&id) {
             let entry_head_clone = ad.Entries.clone();
             let chunk = EntryChunk::new(entries, entry_head_clone);
-            return match self.store.db.put_obj(&chunk, Code::Blake2b256) {
+            return match self.store.db.put_obj(&chunk, Code::Blake3_256) {
                 Ok(cid) => {
                     ad.Entries = Some(Ipld::Link(cid));
                     Ok(())
@@ -153,7 +152,7 @@ where
             let cid = self
                 .store
                 .blockstore()
-                .put_obj(&ipld_ad, Code::Blake2b256)?;
+                .put_obj(&ipld_ad, Code::Blake3_256)?;
             self.store.db.write(HEAD_KEY, cid.to_bytes())?;
             *head = Some(cid);
             return Ok(ad);
@@ -183,7 +182,8 @@ where
             };
 
             info!("Announcing the advertisement with the message {message:?}");
-            Ok(message.marshal_cbor().unwrap())
+
+            message.to_vec()
         } else {
             Err(anyhow!("No head found for announcement!"))
         }
@@ -198,20 +198,17 @@ pub struct Message {
     pub ExtraData: [u8; 0],
 }
 
-impl Cbor for Message {
-    fn marshal_cbor(&self) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
-        const MESSAGE_BUFFER_LENGTH: [u8; 1] = [131];
-        let mut bytes = Vec::new();
-        let _ = bytes.write_all(&MESSAGE_BUFFER_LENGTH);
-        let _encoded_cid = self.Cid.encode(DagCborCodec, &mut bytes);
+impl Message {
+    fn to_vec(&self) -> Result<Vec<u8>> {
+        let mut bytes = vec![131];
 
-        let encoded_addrs =
-            fvm_ipld_encoding::to_vec(&self.Addrs).expect("addresses serialization cannot fail");
-        bytes
-            .write_all(&encoded_addrs)
-            .expect("writing encoded address to bytes should not fail");
+        let encoded_cid = fvm_ipld_encoding::to_vec(&self.Cid)?;
+        bytes.write_all(&encoded_cid)?;
 
-        let _encoded_data = self.ExtraData.encode(DagCborCodec, &mut bytes);
+        let encoded_addrs = fvm_ipld_encoding::to_vec(&self.Addrs)?;
+        bytes.write_all(&encoded_addrs)?;
+
+        self.ExtraData.encode(DagCborCodec, &mut bytes)?;
 
         Ok(bytes)
     }

@@ -24,6 +24,7 @@ FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
+    curl \
     && apt-get clean \
     && apt-get purge -y \
     && rm -rf /var/lib/apt/lists*

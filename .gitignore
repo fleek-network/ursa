@@ -18,7 +18,6 @@ config.toml
 index_provider_db*
 test_db*
 ursa_db*
-tracker_db*
 keystore*
 car_files*
 
@@ -30,3 +29,8 @@ car_files*
 **/grafana/png
 **/grafana/csv
 **/grafana/file-collections
+
+# forge
+cache/
+contracts/cache/
+contracts/out/

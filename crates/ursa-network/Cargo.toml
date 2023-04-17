@@ -27,6 +27,7 @@ ipld_traversal.workspace = true
 jsonrpc-v2.workspace = true
 libipld.workspace = true
 libp2p-bitswap.workspace = true
+lru.workspace = true
 metrics.workspace = true
 rand.workspace = true
 scalable_cuckoo_filter.workspace = true
