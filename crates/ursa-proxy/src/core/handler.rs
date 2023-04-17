@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post, IntoMakeService},
     Extension, Router, ServiceExt, TypedHeader,
 };
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use bytes::BufMut;
 use hyper::{
@@ -60,6 +61,11 @@ pub fn init_server_app<C: Cache>(
         user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
 
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
+        .with_ignore_patterns(&["/metrics"])
+        .with_default_metrics()
+        .build_pair();
+
     user_app = user_app
         .route("/*path", get(proxy_pass::<C>))
         .layer(Extension(cache))
@@ -75,7 +81,9 @@ pub fn init_server_app<C: Cache>(
                         .latency_unit(tower_http::LatencyUnit::Micros),
                 ),
         )
-        .layer(opentelemetry_tracing_layer());
+        .layer(opentelemetry_tracing_layer())
+        .layer(prometheus_layer)
+        .route("/metrics", get(|| async move { metric_handle.render() }));
 
     if let Some(headers) = &server_config.add_header {
         for (header, values) in headers.iter() {
