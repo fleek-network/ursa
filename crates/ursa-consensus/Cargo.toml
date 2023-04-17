@@ -11,6 +11,8 @@ repository.workspace = true
 resolve-path.workspace = true
 serde_json.workspace = true
 tokio-util.workspace = true
+ursa-utils = { path = "../ursa-utils" }
+ursa-application = { path = "../ursa-application" }
 anyhow       = "1.0"
 arc-swap     = { version = "1.6.0", features = ["serde"] }
 async-trait  = "0.1"
@@ -39,7 +41,7 @@ serde        = { version = "1.0", features = ["derive"] }
 tempfile = "3.3.0"
 tendermint-abci = { version = "0.23.7", features = ["client"] }
 tendermint-proto = "0.23.7"
-tokio = { version = "1.24.2", features = ["sync", "rt", "macros"] }
+tokio = { version = "1.24.2", features = ["sync", "rt", "macros","time"] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tracing = "0.1.37"
 

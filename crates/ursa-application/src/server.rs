@@ -18,6 +18,5 @@ pub async fn application_start(config: ApplicationConfig) -> Result<()> {
     let addr = domain.parse::<SocketAddr>().unwrap();
 
     server.run(addr).await?;
-
     Ok(())
 }

@@ -4,19 +4,15 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
-use std::env;
-use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{env, net::SocketAddr};
 use structopt::StructOpt;
-use tokio::{sync::mpsc::channel, task};
+use tokio::sync::mpsc::channel;
+use tokio::task;
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
 use ursa_application::application_start;
-use ursa_consensus::{
-    execution::Execution,
-    service::{ConsensusService, ServiceArgs},
-    Engine,
-};
+use ursa_consensus::{consensus::Consensus, Engine};
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -53,7 +49,7 @@ async fn run() -> Result<()> {
     // This instance should be cloned and passed down to whoever that needs it and not
     // reconstructed.
     let shutdown_controller = ShutdownController::default();
-    // register the shutdown controller to respect ctrl-c signal.
+    // Register the shutdown controller to respect ctrl-c signal.
     shutdown_controller.install_ctrl_c_handler();
 
     let config = match opts.to_config() {
@@ -77,11 +73,11 @@ async fn run() -> Result<()> {
         application_config,
     } = config;
 
-    // ursa service setup
+    // Ursa service setup.
     let im = match network_config.identity.as_str() {
-        // ephemeral random identity
+        // Ephemeral random identity.
         "random" => IdentityManager::random(),
-        // load or create a new identity
+        // Load or create a new identity.
         _ => IdentityManager::load_or_new(
             network_config.identity.clone(),
             network_config.keystore_path.resolve().to_path_buf(),
@@ -89,8 +85,6 @@ async fn run() -> Result<()> {
     };
 
     let keypair = im.current();
-
-    let consensus_args = ServiceArgs::load(consensus_config.clone()).unwrap();
 
     let db_path = network_config.database_path.resolve().to_path_buf();
     info!("Opening blockstore database at {:?}", db_path);
@@ -124,32 +118,60 @@ async fn run() -> Result<()> {
     );
     let index_provider_router = index_provider_engine.router();
 
-    // server setup
+    // Store the app address before passing to application so we can give to abci_engine.
+    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
+    app_address.set_ip("0.0.0.0".parse()?);
+
+    // Start the application server.
+    let application_task = task::spawn(async move {
+        if let Err(err) = application_start(application_config).await {
+            error!("[application_task] - {:?}", err)
+        }
+    });
+
+    // Server setup.
     let mempool_address = consensus_config.worker[0].transaction.clone();
     let mempool_port = mempool_address
         .iter()
         .find_map(|proto| match proto {
-            //Sui and Libp2p are using dif "MAJOR" version of multiaddr so we have to import and use the other one here
+            // Sui and Libp2p are using dif "MAJOR" version of multiaddr so we have to import and use the other one here
             multiaddr::Protocol::Tcp(port) => Some(port),
             _ => None,
         })
         .expect("Expected tcp url for worker mempool");
 
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
-    let (tx_abci_queries, rx_abci_queries) = channel(1000);
+
+    // Create engine so we can grab senders.
+    let mut abci_engine = Engine::new(app_address).await;
+
+    // Store the senders from the engine.
+    let tx_abci_queries = abci_engine.get_abci_queries_sender();
+    let tx_certificates = abci_engine.get_certificates_sender();
+    let reconfigure_notify = abci_engine.get_reconfigure_notify();
+
+    // Spawn engine.
+    let engine_shutdown = shutdown_controller.clone();
+    let _abci_engine_task = task::spawn_blocking(|| {
+        futures::executor::block_on(async move {
+            if let Err(err) = abci_engine.start(engine_shutdown).await {
+                error!("[abci_engine_task] - {:?}", err);
+            }
+        })
+    });
 
     let interface = Arc::new(NodeNetworkInterface::new(
         store,
         service.command_sender(),
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
-        mempool_address_string,
-        tx_abci_queries,
+        mempool_address_string.clone(),
+        tx_abci_queries.clone(),
     ));
 
     let server = Server::new(interface);
 
-    // Start libp2p service
+    // Start libp2p service.
     let shutdown = shutdown_controller.clone();
     let service_task = task::spawn(async move {
         if let Err(err) = service.start().await {
@@ -161,7 +183,7 @@ async fn run() -> Result<()> {
     // todo(oz): spawn task to track storage/ram/cpu metrics
     let metrics = ursa_metrics::routes::init();
 
-    // Start multiplex server service (rpc, http, and metrics)
+    // Start multiplex server service (rpc, http, and metrics).
     let shutdown = shutdown_controller.clone();
     let rpc_task = task::spawn(async move {
         if let Err(err) = server
@@ -173,7 +195,7 @@ async fn run() -> Result<()> {
         }
     });
 
-    // Start index provider service
+    // Start index provider service.
     let shutdown = shutdown_controller.clone();
     let provider_task = task::spawn(async move {
         if let Err(err) = index_provider_engine.start().await {
@@ -182,43 +204,27 @@ async fn run() -> Result<()> {
         }
     });
 
-    //Store this to pass to consensus engine
-    let app_api = application_config.domain.clone();
-
-    // Start the application server
-    let application_task = task::spawn(async move {
-        if let Err(err) = application_start(application_config).await {
-            error!("[application_task] - {:?}", err)
-        }
-    });
-
     // Start the consensus service.
-    let consensus_service = ConsensusService::new(consensus_args);
-    let (tx_transactions, rx_transactions) = channel(1000);
-    let execution = Execution::new(0, tx_transactions);
-    consensus_service.start(execution).await;
-
-    let consensus_engine_task = task::spawn(async move {
-        let mut app_address = app_api.parse::<SocketAddr>().unwrap();
-        app_address.set_ip("0.0.0.0".parse().unwrap());
-
-        let mut engine = Engine::new(app_address, rx_abci_queries);
-
-        if let Err(err) = engine.run(rx_transactions).await {
-            error!("[consensus_engine_task] - {:?}", err)
-        }
+    let consensus_handle = task::spawn(async move {
+        let mut consensus_service = Consensus::new(
+            consensus_config,
+            tx_abci_queries,
+            tx_certificates,
+            reconfigure_notify,
+            mempool_address_string,
+        )
+        .unwrap();
+        consensus_service.start().await;
     });
 
-    // wait for the shutdown.
+    // Wait for the shutdown.
     shutdown_controller.wait_for_shutdown().await;
 
-    // Gracefully shutdown node & rpc
+    // Gracefully shutdown node & rpc.
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
-    consensus_engine_task.abort();
     application_task.abort();
-    consensus_service.shutdown().await;
-
+    consensus_handle.abort();
     Ok(())
 }
