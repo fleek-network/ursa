@@ -18,10 +18,13 @@ on:
       - "Cargo.toml"
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
 
 jobs:
   tests:
-    if: '! github.event.pull_request.draft'
     name: Matrix tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -79,7 +82,6 @@ jobs:
       - run: cargo test --workspace --no-default-features
 
   clippy:
-    if: '! github.event.pull_request.draft'
     name: Lint with clippy
     runs-on: ubuntu-latest
     strategy:
@@ -126,7 +128,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   rustfmt:
-    if: '! github.event.pull_request.draft'
     name: Code formatting
     runs-on: ubuntu-latest
     strategy:

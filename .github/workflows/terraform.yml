@@ -6,16 +6,16 @@ on:
       - main
     paths:
       - 'infra/tf-next/**'
-  # question: do we need the PR trigger for terraform? maybe just
-  # config check for PRs and the terraform apply only runs for
-  # merges to main?
   pull_request:
     paths:
       - 'infra/tf-next/**'
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
 
 jobs:
   terraform:
-    if: '! github.event.pull_request.draft'
     name: "Terraform"
     runs-on: ubuntu-latest
     defaults:
