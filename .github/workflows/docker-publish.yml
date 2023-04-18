@@ -20,6 +20,11 @@ on:
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
       - "**/Dockerfile*"
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 env:
   REGISTRY: ghcr.io
@@ -31,6 +36,7 @@ jobs:
   build:
     name: Docker build and publish ${{ matrix.make.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       matrix:
         os: [ubuntu-latest]
