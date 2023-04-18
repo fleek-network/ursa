@@ -11,6 +11,7 @@ repository.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
+axum-prometheus.workspace = true
 axum-server.workspace = true
 axum-tracing-opentelemetry.workspace = true
 bytes.workspace = true
