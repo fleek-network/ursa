@@ -8,6 +8,7 @@
 # terraform
 **/.terraform*
 *.tfstate*
+infra/ufdp-benchmark/benchmark_key*
 
 # rust
 **/target/

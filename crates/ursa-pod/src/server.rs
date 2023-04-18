@@ -1,22 +1,22 @@
+use std::sync::Arc;
+
 use bytes::BytesMut;
-use futures::SinkExt;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_stream::StreamExt;
-use tokio_util::codec::Framed;
-use tracing::{debug, error};
+use tracing::error;
 
 use crate::{
-    codec::{consts::MAX_BLOCK_SIZE, UrsaCodec, UrsaCodecError, UrsaFrame},
+    connection::{
+        consts::{CONTENT_REQ_TAG, HANDSHAKE_REQ_TAG},
+        Reason, UfdpConnection, UrsaCodecError, UrsaFrame,
+    },
+    instrument,
     types::{Blake3Cid, BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
 };
 
-const IO_CHUNK_SIZE: usize = 16 * 1024;
-
 /// Backend trait used by [`UfdpServer`] to access external data
-pub trait Backend: Copy + Send + Sync + 'static {
-    /// Get some raw content for a given cid.
-    /// Returns some raw bytes, and a request id to get the decryption_key
-    fn raw_content(&self, cid: Blake3Cid) -> (BytesMut, u64);
+pub trait Backend: Send + Sync + 'static {
+    /// Get the raw content of a block.
+    fn raw_block(&self, cid: &Blake3Cid, block: u64) -> Option<&[u8]>;
 
     /// Get a decryption_key for a block, includes a block request id
     fn decryption_key(&self, request_id: u64) -> (Secp256k1AffinePoint, u64);
@@ -29,128 +29,192 @@ pub trait Backend: Copy + Send + Sync + 'static {
 }
 
 /// UFDP Server. Handles any stream of data supporting [`AsyncWrite`] + [`AsyncRead`]
-pub struct UfdpServer<B: Backend> {
-    backend: B,
+pub struct UfdpHandler<S: AsyncRead + AsyncWrite + Unpin, B: Backend> {
+    pub conn: UfdpConnection<S>,
+    backend: Arc<B>,
+    #[allow(unused)]
+    session_id: u64,
 }
 
-impl<B> UfdpServer<B>
-where
-    B: Backend,
-{
-    pub fn new(backend: B) -> Result<Self, UrsaCodecError> {
-        Ok(Self { backend })
+impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
+    #[inline(always)]
+    pub fn new(stream: S, backend: B, session_id: u64) -> Self {
+        Self {
+            conn: UfdpConnection::new(stream),
+            backend: Arc::new(backend),
+            session_id,
+        }
     }
 
-    /// Handle a connection. Spawns a tokio task and begins the session loop
-    pub fn handle<S: AsyncWrite + AsyncRead + Unpin + Send + 'static>(
-        &mut self,
-        stream: S,
-    ) -> Result<(), UrsaCodecError> {
-        let backend = self.backend;
-        tokio::spawn(async move {
-            let mut transport = Framed::new(stream, UrsaCodec::default());
+    /// Begin serving a request. Accepts a handshake, and then begins the request loop.
+    pub async fn serve(mut self) -> Result<(), UrsaCodecError> {
+        // Step 1: Perform the handshake.
+        instrument!(
+            self.handshake().await?,
+            "sid={},tag=handshake",
+            self.session_id
+        );
 
-            match transport.next().await.expect("handshake request") {
-                Ok(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                    debug!("Handshake received, sending response");
-                    let lane = lane.unwrap_or({
-                        // todo: lane management
-                        0
-                    });
+        // Step 2: Handle requests.
+        while let Some(frame) = instrument!(
+            self.conn.read_frame(Some(CONTENT_REQ_TAG)).await?,
+            "sid={},tag=read_content_req",
+            self.session_id
+        ) {
+            match frame {
+                UrsaFrame::ContentRequest { hash } => {
+                    #[cfg(feature = "benchmarks")]
+                    let (content_size, block_size) = {
+                        let bytes = hash.0;
+                        let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
+                        let block_size = u64::from_be_bytes(*block_size_bytes);
+                        let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
+                        let content_size = u64::from_be_bytes(*content_size_bytes);
+                        (content_size, block_size)
+                    };
 
-                    transport
-                        .send(UrsaFrame::HandshakeResponse {
+                    instrument!(
+                        self.deliver_content(hash).await?,
+                        "sid={},tag=deliver_content,content_size={content_size},block_size={block_size}",
+                        self.session_id
+                    );
+                }
+                f => {
+                    error!("Terminating, unexpected frame: {f:?}");
+                    self.conn
+                        .termination_signal(Some(Reason::UnexpectedFrame))
+                        .await?;
+                    return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Await and respond to a handshake
+    #[inline(always)]
+    pub async fn handshake(&mut self) -> Result<(), UrsaCodecError> {
+        match instrument!(
+            self.conn.read_frame(Some(HANDSHAKE_REQ_TAG)).await?,
+            "sid={},tag=read_handshake_req",
+            self.session_id
+        ) {
+            Some(UrsaFrame::HandshakeRequest { lane, .. }) => {
+                // send res frame
+                instrument!(
+                    self.conn
+                        .write_frame(UrsaFrame::HandshakeResponse {
                             pubkey: [2; 33],
                             epoch_nonce: 1000,
-                            lane,
+                            lane: lane.unwrap_or(0),
                             last: None,
                         })
-                        .await
-                        .expect("handshake response");
+                        .await?,
+                    "sid={},tag=write_handshake_res",
+                    self.session_id
+                );
+
+                Ok(())
+            }
+            Some(f) => {
+                error!("Terminating, unexpected frame: {f:?}");
+                self.conn
+                    .termination_signal(Some(Reason::UnexpectedFrame))
+                    .await?;
+                Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()))
+            }
+            None => Err(UrsaCodecError::Unknown),
+        }
+    }
+
+    /// Begin delivering content
+    #[inline(always)]
+    pub async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
+        #[cfg(feature = "benchmarks")]
+        let (content_size, block_size) = {
+            let bytes = cid.0;
+            let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
+            let block_size = u64::from_be_bytes(*block_size_bytes);
+            let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
+            let content_size = u64::from_be_bytes(*content_size_bytes);
+            (content_size, block_size)
+        };
+
+        let mut block_number = 0;
+        while let Some(block) = instrument!(
+            self.backend.raw_block(&cid, block_number),
+            "sid={},tag=backend_raw_block,content_size={content_size},block_size={block_size}",
+            self.session_id
+        ) {
+            block_number += 1;
+
+            let proof = BytesMut::from(b"dummy_proof".as_slice());
+            let decryption_key = [0; 33];
+            let proof_len = proof.len() as u64;
+            let block_len = block.len() as u64;
+
+            instrument!(
+                self.conn
+                    .write_frame(UrsaFrame::ContentResponse {
+                        compression: 0,
+                        proof_len,
+                        block_len,
+                        signature: [1u8; 64],
+                    })
+                    .await?,
+                "sid={},tag=write_content_res,content_size={content_size},block_size={block_size}",
+                self.session_id
+            );
+
+            instrument!(
+                self.conn.write_frame(UrsaFrame::Buffer(proof)).await?,
+                "sid={},tag=write_proof,content_size={content_size},block_size={block_size}",
+                self.session_id
+            );
+            instrument!(
+                self.conn
+                    .write_frame(UrsaFrame::Buffer(block.into()))
+                    .await?,
+                "sid={},tag=write_block,content_size={content_size},block_size={block_size}",
+                self.session_id
+            );
+
+            // wait for delivery acknowledgment
+            match instrument!(
+                self.conn.read_frame(None).await?,
+                "sid={},tag=read_da,content_size={content_size},block_size={block_size}",
+                self.session_id
+            ) {
+                Some(UrsaFrame::DecryptionKeyRequest { .. }) => {
+                    // todo: transaction manager (batch and store tx)
                 }
-                _ => return,
+                Some(f) => {
+                    error!("Terminating asdf, unexpected frame: {f:?}");
+                    self.conn
+                        .termination_signal(Some(Reason::UnexpectedFrame))
+                        .await?;
+                    return Err(UrsaCodecError::UnexpectedFrame(f.tag().unwrap()));
+                }
+                None => return Err(UrsaCodecError::Unknown),
             }
 
-            while let Some(request) = transport.next().await {
-                debug!("Received frame: {request:?}");
-                match request {
-                    Ok(UrsaFrame::ContentRequest { hash }) => {
-                        debug!("Content request received");
-                        let (mut content, request_id) = backend.raw_content(hash);
-                        debug!("Sending content ({} bytes)", content.len());
-                        while !content.is_empty() {
-                            let block_len = content.len().min(MAX_BLOCK_SIZE);
-                            let mut block = content.split_to(block_len);
+            // send decryption key
+            instrument!(
+                self.conn
+                    .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })
+                    .await?,
+                "sid={},tag=write_dk,content_size={content_size},block_size={block_size}",
+                self.session_id
+            );
+        }
 
-                            let (decryption_key, _) = backend.decryption_key(request_id);
+        instrument!(
+            self.conn.write_frame(UrsaFrame::EndOfRequestSignal).await?,
+            "sid={},tag=write_eor,content_size={content_size},block_size={block_size}",
+            self.session_id
+        );
 
-                            // todo: proof encoding
-                            let proof = BytesMut::from(b"dummy_proof".as_slice());
-                            let proof_len = proof.len() as u64;
-
-                            debug!("Sending content response frame");
-                            transport
-                                .send(UrsaFrame::ContentResponse {
-                                    compression: 0,
-                                    proof_len,
-                                    block_len: block_len as u64,
-                                    signature: [1u8; 64],
-                                })
-                                .await
-                                .expect("send content response");
-
-                            debug!("Sending proof ({proof_len} bytes)");
-                            transport
-                                .send(UrsaFrame::Buffer(proof))
-                                .await
-                                .expect("send proof data");
-
-                            let mut current_chunk = 0;
-                            while !block.is_empty() {
-                                let chunk_len = block.len().min(IO_CHUNK_SIZE);
-                                debug!("Sending chunk #{current_chunk}");
-                                transport
-                                    .send(UrsaFrame::Buffer(block.split_to(chunk_len)))
-                                    .await
-                                    .expect("send content data");
-                                current_chunk += 1;
-                            }
-
-                            // wait for delivery acknowledgment
-                            match transport.next().await {
-                                Some(Ok(UrsaFrame::DecryptionKeyRequest { .. })) => {
-                                    debug!("Delivery acknowledgment received");
-                                    // todo: transaction manager (batch and store tx)
-                                }
-                                Some(Ok(f)) => error!("Unexpected frame {f:?}"),
-                                Some(Err(e)) => error!("Codec error: {e:?}"),
-                                None => error!("Connection closed"),
-                            }
-
-                            debug!("Sending decryption key");
-                            // send decryption key
-                            transport
-                                .send(UrsaFrame::DecryptionKeyResponse { decryption_key })
-                                .await
-                                .expect("send decryption key");
-                        }
-
-                        debug!("Sending EOR");
-                        transport
-                            .send(UrsaFrame::EndOfRequestSignal)
-                            .await
-                            .expect("send EOR");
-                    }
-                    Ok(f) => error!("Unexpected frame: {f:?}"),
-                    Err(e) => {
-                        error!("{e:?}");
-                        break;
-                    }
-                }
-            }
-
-            debug!("Connection Closed");
-        });
         Ok(())
     }
 }

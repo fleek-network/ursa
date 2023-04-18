@@ -128,3 +128,10 @@ codegen-units = 1
 strip = 'debuginfo'
 # On panic terminate the process.
 panic = 'abort'
+
+# For profiling with tools such as samply and flamegraph, we need to
+# ensure the debug info is preserved in this mode
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"

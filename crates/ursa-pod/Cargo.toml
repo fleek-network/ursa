@@ -19,24 +19,41 @@ rand_core = "0.6"
 rand_hc = "0.3"
 sha2 = "0.10"
 
-# client/server dependencies
+# Client and server dependencies
 tokio = { version = "1.0", features = ["full"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
-tokio-util = { version = "0.7", features = ["codec", "io"] }
 tracing = { version = "0.1", optional = true }
+
+# Criterion benchmark dependencies
+hyper = { version = "1.0.0-rc.3", features = ["full"], optional = true }
+http-body-util = { version = "0.1.0-rc.2", optional = true }
+
+# Binary benchmark dependencies
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+rayon  = { version = "1.7", optional = true }
+fnv = { version = "1.0", optional = true }
+clap = { version = "4.2", features = ["derive"], optional = true }
+gnuplot = { version = "0.0.37", optional = true }
 
 [dev-dependencies]
 benchmarks_utils = { git = "https://github.com/qti3e/benchmarks", rev = "c3c9c354dced98fdad0b08dacc8e8bd8fefcb08e", package = "benchmarks" }
-criterion = { version = "0.4.0", features = ["html_reports"] }
+criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
 tracing-subscriber = "0.2"
 
 [features]
 default = ["client", "server"]
 client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
+bench-hyper = ["tokio", "hyper", "http-body-util"]
+benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
 
 [[bench]]
 name = "encrypt"
+harness = false
+
+[[bench]]
+name = "tree"
 harness = false
 
 [[bench]]
@@ -44,5 +61,19 @@ name = "codec"
 harness = false
 
 [[bench]]
-name = "tree"
+name = "e2e"
 harness = false
+
+[[bin]]
+name = "ufdp-bench-client"
+path = "benchmarks/client.rs"
+
+[[bin]]
+name = "ufdp-bench-server"
+path = "benchmarks/server.rs"
+required-features = ["benchmarks"]
+
+[[bin]]
+name = "ufdp-bench-parser"
+path = "benchmarks/parser/main.rs"
+required-features = ["benchmarks"]

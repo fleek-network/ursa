@@ -1,23 +1,25 @@
-use bytes::BytesMut;
 use tokio::net::TcpListener;
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{
-    codec::UrsaCodecError,
-    server::{Backend, UfdpServer},
+    connection::UrsaCodecError,
+    server::{Backend, UfdpHandler},
     types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
 };
 
-const CONTENT: &[u8] = &[0; 512 * 1024];
+const CONTENT: &[u8] = &[0; 256 * 1024];
 
 #[derive(Clone, Copy)]
 struct DummyBackend {}
 
 impl Backend for DummyBackend {
-    fn raw_content(&self, _cid: Blake3Cid) -> (BytesMut, u64) {
-        let content = BytesMut::from(CONTENT);
-        let request_id = 0;
-        (content, request_id)
+    fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+        // serve 10GB
+        if block < 4 * 1024 * 10 {
+            Some(CONTENT)
+        } else {
+            None
+        }
     }
 
     fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
@@ -35,19 +37,24 @@ impl Backend for DummyBackend {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::TRACE)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    info!("Listening on port 8080");
+    let addr = "127.0.0.1:6969";
+    info!("Listening on port 6969");
 
-    let mut server = UfdpServer::new(DummyBackend {})?;
+    let listener = TcpListener::bind(addr).await.unwrap();
     loop {
-        let (stream, _) = listener.accept().await?;
-        server.handle(stream)?;
+        info!("accepted conn");
+        let (stream, _) = listener.accept().await.unwrap();
+        let handler = UfdpHandler::new(stream, DummyBackend {}, 0);
+
+        if let Err(e) = handler.serve().await {
+            error!("UFDP Session failed: {e:?}");
+        }
     }
 }
