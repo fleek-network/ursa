@@ -3,7 +3,7 @@ use std::fmt::Display;
 pub type EpochNonce = u64;
 pub type Secp256k1AffinePoint = [u8; 33];
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blake3Cid(pub [u8; 32]);
 
 impl Display for Blake3Cid {
