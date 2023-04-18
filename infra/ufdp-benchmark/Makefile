@@ -34,12 +34,13 @@ clean:
 
 sync-client:
 	@for ip in $(IPS); do \
+		echo "$$ip:"; \
 		scp -i benchmark_key ../../target/release/ufdp-bench-client admin@$$ip:client; \
 		ssh admin@$$ip -i benchmark_key "sudo mv client /usr/bin"; \
 	done;
 
 exec:
 	@for ip in $(IPS); do \
-		ssh admin@$$ip -i "benchmark_key" -o StrictHostKeyChecking=no "$s" |\
+		ssh admin@$$ip -i "benchmark_key" -o StrictHostKeyChecking=no "$s" 2>&1 |\
 		{ while read i; do [[ -n "$$i" ]] && printf "%b" "[$$ip] $$i\n"; done } & \
   done; wait

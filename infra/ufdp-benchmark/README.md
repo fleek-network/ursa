@@ -10,6 +10,8 @@ for running multiple `ufdp-bench-client` instances.
 
 ## Usage
 
+> `make all` will initialize, build, and deploy the clients.
+
 1. Initialize the terraform project (and create a ssh key if it's missing)
 
 ```bash
