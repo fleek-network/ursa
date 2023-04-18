@@ -16,7 +16,13 @@ for running multiple `ufdp-bench-client` instances.
 make init
 ```
 
-2. Create the infrastructure
+2. Build the client binary through docker
+
+```bash
+make build
+```
+
+3. Create the infrastructure
 
 ```bash
 # optionally, preview the changes
@@ -25,7 +31,7 @@ make plan
 make apply
 ```
 
-3. Execute the client on all instances (in parallel)
+4. Execute the client on all instances (in parallel)
 
 ```bash
 # client <socket addr> <target duration> <workers> <block size> <file size>
