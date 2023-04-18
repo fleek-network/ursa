@@ -28,8 +28,8 @@ make apply
 3. Execute the client on all instances (in parallel)
 
 ```bash
-# client <socket addr> <num concurrent req> <block size> <file size>
-make exec s="client ufdp.server:6969 64 262144 1048576"
+# client <socket addr> <target duration> <workers> <block size> <file size>
+make exec s="client ufdp.server:6969 30 64 262144 1048576"
 ```
 
 ## Cleanup

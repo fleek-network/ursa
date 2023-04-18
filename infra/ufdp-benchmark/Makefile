@@ -35,7 +35,7 @@ clean:
 sync-client:
 	@for ip in $(IPS); do \
 		scp -i benchmark_key ../../target/release/ufdp-bench-client admin@$$ip:client; \
-		ssh admin@$$ip -i benchmark_key -o StrictHostKeyChecking=no "sudo mv client /usr/bin"; \
+		ssh admin@$$ip -i benchmark_key "sudo mv client /usr/bin"; \
 	done;
 
 exec:

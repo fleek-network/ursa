@@ -89,5 +89,5 @@ async fn request(cid: Blake3Cid, addr: &str) -> usize {
 }
 
 fn help(bin: &str) {
-    println!("USAGE: {bin} <server ip> <duration> <concurrent requests> <file size> <block size>");
+    println!("USAGE: {bin} <server ip> <duration> <workers> <file size> <block size>");
 }
