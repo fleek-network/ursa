@@ -20,6 +20,7 @@ on:
       - ".github/workflows/docker-publish.yml"
     types:
       - opened
+      - reopened
       - synchronize
       - ready_for_review
 
@@ -27,6 +28,7 @@ jobs:
   tests:
     name: Matrix tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +86,7 @@ jobs:
   clippy:
     name: Lint with clippy
     runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       matrix:
         rust: [stable]
@@ -130,6 +133,7 @@ jobs:
   rustfmt:
     name: Code formatting
     runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       matrix:
         rust: [stable]

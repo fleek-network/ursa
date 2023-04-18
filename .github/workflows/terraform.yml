@@ -11,6 +11,7 @@ on:
       - 'infra/tf-next/**'
     types:
       - opened
+      - reopened
       - synchronize
       - ready_for_review
 
@@ -18,6 +19,7 @@ jobs:
   terraform:
     name: "Terraform"
     runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
     defaults:
       run:
         working-directory: infra/tf-next
