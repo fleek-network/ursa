@@ -20,16 +20,23 @@ on:
       - ".github/workflows/rust.yml"
       - ".github/workflows/docker-publish.yml"
       - "**/Dockerfile*"
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   GATEWAY_IMAGE_NAME: ${{ github.repository }}-gateway
+  PROXY_IMAGE_NAME: ${{ github.repository }}-proxy
 
 jobs:
   build:
     name: Docker build and publish ${{ matrix.make.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -97,15 +104,6 @@ jobs:
             type=raw,value=${{ github.head_ref || github.ref_name }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
-      - name: Build and push Docker image (ursa)
-        id: ursa-build-and-push
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: ${{ steps.ursa-meta.outputs.tags }}
-          labels: ${{ steps.ursa-meta.outputs.labels }}
-
       - name: Extract Docker metadata (ursa-gateway)
         id: ursa-gateway-meta
         uses: docker/metadata-action@v4.0.1
@@ -119,6 +117,28 @@ jobs:
             type=raw,value=${{ github.head_ref || github.ref_name }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
+      - name: Extract Docker metadata (ursa-proxy)
+        id: ursa-proxy-meta
+        uses: docker/metadata-action@v4.0.1
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PROXY_IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr,prefix=pr-
+            type=ref,event=tag,prefix=tag-
+            type=raw,value=${{ github.head_ref || github.ref_name }}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Build and push Docker image (ursa)
+        id: ursa-build-and-push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.ursa-meta.outputs.tags }}
+          labels: ${{ steps.ursa-meta.outputs.labels }}
+
       - name: Build and push Docker image (ursa-gateway)
         id: ursa-gateway-build-and-push
         uses: docker/build-push-action@v3 
@@ -128,3 +148,13 @@ jobs:
           tags: ${{ steps.ursa-gateway-meta.outputs.tags }}
           labels: ${{ steps.ursa-gateway-meta.outputs.labels }}
           file: Dockerfile-gateway
+
+      - name: Build and push Docker image (ursa-proxy)
+        id: ursa-proxy-build-and-push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.ursa-proxy-meta.outputs.tags }}
+          labels: ${{ steps.ursa-proxy-meta.outputs.labels }}
+          file: Dockerfile-proxy
