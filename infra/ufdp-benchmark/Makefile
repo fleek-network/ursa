@@ -32,7 +32,14 @@ clean:
 	terraform destroy
 	rm benchmark_key*
 
+sync-client:
+	@for ip in $(IPS); do \
+		scp -i benchmark_key ../../target/release/ufdp-bench-client admin@$$ip:client; \
+		ssh admin@$$ip -i benchmark_key -o StrictHostKeyChecking=no "sudo mv client /usr/bin"; \
+	done;
+
 exec:
 	@for ip in $(IPS); do \
-		ssh admin@$$ip -i "benchmark_key" -o StrictHostKeyChecking=no "$s" & \
+		ssh admin@$$ip -i "benchmark_key" -o StrictHostKeyChecking=no "$s" |\
+		{ while read i; do [[ -n "$$i" ]] && printf "%b" "[$$ip] $$i\n"; done } & \
   done; wait
