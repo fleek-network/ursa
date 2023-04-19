@@ -13,7 +13,7 @@ pub trait SecretKey<const SIZE: usize>: FixedSizeEncoding<SIZE> + Zeroize {
 }
 
 /// The trait for a public key with `SIZE` many bytes.
-pub trait PublicKey<const SIZE: usize>: FixedSizeEncoding<SIZE> + Zeroize {}
+pub trait PublicKey<const SIZE: usize>: FixedSizeEncoding<SIZE> {}
 
 pub trait FixedSizeEncoding<const SIZE: usize>: Sized {
     /// Deserialize the data from an array of the given size, returns

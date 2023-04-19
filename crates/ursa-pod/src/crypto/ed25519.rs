@@ -94,52 +94,80 @@ impl SymmetricKey {
 pub mod libsodium_impl {
     use super::*;
     use crate::crypto::key::{FixedSizeEncoding, SecretKey};
+    use alkali::asymmetric::sign::{ed25519 as sign, SignError};
+    use alkali::curve::ed25519 as curve;
     use alkali::AlkaliError;
     use zeroize::Zeroize;
 
+    /// The Ed25519 backend for UFDP implemented using libsodium bindings. Instead of using
+    /// the low level binding's the `alkali` crate is used for this implementation which
+    /// provides Rust safe primitives and types on top of `libsodium-sys-stable`.
     pub struct Ed25519;
 
     #[derive(Zeroize)]
     pub struct Ed25519SecretKey {
-        scalar: alkali::curve::ed25519::Scalar<alkali::mem::FullAccess>,
-        private_key: alkali::asymmetric::sign::ed25519::PrivateKey<alkali::mem::FullAccess>,
+        scalar: curve::Scalar<alkali::mem::FullAccess>,
+        private_key: sign::PrivateKey<alkali::mem::FullAccess>,
     }
 
-    #[derive(Zeroize)]
-    pub struct Ed25519PublicKey(alkali::asymmetric::sign::ed25519::PublicKey);
+    pub struct Ed25519PublicKey(sign::PublicKey);
 
-    impl SecretKey<32> for Ed25519SecretKey {
-        type PublicKey = Ed25519PublicKey;
+    impl TryFrom<sign::Keypair> for Ed25519SecretKey {
         type Error = AlkaliError;
 
-        fn generate() -> Result<Self, AlkaliError> {
-            let keypair = alkali::asymmetric::sign::ed25519::Keypair::generate()?;
+        fn try_from(keypair: sign::Keypair) -> Result<Self, Self::Error> {
+            // To get the scalar value that is used in the keypair, redo the same
+            // steps as algorithm on the `seed` to derive to the result.
             let seed = keypair.get_seed()?;
-            let secret = alkali::curve::ed25519::Scalar::try_from(seed.as_ref())?;
+            let secret = curve::Scalar::try_from(seed.as_ref())?;
+            // This step performs the `SHA-512` on the seed.
             let secret = secret.to_curve25519()?;
-            let scalar = alkali::curve::ed25519::Scalar::try_from(secret.as_ref())?;
+            let scalar = curve::Scalar::try_from(secret.as_ref())?;
+
+            // Check the logic and see if the scalar we computed can actually be used to
+            // compute the public key.
+            #[cfg(debug_assertions)]
+            {
+                let actual = curve::scalar_mult_base(&scalar)
+                    .expect("Should not fail.")
+                    .0;
+                assert_eq!(actual, keypair.public_key);
+            }
 
             Ok(Self {
                 scalar,
                 private_key: keypair.private_key,
             })
         }
+    }
+
+    impl SecretKey<32> for Ed25519SecretKey {
+        type PublicKey = Ed25519PublicKey;
+        type Error = AlkaliError;
+
+        fn generate() -> Result<Self, AlkaliError> {
+            let keypair = sign::Keypair::generate()?;
+            Self::try_from(keypair)
+        }
 
         fn public_key(&self) -> Result<Self::PublicKey, AlkaliError> {
-            let keypair =
-                alkali::asymmetric::sign::ed25519::Keypair::from_private_key(&self.private_key)?;
+            let keypair = sign::Keypair::from_private_key(&self.private_key)?;
 
             Ok(Ed25519PublicKey(keypair.public_key))
         }
     }
 
     impl FixedSizeEncoding<32> for Ed25519SecretKey {
-        fn try_from_bytes(_bytes: &[u8; 32]) -> Option<Self> {
-            todo!()
+        fn try_from_bytes(bytes: &[u8; 32]) -> Option<Self> {
+            let seed = sign::Seed::try_from(bytes).ok()?;
+            let keypair = sign::Keypair::from_seed(&seed).ok()?;
+            Self::try_from(keypair).ok()
         }
 
         fn to_bytes(&self) -> [u8; 32] {
-            todo!()
+            let keypair = sign::Keypair::from_private_key(&self.private_key).unwrap();
+            let seed = keypair.get_seed().unwrap();
+            *seed.as_ref()
         }
     }
 
@@ -164,13 +192,12 @@ pub mod libsodium_impl {
             sk: &Self::SecretKey,
             request_info_hash: &[u8; 32],
         ) -> Result<SymmetricKey, Self::Error> {
-            let h = alkali::curve::ed25519::Point::from_uniform(request_info_hash)?;
+            let h = curve::Point::from_uniform(request_info_hash)?;
             let point = h.scalar_mult(&sk.scalar)?;
 
-            let keypair =
-                alkali::asymmetric::sign::ed25519::Keypair::from_private_key(&sk.private_key)?;
+            let keypair = sign::Keypair::from_private_key(&sk.private_key)?;
             let message = hash_to_symmetric_key_commitment(&point.0, &request_info_hash);
-            let sign = alkali::asymmetric::sign::ed25519::sign_detached(&message, &keypair)?;
+            let sign = sign::sign_detached(&message, &keypair)?;
 
             Ok(SymmetricKey {
                 point: point.0,
@@ -184,14 +211,11 @@ pub mod libsodium_impl {
             key: &SymmetricKey,
         ) -> Result<Option<CipherKey>, Self::Error> {
             let message = hash_to_symmetric_key_commitment(&key.point, &request_info_hash);
-            let signature = alkali::asymmetric::sign::ed25519::Signature(key.signature);
-            let result =
-                alkali::asymmetric::sign::ed25519::verify_detached(&message, &signature, &pk.0);
+            let signature = sign::Signature(key.signature);
+            let result = sign::verify_detached(&message, &signature, &pk.0);
 
             match result {
-                Err(AlkaliError::SignError(
-                    alkali::asymmetric::sign::SignError::InvalidSignature,
-                )) => Ok(None),
+                Err(AlkaliError::SignError(SignError::InvalidSignature)) => Ok(None),
                 Ok(()) => Ok(Some(key.hash())),
                 Err(e) => Err(e),
             }
@@ -202,10 +226,9 @@ pub mod libsodium_impl {
             ciphertext_hash: &[u8; 32],
             request_info_hash: &[u8; 32],
         ) -> Result<[u8; 64], Self::Error> {
-            let keypair =
-                alkali::asymmetric::sign::ed25519::Keypair::from_private_key(&sk.private_key)?;
+            let keypair = sign::Keypair::from_private_key(&sk.private_key)?;
             let message = hash_to_integrity_message(ciphertext_hash, request_info_hash);
-            let sign = alkali::asymmetric::sign::ed25519::sign_detached(&message, &keypair)?;
+            let sign = sign::sign_detached(&message, &keypair)?;
             Ok(sign.0)
         }
 
@@ -216,14 +239,11 @@ pub mod libsodium_impl {
             signature: &[u8; 64],
         ) -> Result<bool, Self::Error> {
             let message = hash_to_integrity_message(ciphertext_hash, request_info_hash);
-            let signature = alkali::asymmetric::sign::ed25519::Signature(*signature);
-            let result =
-                alkali::asymmetric::sign::ed25519::verify_detached(&message, &signature, &pk.0);
+            let signature = sign::Signature(*signature);
+            let result = sign::verify_detached(&message, &signature, &pk.0);
 
             match result {
-                Err(AlkaliError::SignError(
-                    alkali::asymmetric::sign::SignError::InvalidSignature,
-                )) => Ok(false),
+                Err(AlkaliError::SignError(SignError::InvalidSignature)) => Ok(false),
                 Ok(()) => Ok(true),
                 Err(e) => Err(e),
             }
@@ -339,6 +359,45 @@ mod tests {
         );
     }
 
+    fn test_secret_key_export<E: Ed25519Engine>() {
+        let sk1 =
+            <E::SecretKey as SecretKey<32>>::generate().expect("Failed to generate secret key.");
+
+        let sk2 =
+            <E::SecretKey as SecretKey<32>>::generate().expect("Failed to generate secret key.");
+
+        let pk1 = sk1
+            .public_key()
+            .expect("Failed to get the public key.")
+            .to_bytes();
+
+        let pk2 = sk2
+            .public_key()
+            .expect("Failed to get the public key.")
+            .to_bytes();
+
+        assert_ne!(pk1, pk2);
+
+        let sk1_imported =
+            <E::SecretKey as FixedSizeEncoding<32>>::try_from_bytes(&sk1.to_bytes()).unwrap();
+
+        let sk2_imported =
+            <E::SecretKey as FixedSizeEncoding<32>>::try_from_bytes(&sk2.to_bytes()).unwrap();
+
+        let pk1_imported = sk1_imported
+            .public_key()
+            .expect("Failed to get the public key.")
+            .to_bytes();
+
+        let pk2_imported = sk2_imported
+            .public_key()
+            .expect("Failed to get the public key.")
+            .to_bytes();
+
+        assert_eq!(pk1, pk1_imported);
+        assert_eq!(pk2, pk2_imported);
+    }
+
     mod test_sodium {
         use super::*;
 
@@ -350,6 +409,11 @@ mod tests {
         #[test]
         fn generate_symmetric_key() {
             test_generate_symmetric_key::<libsodium_impl::Ed25519>();
+        }
+
+        #[test]
+        fn secret_key_export() {
+            test_secret_key_export::<libsodium_impl::Ed25519>();
         }
     }
 }
