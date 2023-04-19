@@ -12,7 +12,11 @@ use axum::{
     routing::{get, post, IntoMakeService},
     Extension, Router, ServiceExt, TypedHeader,
 };
-use axum_prometheus::PrometheusMetricLayerBuilder;
+use axum_prometheus::{
+    metrics_exporter_prometheus::{Matcher, PrometheusBuilder},
+    EndpointLabel, PrometheusMetricLayerBuilder, AXUM_HTTP_REQUESTS_DURATION_SECONDS,
+    SECONDS_DURATION_BUCKETS,
+};
 use axum_tracing_opentelemetry::opentelemetry_tracing_layer;
 use bytes::BufMut;
 use hyper::{
@@ -60,11 +64,9 @@ pub fn init_server_app<C: Cache>(
         let route_path = format!("/{}", directory_str);
         user_app = user_app.nest_service(route_path.as_str(), ServeDir::new(directory));
     }
-
-    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
-        .with_ignore_patterns(&["/metrics"])
-        .with_default_metrics()
-        .build_pair();
+    let metric_layer = PrometheusMetricLayerBuilder::new()
+        .with_endpoint_label_type(EndpointLabel::Exact)
+        .build();
 
     user_app = user_app
         .route("/*path", get(proxy_pass::<C>))
@@ -82,8 +84,7 @@ pub fn init_server_app<C: Cache>(
                 ),
         )
         .layer(opentelemetry_tracing_layer())
-        .layer(prometheus_layer)
-        .route("/metrics", get(|| async move { metric_handle.render() }));
+        .layer(metric_layer);
 
     if let Some(headers) = &server_config.add_header {
         for (header, values) in headers.iter() {
@@ -103,11 +104,21 @@ pub fn init_server_app<C: Cache>(
 }
 
 pub fn init_admin_app<C: Cache>(cache: C, servers: Vec<Server>) -> Router {
+    let metric_handle = PrometheusBuilder::new()
+        .set_buckets_for_metric(
+            Matcher::Full(AXUM_HTTP_REQUESTS_DURATION_SECONDS.to_string()),
+            SECONDS_DURATION_BUCKETS,
+        )
+        .unwrap()
+        .install_recorder()
+        .unwrap();
+
     Router::new()
         .route("/purge", post(purge_cache_handler::<C>))
         .route("/reload-tls-config", post(reload_tls_config))
         .layer(Extension(cache))
         .layer(Extension(servers))
+        .route("/metrics", get(|| async move { metric_handle.render() }))
 }
 
 pub async fn reload_tls_config(Extension(servers): Extension<Vec<Server>>) -> StatusCode {
