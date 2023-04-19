@@ -1,3 +1,7 @@
+use std::fmt::Debug;
+
+use zeroize::Zeroize;
+
 /// The cipher's mode of operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -8,12 +12,19 @@ pub enum Mode {
 }
 
 /// The key that should be used from
+#[derive(PartialEq, PartialOrd, Zeroize)]
 pub struct CipherKey(pub [u8; 32]);
 
 pub trait CipherEngine {
     /// Apply an stream cipher to the input and write the resulting ciphertext to the
     /// buffer provided by `output`.
     fn apply_cipher(mode: Mode, key: CipherKey, input: &[u8], output: &mut [u8]);
+}
+
+impl Debug for CipherKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CipherKey").finish()
+    }
 }
 
 pub mod openssl_impl {

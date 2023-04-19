@@ -1,5 +1,4 @@
 use crate::crypto::domain_separators;
-use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use blake3::keyed_hash;
 use std::fmt::Debug;
@@ -10,17 +9,12 @@ use super::key::{PublicKey, SecretKey};
 pub type Ed25519PointBytes = [u8; 32];
 pub type Ed25519ScalarBytes = [u8; 32];
 
-/// The symmetric key with a zero-knowledge proof to make it publicly provable
-/// right now a DLE is used, but a switch to an Ed25519 signature is possible
-/// if it proves to be more efficient, as far as the number of bytes is concerned
-/// both method have an equal 64-byte overhead.
 pub struct SymmetricKey {
     /// The point `a * H(request_info_hash)`.
     pub point: Ed25519PointBytes,
-    /// DLE challenge.
-    pub challenge: Ed25519ScalarBytes,
-    /// DLE response for the challenge.
-    pub response: Ed25519ScalarBytes,
+    /// An Ed25519 signature from the node which is used to commit to
+    /// this computation.
+    pub signature: [u8; 64],
 }
 
 pub trait Ed25519Engine {
@@ -81,27 +75,12 @@ fn hash_to_integrity_message(ciphertext_hash: &[u8; 32], request_info_hash: &[u8
     *keyed_hash(&domain_separators::CIPHERTEXT_COMMITMENT, &buffer).as_bytes()
 }
 
-fn hash_zkp_dle_challenge(
-    pk: &Ed25519PointBytes,
-    point: &Ed25519PointBytes,
-    a: &Ed25519PointBytes,
-    b: &Ed25519PointBytes,
-    request_info_hash: &[u8; 32],
-) -> [u8; 64] {
-    let mut buffer = ArrayVec::<u8, { 32 + 32 + 32 + 32 + 32 }>::new();
-    buffer.try_extend_from_slice(pk).unwrap();
+#[inline(always)]
+fn hash_to_symmetric_key_commitment(point: &[u8; 32], request_info_hash: &[u8; 32]) -> [u8; 32] {
+    let mut buffer = ArrayVec::<u8, { 32 + 32 }>::new();
     buffer.try_extend_from_slice(point).unwrap();
-    buffer.try_extend_from_slice(a).unwrap();
-    buffer.try_extend_from_slice(b).unwrap();
     buffer.try_extend_from_slice(request_info_hash).unwrap();
-
-    let mut response = [0; 96];
-    blake3::Hasher::new_keyed(&domain_separators::SYMMETRIC_KEY_ZKP_DLE)
-        .update(&buffer)
-        .finalize_xof()
-        .fill(&mut response);
-
-    *array_ref![response, 32, 64]
+    *keyed_hash(&domain_separators::SYMMETRIC_KEY_COMMITMENT, &buffer).as_bytes()
 }
 
 impl SymmetricKey {
@@ -188,38 +167,34 @@ pub mod libsodium_impl {
             let h = alkali::curve::ed25519::Point::from_uniform(request_info_hash)?;
             let point = h.scalar_mult(&sk.scalar)?;
 
-            let r = alkali::curve::ed25519::Scalar::generate()?;
-            let a = alkali::curve::ed25519::scalar_mult_base_no_clamp(&r)?;
-            let b = h.scalar_mult(&r)?;
-
-            let challenge_unreduced =
-                alkali::curve::ed25519::UnreducedScalar::try_from(&hash_zkp_dle_challenge(
-                    &sk.public_key()?.0,
-                    &point.0,
-                    &a.0,
-                    &b.0,
-                    &request_info_hash,
-                ))?;
-
-            let challenge = alkali::curve::ed25519::Scalar::reduce_from(&challenge_unreduced)?;
-
-            let mut response = alkali::curve::ed25519::Scalar::try_from(challenge.as_ref())?;
-            response.mul(&sk.scalar)?;
-            response.add(&r)?;
+            let keypair =
+                alkali::asymmetric::sign::ed25519::Keypair::from_private_key(&sk.private_key)?;
+            let message = hash_to_symmetric_key_commitment(&point.0, &request_info_hash);
+            let sign = alkali::asymmetric::sign::ed25519::sign_detached(&message, &keypair)?;
 
             Ok(SymmetricKey {
                 point: point.0,
-                challenge: *challenge.as_ref(),
-                response: *response.as_ref(),
+                signature: sign.0,
             })
         }
 
         fn verify_symmetric_key(
-            _pk: &Self::PublicKey,
-            _request_info_hash: &[u8; 32],
+            pk: &Self::PublicKey,
+            request_info_hash: &[u8; 32],
             key: &SymmetricKey,
         ) -> Result<Option<CipherKey>, Self::Error> {
-            Ok(Some(key.hash()))
+            let message = hash_to_symmetric_key_commitment(&key.point, &request_info_hash);
+            let signature = alkali::asymmetric::sign::ed25519::Signature(key.signature);
+            let result =
+                alkali::asymmetric::sign::ed25519::verify_detached(&message, &signature, &pk.0);
+
+            match result {
+                Err(AlkaliError::SignError(
+                    alkali::asymmetric::sign::SignError::InvalidSignature,
+                )) => Ok(None),
+                Ok(()) => Ok(Some(key.hash())),
+                Err(e) => Err(e),
+            }
         }
 
         fn sign_ciphertext(
@@ -316,12 +291,65 @@ mod tests {
         );
     }
 
+    fn test_generate_symmetric_key<E: Ed25519Engine>() {
+        let sk =
+            <E::SecretKey as SecretKey<32>>::generate().expect("Failed to generate secret key.");
+
+        let pk = sk.public_key().expect("Failed to get to the public key.");
+
+        let request_info_hash = [1; 32];
+        let key =
+            E::generate_symmetric_key(&sk, &request_info_hash).expect("Failed to generate key");
+        let hash = key.hash();
+
+        assert_eq!(
+            E::verify_symmetric_key(&pk, &request_info_hash, &key).expect("Must be OK"),
+            Some(hash)
+        );
+
+        assert_eq!(
+            E::verify_symmetric_key(&pk, &[0; 32], &key).expect("Must be OK"),
+            None
+        );
+
+        assert_eq!(
+            E::verify_symmetric_key(
+                &pk,
+                &request_info_hash,
+                &SymmetricKey {
+                    point: key.point,
+                    signature: [0; 64]
+                }
+            )
+            .expect("Must be OK"),
+            None
+        );
+
+        assert_eq!(
+            E::verify_symmetric_key(
+                &pk,
+                &request_info_hash,
+                &SymmetricKey {
+                    point: [0; 32],
+                    signature: key.signature
+                }
+            )
+            .expect("Must be OK"),
+            None
+        );
+    }
+
     mod test_sodium {
         use super::*;
 
         #[test]
         fn sign_ciphertext() {
             test_sign_ciphertext::<libsodium_impl::Ed25519>();
+        }
+
+        #[test]
+        fn generate_symmetric_key() {
+            test_generate_symmetric_key::<libsodium_impl::Ed25519>();
         }
     }
 }
