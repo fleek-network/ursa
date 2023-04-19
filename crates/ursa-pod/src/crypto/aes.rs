@@ -19,6 +19,16 @@ pub trait CipherEngine {
     /// Apply an stream cipher to the input and write the resulting ciphertext to the
     /// buffer provided by `output`.
     fn apply_cipher(mode: Mode, key: CipherKey, input: &[u8], output: &mut [u8]);
+
+    fn apply_cipher_in_place(mode: Mode, key: CipherKey, buffer: &mut [u8]) {
+        unsafe {
+            let len = buffer.len();
+            let ptr = buffer.as_mut_ptr();
+            let input = std::slice::from_raw_parts(ptr as *const u8, len);
+            let output = std::slice::from_raw_parts_mut(ptr, len);
+            Self::apply_cipher(mode, key, input, output)
+        }
+    }
 }
 
 impl Debug for CipherKey {
@@ -30,7 +40,7 @@ impl Debug for CipherKey {
 pub mod openssl_impl {
     use super::{CipherEngine, CipherKey, Mode};
 
-    /// Implementer of the [`CipherEngine`] trait using the OpenSSL backend.
+    /// Implementer of the [`CipherEngine`] trait using the OpenSSL binding.
     pub struct Aes128Ctr;
 
     impl CipherEngine for Aes128Ctr {

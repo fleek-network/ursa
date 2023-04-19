@@ -1,7 +1,9 @@
 use crate::crypto::domain_separators;
+use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use blake3::keyed_hash;
 use std::fmt::Debug;
+use zeroize::Zeroize;
 
 use super::aes::CipherKey;
 use super::key::{PublicKey, SecretKey};
@@ -9,6 +11,7 @@ use super::key::{PublicKey, SecretKey};
 pub type Ed25519PointBytes = [u8; 32];
 pub type Ed25519ScalarBytes = [u8; 32];
 
+#[derive(Zeroize, PartialEq, Eq)]
 pub struct SymmetricKey {
     /// The point `a * H(request_info_hash)`.
     pub point: Ed25519PointBytes,
@@ -86,8 +89,26 @@ fn hash_to_symmetric_key_commitment(point: &[u8; 32], request_info_hash: &[u8; 3
 impl SymmetricKey {
     /// Return the hash for this symmetric key, this should be fed to the cipher as the key.
     #[inline]
-    fn hash(&self) -> CipherKey {
+    pub fn hash(&self) -> CipherKey {
         CipherKey(*keyed_hash(&domain_separators::HASH_TO_SYMMETRIC_KEY, &self.point).as_bytes())
+    }
+}
+
+impl From<SymmetricKey> for [u8; 96] {
+    fn from(value: SymmetricKey) -> Self {
+        let mut buffer = [0; 96];
+        buffer[0..32].copy_from_slice(&value.point);
+        buffer[32..].copy_from_slice(&value.signature);
+        buffer
+    }
+}
+
+impl From<[u8; 96]> for SymmetricKey {
+    fn from(value: [u8; 96]) -> Self {
+        Self {
+            point: *array_ref![value, 0, 32],
+            signature: *array_ref![value, 32, 64],
+        }
     }
 }
 

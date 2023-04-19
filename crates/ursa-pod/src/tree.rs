@@ -1129,14 +1129,8 @@ mod tests {
                     is_valid,
                     "failed for len={bytes}"
                 );
-                assert!(
-                    is_valid_proof_len(bytes - 1),
-                    "failed for len={bytes}"
-                );
-                assert!(
-                    is_valid_proof_len(bytes + 1),
-                    "failed for len={bytes}"
-                );
+                assert!(is_valid_proof_len(bytes - 1), "failed for len={bytes}");
+                assert!(is_valid_proof_len(bytes + 1), "failed for len={bytes}");
             }
         }
     }
@@ -1476,7 +1470,9 @@ mod tests {
             for i in start + 1..SIZE {
                 verifier
                     .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
-                    .unwrap_or_else(|_| panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}"));
+                    .unwrap_or_else(|_| {
+                        panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}")
+                    });
 
                 verifier
                     .verify({
@@ -1485,7 +1481,9 @@ mod tests {
                         block.update(&block_data(i));
                         block
                     })
-                    .unwrap_or_else(|_| panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}"));
+                    .unwrap_or_else(|_| {
+                        panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}")
+                    });
             }
 
             assert!(
@@ -1535,7 +1533,9 @@ mod tests {
         for i in start + 1..SIZE {
             verifier
                 .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
-                .unwrap_or_else(|_| panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}"));
+                .unwrap_or_else(|_| {
+                    panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}")
+                });
 
             verifier
                 .verify({
@@ -1544,7 +1544,9 @@ mod tests {
                     block.update(&block_data(i));
                     block
                 })
-                .unwrap_or_else(|_| panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}"));
+                .unwrap_or_else(|_| {
+                    panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}")
+                });
         }
 
         assert!(
