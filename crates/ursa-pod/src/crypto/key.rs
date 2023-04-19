@@ -1,7 +1,16 @@
 use zeroize::Zeroize;
 
 /// The trait for a secret key with `SIZE` many bytes.
-pub trait SecretKey<const SIZE: usize>: FixedSizeEncoding<SIZE> + Zeroize {}
+pub trait SecretKey<const SIZE: usize>: FixedSizeEncoding<SIZE> + Zeroize {
+    type PublicKey;
+    type Error;
+
+    /// Generate a new random secret key.
+    fn generate() -> Result<Self, Self::Error>;
+
+    /// Returns the public key of this secret key.
+    fn public_key(&self) -> Result<Self::PublicKey, Self::Error>;
+}
 
 /// The trait for a public key with `SIZE` many bytes.
 pub trait PublicKey<const SIZE: usize>: FixedSizeEncoding<SIZE> + Zeroize {}

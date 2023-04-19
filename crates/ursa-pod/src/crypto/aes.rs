@@ -16,7 +16,7 @@ pub trait CipherEngine {
     fn apply_cipher(mode: Mode, key: CipherKey, input: &[u8], output: &mut [u8]);
 }
 
-mod openssl_impl {
+pub mod openssl_impl {
     use super::{CipherEngine, CipherKey, Mode};
 
     /// Implementer of the [`CipherEngine`] trait using the OpenSSL backend.

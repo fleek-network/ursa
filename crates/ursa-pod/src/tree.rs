@@ -956,7 +956,7 @@ mod tests {
             while counter & 1 == 1 {
                 let prev = stack.pop().unwrap();
                 tree.push(node);
-                node = node | prev;
+                node |= prev;
                 counter >>= 1;
             }
             stack.push(node);
@@ -1106,20 +1106,20 @@ mod tests {
 
     #[test]
     fn valid_proof_len() {
-        assert_eq!(is_valid_proof_len(0), true);
-        assert_eq!(is_valid_proof_len(1), false);
-        assert_eq!(is_valid_proof_len(2), false);
-        assert_eq!(is_valid_proof_len(32), false);
+        assert!(is_valid_proof_len(0));
+        assert!(is_valid_proof_len(1));
+        assert!(is_valid_proof_len(2));
+        assert!(is_valid_proof_len(32));
         // [sign byte + 1 hash] -> not valid proof
         // since it does not expand anything.
-        assert_eq!(is_valid_proof_len(33), false);
-        assert_eq!(is_valid_proof_len(40), false);
-        assert_eq!(is_valid_proof_len(64), false);
-        assert_eq!(is_valid_proof_len(65), true);
+        assert!(is_valid_proof_len(33));
+        assert!(is_valid_proof_len(40));
+        assert!(is_valid_proof_len(64));
+        assert!(is_valid_proof_len(65));
 
         for full_seg in 0..5 {
             let bytes = full_seg * 32 * 8 + full_seg;
-            assert_eq!(is_valid_proof_len(bytes), true, "failed for len={bytes}");
+            assert!(is_valid_proof_len(bytes), "failed for len={bytes}");
 
             for partial_seg in 1..8 {
                 let bytes = bytes + 1 + partial_seg * 32;
@@ -1129,14 +1129,12 @@ mod tests {
                     is_valid,
                     "failed for len={bytes}"
                 );
-                assert_eq!(
+                assert!(
                     is_valid_proof_len(bytes - 1),
-                    false,
                     "failed for len={bytes}"
                 );
-                assert_eq!(
+                assert!(
                     is_valid_proof_len(bytes + 1),
-                    false,
                     "failed for len={bytes}"
                 );
             }
@@ -1200,7 +1198,7 @@ mod tests {
         block.update(&[17; 64]);
         verifier.verify(block).unwrap();
 
-        assert_eq!(verifier.is_done(), true);
+        assert!(verifier.is_done());
 
         assert_eq!(
             verifier.verify(blake3::ursa::BlockHasher::new()),
@@ -1261,7 +1259,7 @@ mod tests {
         block.update(&[3; 256 * 1024]);
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 4);
-        assert_eq!(verifier.is_done(), true);
+        assert!(verifier.is_done());
 
         drop(verifier);
         assert_no_leak();
@@ -1302,7 +1300,7 @@ mod tests {
         block.update(&[2; 256 * 1024]);
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 3);
-        assert_eq!(verifier.is_done(), true);
+        assert!(verifier.is_done());
 
         drop(verifier);
         assert_no_leak();
@@ -1344,7 +1342,7 @@ mod tests {
         block.update(&[3; 256 * 1024]);
         verifier.verify(block).unwrap();
         assert_eq!(verifier.block_counter, 4);
-        assert_eq!(verifier.is_done(), true);
+        assert!(verifier.is_done());
 
         drop(verifier);
         assert_no_leak();
@@ -1373,7 +1371,7 @@ mod tests {
 
             verifier
                 .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
-                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Proof: size={SIZE} start={start}"));
 
             verifier
                 .verify({
@@ -1382,7 +1380,7 @@ mod tests {
                     block.update(&block_data(start));
                     block
                 })
-                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Content: size={SIZE} start={start}"));
 
             drop(verifier);
             assert_no_leak();
@@ -1412,7 +1410,7 @@ mod tests {
 
             verifier
                 .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
-                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Proof: size={SIZE} start={start}"));
 
             verifier
                 .verify({
@@ -1421,11 +1419,11 @@ mod tests {
                     block.update(&block_data(start));
                     block
                 })
-                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Content: size={SIZE} start={start}"));
 
             verifier
                 .feed_proof(ProofBuf::resume(&output.tree, start + 1).as_slice())
-                .expect(&format!("Invalid Resume Proof: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Resume Proof: size={SIZE} start={start}"));
 
             verifier
                 .verify({
@@ -1434,9 +1432,7 @@ mod tests {
                     block.update(&block_data(start + 1));
                     block
                 })
-                .expect(&format!(
-                    "Invalid Resume Content: size={SIZE} start={start}"
-                ));
+                .unwrap_or_else(|_| panic!("Invalid Resume Content: size={SIZE} start={start}"));
 
             drop(verifier);
             assert_no_leak();
@@ -1466,7 +1462,7 @@ mod tests {
 
             verifier
                 .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
-                .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Proof: size={SIZE} start={start}"));
 
             verifier
                 .verify({
@@ -1475,14 +1471,12 @@ mod tests {
                     block.update(&block_data(start));
                     block
                 })
-                .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+                .unwrap_or_else(|_| panic!("Invalid Content: size={SIZE} start={start}"));
 
             for i in start + 1..SIZE {
                 verifier
                     .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
-                    .expect(&format!(
-                        "Invalid Proof on Resume: size={SIZE} start={start} i={i}"
-                    ));
+                    .unwrap_or_else(|_| panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}"));
 
                 verifier
                     .verify({
@@ -1491,14 +1485,11 @@ mod tests {
                         block.update(&block_data(i));
                         block
                     })
-                    .expect(&format!(
-                        "Invalid Content on Resume: size={SIZE} start={start} i={i}"
-                    ));
+                    .unwrap_or_else(|_| panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}"));
             }
 
-            assert_eq!(
+            assert!(
                 verifier.is_done(),
-                true,
                 "verifier not terminated: size={SIZE} start={start}"
             );
 
@@ -1530,7 +1521,7 @@ mod tests {
 
         verifier
             .feed_proof(ProofBuf::new(&output.tree, start).as_slice())
-            .expect(&format!("Invalid Proof: size={SIZE} start={start}"));
+            .unwrap_or_else(|_| panic!("Invalid Proof: size={SIZE} start={start}"));
 
         verifier
             .verify({
@@ -1539,14 +1530,12 @@ mod tests {
                 block.update(&block_data(start));
                 block
             })
-            .expect(&format!("Invalid Content: size={SIZE} start={start}"));
+            .unwrap_or_else(|_| panic!("Invalid Content: size={SIZE} start={start}"));
 
         for i in start + 1..SIZE {
             verifier
                 .feed_proof(ProofBuf::resume(&output.tree, i).as_slice())
-                .expect(&format!(
-                    "Invalid Proof on Resume: size={SIZE} start={start} i={i}"
-                ));
+                .unwrap_or_else(|_| panic!("Invalid Proof on Resume: size={SIZE} start={start} i={i}"));
 
             verifier
                 .verify({
@@ -1555,14 +1544,11 @@ mod tests {
                     block.update(&block_data(i));
                     block
                 })
-                .expect(&format!(
-                    "Invalid Content on Resume: size={SIZE} start={start} i={i}"
-                ));
+                .unwrap_or_else(|_| panic!("Invalid Content on Resume: size={SIZE} start={start} i={i}"));
         }
 
-        assert_eq!(
+        assert!(
             verifier.is_done(),
-            true,
             "verifier not terminated: size={SIZE} start={start}"
         );
 
@@ -1592,7 +1578,7 @@ mod tests {
 
         verifier
             .feed_proof(ProofBuf::new(&output.tree, 639).as_slice())
-            .expect(&format!("Invalid Proof: size={SIZE}"));
+            .unwrap_or_else(|_| panic!("Invalid Proof: size={SIZE}"));
 
         verifier
             .verify({
@@ -1601,11 +1587,11 @@ mod tests {
                 block.update(&block_data(639));
                 block
             })
-            .expect(&format!("Invalid Content: size={SIZE}"));
+            .unwrap_or_else(|_| panic!("Invalid Content: size={SIZE}"));
 
         verifier
             .feed_proof(ProofBuf::resume(&output.tree, 640).as_slice())
-            .expect(&format!("Invalid Proof on Resume: size={SIZE}"));
+            .unwrap_or_else(|_| panic!("Invalid Proof on Resume: size={SIZE}"));
 
         verifier
             .verify({
@@ -1614,7 +1600,7 @@ mod tests {
                 block.update(&block_data(640));
                 block
             })
-            .expect(&format!("Invalid Content on Resume: size={SIZE}"));
+            .unwrap_or_else(|_| panic!("Invalid Content on Resume: size={SIZE}"));
 
         drop(verifier);
         assert_no_leak();

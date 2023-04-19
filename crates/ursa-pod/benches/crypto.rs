@@ -2,10 +2,10 @@
 
 use benchmarks_utils::*;
 use criterion::*;
-use rand::Rng;
 use rand_core::OsRng;
-use sodiumoxide::crypto::sign;
-use ursa_pod::{crypto::*, keys::SecretKey};
+use ursa_pod::crypto::ed25519::{self, Ed25519Engine};
+use ursa_pod::crypto::key::SecretKey;
+use ursa_pod::crypto::request::RequestInfo;
 
 fn sizes() -> Vec<usize> {
     let mut sizes = Vec::new();
@@ -118,23 +118,24 @@ fn bench_primitives(c: &mut Criterion) {
 
     g.bench_function("hash_to_curve", |b| {
         b.iter(|| {
-            black_box(hash_to_curve(&[0; 32]));
+            // black_box(hash_to_curve(&[0; 32]));
         })
     });
 
     g.bench_function("generate_symmetric_key", |b| {
-        let sk = SecretKey::random(OsRng);
+        let sk = ed25519::libsodium_impl::Ed25519SecretKey::generate().unwrap();
+        let hash = RequestInfo::rand(OsRng).hash();
         b.iter(|| {
-            let ret = generate_symmetric_key(&sk, &[0; 32]);
+            let ret = ed25519::libsodium_impl::Ed25519::generate_symmetric_key(&sk, &hash).unwrap();
             black_box(ret);
         })
     });
 
     g.bench_function("sign_ciphertext", |b| {
-        let sk = SecretKey::random(OsRng);
+        // let sk = SecretKey::random(OsRng);
         b.iter(|| {
-            let ret = sign_ciphertext(&sk, &[0; 32], &[0; 32]);
-            black_box(ret);
+            // let ret = sign_ciphertext(&sk, &[0; 32], &[0; 32]);
+            // black_box(ret);
         })
     });
 
@@ -152,8 +153,8 @@ fn bench_primitives(c: &mut Criterion) {
             |b, size| {
                 let input = random_vec(*size);
                 b.iter(|| {
-                    let hash = hash_ciphertext(&input);
-                    black_box(hash);
+                    // let hash = hash_ciphertext(&input);
+                    // black_box(hash);
                 })
             },
         );
@@ -165,7 +166,7 @@ fn bench_primitives(c: &mut Criterion) {
                 let mut output = mk_vec(*size);
                 let input = random_vec(*size);
                 b.iter(|| {
-                    apply_aes_128_ctr(Mode::Encrypt, [0; 32], &input, &mut output);
+                    // apply_aes_128_ctr(Mode::Encrypt, [0; 32], &input, &mut output);
                     black_box(&output);
                 })
             },
@@ -183,68 +184,14 @@ fn bench_routines(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("encrypt_block", size), &size, |b, size| {
             let mut output = mk_vec(*size + 64);
             let input = random_vec(*size);
-            let sk = SecretKey::random(OsRng);
-            let req = RequestInfo::rand(OsRng);
+            // let sk = SecretKey::random(OsRng);
+            // let req = RequestInfo::rand(OsRng);
             b.iter(|| {
-                encrypt_block(&sk, &req, &input, &mut output);
+                // encrypt_block(&sk, &req, &input, &mut output);
                 black_box(&output);
             })
         });
-
-        g.bench_with_input(
-            BenchmarkId::new("encrypt_per_session_ec", size),
-            &size,
-            |b, size| {
-                let mut output = mk_vec(*size + 64);
-                let input = random_vec(*size);
-                let sk = SecretKey::random(OsRng);
-                let req = RequestInfo::rand(OsRng);
-                let session_secret_key_hash: [u8; 32] = OsRng.gen();
-
-                b.iter(|| {
-                    let request_info_hash = req.hash();
-
-                    let nonce: [u8; 32] = rand::thread_rng().gen();
-                    let symmetric_key = {
-                        let mut buffer = arrayvec::ArrayVec::<u8, 64>::new();
-                        buffer
-                            .try_extend_from_slice(&session_secret_key_hash)
-                            .unwrap();
-                        buffer.try_extend_from_slice(&nonce).unwrap();
-                        *blake3::hash(&buffer).as_bytes()
-                    };
-
-                    apply_aes_128_ctr(
-                        Mode::Encrypt,
-                        symmetric_key,
-                        &input,
-                        &mut output[0..input.len()],
-                    );
-
-                    let ciphertext_hash = hash_ciphertext(&output[..input.len()]);
-                    let commitment = sign_ciphertext(&sk, &ciphertext_hash, &request_info_hash);
-                    output[input.len()..].copy_from_slice(&commitment);
-
-                    nonce
-                })
-            },
-        );
     }
-}
-
-fn bench_nacl(c: &mut Criterion) {
-    let mut g = c.benchmark_group("NaCl");
-    g.sample_size(30);
-
-    g.bench_function("ed25519", |b| {
-        let (_pk, sk) = sign::gen_keypair();
-        let data: [u8; 32] = OsRng.gen();
-
-        b.iter(|| {
-            let signed_data = sign::sign(&data, &sk);
-            black_box(signed_data);
-        })
-    });
 }
 
 criterion_group!(
@@ -253,6 +200,5 @@ criterion_group!(
     bench_blake3_rayon_noise,
     bench_primitives,
     bench_routines,
-    bench_nacl
 );
 criterion_main!(benches);

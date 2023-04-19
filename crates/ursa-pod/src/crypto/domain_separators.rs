@@ -19,6 +19,10 @@ pub const CIPHERTEXT_DIGEST: [u8; 32] =
 pub const CIPHERTEXT_COMMITMENT: [u8; 32] =
     hex!("9EA73937117EE63FDFE7D69C8A02A189062A2686F36D4BDFD6DFAE2FA8A50442");
 
+/// Domain separator used in the `sign_ciphertext` procedure.
+pub const SYMMETRIC_KEY_ZKP_DLE: [u8; 32] =
+    hex!("FA6D787B815F59126DCB03CC2D77B91622834D8E73586EEB18FA5CC945363E7D");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,6 +67,17 @@ mod tests {
         assert_eq!(
             key,
             CIPHERTEXT_COMMITMENT,
+            "expected='{}'",
+            blake3::Hash::from(key).to_hex()
+        );
+    }
+
+    #[test]
+    fn symmetric_key_zkp_dle() {
+        let key = derive_key("SYMMETRIC_KEY_ZKP_DLE", b"FLEEK-NETWORK-UFDP");
+        assert_eq!(
+            key,
+            SYMMETRIC_KEY_ZKP_DLE,
             "expected='{}'",
             blake3::Hash::from(key).to_hex()
         );
