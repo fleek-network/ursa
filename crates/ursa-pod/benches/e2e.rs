@@ -94,7 +94,6 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        #[cfg(all(not(feature = "bench-quinn"), not(feature = "bench-s2n-quic")))]
         {
             let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
             g.sample_size(20);
@@ -120,7 +119,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             );
         }
 
-        #[cfg(feature = "bench-quinn")]
+        #[cfg(feature = "bench-quic")]
         {
             let mut g = c.benchmark_group(format!("QUINN UFDP/{range}"));
             g.sample_size(20);
@@ -133,7 +132,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             );
         }
 
-        #[cfg(feature = "bench-s2n-quic")]
+        #[cfg(feature = "bench-quic")]
         {
             let mut g = c.benchmark_group(format!("S2N-QUIC UFDP/{range}"));
             g.sample_size(20);
@@ -186,7 +185,6 @@ mod tcp_ufdp {
     };
     use ursa_pod::{
         client::UfdpClient,
-        connection::consts::MAX_BLOCK_SIZE,
         server::{Backend, UfdpHandler},
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
@@ -298,7 +296,7 @@ mod http_hyper {
     }
 }
 
-#[cfg(feature = "bench-quinn")]
+#[cfg(feature = "bench-quic")]
 mod quinn_ufdp {
     use super::{
         tls_utils::{client_config, server_config},
@@ -432,7 +430,7 @@ mod quinn_ufdp {
     }
 }
 
-#[cfg(feature = "bench-s2n-quic")]
+#[cfg(feature = "bench-quic")]
 mod s2n_quic_ufdp {
     use super::{
         tls_utils::{client_config, server_config},
@@ -539,7 +537,7 @@ mod s2n_quic_ufdp {
     }
 }
 
-#[cfg(any(feature = "bench-quinn", feature = "bench-s2n-quic"))]
+#[cfg(feature = "bench-quic")]
 mod tls_utils {
     use std::sync::Arc;
 
