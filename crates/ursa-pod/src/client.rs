@@ -143,6 +143,7 @@ where
         Ok(size)
     }
 
+    /// Consumes the client and returns the underlying stream.
     pub fn finish(self) -> S {
         self.conn.stream
     }
