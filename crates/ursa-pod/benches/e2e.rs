@@ -2,8 +2,12 @@ use criterion::{measurement::Measurement, *};
 use futures::Future;
 use std::time::Duration;
 use tokio::sync::oneshot;
+use ursa_pod::connection::consts::MAX_BLOCK_SIZE;
+use ursa_pod::server::Backend;
+use ursa_pod::types::{Blake3Cid, BlsSignature, Secp256k1PublicKey};
 
 const MAX_REQUESTS: usize = 64;
+const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
 
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
@@ -144,7 +148,37 @@ fn protocol_benchmarks(c: &mut Criterion) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct DummyBackend {
+    content: &'static [u8],
+}
+
+impl Backend for DummyBackend {
+    fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+        let s = block as usize * MAX_BLOCK_SIZE;
+        if s < self.content.len() {
+            let e = self.content.len().min(s + MAX_BLOCK_SIZE);
+            Some(&self.content[s..e])
+        } else {
+            None
+        }
+    }
+
+    fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
+        (DECRYPTION_KEY, 0)
+    }
+
+    fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
+        9001
+    }
+
+    fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 mod tcp_ufdp {
+    use super::DummyBackend;
     use futures::future::join_all;
     use tokio::{
         net::{TcpListener, TcpStream},
@@ -157,38 +191,8 @@ mod tcp_ufdp {
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
 
-    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
-
-    #[derive(Clone, Copy)]
-    struct DummyBackend {
-        content: &'static [u8],
-    }
-
-    impl Backend for DummyBackend {
-        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
-            let s = block as usize * MAX_BLOCK_SIZE;
-            if s < self.content.len() {
-                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
-                Some(&self.content[s..e])
-            } else {
-                None
-            }
-        }
-
-        fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
-            (DECRYPTION_KEY, 0)
-        }
-
-        fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
-            9001
-        }
-
-        fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
-            Ok(())
-        }
-    }
 
     /// Simple tcp server loop that replies with static content
     pub async fn server_loop(
@@ -296,9 +300,15 @@ mod http_hyper {
 
 #[cfg(feature = "bench-quinn")]
 mod quinn_ufdp {
-    use super::tls_utils::{client_config, server_config};
+    use super::{
+        tls_utils::{client_config, server_config},
+        DummyBackend,
+    };
     use futures::future::join_all;
-    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig, VarInt, WriteError};
+    use quinn::{
+        ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig, VarInt,
+        WriteError,
+    };
     use std::{
         io::Error,
         pin::Pin,
@@ -314,38 +324,8 @@ mod quinn_ufdp {
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
 
-    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
-
-    #[derive(Clone, Copy)]
-    struct DummyBackend {
-        content: &'static [u8],
-    }
-
-    impl Backend for DummyBackend {
-        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
-            let s = block as usize * MAX_BLOCK_SIZE;
-            if s < self.content.len() {
-                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
-                Some(&self.content[s..e])
-            } else {
-                None
-            }
-        }
-
-        fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
-            (DECRYPTION_KEY, 0)
-        }
-
-        fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
-            9001
-        }
-
-        fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
-            Ok(())
-        }
-    }
 
     pub async fn server_loop(
         addr: String,
@@ -454,7 +434,10 @@ mod quinn_ufdp {
 
 #[cfg(feature = "bench-s2n-quic")]
 mod s2n_quic_ufdp {
-    use super::tls_utils::{client_config, server_config};
+    use super::{
+        tls_utils::{client_config, server_config},
+        DummyBackend,
+    };
     use futures::future::join_all;
     use s2n_quic::{client::Connect, provider::tls, Client, Server};
     use std::net::SocketAddr;
@@ -466,38 +449,8 @@ mod s2n_quic_ufdp {
         types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
     };
 
-    const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
-
-    #[derive(Clone, Copy)]
-    struct DummyBackend {
-        content: &'static [u8],
-    }
-
-    impl Backend for DummyBackend {
-        fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
-            let s = block as usize * MAX_BLOCK_SIZE;
-            if s < self.content.len() {
-                let e = self.content.len().min(s + MAX_BLOCK_SIZE);
-                Some(&self.content[s..e])
-            } else {
-                None
-            }
-        }
-
-        fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
-            (DECRYPTION_KEY, 0)
-        }
-
-        fn get_balance(&self, _pubkey: Secp256k1PublicKey) -> u128 {
-            9001
-        }
-
-        fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
-            Ok(())
-        }
-    }
 
     pub struct TlsProvider;
 
