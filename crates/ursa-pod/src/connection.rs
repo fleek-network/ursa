@@ -479,6 +479,9 @@ where
     #[inline(always)]
     pub async fn read_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
         loop {
+            if let Some(frame) = self.parse_frame(filter)? {
+                return Ok(Some(frame));
+            }
             if 0 == self.stream.read_buf(&mut self.read_buffer).await? {
                 // The remote closed the connection. For this to be
                 // a clean shutdown, there should be no data in the
@@ -492,10 +495,6 @@ where
                         "Client disconnected",
                     ));
                 }
-            }
-
-            if let Some(frame) = self.parse_frame(filter)? {
-                return Ok(Some(frame));
             }
         }
     }

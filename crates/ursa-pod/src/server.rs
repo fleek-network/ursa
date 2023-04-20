@@ -47,7 +47,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     }
 
     /// Begin serving a request. Accepts a handshake, and then begins the request loop.
-    pub async fn serve(mut self) -> Result<(), UrsaCodecError> {
+    pub async fn serve(mut self) -> Result<S, UrsaCodecError> {
         // Step 1: Perform the handshake.
         instrument!(
             self.handshake().await?,
@@ -89,7 +89,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
             }
         }
 
-        Ok(())
+        Ok(self.conn.stream)
     }
 
     /// Await and respond to a handshake

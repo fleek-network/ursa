@@ -12,7 +12,7 @@ use crate::{
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    conn: UfdpConnection<S>,
+    pub conn: UfdpConnection<S>,
     lane: u8,
 }
 
@@ -141,6 +141,10 @@ where
         }
 
         Ok(size)
+    }
+
+    pub fn finish(self) -> S {
+        self.conn.stream
     }
 
     /// Get the lane assigned to the connection

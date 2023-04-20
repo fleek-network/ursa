@@ -27,6 +27,11 @@ tracing = { version = "0.1", optional = true }
 # Criterion benchmark dependencies
 hyper = { version = "1.0.0-rc.3", features = ["full"], optional = true }
 http-body-util = { version = "0.1.0-rc.2", optional = true }
+quinn = { version = "0.9.3", optional = true }
+rcgen = { version = "0.10.0", optional = true }
+rustls = { version = "0.20.8", default-features = false, features = ["dangerous_configuration"], optional = true }
+s2n-quic = { version = "1.18.0", default-features = false, features = ["provider-address-token-default", "provider-tls-rustls"] , optional = true }
+zeroize_derive = { version = "<1.4", optional = true }
 
 # Binary benchmark dependencies
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -47,6 +52,8 @@ client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
 benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
+bench-quinn = ["tokio", "quinn", "rcgen", "rustls"]
+bench-s2n-quic = ["tokio", "s2n-quic", "zeroize_derive", "rcgen", "rustls"]
 
 [[bench]]
 name = "encrypt"
