@@ -183,11 +183,7 @@ mod tcp_ufdp {
         net::{TcpListener, TcpStream},
         task,
     };
-    use ursa_pod::{
-        client::UfdpClient,
-        server::{Backend, UfdpHandler},
-        types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
-    };
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
@@ -303,10 +299,7 @@ mod quinn_ufdp {
         DummyBackend,
     };
     use futures::future::join_all;
-    use quinn::{
-        ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig, VarInt,
-        WriteError,
-    };
+    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
     use std::{
         io::Error,
         pin::Pin,
@@ -315,12 +308,7 @@ mod quinn_ufdp {
     };
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
     use tokio::task;
-    use ursa_pod::{
-        client::UfdpClient,
-        connection::consts::MAX_BLOCK_SIZE,
-        server::{Backend, UfdpHandler},
-        types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
-    };
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
@@ -330,7 +318,7 @@ mod quinn_ufdp {
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
     ) {
-        let mut server_config = ServerConfig::with_crypto(Arc::new(server_config()));
+        let server_config = ServerConfig::with_crypto(Arc::new(server_config()));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
@@ -345,7 +333,7 @@ mod quinn_ufdp {
                         Ok((tx, rx)) => {
                             task::spawn(async {
                                 let stream = BiStream { tx, rx };
-                                let mut handler = UfdpHandler::new(
+                                let handler = UfdpHandler::new(
                                     stream,
                                     DummyBackend {
                                         content: content_clone,
@@ -371,7 +359,7 @@ mod quinn_ufdp {
     pub async fn client_loop(addr: String, iterations: usize) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
-        let mut client_config = quinn::ClientConfig::new(Arc::new(client_config()));
+        let client_config = quinn::ClientConfig::new(Arc::new(client_config()));
         endpoint.set_default_client_config(client_config);
         let stream = endpoint
             .connect(addr.parse().unwrap(), "localhost")
@@ -440,12 +428,7 @@ mod s2n_quic_ufdp {
     use s2n_quic::{client::Connect, provider::tls, Client, Server};
     use std::net::SocketAddr;
     use tokio::task;
-    use ursa_pod::{
-        client::UfdpClient,
-        connection::consts::MAX_BLOCK_SIZE,
-        server::{Backend, UfdpHandler},
-        types::{Blake3Cid, BlsSignature, Secp256k1PublicKey},
-    };
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
