@@ -14,10 +14,10 @@ Info - This connection contains read only access to the state and it only reads 
 
 For more info on the ABCI spec we are conforming too check out -[https://github.com/tendermint/tendermint/blob/v0.34.x/spec/abci/README.md](https://github.com/tendermint/tendermint/blob/v0.34.x/spec/abci/README.md)
 
-Epoch changes on the consensus layer are based on the state of the Epoch contract being loaded in at genesis. This contract auto updates the next epoch end time based on its parameters. This makes devolopment hard so ive included a bin in this crate that sets the first epoch start time to the current time. It also takes an optional parameter to set length of epoch(in Ms) if you dont specify it defaults to 5 minutes. example of running the bin and setting epoch to 10 minutes looks like this 
+Epoch changes on the consensus layer are based on the state of the Epoch contract being loaded in at genesis. This contract auto updates the next epoch end time based on its parameters. This makes devolopment hard so ive included a bin in this crate that sets the first epoch start time to the current time. It also takes an optional parameter to set length of epoch(in Ms) if you dont specify it defaults to 5 minutes. example of running the bin and setting epoch to 10 minutes looks like this
 `cargo run --bin genesis 600000`
 
-This bin also sets the default committee to the nodes in this repo- https://github.com/qti3e/ursa-nodes. To test application/consensus i recommend using that repo and running the bin right before you start the nodes. 
+This bin also sets the default committee to the nodes in this repo- https://github.com/qti3e/ursa-nodes. To test application/consensus i recommend using that repo and running the bin right before you start the nodes.
 
 files in this crate:
 
@@ -25,4 +25,17 @@ files in this crate:
 - config.rs - loads the application specific config. Currently only is domain the server can be reached at
 - genesis.rs - loads in the genesis config for the init_chain function
 - server.rs - starting the abci server the application is interacted with through
-- types.rs - Currently most of the logic for application lives here. We implement the traits each abci connection needs here. All of these traits are added onto the App struct, in app.rs. 
+- types.rs - Currently most of the logic for application lives here. We implement the traits each abci connection needs here. All of these traits are added onto the App struct, in app.rs.
+
+### Precompiles
+
+This crate loads in precompile contracts at the following addresses
+
+ProtocolParameters - 0x0000000000000000000000000000000000000099
+FLK Token - 0x0000000000000000000000000000000000000098
+Staking - 0x0000000000000000000000000000000000000097
+NodeRegistry - 0x0000000000000000000000000000000000000096
+EpochManager - 0x0000000000000000000000000000000000000095
+RewardsManager - 0x0000000000000000000000000000000000000094
+RewardsAggregator - 0x0000000000000000000000000000000000000093
+ReputationScores - 0x0000000000000000000000000000000000000092

@@ -1,22 +1,28 @@
-use crate::contract_bindings::epoch_bindings::{
-    CommitteeMember, EpochManagerCalls, GetCurrentEpochInfoCall, GetCurrentEpochInfoReturn,
-    SignalEpochChangeCall,
-};
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use ethers::{
     abi::{
         token::{LenientTokenizer, Tokenizer},
-        AbiDecode, AbiEncode, AbiParser, Function, ParamType,
+        AbiParser, Function, ParamType,
     },
-    types::{Address, Bytes, TransactionRequest, U256},
+    types::{Address, TransactionRequest, U256},
 };
-use fastcrypto::traits::EncodeDecodeBase64;
-use narwhal_config::{Authority, Committee, WorkerCache, WorkerIndex, WorkerInfo};
-use narwhal_crypto::{NetworkPublicKey, PublicKey};
-use std::{collections::BTreeMap, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
-pub const REGISTRY_ADDRESS: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-pub const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum Query {
+    EthCall(TransactionRequest),
+    Balance(Address),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AbciQueryQuery {
+    pub path: String,
+    pub data: String,
+    pub height: Option<usize>,
+    pub prove: Option<bool>,
+}
 
 /// This will take in strings of address, human readable function abi, and args. And return ethers function abi and filled out transaction request with encoded params
 /// example of human readable function abi is "myFunction(string, uint256):(uin256)" parenthesis after : are the return
@@ -82,119 +88,6 @@ pub fn encode_params(func: &Function, args: &[impl AsRef<str>]) -> Result<Vec<u8
     match func.encode_input(&tokens) {
         Ok(res) => Ok(res),
         Err(e) => bail!("Error encoding the inputs: {e:?}"),
-    }
-}
-
-pub fn get_epoch_info_params() -> TransactionRequest {
-    // safe unwrap
-    let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
-    let data = EpochManagerCalls::GetCurrentEpochInfo(GetCurrentEpochInfoCall::default()).encode();
-    TransactionRequest::new().to(to).data(data)
-}
-
-pub fn decode_epoch_info_return(output: Vec<u8>) -> GetCurrentEpochInfoReturn {
-    GetCurrentEpochInfoReturn::decode(Bytes::from(output)).unwrap()
-}
-
-pub fn decode_committee(
-    committee_members: Vec<CommitteeMember>,
-    epoch: u64,
-) -> (Committee, WorkerCache) {
-    let epoch_info = EpochInformation {
-        authorities: committee_members
-            .iter()
-            .filter_map(|authority| {
-                if let Ok(public_key) = PublicKey::decode_base64(&authority.public_key) {
-                    Some((public_key, authority.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect(),
-        epoch,
-    };
-
-    (Committee::from(&epoch_info), WorkerCache::from(&epoch_info))
-}
-
-pub fn encode_signal_epoch_call(public_key: String) -> TransactionRequest {
-    let to = EPOCH_ADDRESS.parse::<Address>().unwrap();
-    let data = EpochManagerCalls::SignalEpochChange(SignalEpochChangeCall {
-        committee_member: public_key,
-    })
-    .encode();
-    TransactionRequest::new().to(to).data(data)
-}
-pub struct EpochInformation {
-    authorities: BTreeMap<PublicKey, CommitteeMember>,
-    epoch: u64,
-}
-
-impl From<&EpochInformation> for Committee {
-    fn from(output: &EpochInformation) -> Self {
-        Committee {
-            epoch: output.epoch,
-            authorities: output
-                .authorities
-                .iter()
-                .filter_map(|(public_key, authority)| {
-                    if let Ok(authority) = Authority::try_from(authority) {
-                        Some((public_key.clone(), authority))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
-    }
-}
-
-impl TryFrom<&CommitteeMember> for Authority {
-    type Error = anyhow::Error;
-    fn try_from(member: &CommitteeMember) -> Result<Self> {
-        let network_key = NetworkPublicKey::decode_base64(&member.network_key)
-            .map_err(|_| anyhow!("Failed parsing network Key"))?;
-        Ok(Authority {
-            stake: 1,
-            primary_address: member
-                .primary_address
-                .parse()
-                .map_err(|_| anyhow!("Failed parsing primary address"))?,
-            network_key,
-        })
-    }
-}
-
-impl From<&EpochInformation> for WorkerCache {
-    fn from(output: &EpochInformation) -> Self {
-        let worker_cache = WorkerCache {
-            epoch: output.epoch,
-            workers: output
-                .authorities
-                .iter()
-                .map(|(key, authority)| {
-                    let mut worker_index = BTreeMap::new();
-                    authority
-                        .workers
-                        .iter()
-                        .filter_map(|worker| {
-                            Some(WorkerInfo {
-                                name: NetworkPublicKey::decode_base64(&worker.worker_public_key)
-                                    .ok()?,
-                                transactions: worker.worker_mempool.parse().ok()?,
-                                worker_address: worker.worker_address.parse().ok()?,
-                            })
-                        })
-                        .enumerate()
-                        .for_each(|(index, worker)| {
-                            //Todo(dalton): Safe unwrap? The idea of the index overflowing u32 seems wild
-                            worker_index.insert(index.try_into().unwrap(), worker);
-                        });
-                    (key.clone(), WorkerIndex(worker_index))
-                })
-                .collect(),
-        };
-        worker_cache
     }
 }
 

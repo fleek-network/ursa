@@ -73,7 +73,8 @@ contract EpochManager {
         return committee[epoch];
     }
 
-    function signalEpochChange(string memory committeeMember) external returns (bool) {
+    function signalEpochChange(string memory committeeMember, uint256 _epoch) external returns (bool) {
+        require(epoch == _epoch, "not currently in this epoch");
         for (uint256 i;;) {
             if (keccak256(abi.encodePacked(committee[epoch][i])) == keccak256(abi.encodePacked(committeeMember))) {
                 readyToChange++;
@@ -86,12 +87,8 @@ contract EpochManager {
                 revert();
             }
         }
-        uint256 roundUp;
-        if (currentCommitteeSize * 2 / 3 > 0) {
-            roundUp = 1;
-        }
 
-        if (readyToChange >= (currentCommitteeSize * 2 / 3) + roundUp) {
+        if (readyToChange >= ((currentCommitteeSize * 2) / 3) + 1) {
             _changeEpoch();
             return (true);
         } else {
@@ -105,6 +102,7 @@ contract EpochManager {
         committee[epoch] = _chooseNewCommittee();
         currentEpochEndStampMs = currentEpochEndStampMs + epochDurationMs;
         currentCommitteeSize = committee[epoch].length;
+        readyToChange = 0;
     }
 
     function _chooseNewCommittee() private view returns (string[] memory _committee) {

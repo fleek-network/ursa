@@ -7,12 +7,10 @@ use serde::Serialize;
 use std::time::SystemTime;
 use std::{env, fs};
 use ursa_application::genesis::Genesis;
-use ursa_utils::contract_bindings::epoch_bindings::{EpochManagerCalls, InitializeCall};
-use ursa_utils::contract_bindings::node_registry_bindings::Worker;
-use ursa_utils::contract_bindings::node_registry_bindings::{
-    InitializeCall as RegistryInitCall, NodeInfo, NodeRegistryCalls,
+use ursa_utils::evm::epoch_manager::{InitializeCall, Worker};
+use ursa_utils::evm::node_registry::{
+    InitializeCall as RegistryInitCall, NodeInfo, REGISTRY_ADDRESS,
 };
-use ursa_utils::transactions::REGISTRY_ADDRESS;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GenesisNode {
@@ -39,21 +37,20 @@ async fn main() {
         Some(time) => time,
         None => "300000",
     };
-    let registry_address: Address = REGISTRY_ADDRESS.parse().unwrap();
-    
+    let registry_address: Address = REGISTRY_ADDRESS;
+
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_millis();
-    
-    let initialize_call = InitializeCall {
+
+    let epoch_bytes = InitializeCall {
         node_registry: registry_address,
         first_epoch_start: UInt256::from_dec_str(&now.to_string()).unwrap(),
         epoch_duration: UInt256::from_dec_str(epoch_time).unwrap(),
         max_committee_size: UInt256::from_dec_str("100").unwrap(),
-    };
-
-    let epoch_bytes = EpochManagerCalls::Initialize(initialize_call).encode();
+    }
+    .encode();
 
     let raw = include_str!("./genesis_committee.toml");
     let genesis: GenesisCommittee = toml::from_str(raw).unwrap();
@@ -75,13 +72,17 @@ async fn main() {
         })
         .collect();
 
-    let init_call = RegistryInitCall { genesis_committee };
-
-    let registry_bytes = NodeRegistryCalls::Initialize(init_call).encode();
+    let registry_bytes = RegistryInitCall { genesis_committee }.encode();
 
     let mut genesis = Genesis::load().unwrap();
-    genesis.epoch.init_params = Some(Bytes::from(epoch_bytes));
-    genesis.registry.init_params = Some(Bytes::from(registry_bytes));
+
+    genesis.precompiles.iter_mut().for_each(|contract| {
+        if contract.name == *"registry" {
+            contract.init_params = Some(Bytes::from(registry_bytes.clone()));
+        } else if contract.name == *"epoch" {
+            contract.init_params = Some(Bytes::from(epoch_bytes.clone()))
+        }
+    });
 
     let genesis_toml = toml::to_string(&genesis).unwrap();
     fs::write(env::current_dir().unwrap().join(GENESIS_PATH), genesis_toml).unwrap();

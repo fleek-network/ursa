@@ -18,12 +18,4 @@ pub struct BroadcastTxQuery {
     tx: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AbciQueryQuery {
-    pub path: String,
-    pub data: String,
-    pub height: Option<usize>,
-    pub prove: Option<bool>,
-}
-
 pub type Epoch = u64;

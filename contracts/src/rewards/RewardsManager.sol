@@ -84,7 +84,7 @@ contract FleekReward is Controlled {
         // 75% goes to edge node
         SD59x18 _toEdgeNode = _totalMint.mul(sd(0.75e18));
         string[] memory publicKeys = rewardsAggregator.getPublicKeys(epoch);
-        uint256 pkLen =  publicKeys.length;
+        uint256 pkLen = publicKeys.length;
         rewardsDistribution[epoch] = true;
 
         for (uint256 i = 0; i < pkLen;) {
@@ -93,9 +93,9 @@ contract FleekReward is Controlled {
             SD59x18 rewardsAmount = servedPercentage.mul(_toEdgeNode);
             // check if the node with public key is white listed
             (address to,,,,) = nodeRegistry.whitelist(publicKeys[i]);
-            fleekToken.mint(_to, intoUint256(rewardsAmount));
-            emit RewardMinted(_to, intoUint256(rewardsAmount));
-                        
+            fleekToken.mint(to, intoUint256(rewardsAmount));
+            emit RewardMinted(to, intoUint256(rewardsAmount));
+
             unchecked {
                 i += 1;
             }
@@ -115,8 +115,8 @@ contract FleekReward is Controlled {
 
         // Equation 3 from the paper
         SD59x18 expectedInflation = (UNIT.sub(((price).div(cost)).mul(deltaU))).mul(inflationInLastEpoch);
-        SD59x18 currentInflation = deltaU.gte(sd(0e18)) ? 
-            sd(MathUtils.signedMax(intoInt256(expectedInflation), intoInt256(minInflationFactor.mul(maxInflation))))
+        SD59x18 currentInflation = deltaU.gte(sd(0e18))
+            ? sd(MathUtils.signedMax(intoInt256(expectedInflation), intoInt256(minInflationFactor.mul(maxInflation))))
             : sd(MathUtils.signedMin(intoInt256(expectedInflation), intoInt256(maxInflation)));
         inflationInLastEpoch = currentInflation;
 

@@ -13,10 +13,10 @@ use tokio::sync::{
     oneshot,
 };
 use tracing::{log::LevelFilter, warn};
-use ursa_consensus::AbciQueryQuery;
 use ursa_index_provider::{config::ProviderConfig, engine::ProviderEngine};
 use ursa_network::{NetworkConfig, UrsaService};
 use ursa_store::UrsaStore;
+use ursa_utils::transactions::AbciQueryQuery;
 
 pub fn setup_logger() {
     let level = LevelFilter::Debug;

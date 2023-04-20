@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
-use bytes::Bytes;
 use fastcrypto::traits::KeyPair;
 use futures::lock::Mutex;
-use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
+use narwhal_config::{Epoch, Parameters};
 use narwhal_node::NodeStorage;
-use narwhal_types::{Batch, TransactionProto, TransactionsClient};
+use narwhal_types::Batch;
 use resolve_path::PathResolveExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,16 +13,13 @@ use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::{pin, select, task, time};
 use tracing::error;
 
-use crate::AbciQueryQuery;
 use crate::{
     config::ConsensusConfig,
     execution::Execution,
     narwhal::{NarwhalArgs, NarwhalService},
 };
-use ursa_application::types::Query;
-use ursa_utils::transactions::{
-    decode_committee, decode_epoch_info_return, encode_signal_epoch_call, get_epoch_info_params,
-};
+use ursa_utils::evm::epoch_manager::{get_epoch_info, signal_epoch_change};
+use ursa_utils::transactions::AbciQueryQuery;
 
 // what do we need for this file to work and be complete?
 // - A mechanism to dynamically move the epoch forward and changing the committee dynamically.
@@ -33,7 +29,7 @@ use ursa_utils::transactions::{
 // - Restart the narwhal service for each new epoch.
 // - Execution engine with mpsc or a normal channel to deliver the transactions to abci.
 
-const STORE_NAME: &str = "narwhal-store";
+const STORE_NAME: &str = "narwhal-epochs";
 
 /// The consensus layer, which wraps a narwhal service and moves the epoch forward.
 pub struct Consensus {
@@ -77,15 +73,18 @@ impl Consensus {
 
         let execution_state = Execution::new(tx_certificates);
 
-        let store_path = config.store_path.resolve().into_owned();
-        std::fs::create_dir_all(&store_path).context("Could not create the store directory.")?;
+        let mut store_path = config.store_path.clone();
+        store_path.push(STORE_NAME);
+        let absolute_store_path = store_path.resolve().into_owned();
+        std::fs::create_dir_all(&absolute_store_path)
+            .context("Could not create the store directory.")?;
 
         Ok(Consensus {
             epoch_state: Mutex::new(None),
             narwhal_args,
             parameters: config.parameters,
             execution_state: Arc::new(execution_state),
-            store_path,
+            store_path: absolute_store_path,
             mempool_address,
             reconfigure_notify,
             shutdown_notify: Notify::new(),
@@ -96,7 +95,8 @@ impl Consensus {
     async fn start_current_epoch(&self) {
         // Pull epoch info.
         // TODO(dalton): This shouldnt ever fail but we should just retry if it does.
-        let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
+        let (committee, worker_cache, epoch, epoch_end_time) =
+            get_epoch_info(&self.tx_abci_queries).await.unwrap();
 
         // If the this node is not on the committee, dont start narwhal start edge node logic.
         if !committee
@@ -109,7 +109,7 @@ impl Consensus {
 
         // Make or open store specific to current epoch.
         let mut store_path = self.store_path.clone();
-        store_path.set_file_name(format!("{}-{}", STORE_NAME, epoch));
+        store_path.push(format!("{epoch}"));
         let store = NodeStorage::reopen(store_path);
 
         let service = NarwhalService::new(
@@ -136,7 +136,7 @@ impl Consensus {
 
         // Start the timer to signal when your node thinks its ready to change epochs.
         let time_until_epoch_change = Duration::from_millis(until_epoch_ends);
-        self.wait_to_signal_epoch_change(time_until_epoch_change)
+        self.wait_to_signal_epoch_change(time_until_epoch_change, epoch)
             .await;
 
         service.start(self.execution_state.clone()).await;
@@ -154,42 +154,25 @@ impl Consensus {
         self.start_current_epoch().await
     }
 
-    async fn wait_to_signal_epoch_change(&self, time_until_change: Duration) {
+    async fn wait_to_signal_epoch_change(&self, time_until_change: Duration, epoch: Epoch) {
         let primary_public_key = self.narwhal_args.primary_keypair.public().clone();
         let mempool_address = self.mempool_address.clone();
         task::spawn(async move {
             time::sleep(time_until_change).await;
             // We shouldnt panic here lets repeatedly try.
             loop {
-                //TODO(dalton):
                 time::sleep(Duration::from_secs(1)).await;
 
-                let txn = match serde_json::to_vec(&encode_signal_epoch_call(
+                match signal_epoch_change(
                     primary_public_key.to_string(),
-                )) {
-                    Ok(txn) => txn,
-                    Err(_) => {
-                        error!("Error signaling epoch change, trying again");
-                        continue;
-                    }
-                };
-
-                let request = TransactionProto {
-                    transaction: Bytes::from(txn),
-                };
-
-                let mut client = match TransactionsClient::connect(mempool_address.clone()).await {
-                    Ok(client) => client,
-                    Err(e) => {
-                        error!("Error building client to signal epoch change {:?}", e);
-                        continue;
-                    }
-                };
-
-                if client.submit_transaction(request).await.is_ok() {
-                    break;
+                    epoch,
+                    mempool_address.clone(),
+                )
+                .await
+                {
+                    Ok(()) => break,
+                    Err(e) => error!("Error signaling epoch change, trying again: {:?}", e),
                 }
-                error!("Error signaling epoch change trying again");
             }
         });
     }
@@ -219,40 +202,5 @@ impl Consensus {
 
     pub async fn run_edge_node(&self) {
         // Todo(Dalton): Edge node logic
-    }
-}
-
-// Application Query Helpers.
-impl Consensus {
-    async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
-        // Build transaction.
-        let txn = get_epoch_info_params();
-        let query = Query::EthCall(txn);
-
-        let query_string = serde_json::to_string(&query)?;
-
-        let abci_query = AbciQueryQuery {
-            data: query_string,
-            path: "".to_string(),
-            height: None,
-            prove: None,
-        };
-
-        // Construct one shot channel to recieve response.
-        let (tx, rx) = oneshot::channel();
-
-        // Send and wait for response.
-        self.tx_abci_queries.send((tx, abci_query)).await?;
-        let response = rx.await.with_context(|| "Failure querying abci")?;
-
-        // Decode response.
-        let epoch_info = decode_epoch_info_return(response.value);
-
-        let epoch = epoch_info.epoch.as_u64();
-        let epoch_timestamp = epoch_info.current_epoch_end_ms.as_u64();
-
-        let (committee, worker_cache) = decode_committee(epoch_info.committee_members, epoch);
-
-        Ok((committee, worker_cache, epoch, epoch_timestamp))
     }
 }
