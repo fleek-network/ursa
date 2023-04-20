@@ -12,7 +12,7 @@ use crate::{
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
 pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    pub conn: UfdpConnection<S>,
+    conn: UfdpConnection<S>,
     lane: u8,
 }
 
