@@ -9,9 +9,6 @@ use ethers::{
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-pub const REGISTRY_ADDRESS: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-pub const EPOCH_ADDRESS: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC";
-
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum Query {

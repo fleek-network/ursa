@@ -4,7 +4,7 @@ use ethers::contract::{EthAbiCodec, EthAbiType, EthCall, EthDisplay};
 use ethers::types::{Address, H160};
 use hex_literal::hex;
 
-pub const REGISTRY_ADDRESS: Address = H160(hex!("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"));
+pub const REGISTRY_ADDRESS: Address = H160(hex!("0000000000000000000000000000000000000096"));
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, EthAbiType, EthAbiCodec)]
 pub struct NodeInfo {

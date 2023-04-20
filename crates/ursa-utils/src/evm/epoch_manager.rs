@@ -16,7 +16,7 @@ use crate::transactions::AbciQueryQuery;
 
 use super::{query_application, send_txn_to_application};
 
-pub const EPOCH_ADDRESS: Address = H160(hex!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC"));
+pub const EPOCH_ADDRESS: Address = H160(hex!("0000000000000000000000000000000000000095"));
 
 pub const EPOCH_INFO_CALL: [u8; 4] = [186, 188, 57, 79];
 const SIGNAL_EPOCH_ABI: &str = "signalEpochChange(string, uint256):(bool)";

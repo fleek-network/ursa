@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::{query_application, send_txn_to_application};
 
-pub const REPUTATION_ADDRESS: Address = H160(hex!("DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"));
+pub const REPUTATION_ADDRESS: Address = H160(hex!("0000000000000000000000000000000000000092"));
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, EthAbiType, EthAbiCodec)]
 pub struct EpochScores {
