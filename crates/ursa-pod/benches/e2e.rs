@@ -1,3 +1,4 @@
+use crate::tls_utils::TestCertificate;
 use criterion::{measurement::Measurement, *};
 use futures::Future;
 use std::time::Duration;
@@ -37,9 +38,10 @@ const MEGABYTE_FILES: &[&[u8]] = &[
 fn benchmark_sizes<T: Measurement, C, S>(
     g: &mut BenchmarkGroup<T>,
     files: &[&'static [u8]],
+    uses_tls: bool,
     unit: usize,
-    client: impl Fn(String, usize) -> C,
-    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>) -> S,
+    client: impl Fn(String, usize, Option<TestCertificate>) -> C,
+    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>, Option<TestCertificate>) -> S,
 ) where
     C: Future,
     S: Future + Send + 'static,
@@ -50,10 +52,17 @@ fn benchmark_sizes<T: Measurement, C, S>(
         .build()
         .unwrap();
 
+    let certificate = uses_tls.then(|| TestCertificate::new());
+
     for file in files {
         // Spawn the server and wait for it to signal that it's ready.
         let (tx_started, rx_started) = oneshot::channel();
-        let server_task = runtime.spawn(server("127.0.0.1:0".into(), file, tx_started));
+        let server_task = runtime.spawn(server(
+            "127.0.0.1:0".into(),
+            file,
+            tx_started,
+            certificate.clone(),
+        ));
         let port = futures::executor::block_on(rx_started).unwrap();
         let addr = format!("127.0.0.1:{port}");
 
@@ -77,7 +86,8 @@ fn benchmark_sizes<T: Measurement, C, S>(
                 ),
                 &num_requests,
                 |b, &n| {
-                    b.to_async(&runtime).iter(|| client(addr.clone(), n));
+                    b.to_async(&runtime)
+                        .iter(|| client(addr.clone(), n, certificate.clone()));
                 },
             );
 
@@ -100,6 +110,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             benchmark_sizes(
                 &mut g,
                 files,
+                false,
                 unit,
                 tcp_ufdp::client_loop,
                 tcp_ufdp::server_loop,
@@ -113,6 +124,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             benchmark_sizes(
                 &mut g,
                 files,
+                false,
                 unit,
                 http_hyper::client_loop,
                 http_hyper::server_loop,
@@ -126,6 +138,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             benchmark_sizes(
                 &mut g,
                 files,
+                true,
                 unit,
                 quinn_ufdp::client_loop,
                 quinn_ufdp::server_loop,
@@ -139,6 +152,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
             benchmark_sizes(
                 &mut g,
                 files,
+                true,
                 unit,
                 s2n_quic_ufdp::client_loop,
                 s2n_quic_ufdp::server_loop,
@@ -178,6 +192,7 @@ impl Backend for DummyBackend {
 
 mod tcp_ufdp {
     use super::DummyBackend;
+    use crate::tls_utils::TestCertificate;
     use futures::future::join_all;
     use tokio::{
         net::{TcpListener, TcpStream},
@@ -193,6 +208,7 @@ mod tcp_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
+        _: Option<TestCertificate>,
     ) {
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -212,7 +228,7 @@ mod tcp_ufdp {
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
-    pub async fn client_loop(addr: String, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestCertificate>) {
         let mut tasks = vec![];
         for _ in 0..iterations {
             let stream = TcpStream::connect(&addr).await.unwrap();
@@ -231,6 +247,7 @@ mod tcp_ufdp {
 mod http_hyper {
     use std::io::Error;
 
+    use crate::tls_utils::TestCertificate;
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{server::conn::http1, service::service_fn, Request, Response};
@@ -240,6 +257,7 @@ mod http_hyper {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
+        _: Option<TestCertificate>,
     ) {
         let listener = TcpListener::bind(addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -261,7 +279,7 @@ mod http_hyper {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestCertificate>) {
         for _ in 0..iterations {
             // Open a TCP connection to the remote host
             let stream = TcpStream::connect(&addr).await.unwrap();
@@ -298,6 +316,7 @@ mod quinn_ufdp {
         tls_utils::{client_config, server_config},
         DummyBackend,
     };
+    use crate::tls_utils::TestCertificate;
     use futures::future::join_all;
     use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
     use std::{
@@ -317,8 +336,9 @@ mod quinn_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
+        cert: Option<TestCertificate>,
     ) {
-        let server_config = ServerConfig::with_crypto(Arc::new(server_config()));
+        let server_config = ServerConfig::with_crypto(Arc::new(server_config(cert.unwrap())));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
@@ -356,10 +376,10 @@ mod quinn_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
-        let client_config = quinn::ClientConfig::new(Arc::new(client_config()));
+        let client_config = quinn::ClientConfig::new(Arc::new(client_config(cert.unwrap())));
         endpoint.set_default_client_config(client_config);
         let stream = endpoint
             .connect(addr.parse().unwrap(), "localhost")
@@ -424,6 +444,7 @@ mod s2n_quic_ufdp {
         tls_utils::{client_config, server_config},
         DummyBackend,
     };
+    use crate::tls_utils::TestCertificate;
     use futures::future::join_all;
     use s2n_quic::{client::Connect, provider::tls, Client, Server};
     use std::net::SocketAddr;
@@ -433,7 +454,7 @@ mod s2n_quic_ufdp {
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
-    pub struct TlsProvider;
+    pub struct TlsProvider(TestCertificate);
 
     impl tls::Provider for TlsProvider {
         type Server = tls::rustls::Server;
@@ -441,11 +462,11 @@ mod s2n_quic_ufdp {
         type Error = rustls::Error;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
-            Ok(server_config().into())
+            Ok(server_config(self.0).into())
         }
 
         fn start_client(self) -> Result<Self::Client, Self::Error> {
-            Ok(client_config().into())
+            Ok(client_config(self.0).into())
         }
     }
 
@@ -453,9 +474,10 @@ mod s2n_quic_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
+        cert: Option<TestCertificate>,
     ) {
         let mut server = Server::builder()
-            .with_tls(TlsProvider)
+            .with_tls(TlsProvider(cert.unwrap()))
             .unwrap()
             .with_io(addr.as_str())
             .unwrap()
@@ -494,10 +516,10 @@ mod s2n_quic_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize) {
+    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
         let mut tasks = vec![];
         let client = Client::builder()
-            .with_tls(TlsProvider)
+            .with_tls(TlsProvider(cert.unwrap()))
             .unwrap()
             .with_io("0.0.0.0:0")
             .unwrap()
@@ -522,47 +544,38 @@ mod s2n_quic_ufdp {
 
 #[cfg(feature = "bench-quic")]
 mod tls_utils {
-    use std::sync::Arc;
+    #[derive(Clone)]
+    pub struct TestCertificate {
+        pub cert: Vec<rustls::Certificate>,
+        pub key: rustls::PrivateKey,
+    }
 
-    pub struct SkipServerVerification;
-
-    impl SkipServerVerification {
-        fn new() -> Arc<Self> {
-            Arc::new(Self)
+    impl TestCertificate {
+        pub fn new() -> Self {
+            let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+            let key = rustls::PrivateKey(cert.serialize_private_key_der());
+            let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
+            Self { cert, key }
         }
     }
 
-    impl rustls::client::ServerCertVerifier for SkipServerVerification {
-        fn verify_server_cert(
-            &self,
-            _end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
-            _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
-        ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-            Ok(rustls::client::ServerCertVerified::assertion())
-        }
-    }
-
-    pub fn server_config() -> rustls::ServerConfig {
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-        let key = rustls::PrivateKey(cert.serialize_private_key_der());
-        let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
+    pub fn server_config(cert: TestCertificate) -> rustls::ServerConfig {
         let mut config = rustls::ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(cert, key)
+            .with_single_cert(cert.cert, cert.key)
             .unwrap();
         config.alpn_protocols = vec![b"ufdp".to_vec()];
         config
     }
 
-    pub fn client_config() -> rustls::ClientConfig {
+    pub fn client_config(cert: TestCertificate) -> rustls::ClientConfig {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(&cert.cert.first().unwrap()).unwrap();
+
         let mut config = rustls::ClientConfig::builder()
             .with_safe_defaults()
-            .with_custom_certificate_verifier(SkipServerVerification::new())
+            .with_root_certificates(roots)
             .with_no_client_auth();
         config.alpn_protocols = vec![b"ufdp".to_vec()];
         config
