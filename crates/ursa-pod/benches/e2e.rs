@@ -299,10 +299,9 @@ mod http_hyper {
 #[cfg(feature = "bench-quic")]
 mod quinn_ufdp {
     use super::{
-        tls_utils::{client_config, server_config},
+        tls_utils::{client_config, server_config, TestCertificate},
         DummyBackend,
     };
-    use crate::tls_utils::TestCertificate;
     use futures::future::join_all;
     use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
     use std::{
@@ -424,8 +423,8 @@ mod quinn_ufdp {
     }
 }
 
-#[cfg(feature = "bench-quic")]
 mod tls_utils {
+    use rustls::{Certificate, ClientConfig, PrivateKey, ServerConfig};
     #[derive(Clone)]
     pub struct TestCertificate {
         pub cert: Vec<rustls::Certificate>,
@@ -435,14 +434,14 @@ mod tls_utils {
     impl TestCertificate {
         pub fn new() -> Self {
             let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-            let key = rustls::PrivateKey(cert.serialize_private_key_der());
-            let cert = vec![rustls::Certificate(cert.serialize_der().unwrap())];
+            let key = PrivateKey(cert.serialize_private_key_der());
+            let cert = vec![Certificate(cert.serialize_der().unwrap())];
             Self { cert, key }
         }
     }
 
-    pub fn server_config(cert: TestCertificate) -> rustls::ServerConfig {
-        let mut config = rustls::ServerConfig::builder()
+    pub fn server_config(cert: TestCertificate) -> ServerConfig {
+        let mut config = ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(cert.cert, cert.key)
@@ -451,11 +450,11 @@ mod tls_utils {
         config
     }
 
-    pub fn client_config(cert: TestCertificate) -> rustls::ClientConfig {
+    pub fn client_config(cert: TestCertificate) -> ClientConfig {
         let mut roots = rustls::RootCertStore::empty();
         roots.add(&cert.cert.first().unwrap()).unwrap();
 
-        let mut config = rustls::ClientConfig::builder()
+        let mut config = ClientConfig::builder()
             .with_safe_defaults()
             .with_root_certificates(roots)
             .with_no_client_auth();
