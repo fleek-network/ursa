@@ -117,6 +117,19 @@ fn protocol_benchmarks(c: &mut Criterion) {
             );
         }
 
+        {
+            let mut g = c.benchmark_group(format!("TCP/TLS UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                true,
+                unit,
+                tcp_tls_ufdp::client_loop,
+                tcp_tls_ufdp::server_loop,
+            );
+        }
+
         #[cfg(feature = "bench-hyper")]
         {
             let mut g = c.benchmark_group(format!("HTTP Hyper/{range}"));
@@ -218,6 +231,63 @@ mod tcp_ufdp {
         let mut tasks = vec![];
         for _ in 0..iterations {
             let stream = TcpStream::connect(&addr).await.unwrap();
+            let task = task::spawn(async {
+                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
+        }
+        join_all(tasks).await;
+    }
+}
+
+mod tcp_tls_ufdp {
+    use super::DummyBackend;
+    use crate::tls_utils::{client_config, server_config, TestCertificate};
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        task,
+    };
+    use tokio_rustls::{TlsAcceptor, TlsConnector};
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<u16>,
+        cert: Option<TestCertificate>,
+    ) {
+        let listener = TcpListener::bind(&addr).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tx_started.send(port).unwrap();
+
+        let acceptor = TlsAcceptor::from(Arc::new(server_config(cert.unwrap())));
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let stream = acceptor.accept(stream).await.unwrap();
+            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            task::spawn(async move {
+                if let Err(e) = handler.serve().await {
+                    println!("server error: {e:?}");
+                }
+            });
+        }
+    }
+
+    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
+        let domain = rustls::ServerName::try_from("localhost").unwrap();
+        let mut tasks = vec![];
+        for _ in 0..iterations {
+            let connector = TlsConnector::from(Arc::new(client_config(cert.clone().unwrap())));
+            let stream = TcpStream::connect(&addr).await.unwrap();
+            let stream = connector.connect(domain.clone(), stream).await.unwrap();
             let task = task::spawn(async {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
