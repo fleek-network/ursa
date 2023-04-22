@@ -5,7 +5,10 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::debug;
 
 use crate::{
-    connection::{consts::HANDSHAKE_RES_TAG, UfdpConnection, UrsaCodecError, UrsaFrame},
+    connection::{
+        consts::{DECRYPTION_KEY_RES_TAG, HANDSHAKE_RES_TAG},
+        UfdpConnection, UrsaCodecError, UrsaFrame,
+    },
     instrument,
     types::{Blake3Cid, BlsPublicKey},
 };
@@ -73,7 +76,7 @@ where
                 }) => {
                     // receive proof
                     let len = proof_len as usize;
-                    self.conn.take = len;
+                    self.conn.read_buffer(len);
                     let mut proof_buf = BytesMut::with_capacity(len);
                     loop {
                         match instrument!(
@@ -97,7 +100,7 @@ where
 
                     // receive block
                     let len = block_len as usize;
-                    self.conn.take = len;
+                    self.conn.read_buffer(len);
                     let mut block_buf = BytesMut::with_capacity(len);
                     size += len;
                     loop {
@@ -111,9 +114,8 @@ where
                                     break;
                                 }
                             }
-                            Some(e) => {
-                                return Err(UrsaCodecError::InvalidTag(e.tag().unwrap() as u8))
-                            }
+                            // SAFETY: will always return a buffer because of read_buffer() call
+                            Some(_) => unreachable!(),
                             None => return Err(UrsaCodecError::Unknown),
                         }
                     }
@@ -129,8 +131,12 @@ where
                     );
 
                     // receive decryption key
-                    match instrument!(self.conn.read_frame(None).await?, "tag=read_dk_res") {
+                    match instrument!(
+                        self.conn.read_frame(Some(DECRYPTION_KEY_RES_TAG)).await?,
+                        "tag=read_dk_res"
+                    ) {
                         Some(UrsaFrame::DecryptionKeyResponse { .. }) => {}
+                        Some(_) => unreachable!(),
                         _ => return Err(UrsaCodecError::Unknown),
                     }
                 }

@@ -4,6 +4,7 @@ use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use bytes::BytesMut;
 use consts::*;
+use futures::executor::block_on;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::types::{
@@ -91,7 +92,7 @@ pub struct LastLaneData {
 
 /// Frame tags
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrameTag {
     HandshakeRequest = HANDSHAKE_REQ_TAG,
     HandshakeResponse = HANDSHAKE_RES_TAG,
@@ -202,7 +203,7 @@ pub enum UrsaFrame {
         block_len: u64,
         signature: SchnorrSignature,
     },
-    /// Not a frame. Buffer contains a chunk of bytes initiated after the `UrsaCodec::read_buffer` method has been called.
+    /// Not a frame. Buffer contains a chunk of bytes initiated after the `UrsaCodec::frame_buffer` method has been called.
     /// It does *not* have a tag, and is used to chunk bytes after a [`UrsaFrame::ContentResponse`].
     Buffer(BytesMut),
     /// Client request for a range of chunks of content
@@ -321,7 +322,7 @@ impl From<UrsaCodecError> for std::io::Error {
 /// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
 pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
     pub stream: T,
-    read_buffer: BytesMut,
+    buffer: BytesMut,
     pub take: usize,
 }
 
@@ -332,17 +333,21 @@ where
     pub fn new(stream: T) -> Self {
         Self {
             stream,
-            read_buffer: BytesMut::with_capacity(16 * 1024),
+            // Our max frame size is 148, and the only instance of multiple frames back to back
+            // is within that size (ContentResponse + EoR), so maintaining at least 148 bytes is
+            // enough to always be able to read the next incoming frame(s) before we need to respond
+            buffer: BytesMut::with_capacity(148),
             take: 0,
         }
     }
 
+    /// Indicate the next len bytes are to be returned as a raw buffer. Always called after a content
+    /// response, to receive the raw proof and block bytes.
     #[inline(always)]
-    pub async fn termination_signal(&mut self, reason: Option<Reason>) -> std::io::Result<()> {
-        self.write_frame(UrsaFrame::TerminationSignal(
-            reason.unwrap_or(Reason::Unknown),
-        ))
-        .await
+    pub fn read_buffer(&mut self, len: usize) {
+        self.take = len;
+        // ensure we have enough space to read the entire chunk at once if possible
+        self.buffer.reserve(len);
     }
 
     #[inline(always)]
@@ -479,16 +484,15 @@ where
     #[inline(always)]
     pub async fn read_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
         loop {
+            // If we have a full frame, parse and return it
             if let Some(frame) = self.parse_frame(filter)? {
                 return Ok(Some(frame));
             }
 
-            if 0 == self.stream.read_buf(&mut self.read_buffer).await? {
-                // The remote closed the connection. For this to be
-                // a clean shutdown, there should be no data in the
-                // read buffer. If there is, this means that the
-                // peer closed the socket while sending a frame.
-                if self.read_buffer.is_empty() {
+            // Otherwise, read as many bytes as we can for a fixed frame
+            if 0 == self.stream.read_buf(&mut self.buffer).await? {
+                // handle connection closed
+                if self.buffer.is_empty() {
                     return Ok(None);
                 } else {
                     return Err(Error::new(
@@ -501,32 +505,48 @@ where
     }
 
     #[inline(always)]
-    fn parse_frame(&mut self, _filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
-        let len = self.read_buffer.len();
+    fn parse_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
+        let len = self.buffer.len();
         if len == 0 {
             return Ok(None);
         }
 
-        // should we be reading a chunk right now?
+        // Are we reading raw bytes?
         if self.take > 0 {
+            // return as many bytes as we can
             let take = len.min(self.take);
             self.take -= take;
-            return Ok(Some(UrsaFrame::Buffer(self.read_buffer.split_to(take))));
+            return Ok(Some(UrsaFrame::Buffer(self.buffer.split_to(take))));
         }
 
         // first frame byte is the tag
-        let (size_hint, tag) =
-            FrameTag::try_from(self.read_buffer[0]).map(|t| (t.size_hint(), t))?;
+        let (size_hint, tag) = FrameTag::try_from(self.buffer[0]).map(|t| (t.size_hint(), t))?;
 
-        // todo: utilize filter to be able to immediately return unexpected frame errors
+        if let Some(bitmap) = filter {
+            let val = tag as u8;
+            if val & bitmap != val {
+                block_on(async {
+                    self.termination_signal(Some(Reason::UnexpectedFrame))
+                        .await
+                        .ok() // we dont care about this result!
+                });
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("Invalid tag: {tag:?}"),
+                ));
+            }
+        }
 
         if len < size_hint {
             return Ok(None);
         }
 
+        // We're going to take the frame's length, so lets reserve the amount
+        self.buffer.reserve(tag.size_hint());
+
         match tag {
             FrameTag::HandshakeRequest => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let network = &buf[1..5];
                 if network != NETWORK {
                     return Err(UrsaCodecError::InvalidNetwork.into());
@@ -548,25 +568,26 @@ where
                 }))
             }
             FrameTag::HandshakeResponse => {
-                let (buf, last) = match self.read_buffer[43] {
+                // byte 43 identifies if the buffer has the additional last lane data or not
+                let (buf, last) = match self.buffer[43] {
                     0x80 => {
                         let size_hint = size_hint + 104;
                         if len < size_hint {
                             return Ok(None);
                         }
 
-                        let buf = self.read_buffer.split_to(size_hint);
+                        let buf = self.buffer.split_to(size_hint);
                         let bytes_bytes = *array_ref!(buf, 44, 8);
                         let bytes = u64::from_be_bytes(bytes_bytes);
                         let signature = *array_ref!(buf, 52, 96);
                         (buf, Some(LastLaneData { bytes, signature }))
                     }
-                    0x00 => (self.read_buffer.split_to(size_hint), None),
+                    0x00 => (self.buffer.split_to(size_hint), None),
                     _ => return Err(UrsaCodecError::Unknown.into()),
                 };
                 let lane = buf[1];
-                let epoch_bytes = *array_ref!(buf, 2, 8);
-                let epoch_nonce = u64::from_be_bytes(epoch_bytes);
+                let epoch_nonce_bytes = *array_ref!(buf, 2, 8);
+                let epoch_nonce = u64::from_be_bytes(epoch_nonce_bytes);
                 let pubkey = *array_ref!(buf, 10, 33);
 
                 Ok(Some(UrsaFrame::HandshakeResponse {
@@ -577,13 +598,13 @@ where
                 }))
             }
             FrameTag::ContentRequest => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let hash = Blake3Cid(*array_ref!(buf, 1, 32));
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
             FrameTag::ContentResponse => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let compression = buf[1];
                 let proof_len_bytes = *array_ref!(buf, 2, 8);
                 let proof_len = u64::from_be_bytes(proof_len_bytes);
@@ -602,7 +623,7 @@ where
                 }))
             }
             FrameTag::ContentRangeRequest => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let hash = Blake3Cid(*array_ref!(buf, 1, 32));
                 let chunk_start_bytes = *array_ref!(buf, 33, 8);
                 let chunk_start = u64::from_be_bytes(chunk_start_bytes);
@@ -615,7 +636,7 @@ where
                 }))
             }
             FrameTag::DecryptionKeyRequest => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let delivery_acknowledgment = *array_ref!(buf, 1, 96);
 
                 Ok(Some(UrsaFrame::DecryptionKeyRequest {
@@ -623,24 +644,24 @@ where
                 }))
             }
             FrameTag::DecryptionKeyResponse => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let decryption_key = *array_ref!(buf, 1, 33);
 
                 Ok(Some(UrsaFrame::DecryptionKeyResponse { decryption_key }))
             }
             FrameTag::UpdateEpochSignal => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let epoch_bytes = *array_ref!(buf, 1, 8);
                 let epoch_nonce = u64::from_be_bytes(epoch_bytes);
 
                 Ok(Some(UrsaFrame::UpdateEpochSignal(epoch_nonce)))
             }
             FrameTag::EndOfRequestSignal => {
-                let _ = self.read_buffer.split_to(1);
+                let _ = self.buffer.split_to(1);
                 Ok(Some(UrsaFrame::EndOfRequestSignal))
             }
             FrameTag::TerminationSignal => {
-                let buf = self.read_buffer.split_to(size_hint);
+                let buf = self.buffer.split_to(size_hint);
                 let byte = buf[1];
 
                 if let Some(reason) = Reason::from_u8(byte) {
@@ -650,6 +671,15 @@ where
                 }
             }
         }
+    }
+
+    /// Write a termination signal to the stream
+    #[inline(always)]
+    pub async fn termination_signal(&mut self, reason: Option<Reason>) -> std::io::Result<()> {
+        self.write_frame(UrsaFrame::TerminationSignal(
+            reason.unwrap_or(Reason::Unknown),
+        ))
+        .await
     }
 }
 
