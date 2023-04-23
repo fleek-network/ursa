@@ -19,7 +19,7 @@ pub trait Backend: Send + Sync + 'static {
     /// Get the raw content of a block.
     fn raw_block(&self, cid: &Blake3Cid, block: u64) -> Option<&[u8]>;
 
-    /// Get a decryption_key for a block, includes a block request id
+    /// Get a decryption_key for a block, includes a block request id.
     fn decryption_key(&self, request_id: u64) -> (Secp256k1AffinePoint, u64);
 
     /// Get a clients current balance.
@@ -29,7 +29,9 @@ pub trait Backend: Send + Sync + 'static {
     fn save_batch(&self, batch: BlsSignature) -> Result<(), String>;
 }
 
-/// UFDP Server. Handles any stream of data supporting [`AsyncWrite`] + [`AsyncRead`]
+/// UFDP Handler.
+///
+/// Accepts any stream of data supporting [`AsyncWrite`] + [`AsyncRead`], and a backend.
 pub struct UfdpHandler<S: AsyncRead + AsyncWrite + Unpin, B: Backend> {
     pub conn: UfdpConnection<S>,
     backend: Arc<B>,
@@ -90,7 +92,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         Ok(())
     }
 
-    /// Await and respond to a handshake
+    /// Wait and respond to a handshake request.
     #[inline(always)]
     pub async fn handshake(&mut self) -> Result<(), UrsaCodecError> {
         match instrument!(
@@ -121,7 +123,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         }
     }
 
-    /// Begin delivering content
+    /// Content delivery loop for a cid.
     #[inline(always)]
     pub async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
         #[cfg(feature = "benchmarks")]
@@ -142,6 +144,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         ) {
             block_number += 1;
 
+            // todo: integrate tree
             let proof = BytesMut::from(b"dummy_proof".as_slice());
             let decryption_key = [0; 33];
             let proof_len = proof.len() as u64;
@@ -173,7 +176,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 self.session_id
             );
 
-            // wait for delivery acknowledgment
+            // Wait for delivery acknowledgment
             match instrument!(
                 self.conn.read_frame(Some(DECRYPTION_KEY_REQ_TAG)).await?,
                 "sid={},tag=read_da,content_size={content_size},block_size={block_size}",
@@ -186,7 +189,8 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 Some(_) => unreachable!(),
             }
 
-            // send decryption key
+            // Send decryption key
+            // todo: integrate crypto
             instrument!(
                 self.conn
                     .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })

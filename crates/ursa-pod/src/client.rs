@@ -23,10 +23,11 @@ impl<S> UfdpClient<S>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
-    /// Create a new client, attempting to handshake with the destination
+    /// Create a new client, immediately attempting to handshake with the destination
     ///
     /// Accepts a stream implementing [`AsyncRead`] + [`AsyncWrite`],
-    /// as well as the client's public key
+    /// as well as the client's public key. If lane is none, then the server will select
+    /// it automatically.
     pub async fn new(
         stream: S,
         pubkey: BlsPublicKey,
@@ -34,7 +35,7 @@ where
     ) -> Result<Self, UrsaCodecError> {
         let mut conn = UfdpConnection::new(stream);
 
-        // send handshake
+        // Send handshake request.
         instrument!(
             conn.write_frame(UrsaFrame::HandshakeRequest {
                 version: 0,
@@ -46,7 +47,7 @@ where
             "tag=write_handshake_req"
         );
 
-        // receive handshake
+        // Receive handshake response
         match instrument!(
             conn.read_frame(Some(HANDSHAKE_RES_TAG)).await?,
             "tag=read_handshake_res"
@@ -67,6 +68,7 @@ where
         );
         let mut size = 0;
 
+        // Content response loop.
         loop {
             match instrument!(self.conn.read_frame(None).await?, "tag=read_content_res") {
                 Some(UrsaFrame::ContentResponse {
@@ -74,7 +76,7 @@ where
                     block_len,
                     ..
                 }) => {
-                    // receive proof
+                    // Receive proof
                     let len = proof_len as usize;
                     self.conn.read_buffer(len);
                     let mut proof_buf = BytesMut::with_capacity(len);
@@ -98,7 +100,7 @@ where
                         }
                     }
 
-                    // receive block
+                    // Receive block
                     let len = block_len as usize;
                     self.conn.read_buffer(len);
                     let mut block_buf = BytesMut::with_capacity(len);
@@ -120,7 +122,8 @@ where
                         }
                     }
 
-                    // send decryption key request
+                    // Send decryption key request
+                    // todo: crypto integration
                     instrument!(
                         self.conn
                             .write_frame(UrsaFrame::DecryptionKeyRequest {
@@ -130,12 +133,14 @@ where
                         "tag=write_dk_req"
                     );
 
-                    // receive decryption key
+                    // Receive decryption key
                     match instrument!(
                         self.conn.read_frame(Some(DECRYPTION_KEY_RES_TAG)).await?,
                         "tag=read_dk_res"
                     ) {
-                        Some(UrsaFrame::DecryptionKeyResponse { .. }) => {}
+                        Some(UrsaFrame::DecryptionKeyResponse { .. }) => {
+                            // todo: decrypt block & verify data
+                        }
                         Some(_) => unreachable!(),
                         _ => return Err(UrsaCodecError::Unknown),
                     }
@@ -149,7 +154,7 @@ where
         Ok(size)
     }
 
-    /// Get the lane assigned to the connection
+    /// Get the lane assigned to the client connection
     pub fn lane(&self) -> u8 {
         self.lane
     }

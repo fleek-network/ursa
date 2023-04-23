@@ -335,18 +335,20 @@ where
             stream,
             // Our max frame size is 148, and the only instance of multiple frames back to back
             // is within that size (ContentResponse + EoR), so maintaining at least 148 bytes is
-            // enough to always be able to read the next incoming frame(s) before we need to respond
+            // enough to always be able to read the next incoming frame(s) in one pass before we
+            // need to respond. For proof and block buffers, read_buffer is called before hand,
+            // which will ensure we have enough space to read the entire chunk at once.
             buffer: BytesMut::with_capacity(148),
             take: 0,
         }
     }
 
-    /// Indicate the next len bytes are to be returned as a raw buffer. Always called after a content
+    /// Indicate the next `len` bytes are to be returned as a raw buffer. Always called after a content
     /// response, to receive the raw proof and block bytes.
     #[inline(always)]
     pub fn read_buffer(&mut self, len: usize) {
         self.take = len;
-        // ensure we have enough space to read the entire chunk at once if possible
+        // Ensure we have enough space to read the entire chunk at once if possible.
         self.buffer.reserve(len);
     }
 
@@ -484,14 +486,15 @@ where
     #[inline(always)]
     pub async fn read_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
         loop {
-            // If we have a full frame, parse and return it
+            // If we have a full frame, parse and return it.
             if let Some(frame) = self.parse_frame(filter)? {
                 return Ok(Some(frame));
             }
 
-            // Otherwise, read as many bytes as we can for a fixed frame
+            // Otherwise, read as many bytes as we can for a fixed frame.
             if 0 == self.stream.read_buf(&mut self.buffer).await? {
-                // handle connection closed
+                // Handle connection closed. If there are bytes in the buffer, it means the
+                // connection was interrupted mid-transmission.
                 if self.buffer.is_empty() {
                     return Ok(None);
                 } else {
@@ -513,13 +516,13 @@ where
 
         // Are we reading raw bytes?
         if self.take > 0 {
-            // return as many bytes as we can
+            // Return as many bytes as we can.
             let take = len.min(self.take);
             self.take -= take;
             return Ok(Some(UrsaFrame::Buffer(self.buffer.split_to(take))));
         }
 
-        // first frame byte is the tag
+        // First frame byte is always the tag.
         let (size_hint, tag) = FrameTag::try_from(self.buffer[0]).map(|t| (t.size_hint(), t))?;
 
         if let Some(bitmap) = filter {
@@ -528,7 +531,7 @@ where
                 block_on(async {
                     self.termination_signal(Some(Reason::UnexpectedFrame))
                         .await
-                        .ok() // we dont care about this result!
+                        .ok() // We dont care about this result!
                 });
                 return Err(Error::new(
                     ErrorKind::InvalidData,
@@ -541,7 +544,7 @@ where
             return Ok(None);
         }
 
-        // We're going to take the frame's length, so lets reserve the amount
+        // We're going to take the frame's length, so lets reserve the amount for the next frame.
         self.buffer.reserve(tag.size_hint());
 
         match tag {
@@ -568,9 +571,11 @@ where
                 }))
             }
             FrameTag::HandshakeResponse => {
-                // byte 43 identifies if the buffer has the additional last lane data or not
+                // The 43rd byte of a handshake response identifies if the buffer includes the
+                // last lane data or not.
                 let (buf, last) = match self.buffer[43] {
                     0x80 => {
+                        // Frame data is present.
                         let size_hint = size_hint + 104;
                         if len < size_hint {
                             return Ok(None);
@@ -582,6 +587,7 @@ where
                         let signature = *array_ref!(buf, 52, 96);
                         (buf, Some(LastLaneData { bytes, signature }))
                     }
+                    // todo: double check this
                     0x00 => (self.buffer.split_to(size_hint), None),
                     _ => return Err(UrsaCodecError::Unknown.into()),
                 };
@@ -673,7 +679,7 @@ where
         }
     }
 
-    /// Write a termination signal to the stream
+    /// Write a termination signal to the stream.
     #[inline(always)]
     pub async fn termination_signal(&mut self, reason: Option<Reason>) -> std::io::Result<()> {
         self.write_frame(UrsaFrame::TerminationSignal(
