@@ -203,7 +203,7 @@ pub enum UrsaFrame {
         block_len: u64,
         signature: SchnorrSignature,
     },
-    /// Not a frame. Buffer contains a chunk of bytes initiated after the `UrsaCodec::frame_buffer` method has been called.
+    /// Not a frame. Buffer contains a chunk of bytes initiated after the [`UfdpConnection::read_buffer`] method has been called.
     /// It does *not* have a tag, and is used to chunk bytes after a [`UrsaFrame::ContentResponse`].
     Buffer(BytesMut),
     /// Client request for a range of chunks of content
