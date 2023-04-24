@@ -114,7 +114,7 @@ impl From<[u8; 96]> for SymmetricKey {
 
 pub mod libsodium_impl {
     use super::*;
-    use crate::crypto::key::{FixedSizeEncoding, SecretKey};
+    use crate::crypto::key::FixedSizeEncoding;
     use alkali::asymmetric::sign::{ed25519 as sign, SignError};
     use alkali::curve::ed25519 as curve;
     use alkali::AlkaliError;
@@ -217,7 +217,7 @@ pub mod libsodium_impl {
             let point = h.scalar_mult(&sk.scalar)?;
 
             let keypair = sign::Keypair::from_private_key(&sk.private_key)?;
-            let message = hash_to_symmetric_key_commitment(&point.0, &request_info_hash);
+            let message = hash_to_symmetric_key_commitment(&point.0, request_info_hash);
             let sign = sign::sign_detached(&message, &keypair)?;
 
             Ok(SymmetricKey {
@@ -231,7 +231,7 @@ pub mod libsodium_impl {
             request_info_hash: &[u8; 32],
             key: &SymmetricKey,
         ) -> Result<Option<CipherKey>, Self::Error> {
-            let message = hash_to_symmetric_key_commitment(&key.point, &request_info_hash);
+            let message = hash_to_symmetric_key_commitment(&key.point, request_info_hash);
             let signature = sign::Signature(key.signature);
             let result = sign::verify_detached(&message, &signature, &pk.0);
 
@@ -288,28 +288,25 @@ mod tests {
         let signature = E::sign_ciphertext(&sk, &ciphertext_hash, &request_info_hash)
             .expect("Failed to sign message.");
 
-        assert_eq!(
-            E::verify_ciphertext(&pk, &ciphertext_hash, &request_info_hash, &signature).unwrap(),
-            true
+        assert!(
+            E::verify_ciphertext(&pk, &ciphertext_hash, &request_info_hash, &signature).unwrap()
         );
 
-        assert_eq!(
-            E::verify_ciphertext(&pk, &ciphertext_hash, &request_info_hash, &[0; 64]).unwrap(),
-            false
+        assert!(
+            E::verify_ciphertext(&pk, &ciphertext_hash, &request_info_hash, &[0; 64]).unwrap()
         );
 
-        assert_eq!(
+        assert!(
             E::verify_ciphertext(
                 &<E::PublicKey as FixedSizeEncoding<32>>::try_from_bytes(&[0; 32]).unwrap(),
                 &ciphertext_hash,
                 &request_info_hash,
                 &signature
             )
-            .unwrap(),
-            false
+            .unwrap()
         );
 
-        assert_eq!(
+        assert!(
             E::verify_ciphertext(
                 &pk,
                 // swap
@@ -317,18 +314,15 @@ mod tests {
                 &ciphertext_hash,
                 &signature
             )
-            .unwrap(),
-            false
+            .unwrap()
         );
 
-        assert_eq!(
-            E::verify_ciphertext(&pk, &[0; 32], &request_info_hash, &signature).unwrap(),
-            false
+        assert!(
+            E::verify_ciphertext(&pk, &[0; 32], &request_info_hash, &signature).unwrap()
         );
 
-        assert_eq!(
-            E::verify_ciphertext(&pk, &ciphertext_hash, &[0; 32], &signature).unwrap(),
-            false
+        assert!(
+            E::verify_ciphertext(&pk, &ciphertext_hash, &[0; 32], &signature).unwrap()
         );
     }
 

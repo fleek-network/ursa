@@ -95,7 +95,7 @@ impl<Ed25519: ed25519::Ed25519Engine, Cipher: aes::CipherEngine> Engine<Ed25519,
 #[inline]
 pub fn hash_ciphertext(cipher: &[u8]) -> [u8; 32] {
     let len = cipher.len();
-    if len >= 256 * 1024 || (len >= 128 * 1024 && len <= 138 * 1023) {
+    if len >= 256 * 1024 || (128 * 1024..=138 * 1023).contains(&len) {
         // Use rayon on specific sizes that actually improves the performance.
         *blake3::Hasher::new_keyed(&domain_separators::CIPHERTEXT_DIGEST)
             .update_rayon(cipher)

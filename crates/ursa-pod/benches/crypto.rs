@@ -151,7 +151,7 @@ fn bench_primitives(c: &mut Criterion) {
             BenchmarkId::new("hash_ciphertext", size),
             &size,
             |b, size| {
-                let input = random_vec(*size);
+                let _input = random_vec(*size);
                 b.iter(|| {
                     // let hash = hash_ciphertext(&input);
                     // black_box(hash);
@@ -163,8 +163,8 @@ fn bench_primitives(c: &mut Criterion) {
             BenchmarkId::new("apply_aes_128_ctr", size),
             &size,
             |b, size| {
-                let mut output = mk_vec(*size);
-                let input = random_vec(*size);
+                let output = mk_vec(*size);
+                let _input = random_vec(*size);
                 b.iter(|| {
                     // apply_aes_128_ctr(Mode::Encrypt, [0; 32], &input, &mut output);
                     black_box(&output);
@@ -182,8 +182,8 @@ fn bench_routines(c: &mut Criterion) {
         g.throughput(Throughput::Bytes(size as u64));
 
         g.bench_with_input(BenchmarkId::new("encrypt_block", size), &size, |b, size| {
-            let mut output = mk_vec(*size + 64);
-            let input = random_vec(*size);
+            let output = mk_vec(*size + 64);
+            let _input = random_vec(*size);
             // let sk = SecretKey::random(OsRng);
             // let req = RequestInfo::rand(OsRng);
             b.iter(|| {
