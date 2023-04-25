@@ -160,7 +160,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
 
         #[cfg(feature = "bench-websockets")]
         {
-            let mut g = c.benchmark_group(format!("TCP/TLS UFDP/{range}"));
+            let mut g = c.benchmark_group(format!("WEBSOCKETS UFDP/{range}"));
             g.sample_size(20);
             benchmark_sizes(
                 &mut g,
@@ -328,6 +328,7 @@ mod websocket_ufdp {
     use tokio_rustls::TlsAcceptor;
     use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use tokio_tungstenite::{Connector, WebSocketStream};
+    use url::Url;
     use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
@@ -365,7 +366,7 @@ mod websocket_ufdp {
     pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
         let mut tasks = vec![];
         for _ in 0..iterations {
-            let url = url::Url::parse(&addr).unwrap();
+            let url = Url::parse(format!("ws://{addr}/").as_str()).unwrap();
             let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                 url,
                 Some(WebSocketConfig::default()),
