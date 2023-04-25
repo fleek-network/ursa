@@ -28,6 +28,7 @@ serde.workspace = true
 serde_json.workspace = true
 simple_logger.workspace = true
 surf.workspace = true
+tendermint-proto.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
@@ -39,7 +40,7 @@ ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
 ursa-consensus = { path = "../ursa-consensus" }
-tm-protos = "0.1.3"
+
 
 [dependencies.libp2p]
 workspace = true

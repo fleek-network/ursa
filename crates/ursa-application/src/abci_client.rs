@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use async_abci::codec::{decode_length_delimited, encode_length_delimited};
-use bytes::{Buf, BytesMut};
-use tm_protos::abci::{
+use bytes::{Buf, BufMut, BytesMut};
+use prost::Message;
+use tendermint_proto::abci::{
     request, response, Request, RequestApplySnapshotChunk, RequestBeginBlock, RequestCheckTx,
     RequestCommit, RequestDeliverTx, RequestEcho, RequestEndBlock, RequestFlush, RequestInfo,
     RequestInitChain, RequestListSnapshots, RequestLoadSnapshotChunk, RequestOfferSnapshot,
@@ -16,6 +16,8 @@ use tokio::net::UnixStream;
 /// The size of the read buffer for the client in its receiving of responses
 /// from the server.
 pub const DEFAULT_CLIENT_READ_BUF_SIZE: usize = 1024;
+
+pub const MAX_VARINT_LENGTH: usize = 16;
 
 pub struct ClientBuilder {
     read_buf_size: usize,
@@ -77,33 +79,7 @@ impl Client {
     /// To be called once upon genesis.
     pub async fn init_chain(&mut self, req: RequestInitChain) -> Result<ResponseInitChain> {
         //perform!(self, InitChain, req)
-        self.codec
-            .send(Request {
-                value: Some(request::Value::InitChain(req)),
-            })
-            .await?;
-        self.codec
-            .send(Request {
-                value: Some(request::Value::Flush(RequestFlush {})),
-            })
-            .await?;
-
-        let res = self
-            .codec
-            .next()
-            .await
-            .ok_or_else(|| anyhow!("Server connection terminated"))??;
-
-        match res
-            .value
-            .ok_or_else(|| anyhow!("unexpected server response"))
-        {
-            Ok(response::Value::InitChain(r)) => Ok(r),
-            _ => {
-                tracing::error!("Wrong type");
-                Ok(ResponseInitChain::default())
-            }
-        }
+        perform!(self, InitChain, req)
     }
 
     /// Query the application for data at the current or past height.
@@ -249,4 +225,58 @@ impl ClientCodec {
 
         Ok(())
     }
+}
+
+/// Encode the given message with a length prefix.
+pub fn encode_length_delimited<M, B>(message: M, mut dst: &mut B) -> Result<()>
+where
+    M: Message,
+    B: BufMut,
+{
+    let mut buf = BytesMut::new();
+    message.encode(&mut buf)?;
+
+    let buf = buf.freeze();
+    encode_varint(buf.len() as u64, &mut dst);
+    dst.put(buf);
+    Ok(())
+}
+
+/// Attempt to decode a message of type `M` from the given source buffer.
+pub fn decode_length_delimited<M>(src: &mut BytesMut) -> Result<Option<M>>
+where
+    M: Message + Default,
+{
+    let src_len = src.len();
+    let mut tmp = src.clone().freeze();
+    let encoded_len = match decode_varint(&mut tmp) {
+        Ok(len) => len,
+        // We've potentially only received a partial length delimiter
+        Err(_) if src_len <= MAX_VARINT_LENGTH => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let remaining = tmp.remaining() as u64;
+    if remaining < encoded_len {
+        // We don't have enough data yet to decode the entire message
+        Ok(None)
+    } else {
+        let delim_len = src_len - tmp.remaining();
+        // We only advance the source buffer once we're sure we have enough
+        // data to try to decode the result.
+        src.advance(delim_len + (encoded_len as usize));
+
+        let mut result_bytes = BytesMut::from(tmp.split_to(encoded_len as usize).as_ref());
+        let res = M::decode(&mut result_bytes)?;
+
+        Ok(Some(res))
+    }
+}
+
+pub fn encode_varint<B: BufMut>(val: u64, mut buf: &mut B) {
+    prost::encoding::encode_varint(val << 1, &mut buf);
+}
+
+pub fn decode_varint<B: Buf>(mut buf: &mut B) -> Result<u64> {
+    let len = prost::encoding::decode_varint(&mut buf)?;
+    Ok(len >> 1)
 }

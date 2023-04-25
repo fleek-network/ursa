@@ -22,12 +22,11 @@ tracing-subscriber.workspace = true
 tracing-error.workspace = true
 ethers.workspace = true
 
-tm-protos = "0.1.3"
 async-abci = { version = "0.1.8", default-features = false, features = [
     "tokio-backend",
 ] }
 abci-rs = { version = "0.11.3", features = ["async-api"] }
-tm-abci = "0.1.2"
+
 revm = { version = "3.1.0", features = ["serde"] }
 hex = "0.4.3"
 tendermint-abci = { version = "0.23.7", features = ["client"] }
@@ -35,6 +34,6 @@ tendermint-proto = "0.23.7"
 reqwest = "0.11.11"
 parking_lot = "0.12.1"
 ursa-utils = { path = "../ursa-utils" }
-prost = { version = "0.11", default-features = false, features = [
+prost = { version = "0.10.4", default-features = false, features = [
     "prost-derive",
 ] }

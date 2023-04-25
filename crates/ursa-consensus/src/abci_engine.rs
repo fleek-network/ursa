@@ -12,11 +12,11 @@ use narwhal_types::{Batch, Transaction};
 // Tendermint Types
 use crate::AbciQueryQuery;
 //use tendermint_abci::{Client as AbciClient, ClientBuilder};
-use tm_protos::abci::{
+use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
     RequestQuery, ResponseQuery,
 };
-use tm_protos::types::Header;
+use tendermint_proto::types::Header;
 use ursa_application::{Client as AbciClient, ClientBuilder, ExecutionResponse};
 
 pub const CHANNEL_CAPACITY: usize = 1_000;

@@ -22,7 +22,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use surf::{http::Method, Client, RequestBuilder};
-use tm_protos::abci::ResponseQuery;
+use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::{
     mpsc::{unbounded_channel, Sender as BoundedSender, UnboundedSender as Sender},
     oneshot, RwLock,

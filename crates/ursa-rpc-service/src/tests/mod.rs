@@ -7,7 +7,7 @@ use db::MemoryDB;
 use libp2p::identity::Keypair;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
-use tm_protos::abci::ResponseQuery;
+use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::{
     mpsc::{channel, Sender as BoundedSender},
     oneshot,

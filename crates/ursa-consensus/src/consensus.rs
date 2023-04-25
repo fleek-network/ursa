@@ -9,7 +9,7 @@ use resolve_path::PathResolveExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tm_protos::abci::ResponseQuery;
+use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::{pin, select, task, time};
 use tracing::error;
