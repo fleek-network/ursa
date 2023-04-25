@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
-use std::net::SocketAddr;
+use resolve_path::PathResolveExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::{pin, select, time};
@@ -10,19 +11,19 @@ use narwhal_types::{Batch, Transaction};
 
 // Tendermint Types
 use crate::AbciQueryQuery;
-use tendermint_abci::{Client as AbciClient, ClientBuilder};
-use tendermint_proto::abci::{
+//use tendermint_abci::{Client as AbciClient, ClientBuilder};
+use tm_protos::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
     RequestQuery, ResponseQuery,
 };
-use tendermint_proto::types::Header;
-use ursa_application::ExecutionResponse;
+use tm_protos::types::Header;
+use ursa_application::{Client as AbciClient, ClientBuilder, ExecutionResponse};
 
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
 pub struct Engine {
-    /// The address of the ABCI app.
-    app_address: SocketAddr,
+    /// The path to the UDS of the ABCI app.
+    abci_uds: PathBuf,
     /// The blocking Abci client connected to the application layer, for executing certificates.
     client: AbciClient,
     /// The blocking abci client for used only for querys, holds info connection only.
@@ -37,15 +38,19 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub async fn new(app_address: SocketAddr) -> Self {
+    pub async fn new(abci_uds: PathBuf) -> Self {
         //Todo(dalton): handle his elegently. We are getting here too fast and application server
         // is not starting in time.
         time::sleep(time::Duration::from_millis(500)).await;
-
-        let mut client = ClientBuilder::default().connect(app_address).unwrap();
+        let resolved_path = abci_uds.resolve();
+        let mut client = ClientBuilder::default()
+            .connect(resolved_path.clone())
+            .await
+            .unwrap();
 
         let last_block_height = client
             .info(RequestInfo::default())
+            .await
             .map(|res| res.last_block_height)
             .unwrap_or_default();
 
@@ -54,10 +59,18 @@ impl Engine {
         let reconfigure_notifier = Arc::new(Notify::new());
 
         // Instantiate a new client to not be locked in an Info connection.
-        let client = ClientBuilder::default().connect(app_address).unwrap();
-        let req_client = ClientBuilder::default().connect(app_address).unwrap();
+        let client = ClientBuilder::default()
+            .connect(resolved_path.clone())
+            .await
+            .unwrap();
+
+        let req_client = ClientBuilder::default()
+            .connect(resolved_path)
+            .await
+            .unwrap();
+
         Self {
-            app_address,
+            abci_uds,
             client,
             req_client,
             last_block_height,
@@ -70,17 +83,17 @@ impl Engine {
     }
 
     pub async fn start(&mut self, shutdown_controller: ShutdownController) -> Result<()> {
-        self.init_chain()?;
+        self.init_chain().await?;
 
         loop {
             let shutdown_future = shutdown_controller.notify.notified();
             pin!(shutdown_future);
             select! {
                 Some(batches) = self.rx_certificates.recv() => {
-                    self.handle_cert(batches)?;
+                    self.handle_cert(batches).await?;
                 },
                 Some((tx, req)) = self.rx_abci_queries.recv() => {
-                    self.handle_abci_query(tx, req)?;
+                    self.handle_abci_query(tx, req).await?;
                 }
                 _ = shutdown_future => break,
                 else => break,
@@ -106,7 +119,7 @@ impl Engine {
 
     /// On each new certificate, increment the block height to proposed and run through the
     /// BeginBlock -> DeliverTx for each tx in the certificate -> EndBlock -> Commit event loop.
-    fn handle_cert(&mut self, batch: Vec<Batch>) -> Result<()> {
+    async fn handle_cert(&mut self, batch: Vec<Batch>) -> Result<()> {
         // Increment block.
         let proposed_block_height = self.last_block_height + 1;
 
@@ -114,11 +127,11 @@ impl Engine {
         self.last_block_height = proposed_block_height;
 
         // Drive the app through the event loop.
-        self.begin_block(proposed_block_height)?;
+        self.begin_block(proposed_block_height).await?;
         // If the results of execution are to change the epoch wait until after block is committed.
-        let change_epoch = self.deliver_batch(batch)?;
-        self.end_block(proposed_block_height)?;
-        self.commit()?;
+        let change_epoch = self.deliver_batch(batch).await?;
+        self.end_block(proposed_block_height).await?;
+        self.commit().await?;
 
         if change_epoch {
             self.reconfigure_notifier.notify_waiters();
@@ -132,7 +145,7 @@ impl Engine {
     /// Primary and then to the client.
     ///
     /// Client => Primary => handle_cert => ABCI App => Primary => Client
-    fn handle_abci_query(
+    async fn handle_abci_query(
         &mut self,
         tx: oneshot::Sender<ResponseQuery>,
         req: AbciQueryQuery,
@@ -140,13 +153,15 @@ impl Engine {
         let req_height = req.height.unwrap_or(0);
         let req_prove = req.prove.unwrap_or(false);
 
-        let resp = self.req_client.query(RequestQuery {
-            data: req.data.into(),
-            path: req.path,
-            height: req_height as i64,
-            prove: req_prove,
-        })?;
-
+        let resp = self
+            .req_client
+            .query(RequestQuery {
+                data: req.data.into(),
+                path: req.path,
+                height: req_height as i64,
+                prove: req_prove,
+            })
+            .await?;
         if let Err(err) = tx.send(resp) {
             bail!("{:?}", err);
         }
@@ -156,13 +171,13 @@ impl Engine {
     /// Reconstructs the batch corresponding to the provided Primary's certificate from the Workers' stores
     /// and proceeds to deliver each tx to the App over ABCI's DeliverTx endpoint.
     /// Returns true if the epoch should change based on the results of execution.
-    fn deliver_batch(&mut self, batches: Vec<Batch>) -> Result<bool> {
+    async fn deliver_batch(&mut self, batches: Vec<Batch>) -> Result<bool> {
         //Deliver
         let mut change_epoch = false;
 
         for batch in batches {
             for txn in batch.transactions {
-                let results = self.deliver_tx(txn)?;
+                let results = self.deliver_tx(txn).await?;
                 if results {
                     change_epoch = true;
                 }
@@ -176,9 +191,11 @@ impl Engine {
 // Tendermint Lifecycle Helpers.
 impl Engine {
     /// Calls the `InitChain` hook on the app, ignores "already initialized" errors.
-    pub fn init_chain(&mut self) -> Result<()> {
-        let mut client = ClientBuilder::default().connect(self.app_address)?;
-        if let Err(err) = client.init_chain(RequestInitChain::default()) {
+    pub async fn init_chain(&mut self) -> Result<()> {
+        let mut client = ClientBuilder::default()
+            .connect(self.abci_uds.clone().resolve())
+            .await?;
+        if let Err(err) = client.init_chain(RequestInitChain::default()).await {
             // Ignore errors about the chain being already initialized.
             if err.to_string().contains("already initialized") {
                 warn!("{}", err);
@@ -193,7 +210,7 @@ impl Engine {
     /// the new block height.
     // If we wanted to, we could add additional arguments to be forwarded from the Consensus
     // to the App logic on the beginning of each block.
-    fn begin_block(&mut self, height: i64) -> Result<()> {
+    async fn begin_block(&mut self, height: i64) -> Result<()> {
         let req = RequestBeginBlock {
             header: Some(Header {
                 height,
@@ -202,13 +219,13 @@ impl Engine {
             ..Default::default()
         };
 
-        self.client.begin_block(req)?;
+        self.client.begin_block(req).await?;
         Ok(())
     }
 
     /// Calls the `DeliverTx` hook on the ABCI app. Returns true if the result of the tx says the epoch should change.
-    fn deliver_tx(&mut self, tx: Transaction) -> Result<bool> {
-        let response = self.client.deliver_tx(RequestDeliverTx { tx })?;
+    async fn deliver_tx(&mut self, tx: Transaction) -> Result<bool> {
+        let response = self.client.deliver_tx(RequestDeliverTx { tx }).await?;
 
         if let Ok(ExecutionResponse::ChangeEpoch) = serde_json::from_slice(&response.data) {
             return Ok(true);
@@ -220,15 +237,15 @@ impl Engine {
     /// the proposed block height.
     // If we wanted to, we could add additional arguments to be forwarded from the Consensus
     // to the App logic on the end of each block.
-    fn end_block(&mut self, height: i64) -> Result<()> {
+    async fn end_block(&mut self, height: i64) -> Result<()> {
         let req = RequestEndBlock { height };
-        self.client.end_block(req)?;
+        self.client.end_block(req).await?;
         Ok(())
     }
 
     /// Calls the `Commit` hook on the ABCI app.
-    fn commit(&mut self) -> Result<()> {
-        self.client.commit()?;
+    async fn commit(&mut self) -> Result<()> {
+        self.client.commit().await?;
         Ok(())
     }
 }

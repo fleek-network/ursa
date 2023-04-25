@@ -15,7 +15,7 @@ axum.workspace = true
 tracing-subscriber.workspace = true
 bytes.workspace = true
 db.workspace = true
-ethers.workspace = true 
+ethers.workspace = true
 fnv.workspace = true
 futures.workspace = true
 fvm_ipld_blockstore.workspace = true
@@ -28,22 +28,20 @@ serde.workspace = true
 serde_json.workspace = true
 simple_logger.workspace = true
 surf.workspace = true
-tendermint-proto.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
 tower-http = { workspace = true, features = ["limit"] }
 tracing.workspace = true
-ursa-application = { path = "../ursa-application"}
+ursa-application = { path = "../ursa-application" }
 ursa-index-provider = { path = "../ursa-index-provider" }
 ursa-metrics = { path = "../ursa-metrics" }
 ursa-network = { path = "../ursa-network" }
 ursa-store = { path = "../ursa-store" }
-ursa-consensus = { path = "../ursa-consensus"}
+ursa-consensus = { path = "../ursa-consensus" }
+tm-protos = "0.1.3"
 
 [dependencies.libp2p]
 workspace = true
 default-features = false
-features = [
-    "identify",
-]
+features = ["identify"]

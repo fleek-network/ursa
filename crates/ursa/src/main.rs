@@ -4,8 +4,8 @@ use db::{rocks::RocksDb, rocks_config::RocksDbConfig};
 use dotenv::dotenv;
 use resolve_path::PathResolveExt;
 use scopeguard::defer;
+use std::env;
 use std::sync::Arc;
-use std::{env, net::SocketAddr};
 use structopt::StructOpt;
 use tokio::sync::mpsc::channel;
 use tokio::task;
@@ -118,9 +118,8 @@ async fn run() -> Result<()> {
     );
     let index_provider_router = index_provider_engine.router();
 
-    // Store the app address before passing to application so we can give to abci_engine.
-    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
-    app_address.set_ip("0.0.0.0".parse()?);
+    // The Unix Domain Socket used to communicate with the application layer
+    let app_socket = application_config.abci_uds.clone();
 
     // Start the application server.
     let application_task = task::spawn(async move {
@@ -143,7 +142,7 @@ async fn run() -> Result<()> {
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
 
     // Create engine so we can grab senders.
-    let mut abci_engine = Engine::new(app_address).await;
+    let mut abci_engine = Engine::new(app_socket).await;
 
     // Store the senders from the engine.
     let tx_abci_queries = abci_engine.get_abci_queries_sender();
