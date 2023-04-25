@@ -157,6 +157,20 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 quinn_ufdp::server_loop,
             );
         }
+
+        #[cfg(feature = "bench-websockets")]
+        {
+            let mut g = c.benchmark_group(format!("TCP/TLS UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                true,
+                unit,
+                tcp_tls_ufdp::client_loop,
+                tcp_tls_ufdp::server_loop,
+            );
+        }
     }
 }
 
@@ -296,6 +310,137 @@ mod tcp_tls_ufdp {
             tasks.push(task);
         }
         join_all(tasks).await;
+    }
+}
+
+#[cfg(feature = "bench-websockets")]
+mod websocket_ufdp {
+    use super::DummyBackend;
+    use crate::tls_utils::{client_config, server_config, TestCertificate};
+    use futures::future::join_all;
+    use futures::{ready, Sink, TryStream};
+    use std::io;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+    use tokio::{net::TcpListener, task};
+    use tokio_rustls::TlsAcceptor;
+    use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+    use tokio_tungstenite::{Connector, WebSocketStream};
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<u16>,
+        cert: Option<TestCertificate>,
+    ) {
+        let listener = TcpListener::bind(&addr).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tx_started.send(port).unwrap();
+
+        let acceptor = TlsAcceptor::from(Arc::new(server_config(cert.unwrap())));
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let stream = acceptor.accept(stream).await.unwrap();
+            let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let handler = UfdpHandler::new(
+                WebSocketStreamWrap::new(stream),
+                DummyBackend { content },
+                0,
+            );
+            task::spawn(async move {
+                if let Err(e) = handler.serve().await {
+                    println!("server error: {e:?}");
+                }
+            });
+        }
+    }
+
+    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
+        let mut tasks = vec![];
+        for _ in 0..iterations {
+            let url = url::Url::parse(&addr).unwrap();
+            let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
+                url,
+                Some(WebSocketConfig::default()),
+                Some(Connector::Rustls(Arc::new(client_config(
+                    cert.clone().unwrap(),
+                )))),
+            )
+            .await
+            .unwrap();
+            let task = task::spawn(async {
+                let mut client =
+                    UfdpClient::new(WebSocketStreamWrap::new(stream), CLIENT_PUB_KEY, None)
+                        .await
+                        .unwrap();
+
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
+        }
+        join_all(tasks).await;
+    }
+
+    pub struct WebSocketStreamWrap<S> {
+        inner: WebSocketStream<S>,
+        current_item: Option<io::Cursor<tokio_tungstenite::tungstenite::Message>>,
+    }
+
+    impl<S> WebSocketStreamWrap<S> {
+        fn new(inner: WebSocketStream<S>) -> Self {
+            Self {
+                inner,
+                current_item: None,
+            }
+        }
+    }
+
+    impl<S: AsyncWrite + AsyncRead + Unpin> AsyncWrite for WebSocketStreamWrap<S> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            let mut inner = self.as_mut();
+            ready!(Pin::new(&mut inner.inner)
+                .poll_ready(cx)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?);
+            let len = buf.len();
+            if let Err(e) = Pin::new(&mut inner.inner).start_send(buf.into()) {
+                return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e.to_string())));
+            }
+            Poll::Ready(Ok(len))
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner)
+                .poll_flush(cx)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner)
+                .poll_close(cx)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+        }
+    }
+
+    impl<S: AsyncWrite + AsyncRead + Unpin> AsyncRead for WebSocketStreamWrap<S> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            // TODO: Read
+            Poll::Ready(Ok(()))
+        }
     }
 }
 
