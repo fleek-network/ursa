@@ -167,8 +167,8 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 files,
                 true,
                 unit,
-                tcp_tls_ufdp::client_loop,
-                tcp_tls_ufdp::server_loop,
+                websocket_ufdp::client_loop,
+                websocket_ufdp::server_loop,
             );
         }
     }
@@ -438,7 +438,25 @@ mod websocket_ufdp {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
-            // TODO: Read
+            let item_to_copy = loop {
+                if let Some(ref mut i) = self.current_item {
+                    if i.position() < i.get_ref().len() as u64 {
+                        break i;
+                    }
+                }
+                self.current_item =
+                    Some(match ready!(Pin::new(&mut self.inner).try_poll_next(cx)) {
+                        Some(Ok(i)) => io::Cursor::new(i),
+                        Some(Err(e)) => {
+                            return Poll::Ready(Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                e.to_string(),
+                            )))
+                        }
+                        None => return Poll::Ready(Ok(())),
+                    });
+            };
+            buf.put_slice(item_to_copy.get_ref().clone().into_data().as_slice());
             Poll::Ready(Ok(()))
         }
     }
