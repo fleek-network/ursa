@@ -99,10 +99,7 @@ impl Consensus {
     async fn start_current_epoch(&self) {
         // Pull epoch info.
         // TODO(dalton): This shouldnt ever fail but we should just retry if it does.
-        tracing::error!("Querying for the committee");
-        let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap();
-        tracing::error!("Done Querying for the committee");
-        // If the this node is not on the committee, dont start narwhal start edge node logic.
+        let (committee, worker_cache, epoch, epoch_end_time) = self.get_epoch_info().await.unwrap(); // If the this node is not on the committee, dont start narwhal start edge node logic.
         if !committee
             .authorities
             .contains_key(self.narwhal_args.primary_keypair.public())

@@ -146,17 +146,16 @@ async fn run() -> Result<()> {
 
     // Store the senders from the engine.
     let tx_abci_queries = abci_engine.get_abci_queries_sender();
+    let tx_rpc_queries = abci_engine.get_rpc_queries_sender();
     let tx_certificates = abci_engine.get_certificates_sender();
     let reconfigure_notify = abci_engine.get_reconfigure_notify();
 
     // Spawn engine.
     let engine_shutdown = shutdown_controller.clone();
-    let _abci_engine_task = task::spawn_blocking(|| {
-        futures::executor::block_on(async move {
-            if let Err(err) = abci_engine.start(engine_shutdown).await {
-                error!("[abci_engine_task] - {:?}", err);
-            }
-        })
+    let abci_engine_task = task::spawn(async move {
+        if let Err(err) = abci_engine.start(engine_shutdown).await {
+            error!("[abci_engine_task] - {:?}", err);
+        }
     });
 
     let interface = Arc::new(NodeNetworkInterface::new(
@@ -165,7 +164,7 @@ async fn run() -> Result<()> {
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
         mempool_address_string.clone(),
-        tx_abci_queries.clone(),
+        tx_rpc_queries,
     ));
 
     let server = Server::new(interface);
@@ -225,5 +224,6 @@ async fn run() -> Result<()> {
     provider_task.abort();
     application_task.abort();
     consensus_handle.abort();
+    abci_engine_task.abort();
     Ok(())
 }

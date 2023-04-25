@@ -11,7 +11,6 @@ use narwhal_types::{Batch, Transaction};
 
 // Tendermint Types
 use crate::AbciQueryQuery;
-//use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
     RequestQuery, ResponseQuery,
@@ -24,16 +23,25 @@ pub const CHANNEL_CAPACITY: usize = 1_000;
 pub struct Engine {
     /// The path to the UDS of the ABCI app.
     abci_uds: PathBuf,
-    /// The blocking Abci client connected to the application layer, for executing certificates.
+    /// The Abci client connected to the application layer, for executing certificates.
     client: AbciClient,
-    /// The blocking abci client for used only for querys, holds info connection only.
+    /// The Abci client for used only for innerprocess querys, holds info connection only.
     req_client: AbciClient,
     /// The last block height, initialized to the application's latest block by default.
     last_block_height: i64,
+    /// Cloneable sender for querying, application layer. Only used for innerprocess querys to application, to avoid blocking
     tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+    /// Cloneable sender for querying, application layer. Only used for rpc querys to application to avoid blocking the channel
+    tx_rpc_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+    /// Cloneable sender for sending txns to consensus
     tx_certificates: mpsc::Sender<Vec<Batch>>,
+    /// Reciever for innerprocess queries to application
     rx_abci_queries: mpsc::Receiver<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+    /// Reciever for intraprocess queries to application
+    rx_rpc_queries: mpsc::Receiver<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+    /// Reciever for certificates to be forwarded and executed to application
     rx_certificates: mpsc::Receiver<Vec<Batch>>,
+    /// Notifier to notify narwhal that the application says it should reconfigure
     reconfigure_notifier: Arc<Notify>,
 }
 
@@ -55,6 +63,7 @@ impl Engine {
             .unwrap_or_default();
 
         let (tx_abci_queries, rx_abci_queries) = mpsc::channel(CHANNEL_CAPACITY);
+        let (tx_rpc_queries, rx_rpc_queries) = mpsc::channel(CHANNEL_CAPACITY);
         let (tx_certificates, rx_certificates) = mpsc::channel(CHANNEL_CAPACITY);
         let reconfigure_notifier = Arc::new(Notify::new());
 
@@ -75,8 +84,10 @@ impl Engine {
             req_client,
             last_block_height,
             tx_abci_queries,
+            tx_rpc_queries,
             tx_certificates,
             rx_abci_queries,
+            rx_rpc_queries,
             rx_certificates,
             reconfigure_notifier,
         }
@@ -95,6 +106,9 @@ impl Engine {
                 Some((tx, req)) = self.rx_abci_queries.recv() => {
                     self.handle_abci_query(tx, req).await?;
                 }
+                Some((tx, req)) = self.rx_rpc_queries.recv() => {
+                    self.handle_rpc_queries(tx, req);
+                }
                 _ = shutdown_future => break,
                 else => break,
             }
@@ -107,6 +121,12 @@ impl Engine {
         &self,
     ) -> mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)> {
         self.tx_abci_queries.clone()
+    }
+
+    pub fn get_rpc_queries_sender(
+        &self,
+    ) -> mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)> {
+        self.tx_rpc_queries.clone()
     }
 
     pub fn get_certificates_sender(&self) -> mpsc::Sender<Vec<Batch>> {
@@ -142,7 +162,8 @@ impl Engine {
 
     /// Handles ABCI queries coming to the primary and forwards them to the ABCI App. Each
     /// handle call comes with a Sender channel which is used to send the response back to the
-    /// Primary and then to the client.
+    /// Primary and then to the client. This will block the query client while the query is happening so
+    /// this is reserved for innerprocess querys
     ///
     /// Client => Primary => handle_cert => ABCI App => Primary => Client
     async fn handle_abci_query(
@@ -166,6 +187,31 @@ impl Engine {
             bail!("{:?}", err);
         }
         Ok(())
+    }
+
+    /// Handles ABCI queries coming to the primary and forwards them to the ABCI App. Each
+    /// handle call comes with a Sender channel which is used to send the response back to the
+    /// Primary and then to the client. This spawns a task and creates its a client specificly for this request
+    /// so request can go concurrently
+    fn handle_rpc_queries(&self, tx: oneshot::Sender<ResponseQuery>, req: AbciQueryQuery) {
+        let req_height = req.height.unwrap_or(0);
+        let req_prove = req.prove.unwrap_or(false);
+
+        let socket = self.abci_uds.clone().resolve().to_path_buf();
+        tokio::task::spawn(async move {
+            let mut client = ClientBuilder::default().connect(socket).await.unwrap();
+
+            let resp = client
+                .query(RequestQuery {
+                    data: req.data.into(),
+                    path: req.path,
+                    height: req_height as i64,
+                    prove: req_prove,
+                })
+                .await
+                .unwrap();
+            tx.send(resp).unwrap();
+        });
     }
 
     /// Reconstructs the batch corresponding to the provided Primary's certificate from the Workers' stores
@@ -192,10 +238,7 @@ impl Engine {
 impl Engine {
     /// Calls the `InitChain` hook on the app, ignores "already initialized" errors.
     pub async fn init_chain(&mut self) -> Result<()> {
-        let mut client = ClientBuilder::default()
-            .connect(self.abci_uds.clone().resolve())
-            .await?;
-        if let Err(err) = client.init_chain(RequestInitChain::default()).await {
+        if let Err(err) = self.client.init_chain(RequestInitChain::default()).await {
             // Ignore errors about the chain being already initialized.
             if err.to_string().contains("already initialized") {
                 warn!("{}", err);
