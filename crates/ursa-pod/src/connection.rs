@@ -2,13 +2,14 @@ use std::io::{Error, ErrorKind, Write};
 
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
+use blake3::Hash;
 use bytes::BytesMut;
 use consts::*;
 use futures::executor::block_on;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::types::{
-    Blake3Cid, BlsPublicKey, BlsSignature, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
+    BlsPublicKey, BlsSignature, EpochNonce, SchnorrSignature, Secp256k1AffinePoint,
     Secp256k1PublicKey,
 };
 
@@ -188,7 +189,7 @@ pub enum UrsaFrame {
     /// [ TAG . blake3hash (32) ]
     /// ```
     /// size: 33 bytes
-    ContentRequest { hash: Blake3Cid },
+    ContentRequest { hash: Hash },
     /// Node response for content.
     ///
     /// The frame is always followed by the raw proof and content bytes.
@@ -213,7 +214,7 @@ pub enum UrsaFrame {
     /// ```
     /// size: 43 bytes
     ContentRangeRequest {
-        hash: Blake3Cid,
+        hash: Hash,
         chunk_start: u64,
         chunks: u16,
     },
@@ -405,7 +406,7 @@ where
                 let mut buf = ArrayVec::<u8, 33>::new_const();
 
                 buf.push(FrameTag::ContentRequest as u8);
-                buf.write_all(&hash.0).unwrap();
+                buf.write_all(hash.as_bytes()).unwrap();
 
                 self.stream.write_all(&buf).await?;
             }
@@ -433,7 +434,7 @@ where
                 let mut buf = ArrayVec::<u8, 43>::new_const();
 
                 buf.push(FrameTag::ContentRangeRequest as u8);
-                buf.write_all(&hash.0).unwrap();
+                buf.write_all(hash.as_bytes()).unwrap();
                 buf.write_all(&chunk_start.to_be_bytes()).unwrap();
                 buf.write_all(&chunks.to_be_bytes()).unwrap();
 
@@ -605,7 +606,7 @@ where
             }
             FrameTag::ContentRequest => {
                 let buf = self.buffer.split_to(size_hint);
-                let hash = Blake3Cid(*array_ref!(buf, 1, 32));
+                let hash = Hash::from(*array_ref!(buf, 1, 32));
 
                 Ok(Some(UrsaFrame::ContentRequest { hash }))
             }
@@ -630,7 +631,7 @@ where
             }
             FrameTag::ContentRangeRequest => {
                 let buf = self.buffer.split_to(size_hint);
-                let hash = Blake3Cid(*array_ref!(buf, 1, 32));
+                let hash = Hash::from(*array_ref!(buf, 1, 32));
                 let chunk_start_bytes = *array_ref!(buf, 33, 8);
                 let chunk_start = u64::from_be_bytes(chunk_start_bytes);
                 let chunks = u16::from_be_bytes([buf[41], buf[42]]);
@@ -763,7 +764,7 @@ mod tests {
     #[tokio::test]
     async fn content_req() -> TResult {
         encode_decode(UrsaFrame::ContentRequest {
-            hash: Blake3Cid([1; 32]),
+            hash: Hash::from([1; 32]),
         })
         .await
     }
@@ -771,7 +772,7 @@ mod tests {
     #[tokio::test]
     async fn content_range_req() -> TResult {
         encode_decode(UrsaFrame::ContentRangeRequest {
-            hash: Blake3Cid([0u8; 32]),
+            hash: Hash::from([0u8; 32]),
             chunk_start: 1u64,
             chunks: 2u16,
         })

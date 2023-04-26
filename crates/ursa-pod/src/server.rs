@@ -1,6 +1,9 @@
-use std::sync::Arc;
+use std::{
+    io::{Error, ErrorKind},
+    sync::Arc,
+};
 
-use bytes::BytesMut;
+use blake3::Hash;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
@@ -11,13 +14,17 @@ use crate::{
         UfdpConnection, UrsaCodecError, UrsaFrame,
     },
     instrument,
-    types::{Blake3Cid, BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
+    tree::ProofBuf,
+    types::{BlsSignature, Secp256k1AffinePoint, Secp256k1PublicKey},
 };
 
 /// Backend trait used by [`UfdpServer`] to access external data
 pub trait Backend: Send + Sync + 'static {
     /// Get the raw content of a block.
-    fn raw_block(&self, cid: &Blake3Cid, block: u64) -> Option<&[u8]>;
+    fn raw_block(&self, cid: &Hash, block: u64) -> Option<&[u8]>;
+
+    /// Get a hash tree for a cid. These ideally should be stored alongside the raw data.
+    fn get_tree(&self, cid: &Hash) -> Option<Vec<[u8; 32]>>;
 
     /// Get a decryption_key for a block, includes a block request id.
     fn decryption_key(&self, request_id: u64) -> (Secp256k1AffinePoint, u64);
@@ -124,10 +131,10 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
 
     /// Content delivery loop for a cid.
     #[inline(always)]
-    pub async fn deliver_content(&mut self, cid: Blake3Cid) -> Result<(), UrsaCodecError> {
+    pub async fn deliver_content(&mut self, hash: Hash) -> Result<(), UrsaCodecError> {
         #[cfg(feature = "benchmarks")]
         let (content_size, block_size) = {
-            let bytes = cid.0;
+            let bytes = hash.0;
             let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
             let block_size = u64::from_be_bytes(*block_size_bytes);
             let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
@@ -136,17 +143,31 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         };
 
         let mut block_number = 0;
+
+        let tree = instrument!(
+            self.backend.get_tree(&hash),
+            "sid={},tag=backend_get_tree,content_size={content_size},block_size={block_size}",
+            self.session_id
+        )
+        .ok_or(UrsaCodecError::Io(Error::new(
+            ErrorKind::NotFound,
+            "Tree not found for {hash}",
+        )))?;
+
+        let mut proof = ProofBuf::new(&tree, 0);
+        let mut proof_len = proof.len() as u64;
+
         while let Some(block) = instrument!(
-            self.backend.raw_block(&cid, block_number),
+            self.backend.raw_block(&hash, block_number),
             "sid={},tag=backend_raw_block,content_size={content_size},block_size={block_size}",
             self.session_id
         ) {
-            block_number += 1;
+            if block_number != 0 {
+                proof = ProofBuf::resume(&tree, block_number as usize);
+                proof_len = proof.len() as u64;
+            }
 
-            // todo: integrate tree
-            let proof = BytesMut::from(b"dummy_proof".as_slice());
             let decryption_key = [0; 33];
-            let proof_len = proof.len() as u64;
             let block_len = block.len() as u64;
 
             instrument!(
@@ -163,8 +184,10 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
             );
 
             instrument!(
-                self.conn.write_frame(UrsaFrame::Buffer(proof)).await?,
-                "sid={},tag=write_proof,content_size={content_size},block_size={block_size}",
+                self.conn
+                    .write_frame(UrsaFrame::Buffer(proof.as_slice().into()))
+                    .await?,
+                "sid={},tag=write_proof,content_size={content_size},block_size={block_size},proof_len={proof_len}",
                 self.session_id
             );
             instrument!(
@@ -197,6 +220,8 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 "sid={},tag=write_dk,content_size={content_size},block_size={block_size}",
                 self.session_id
             );
+
+            block_number += 1;
         }
 
         instrument!(

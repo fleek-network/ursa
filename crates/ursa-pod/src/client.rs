@@ -1,8 +1,9 @@
+use std::io::{Error, ErrorKind};
+
+use blake3::{ursa::BlockHasher, Hash};
 use bytes::{BufMut, BytesMut};
 
 use tokio::io::{AsyncRead, AsyncWrite};
-
-use tracing::debug;
 
 use crate::{
     connection::{
@@ -10,7 +11,8 @@ use crate::{
         UfdpConnection, UrsaCodecError, UrsaFrame,
     },
     instrument,
-    types::{Blake3Cid, BlsPublicKey},
+    tree::IncrementalVerifier,
+    types::BlsPublicKey,
 };
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
@@ -53,13 +55,13 @@ where
             "tag=read_handshake_res"
         ) {
             Some(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { conn, lane }),
-            Some(_) => unreachable!(),
+            Some(_) => unreachable!(), // Gauranteed by filter
             None => Err(UrsaCodecError::Unknown),
         }
     }
 
     /// Send a request for content.
-    pub async fn request(&mut self, hash: Blake3Cid) -> Result<usize, UrsaCodecError> {
+    pub async fn request(&mut self, hash: Hash) -> Result<usize, UrsaCodecError> {
         instrument!(
             self.conn
                 .write_frame(UrsaFrame::ContentRequest { hash })
@@ -67,6 +69,9 @@ where
             "tag=write_content_req"
         );
         let mut size = 0;
+
+        let mut verifier = IncrementalVerifier::new(hash.into(), 0);
+        let mut block = 0;
 
         // Content response loop.
         loop {
@@ -77,24 +82,31 @@ where
                     ..
                 }) => {
                     // Receive proof
-                    let len = proof_len as usize;
-                    self.conn.read_buffer(len);
-                    let mut proof_buf = BytesMut::with_capacity(len);
-                    loop {
-                        match instrument!(
-                            self.conn.read_frame(None).await?,
-                            "tag=read_proof_buffer"
-                        ) {
-                            Some(UrsaFrame::Buffer(bytes)) => {
-                                debug!("recv proof chunk");
-                                proof_buf.put_slice(&bytes);
-                                if proof_buf.len() == len {
-                                    // todo: decode proof
-                                    break;
+                    if proof_len != 0 {
+                        let len = proof_len as usize;
+                        self.conn.read_buffer(len);
+                        let mut proof_buf = BytesMut::with_capacity(len);
+                        loop {
+                            match instrument!(
+                                self.conn.read_frame(None).await?,
+                                "tag=read_proof_buffer"
+                            ) {
+                                Some(UrsaFrame::Buffer(bytes)) => {
+                                    proof_buf.put_slice(&bytes);
+                                    if proof_buf.len() == len {
+                                        // Feed the verifier the complete proof
+                                        if let Err(e) = verifier.feed_proof(&proof_buf) {
+                                            return Err(UrsaCodecError::Io(Error::new(
+                                                ErrorKind::InvalidData,
+                                                format!("feed_proof: {e}"),
+                                            )));
+                                        }
+                                        break;
+                                    }
                                 }
+                                Some(_) => unreachable!(), // Gauranteed by read_buffer()
+                                None => return Err(UrsaCodecError::Unknown),
                             }
-                            Some(_) => unreachable!(), // Guaranteed by read_buffer()
-                            None => return Err(UrsaCodecError::Unknown),
                         }
                     }
 
@@ -111,6 +123,16 @@ where
                             Some(UrsaFrame::Buffer(bytes)) => {
                                 block_buf.put_slice(&bytes);
                                 if block_buf.len() == len {
+                                    // Verify data
+                                    let mut hasher = BlockHasher::new();
+                                    hasher.set_block(block);
+                                    hasher.update(&block_buf);
+                                    if let Err(e) = verifier.verify(hasher) {
+                                        return Err(UrsaCodecError::Io(Error::new(
+                                            ErrorKind::InvalidData,
+                                            format!("{e}"),
+                                        )));
+                                    }
                                     break;
                                 }
                             }
@@ -141,6 +163,8 @@ where
                         Some(_) => unreachable!(), // Guaranteed by frame filter
                         _ => return Err(UrsaCodecError::Unknown),
                     }
+
+                    block += 1;
                 }
                 Some(UrsaFrame::EndOfRequestSignal) => break,
                 Some(f) => return Err(UrsaCodecError::InvalidTag(f.tag().unwrap() as u8)),
