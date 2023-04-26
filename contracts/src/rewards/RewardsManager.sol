@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "../management/Controlled.sol";
 import "../token/FleekToken.sol";
 import "../registry/NodeRegistry.sol";
 import "../epoch/EpochManager.sol";
@@ -14,12 +13,14 @@ import {SD59x18, sd, intoInt256, intoUint256, UNIT, convert} from "prb/math/SD59
  * @dev This contract calculates and distributes the rewards
  */
 
-contract FleekReward is Controlled {
+contract RewardsManager {
     FleekToken private fleekToken;
     RewardsAggregator public rewardsAggregator;
     EpochManager public epochManager;
     NodeRegistry public nodeRegistry;
     SD59x18 public inflationInLastEpoch;
+    address private parameterSetter;
+    address private epochManagerAddres;
 
     bool private initialized;
 
@@ -39,32 +40,49 @@ contract FleekReward is Controlled {
 
     event RewardMinted(address indexed account, uint256 amount);
 
-    function initialize(address _controller, address _token, address _epoch, address _aggregator, address _registry)
+    function initialize(address _token, address _epoch, address _aggregator, address _registry, address parameter)
         external
     {
         require(!initialized, "Rewards contract already initialized");
-        Controlled._init(_controller);
         fleekToken = FleekToken(_token);
         nodeRegistry = NodeRegistry(_registry);
         epochManager = EpochManager(_epoch);
         rewardsAggregator = RewardsAggregator(_aggregator);
+        parameterSetter = parameter;
+        epochManagerAddres = _epoch;
         inflationInLastEpoch = maxInflation;
         initialized = true;
     }
 
-    function setInflationRate(SD59x18 _inflationRate) external {
+    /**
+     * @dev only parameter contract can set parameters
+     */
+    modifier onlyParameter() {
+        require(msg.sender == parameterSetter, "Only the contract parameter can call this function");
+        _;
+    }
+
+        /**
+     * @dev only epoch manager contract can call this function
+     */
+    modifier onlyEpochManager() {
+        require(msg.sender == epochManagerAddres, "Only the contract epochManager can call this function");
+        _;
+    }
+
+    function setInflationRate(SD59x18 _inflationRate) external onlyParameter {
         maxInflation = _inflationRate;
     }
 
-    function setMinInflationFactor(SD59x18 _minInflationFactor) external {
+    function setMinInflationFactor(SD59x18 _minInflationFactor) external onlyParameter {
         minInflationFactor = _minInflationFactor;
     }
 
-    function setPrice(SD59x18 _price) external {
+    function setPrice(SD59x18 _price) external onlyParameter {
         price = _price;
     }
 
-    function setCost(SD59x18 _cost) external {
+    function setCost(SD59x18 _cost) external onlyParameter {
         cost = _cost;
     }
 
@@ -72,7 +90,7 @@ contract FleekReward is Controlled {
      * @dev Distribute reward tokens to addresses.
      * @param epoch epoch for which the rewards to be distributed
      */
-    function distributeRewards(uint256 epoch) public onlyController {
+    function distributeRewards(uint256 epoch) public onlyEpochManager {
         require(epochManager.epoch() != epoch, "cannot distribute rewards for current epoch");
         require(!rewardsDistribution[epoch], "rewards already distributed for this epoch");
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.15;
 
 import "../registry/NodeRegistry.sol";
+import "../rewards/RewardsManager.sol";
 
 contract EpochManager {
     /**
@@ -18,6 +19,8 @@ contract EpochManager {
     uint256 public epochDurationMs;
 
     NodeRegistry public nodeRegistry;
+    RewardsManager public rewardsManager;
+
     bool private initialized;
     uint256 private readyToChange;
 
@@ -33,12 +36,14 @@ contract EpochManager {
 
     function initialize(
         address _nodeRegistry,
+        address _rewardsManager,
         uint256 _firstEpochStart,
         uint256 _epochDuration,
         uint256 _maxCommitteeSize
     ) external {
         require(!initialized, "contract already initialized");
         nodeRegistry = NodeRegistry(_nodeRegistry);
+        rewardsManager = RewardsManager(_rewardsManager);
         maxCommitteeSize = _maxCommitteeSize;
         epochDurationMs = _epochDuration;
         currentEpochEndStampMs = _firstEpochStart + _epochDuration;
@@ -97,6 +102,7 @@ contract EpochManager {
     }
 
     function _changeEpoch() private {
+        rewardsManager.distributeRewards(epoch);
         epoch++;
 
         committee[epoch] = _chooseNewCommittee();

@@ -11,12 +11,12 @@ import "../rewards/RewardsManager.sol";
  */
 
 contract Parameters {
-    FleekReward private rewards;
+    RewardsManager private rewards;
     bool private initialized;
 
     function initialize(address _rewards) external {
         require(!initialized, "Parameters contract already initialized");
-        rewards = FleekReward(_rewards);
+        rewards = RewardsManager(_rewards);
         initialized = true;
     }
 
