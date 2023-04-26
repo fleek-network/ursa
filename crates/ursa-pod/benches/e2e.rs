@@ -275,16 +275,9 @@ mod tcp_tls_ufdp {
             let stream = acceptor.accept(stream).await.unwrap();
             let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
             task::spawn(async move {
-                match handler.serve().await {
-                    Ok(_) => {}
-                    Err(_) => {}
+                if let Err(e) = handler.serve().await {
+                    println!("server error: {e:?}")
                 }
-                // if let Err(e) = handler.serve().await {
-                //     match e {
-                //         UrsaCodecError::Io(e) => {}
-                //         e => println!("server error: {e:?}"),
-                //     };
-                // }
             });
         }
     }
