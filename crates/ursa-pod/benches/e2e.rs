@@ -320,6 +320,7 @@ mod websocket_ufdp {
     use futures::future::join_all;
     use futures::{ready, Sink, TryStream};
     use std::io;
+    use std::io::Read;
     use std::pin::Pin;
     use std::sync::Arc;
     use std::task::{Context, Poll};
@@ -365,8 +366,9 @@ mod websocket_ufdp {
 
     pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
         let mut tasks = vec![];
+        let new_addr = format!("localhost:{}", addr.strip_prefix("127.0.0.1:").unwrap());
         for _ in 0..iterations {
-            let url = Url::parse(format!("ws://{addr}/").as_str()).unwrap();
+            let url = Url::parse(format!("wss://{new_addr}/bench").as_str()).unwrap();
             let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                 url,
                 Some(WebSocketConfig::default()),
@@ -383,15 +385,18 @@ mod websocket_ufdp {
                         .unwrap();
 
                 client.request(CID).await.unwrap();
+                let mut stream = client.finish();
+                stream.inner.close(None).await.unwrap();
             });
             tasks.push(task);
         }
         join_all(tasks).await;
     }
 
+    // We need this because tokio_tungstenite::WebSocketStream implement Sink and Stream.
     pub struct WebSocketStreamWrap<S> {
         inner: WebSocketStream<S>,
-        current_item: Option<io::Cursor<tokio_tungstenite::tungstenite::Message>>,
+        current_item: Option<io::Cursor<Vec<u8>>>,
     }
 
     impl<S> WebSocketStreamWrap<S> {
@@ -447,7 +452,15 @@ mod websocket_ufdp {
                 }
                 self.current_item =
                     Some(match ready!(Pin::new(&mut self.inner).try_poll_next(cx)) {
-                        Some(Ok(i)) => io::Cursor::new(i),
+                        Some(Ok(i)) => {
+                            if i.is_binary() {
+                                io::Cursor::new(i.into_data())
+                            } else if i.is_close() {
+                                return Poll::Ready(Ok(()));
+                            } else {
+                                panic!("Non binary frame sent");
+                            }
+                        }
                         Some(Err(e)) => {
                             return Poll::Ready(Err(io::Error::new(
                                 io::ErrorKind::Other,
@@ -457,7 +470,11 @@ mod websocket_ufdp {
                         None => return Poll::Ready(Ok(())),
                     });
             };
-            buf.put_slice(item_to_copy.get_ref().clone().into_data().as_slice());
+
+            // TODO: Lert's get rid of this buffer.
+            let mut buff = vec![0; item_to_copy.get_ref().len()];
+            item_to_copy.read(&mut buff[..]).unwrap();
+            buf.put_slice(buff.as_slice());
             Poll::Ready(Ok(()))
         }
     }
