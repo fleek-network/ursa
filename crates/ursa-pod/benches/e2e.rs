@@ -391,6 +391,7 @@ mod quinn_ufdp {
         let mut config = TransportConfig::default();
         config.max_concurrent_bidi_streams(600u32.into());
         config.initial_max_udp_payload_size(2400);
+        config.congestion_controller_factory(quinn::congestion::BbrConfig::default());
         config
     }
 
