@@ -24,13 +24,13 @@ pub fn sum_mean(list: &[u64]) -> (u128, f64) {
 }
 
 /// Compute the normalized average
-pub fn normalized_avg(list: &mut Vec<u64>) -> f64 {
+pub fn _normalized_avg(list: &mut Vec<u64>, mean: Option<f64>) -> f64 {
     let prev_len = list.len();
-    let avg = sum_mean(list.as_slice()).1;
-    let sd = stddev(list.as_slice(), Some(avg));
-    list.retain(|&n| n as f64 >= avg - sd && n as f64 <= avg + sd);
+    let mean = mean.unwrap_or_else(|| sum_mean(list).1);
+    let sd = stddev(list.as_slice(), Some(mean));
+    list.retain(|&n| n as f64 >= mean - sd && n as f64 <= mean + sd);
     match list.len() {
-        len if len == prev_len => avg,
+        len if len == prev_len => mean,
         _ => sum_mean(list).1,
     }
 }
@@ -65,10 +65,7 @@ pub fn stddev(list: &[u64], mean: Option<f64>) -> f64 {
     if list.len() <= 1 {
         return 0.0;
     }
-    let mean = match mean {
-        Some(m) => m,
-        None => sum_mean(list).1,
-    };
+    let mean = mean.unwrap_or_else(|| sum_mean(list).1);
     mega_stddev_sum(list, list.len() as f64, mean).sqrt()
 }
 

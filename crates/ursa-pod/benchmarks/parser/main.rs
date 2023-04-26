@@ -190,7 +190,7 @@ fn plot(path: Option<PathBuf>, param: String) {
 
     let mut fg = Figure::new();
     fg.axes2d()
-        .set_x_label(&param.replace("_", " "), &[])
+        .set_x_label(&param.replace('_', " "), &[])
         .set_y_label("elapsed (μs)", &[])
         .lines(&x.clone(), y_mean, &[Caption("Mean"), Color("black")])
         .lines(&x, y_median, &[Caption("Median"), Color("red")])
