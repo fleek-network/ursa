@@ -369,10 +369,10 @@ mod websocket_ufdp {
 
     pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
-        let new_addr = format!("localhost:{}", addr.strip_prefix("127.0.0.1:").unwrap());
+        let addr = format!("localhost:{}", addr.strip_prefix("127.0.0.1:").unwrap());
         let tls_config = Arc::new(tls_config.unwrap().client_config());
         for _ in 0..iterations {
-            let url = Url::parse(format!("wss://{new_addr}/bench").as_str()).unwrap();
+            let url = Url::parse(format!("wss://{addr}/bench").as_str()).unwrap();
             let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                 url,
                 Some(WebSocketConfig::default()),
