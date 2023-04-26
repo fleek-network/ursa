@@ -83,62 +83,46 @@ where
                 }) => {
                     // Receive proof
                     if proof_len != 0 {
-                        let len = proof_len as usize;
-                        self.conn.read_buffer(len);
-                        let mut proof_buf = BytesMut::with_capacity(len);
-                        loop {
-                            match instrument!(
-                                self.conn.read_frame(None).await?,
-                                "tag=read_proof_buffer"
-                            ) {
-                                Some(UrsaFrame::Buffer(bytes)) => {
-                                    proof_buf.put_slice(&bytes);
-                                    if proof_buf.len() == len {
-                                        // Feed the verifier the complete proof
-                                        if let Err(e) = verifier.feed_proof(&proof_buf) {
-                                            return Err(UrsaCodecError::Io(Error::new(
-                                                ErrorKind::InvalidData,
-                                                format!("feed_proof: {e}"),
-                                            )));
-                                        }
-                                        break;
-                                    }
+                        self.conn.read_buffer(proof_len as usize);
+
+                        match instrument!(
+                            self.conn.read_frame(None).await?,
+                            "tag=read_proof_buffer"
+                        ) {
+                            Some(UrsaFrame::Buffer(bytes)) => {
+                                // Feed the verifier the proof
+                                if let Err(e) = verifier.feed_proof(&bytes) {
+                                    return Err(UrsaCodecError::Io(Error::new(
+                                        ErrorKind::InvalidData,
+                                        format!("feed_proof: {e}"),
+                                    )));
                                 }
-                                Some(_) => unreachable!(), // Gauranteed by read_buffer()
-                                None => return Err(UrsaCodecError::Unknown),
                             }
+                            Some(_) => unreachable!(), // Gauranteed by read_buffer()
+                            None => return Err(UrsaCodecError::Unknown),
                         }
                     }
 
                     // Receive block
                     let len = block_len as usize;
                     self.conn.read_buffer(len);
-                    let mut block_buf = BytesMut::with_capacity(len);
                     size += len;
-                    loop {
-                        match instrument!(
-                            self.conn.read_frame(None).await?,
-                            "tag=read_block_buffer"
-                        ) {
-                            Some(UrsaFrame::Buffer(bytes)) => {
-                                block_buf.put_slice(&bytes);
-                                if block_buf.len() == len {
-                                    // Verify data
-                                    let mut hasher = BlockHasher::new();
-                                    hasher.set_block(block);
-                                    hasher.update(&block_buf);
-                                    if let Err(e) = verifier.verify(hasher) {
-                                        return Err(UrsaCodecError::Io(Error::new(
-                                            ErrorKind::InvalidData,
-                                            format!("{e}"),
-                                        )));
-                                    }
-                                    break;
-                                }
+
+                    match instrument!(self.conn.read_frame(None).await?, "tag=read_block_buffer") {
+                        Some(UrsaFrame::Buffer(bytes)) => {
+                            // Verify data
+                            let mut hasher = BlockHasher::new();
+                            hasher.set_block(block);
+                            hasher.update(&bytes);
+                            if let Err(e) = verifier.verify(hasher) {
+                                return Err(UrsaCodecError::Io(Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!("{e}"),
+                                )));
                             }
-                            Some(_) => unreachable!(), // Guaranteed by read_buffer()
-                            None => return Err(UrsaCodecError::Unknown),
                         }
+                        Some(_) => unreachable!(), // Guaranteed by read_buffer()
+                        None => return Err(UrsaCodecError::Unknown),
                     }
 
                     // Send decryption key request

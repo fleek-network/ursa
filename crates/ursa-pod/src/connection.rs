@@ -517,15 +517,22 @@ where
 
         // Are we reading raw bytes?
         if self.take > 0 {
-            // Return as many bytes as we can.
-            let take = len.min(self.take);
-            self.take -= take;
-            return Ok(Some(UrsaFrame::Buffer(self.buffer.split_to(take))));
+            return Ok(if len >= self.take {
+                // Only return the buffer when we have all the data.
+                let bytes = self.buffer.split_to(self.take);
+                self.take = 0;
+                Some(UrsaFrame::Buffer(bytes))
+            } else {
+                // Otherwise, return none and wait for more bytes.
+                None
+            });
         }
 
         // First frame byte is always the tag.
         let (size_hint, tag) = FrameTag::try_from(self.buffer[0]).map(|t| (t.size_hint(), t))?;
 
+        // Even if the entire frame isn't available, we can already filter and reject invalid
+        // frames, terminating connections as soon as possible.
         if let Some(bitmap) = filter {
             let val = tag as u8;
             if val & bitmap != val {
@@ -541,6 +548,7 @@ where
             }
         }
 
+        // If we need more bytes for the frame, return none.
         if len < size_hint {
             return Ok(None);
         }
