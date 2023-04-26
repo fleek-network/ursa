@@ -151,6 +151,11 @@ where
         Ok(size)
     }
 
+    /// Consumes the client and returns the underlying stream.
+    pub fn finish(self) -> S {
+        self.conn.stream
+    }
+
     /// Get the lane assigned to the client connection
     pub fn lane(&self) -> u8 {
         self.lane
