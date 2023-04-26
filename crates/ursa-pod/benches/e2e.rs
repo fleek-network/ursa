@@ -247,6 +247,7 @@ mod tcp_tls_ufdp {
     use crate::tls_utils::{client_config, server_config, TestCertificate};
     use futures::future::join_all;
     use std::sync::Arc;
+    use tokio::io::AsyncWriteExt;
     use tokio::{
         net::{TcpListener, TcpStream},
         task,
@@ -274,9 +275,16 @@ mod tcp_tls_ufdp {
             let stream = acceptor.accept(stream).await.unwrap();
             let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
             task::spawn(async move {
-                if let Err(e) = handler.serve().await {
-                    println!("server error: {e:?}");
+                match handler.serve().await {
+                    Ok(_) => {}
+                    Err(_) => {}
                 }
+                // if let Err(e) = handler.serve().await {
+                //     match e {
+                //         UrsaCodecError::Io(e) => {}
+                //         e => println!("server error: {e:?}"),
+                //     };
+                // }
             });
         }
     }
@@ -292,6 +300,7 @@ mod tcp_tls_ufdp {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
                 client.request(CID).await.unwrap();
+                client.finish().shutdown().await.unwrap();
             });
             tasks.push(task);
         }
