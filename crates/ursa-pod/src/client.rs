@@ -93,9 +93,7 @@ where
                                     break;
                                 }
                             }
-                            Some(e) => {
-                                return Err(UrsaCodecError::InvalidTag(e.tag().unwrap() as u8))
-                            }
+                            Some(_) => unreachable!(), // Guaranteed by read_buffer()
                             None => return Err(UrsaCodecError::Unknown),
                         }
                     }
@@ -116,8 +114,7 @@ where
                                     break;
                                 }
                             }
-                            // SAFETY: will always return a buffer because of read_buffer() call
-                            Some(_) => unreachable!(),
+                            Some(_) => unreachable!(), // Guaranteed by read_buffer()
                             None => return Err(UrsaCodecError::Unknown),
                         }
                     }
@@ -141,7 +138,7 @@ where
                         Some(UrsaFrame::DecryptionKeyResponse { .. }) => {
                             // todo: decrypt block & verify data
                         }
-                        Some(_) => unreachable!(),
+                        Some(_) => unreachable!(), // Guaranteed by frame filter
                         _ => return Err(UrsaCodecError::Unknown),
                     }
                 }

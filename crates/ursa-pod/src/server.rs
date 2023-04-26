@@ -85,7 +85,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                     );
                 }
                 UrsaFrame::ContentRangeRequest { .. } => todo!(),
-                _ => unreachable!(),
+                _ => unreachable!(), // Guaranteed by frame filter
             }
         }
 
@@ -101,7 +101,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
             self.session_id
         ) {
             Some(UrsaFrame::HandshakeRequest { lane, .. }) => {
-                // send res frame
+                // Send res frame
                 instrument!(
                     self.conn
                         .write_frame(UrsaFrame::HandshakeResponse {
@@ -118,8 +118,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 Ok(())
             }
             None => Err(UrsaCodecError::Unknown),
-            // handled by filter
-            Some(_) => unreachable!(),
+            Some(_) => unreachable!(), // Guaranteed by frame filter
         }
     }
 
@@ -186,7 +185,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                     // todo: transaction manager (batch and store tx)
                 }
                 None => return Err(UrsaCodecError::Unknown),
-                Some(_) => unreachable!(),
+                Some(_) => unreachable!(), // Guaranteed by frame filter
             }
 
             // Send decryption key
