@@ -317,6 +317,7 @@ mod tcp_tls_ufdp {
 mod websocket_ufdp {
     use super::DummyBackend;
     use crate::tls_utils::TestTlsConfig;
+    use bytes::Buf;
     use futures::future::join_all;
     use futures::{ready, Sink, TryStream};
     use std::io;
@@ -470,10 +471,10 @@ mod websocket_ufdp {
                     });
             };
 
-            // TODO: Lert's get rid of this buffer.
-            let mut buff = vec![0; item_to_copy.get_ref().len()];
-            item_to_copy.read(&mut buff[..]).unwrap();
+            let mut buff = vec![0; item_to_copy.remaining().min(buf.remaining())];
+            item_to_copy.read(&mut buff).unwrap();
             buf.put_slice(buff.as_slice());
+
             Poll::Ready(Ok(()))
         }
     }
