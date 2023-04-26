@@ -75,19 +75,9 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
         ) {
             match frame {
                 UrsaFrame::ContentRequest { hash } => {
-                    #[cfg(feature = "benchmarks")]
-                    let (content_size, block_size) = {
-                        let bytes = hash.0;
-                        let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
-                        let block_size = u64::from_be_bytes(*block_size_bytes);
-                        let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
-                        let content_size = u64::from_be_bytes(*content_size_bytes);
-                        (content_size, block_size)
-                    };
-
                     instrument!(
                         self.deliver_content(hash).await?,
-                        "sid={},tag=deliver_content,content_size={content_size},block_size={block_size}",
+                        "sid={},tag=deliver_content,hash={hash}",
                         self.session_id
                     );
                 }
@@ -132,21 +122,11 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
     /// Content delivery loop for a cid.
     #[inline(always)]
     pub async fn deliver_content(&mut self, hash: Hash) -> Result<(), UrsaCodecError> {
-        #[cfg(feature = "benchmarks")]
-        let (content_size, block_size) = {
-            let bytes = hash.0;
-            let block_size_bytes = arrayref::array_ref!(bytes, 0, 8);
-            let block_size = u64::from_be_bytes(*block_size_bytes);
-            let content_size_bytes = arrayref::array_ref!(bytes, 8, 8);
-            let content_size = u64::from_be_bytes(*content_size_bytes);
-            (content_size, block_size)
-        };
-
         let mut block_number = 0;
 
         let tree = instrument!(
             self.backend.get_tree(&hash),
-            "sid={},tag=backend_get_tree,content_size={content_size},block_size={block_size}",
+            "sid={},tag=backend_get_tree,hash={hash}",
             self.session_id
         )
         .ok_or(UrsaCodecError::Io(Error::new(
@@ -159,7 +139,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
 
         while let Some(block) = instrument!(
             self.backend.raw_block(&hash, block_number),
-            "sid={},tag=backend_raw_block,content_size={content_size},block_size={block_size}",
+            "sid={},tag=backend_raw_block,hash={hash}",
             self.session_id
         ) {
             if block_number != 0 {
@@ -179,7 +159,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                         signature: [1u8; 64],
                     })
                     .await?,
-                "sid={},tag=write_content_res,content_size={content_size},block_size={block_size}",
+                "sid={},tag=write_content_res,hash={hash}",
                 self.session_id
             );
 
@@ -187,21 +167,21 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 self.conn
                     .write_frame(UrsaFrame::Buffer(proof.as_slice().into()))
                     .await?,
-                "sid={},tag=write_proof,content_size={content_size},block_size={block_size},proof_len={proof_len}",
+                "sid={},tag=write_proof,hash={hash},proof_len={proof_len}",
                 self.session_id
             );
             instrument!(
                 self.conn
                     .write_frame(UrsaFrame::Buffer(block.into()))
                     .await?,
-                "sid={},tag=write_block,content_size={content_size},block_size={block_size}",
+                "sid={},tag=write_block,hash={hash},block_len={block_len}",
                 self.session_id
             );
 
             // Wait for delivery acknowledgment
             match instrument!(
                 self.conn.read_frame(Some(DECRYPTION_KEY_REQ_TAG)).await?,
-                "sid={},tag=read_da,content_size={content_size},block_size={block_size}",
+                "sid={},tag=read_da,hash={hash}",
                 self.session_id
             ) {
                 Some(UrsaFrame::DecryptionKeyRequest { .. }) => {
@@ -217,7 +197,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
                 self.conn
                     .write_frame(UrsaFrame::DecryptionKeyResponse { decryption_key })
                     .await?,
-                "sid={},tag=write_dk,content_size={content_size},block_size={block_size}",
+                "sid={},tag=write_dk,hash={hash}",
                 self.session_id
             );
 
@@ -226,7 +206,7 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
 
         instrument!(
             self.conn.write_frame(UrsaFrame::EndOfRequestSignal).await?,
-            "sid={},tag=write_eor,content_size={content_size},block_size={block_size}",
+            "sid={},tag=write_eor,hash={hash}",
             self.session_id
         );
 
