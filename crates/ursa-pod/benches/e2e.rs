@@ -51,7 +51,9 @@ fn benchmark_sizes<T: Measurement, C, S>(
         .enable_all()
         .build()
         .unwrap();
+
     let certificate = uses_tls.then(|| TestTlsConfig::new());
+
     for file in files {
         // Spawn the server and wait for it to signal that it's ready.
         let (tx_started, rx_started) = oneshot::channel();
