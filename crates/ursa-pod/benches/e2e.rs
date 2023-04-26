@@ -1,4 +1,4 @@
-use crate::tls_utils::TestCertificate;
+use crate::tls_utils::TestTlsConfig;
 use criterion::{measurement::Measurement, *};
 use futures::Future;
 use std::time::Duration;
@@ -40,8 +40,8 @@ fn benchmark_sizes<T: Measurement, C, S>(
     files: &[&'static [u8]],
     uses_tls: bool,
     unit: usize,
-    client: impl Fn(String, usize, Option<TestCertificate>) -> C,
-    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>, Option<TestCertificate>) -> S,
+    client: impl Fn(String, usize, Option<TestTlsConfig>) -> C,
+    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>, Option<TestTlsConfig>) -> S,
 ) where
     C: Future,
     S: Future + Send + 'static,
@@ -51,9 +51,7 @@ fn benchmark_sizes<T: Measurement, C, S>(
         .enable_all()
         .build()
         .unwrap();
-
-    let certificate = uses_tls.then(|| TestCertificate::new());
-
+    let certificate = uses_tls.then(|| TestTlsConfig::new());
     for file in files {
         // Spawn the server and wait for it to signal that it's ready.
         let (tx_started, rx_started) = oneshot::channel();
@@ -205,7 +203,7 @@ impl Backend for DummyBackend {
 
 mod tcp_ufdp {
     use super::DummyBackend;
-    use crate::tls_utils::TestCertificate;
+    use crate::tls_utils::TestTlsConfig;
     use futures::future::join_all;
     use tokio::{
         net::{TcpListener, TcpStream},
@@ -221,7 +219,7 @@ mod tcp_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
-        _: Option<TestCertificate>,
+        _: Option<TestTlsConfig>,
     ) {
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -241,7 +239,7 @@ mod tcp_ufdp {
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
-    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestCertificate>) {
+    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestTlsConfig>) {
         let mut tasks = vec![];
         for _ in 0..iterations {
             let stream = TcpStream::connect(&addr).await.unwrap();
@@ -258,9 +256,10 @@ mod tcp_ufdp {
 
 mod tcp_tls_ufdp {
     use super::DummyBackend;
-    use crate::tls_utils::{client_config, server_config, TestCertificate};
+    use crate::tls_utils::TestTlsConfig;
     use futures::future::join_all;
     use std::sync::Arc;
+    use tokio::io::AsyncWriteExt;
     use tokio::{
         net::{TcpListener, TcpStream},
         task,
@@ -275,14 +274,14 @@ mod tcp_tls_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
-        cert: Option<TestCertificate>,
+        tls_config: Option<TestTlsConfig>,
     ) {
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
         tx_started.send(port).unwrap();
 
-        let acceptor = TlsAcceptor::from(Arc::new(server_config(cert.unwrap())));
+        let acceptor = TlsAcceptor::from(Arc::new(tls_config.unwrap().server_config()));
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
@@ -295,17 +294,18 @@ mod tcp_tls_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
+    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let domain = rustls::ServerName::try_from("localhost").unwrap();
         let mut tasks = vec![];
+        let tls_config = Arc::new(tls_config.unwrap().client_config());
         for _ in 0..iterations {
-            let connector = TlsConnector::from(Arc::new(client_config(cert.clone().unwrap())));
+            let connector = TlsConnector::from(tls_config.clone());
             let stream = TcpStream::connect(&addr).await.unwrap();
             let stream = connector.connect(domain.clone(), stream).await.unwrap();
             let task = task::spawn(async {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
-
                 client.request(CID).await.unwrap();
+                client.finish().shutdown().await.unwrap();
             });
             tasks.push(task);
         }
@@ -316,7 +316,7 @@ mod tcp_tls_ufdp {
 #[cfg(feature = "bench-websockets")]
 mod websocket_ufdp {
     use super::DummyBackend;
-    use crate::tls_utils::{client_config, server_config, TestCertificate};
+    use crate::tls_utils::TestTlsConfig;
     use futures::future::join_all;
     use futures::{ready, Sink, TryStream};
     use std::io;
@@ -339,14 +339,14 @@ mod websocket_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
-        cert: Option<TestCertificate>,
+        tls_config: Option<TestTlsConfig>,
     ) {
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
         tx_started.send(port).unwrap();
 
-        let acceptor = TlsAcceptor::from(Arc::new(server_config(cert.unwrap())));
+        let acceptor = TlsAcceptor::from(Arc::new(tls_config.unwrap().server_config()));
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
@@ -364,17 +364,16 @@ mod websocket_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
+    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
         let new_addr = format!("localhost:{}", addr.strip_prefix("127.0.0.1:").unwrap());
+        let tls_config = Arc::new(tls_config.unwrap().client_config());
         for _ in 0..iterations {
             let url = Url::parse(format!("wss://{new_addr}/bench").as_str()).unwrap();
             let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                 url,
                 Some(WebSocketConfig::default()),
-                Some(Connector::Rustls(Arc::new(client_config(
-                    cert.clone().unwrap(),
-                )))),
+                Some(Connector::Rustls(tls_config.clone())),
             )
             .await
             .unwrap();
@@ -482,19 +481,18 @@ mod websocket_ufdp {
 
 #[cfg(feature = "bench-hyper")]
 mod http_hyper {
-    use std::io::Error;
-
-    use crate::tls_utils::TestCertificate;
+    use crate::tls_utils::TestTlsConfig;
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{server::conn::http1, service::service_fn, Request, Response};
+    use std::io::Error;
     use tokio::net::{TcpListener, TcpStream};
 
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
-        _: Option<TestCertificate>,
+        _: Option<TestTlsConfig>,
     ) {
         let listener = TcpListener::bind(addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -516,7 +514,7 @@ mod http_hyper {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestCertificate>) {
+    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestTlsConfig>) {
         for _ in 0..iterations {
             // Open a TCP connection to the remote host
             let stream = TcpStream::connect(&addr).await.unwrap();
@@ -549,10 +547,7 @@ mod http_hyper {
 
 #[cfg(feature = "bench-quic")]
 mod quinn_ufdp {
-    use super::{
-        tls_utils::{client_config, server_config, TestCertificate},
-        DummyBackend,
-    };
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
     use futures::future::join_all;
     use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
     use std::{
@@ -572,9 +567,10 @@ mod quinn_ufdp {
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
-        cert: Option<TestCertificate>,
+        tls_config: Option<TestTlsConfig>,
     ) {
-        let server_config = ServerConfig::with_crypto(Arc::new(server_config(cert.unwrap())));
+        let server_config =
+            ServerConfig::with_crypto(Arc::new(tls_config.unwrap().server_config()));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
@@ -612,10 +608,10 @@ mod quinn_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestCertificate>) {
+    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
-        let client_config = quinn::ClientConfig::new(Arc::new(client_config(cert.unwrap())));
+        let client_config = quinn::ClientConfig::new(Arc::new(tls_config.unwrap().client_config()));
         endpoint.set_default_client_config(client_config);
         let stream = endpoint
             .connect(addr.parse().unwrap(), "localhost")
@@ -677,40 +673,62 @@ mod quinn_ufdp {
 mod tls_utils {
     use rustls::{Certificate, ClientConfig, PrivateKey, ServerConfig};
     #[derive(Clone)]
-    pub struct TestCertificate {
-        pub cert: Vec<rustls::Certificate>,
-        pub key: rustls::PrivateKey,
+    pub struct TestTlsConfig {
+        pub cert: Vec<Certificate>,
+        pub key: PrivateKey,
+        server_config: Option<ServerConfig>,
+        client_config: Option<ClientConfig>,
     }
 
-    impl TestCertificate {
+    impl TestTlsConfig {
         pub fn new() -> Self {
+            Self::with_configs(None, None)
+        }
+
+        pub fn with_configs(
+            server_config: Option<ServerConfig>,
+            client_config: Option<ClientConfig>,
+        ) -> Self {
             let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
             let key = PrivateKey(cert.serialize_private_key_der());
             let cert = vec![Certificate(cert.serialize_der().unwrap())];
-            Self { cert, key }
+            Self {
+                cert,
+                key,
+                server_config,
+                client_config,
+            }
         }
-    }
 
-    pub fn server_config(cert: TestCertificate) -> ServerConfig {
-        let mut config = ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(cert.cert, cert.key)
-            .unwrap();
-        config.alpn_protocols = vec![b"ufdp".to_vec()];
-        config
-    }
+        pub fn server_config(self) -> ServerConfig {
+            if let Some(config) = self.server_config {
+                config
+            } else {
+                let mut config = ServerConfig::builder()
+                    .with_safe_defaults()
+                    .with_no_client_auth()
+                    .with_single_cert(self.cert, self.key)
+                    .unwrap();
+                config.alpn_protocols = vec![b"ufdp".to_vec()];
+                config
+            }
+        }
 
-    pub fn client_config(cert: TestCertificate) -> ClientConfig {
-        let mut roots = rustls::RootCertStore::empty();
-        roots.add(&cert.cert.first().unwrap()).unwrap();
+        pub fn client_config(self) -> ClientConfig {
+            if let Some(config) = self.client_config {
+                config
+            } else {
+                let mut roots = rustls::RootCertStore::empty();
+                roots.add(&self.cert.first().unwrap()).unwrap();
 
-        let mut config = ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        config.alpn_protocols = vec![b"ufdp".to_vec()];
-        config
+                let mut config = ClientConfig::builder()
+                    .with_safe_defaults()
+                    .with_root_certificates(roots)
+                    .with_no_client_auth();
+                config.alpn_protocols = vec![b"ufdp".to_vec()];
+                config
+            }
+        }
     }
 }
 
