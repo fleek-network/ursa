@@ -373,7 +373,7 @@ mod http_hyper {
 mod quinn_ufdp {
     use super::{tls_utils::TestTlsConfig, DummyBackend};
     use futures::future::join_all;
-    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
+    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig, TransportConfig};
     use std::{
         io::Error,
         pin::Pin,
@@ -387,14 +387,22 @@ mod quinn_ufdp {
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
     const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
+    fn transport_config() -> TransportConfig {
+        let mut config = TransportConfig::default();
+        config.max_concurrent_bidi_streams(600u32.into());
+        config.max_concurrent_uni_streams(600u32.into());
+        config
+    }
+
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
         tx_started: tokio::sync::oneshot::Sender<u16>,
         tls_config: Option<TestTlsConfig>,
     ) {
-        let server_config =
+        let mut server_config =
             ServerConfig::with_crypto(Arc::new(tls_config.unwrap().server_config()));
+        server_config.transport_config(Arc::new(transport_config()));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
@@ -435,7 +443,9 @@ mod quinn_ufdp {
     pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
-        let client_config = quinn::ClientConfig::new(Arc::new(tls_config.unwrap().client_config()));
+        let mut client_config =
+            quinn::ClientConfig::new(Arc::new(tls_config.unwrap().client_config()));
+        client_config.transport_config(Arc::new(transport_config()));
         endpoint.set_default_client_config(client_config);
         let stream = endpoint
             .connect(addr.parse().unwrap(), "localhost")
