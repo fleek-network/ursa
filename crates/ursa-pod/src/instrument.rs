@@ -14,6 +14,7 @@ macro_rules! instrument {
             }
             let identifiers = format!($($t)*);
             let start = now();
+            println!("START,uid={location},{identifiers}");
             let val = { $e };
             println!("SAMPLE,start={start},end={end},uid={location},{identifiers}", end = now());
             val
