@@ -14,14 +14,15 @@ use crate::{
 };
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
-pub struct UfdpClient<S: AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    conn: UfdpConnection<S>,
+pub struct UfdpClient<R: AsyncRead + Unpin + Send + Sync, W: AsyncWrite + Unpin + Send + Sync> {
+    conn: UfdpConnection<R, W>,
     lane: u8,
 }
 
-impl<S> UfdpClient<S>
+impl<R, W> UfdpClient<R, W>
 where
-    S: AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    R: AsyncRead + Unpin + Send + Sync,
+    W: AsyncWrite + Unpin + Send + Sync,
 {
     /// Create a new client, immediately attempting to handshake with the destination
     ///
@@ -29,11 +30,12 @@ where
     /// as well as the client's public key. If lane is none, then the server will select
     /// it automatically.
     pub async fn new(
-        stream: S,
+        read_stream: R,
+        write_stream: W,
         pubkey: BlsPublicKey,
         lane: Option<u8>,
     ) -> Result<Self, UrsaCodecError> {
-        let mut conn = UfdpConnection::new(stream);
+        let mut conn = UfdpConnection::new(read_stream, write_stream);
 
         // Send handshake request.
         instrument!(
@@ -152,8 +154,11 @@ where
     }
 
     /// Consumes the client and returns the underlying stream.
-    pub fn finish(self) -> S {
-        self.conn.stream
+    pub fn finish(self) -> (R, W) {
+        (
+            self.conn.read_half.read_stream,
+            self.conn.write_half.write_stream,
+        )
     }
 
     /// Get the lane assigned to the client connection

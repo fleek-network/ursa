@@ -320,19 +320,31 @@ impl From<UrsaCodecError> for std::io::Error {
 }
 
 /// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
-pub struct UfdpConnection<T: AsyncRead + AsyncWrite + Unpin> {
-    pub stream: T,
+pub struct UfdpConnection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> {
+    pub read_half: UfdpConnectionReadHalf<R>,
+    pub write_half: UfdpConnectionWriteHalf<W>,
+}
+
+pub struct UfdpConnectionWriteHalf<W: AsyncWrite + Unpin> {
+    pub write_stream: W,
+}
+
+pub struct UfdpConnectionReadHalf<R: AsyncRead + Unpin> {
+    pub read_stream: R,
     buffer: BytesMut,
     pub take: usize,
 }
 
-impl<T> UfdpConnection<T>
-where
-    T: AsyncRead + AsyncWrite + Unpin,
-{
-    pub fn new(stream: T) -> Self {
+impl<W: AsyncWrite + Unpin> From<W> for UfdpConnectionWriteHalf<W> {
+    fn from(write_stream: W) -> Self {
+        Self { write_stream }
+    }
+}
+
+impl<R: AsyncRead + Unpin> From<R> for UfdpConnectionReadHalf<R> {
+    fn from(read_stream: R) -> Self {
         Self {
-            stream,
+            read_stream,
             // Our max frame size is 148, and the only instance of multiple frames back to back
             // is within that size (ContentResponse + EoR), so maintaining at least 148 bytes is
             // enough to always be able to read the next incoming frame(s) in one pass before we
@@ -342,7 +354,12 @@ where
             take: 0,
         }
     }
+}
 
+impl<R> UfdpConnectionReadHalf<R>
+where
+    R: AsyncRead + Unpin,
+{
     /// Indicate the next `len` bytes are to be returned as a raw buffer. Always called after a content
     /// response, to receive the raw proof and block bytes.
     #[inline(always)]
@@ -350,137 +367,6 @@ where
         self.take = len;
         // Ensure we have enough space to read the entire chunk at once if possible.
         self.buffer.reserve(len);
-    }
-
-    #[inline(always)]
-    pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
-        match frame {
-            UrsaFrame::Buffer(bytes) => {
-                // write directly to stream
-                self.stream.write_all(&bytes).await?;
-            }
-            UrsaFrame::HandshakeRequest {
-                version,
-                pubkey,
-                supported_compression_bitmap,
-                lane,
-            } => {
-                let mut buf = ArrayVec::<u8, 56>::new_const();
-                debug_assert_eq!(NETWORK.len(), 4);
-
-                buf.push(FrameTag::HandshakeRequest as u8);
-                buf.write_all(&NETWORK).unwrap();
-                buf.push(version);
-                buf.push(supported_compression_bitmap);
-                buf.push(lane.unwrap_or(0xFF));
-                buf.write_all(&pubkey).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::HandshakeResponse {
-                pubkey,
-                epoch_nonce,
-                lane,
-                last,
-            } => {
-                let mut buf = ArrayVec::<u8, 148>::new_const();
-
-                buf.push(FrameTag::HandshakeResponse as u8);
-                buf.push(lane);
-                buf.write_all(&epoch_nonce.to_be_bytes()).unwrap();
-                buf.write_all(&pubkey).unwrap();
-
-                match last {
-                    None => buf.push(0x00),
-                    Some(data) => {
-                        buf.push(0x80);
-                        buf.write_all(&data.bytes.to_be_bytes()).unwrap();
-                        buf.write_all(&data.signature).unwrap()
-                    }
-                };
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::ContentRequest { hash } => {
-                let mut buf = ArrayVec::<u8, 33>::new_const();
-
-                buf.push(FrameTag::ContentRequest as u8);
-                buf.write_all(&hash.0).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::ContentResponse {
-                compression,
-                proof_len,
-                block_len,
-                signature,
-            } => {
-                let mut buf = ArrayVec::<u8, 82>::new_const();
-
-                buf.push(FrameTag::ContentResponse as u8);
-                buf.push(compression);
-                buf.write_all(&proof_len.to_be_bytes()).unwrap();
-                buf.write_all(&block_len.to_be_bytes()).unwrap();
-                buf.write_all(&signature).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::ContentRangeRequest {
-                hash,
-                chunk_start,
-                chunks,
-            } => {
-                let mut buf = ArrayVec::<u8, 43>::new_const();
-
-                buf.push(FrameTag::ContentRangeRequest as u8);
-                buf.write_all(&hash.0).unwrap();
-                buf.write_all(&chunk_start.to_be_bytes()).unwrap();
-                buf.write_all(&chunks.to_be_bytes()).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::UpdateEpochSignal(nonce) => {
-                let mut buf = ArrayVec::<u8, 9>::new_const();
-
-                buf.push(FrameTag::UpdateEpochSignal as u8);
-                buf.write_all(&nonce.to_be_bytes()).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::DecryptionKeyRequest {
-                delivery_acknowledgment,
-            } => {
-                let mut buf = ArrayVec::<u8, 97>::new_const();
-
-                buf.push(FrameTag::DecryptionKeyRequest as u8);
-                buf.write_all(&delivery_acknowledgment).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
-                let mut buf = ArrayVec::<u8, 34>::new_const();
-
-                buf.push(FrameTag::DecryptionKeyResponse as u8);
-                buf.write_all(&decryption_key).unwrap();
-
-                self.stream.write_all(&buf).await?;
-            }
-            UrsaFrame::EndOfRequestSignal => {
-                self.stream
-                    .write_u8(FrameTag::EndOfRequestSignal as u8)
-                    .await?
-            }
-            UrsaFrame::TerminationSignal(reason) => {
-                let mut buf = ArrayVec::<u8, 2>::new_const();
-
-                buf.push(FrameTag::TerminationSignal as u8);
-                buf.push(reason as u8);
-
-                self.stream.write_all(&buf).await?;
-            }
-        }
-
-        Ok(())
     }
 
     #[inline(always)]
@@ -492,7 +378,7 @@ where
             }
 
             // Otherwise, read as many bytes as we can for a fixed frame.
-            if 0 == self.stream.read_buf(&mut self.buffer).await? {
+            if 0 == self.read_stream.read_buf(&mut self.buffer).await? {
                 // Handle connection closed. If there are bytes in the buffer, it means the
                 // connection was interrupted mid-transmission.
                 if self.buffer.is_empty() {
@@ -528,11 +414,14 @@ where
         if let Some(bitmap) = filter {
             let val = tag as u8;
             if val & bitmap != val {
-                block_on(async {
-                    self.termination_signal(Some(Reason::UnexpectedFrame))
-                        .await
-                        .ok() // We dont care about this result!
-                });
+                // Parsing frame should not decide to write anything - this logic needs to be
+                // safely moved somewhere else.
+                //
+                // block_on(async {
+                //     self.termination_signal(Some(Reason::UnexpectedFrame))
+                //         .await
+                //         .ok() // We dont care about this result!
+                // });
                 return Err(Error::new(
                     ErrorKind::InvalidData,
                     format!("Invalid tag: {tag:?}"),
@@ -678,6 +567,142 @@ where
             }
         }
     }
+}
+
+impl<W> UfdpConnectionWriteHalf<W>
+where
+    W: AsyncWrite + Unpin,
+{
+    #[inline(always)]
+    pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
+        match frame {
+            UrsaFrame::Buffer(bytes) => {
+                // write directly to stream
+                self.write_stream.write_all(&bytes).await?;
+            }
+            UrsaFrame::HandshakeRequest {
+                version,
+                pubkey,
+                supported_compression_bitmap,
+                lane,
+            } => {
+                let mut buf = ArrayVec::<u8, 56>::new_const();
+                debug_assert_eq!(NETWORK.len(), 4);
+
+                buf.push(FrameTag::HandshakeRequest as u8);
+                buf.write_all(&NETWORK).unwrap();
+                buf.push(version);
+                buf.push(supported_compression_bitmap);
+                buf.push(lane.unwrap_or(0xFF));
+                buf.write_all(&pubkey).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::HandshakeResponse {
+                pubkey,
+                epoch_nonce,
+                lane,
+                last,
+            } => {
+                let mut buf = ArrayVec::<u8, 148>::new_const();
+
+                buf.push(FrameTag::HandshakeResponse as u8);
+                buf.push(lane);
+                buf.write_all(&epoch_nonce.to_be_bytes()).unwrap();
+                buf.write_all(&pubkey).unwrap();
+
+                match last {
+                    None => buf.push(0x00),
+                    Some(data) => {
+                        buf.push(0x80);
+                        buf.write_all(&data.bytes.to_be_bytes()).unwrap();
+                        buf.write_all(&data.signature).unwrap()
+                    }
+                };
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentRequest { hash } => {
+                let mut buf = ArrayVec::<u8, 33>::new_const();
+
+                buf.push(FrameTag::ContentRequest as u8);
+                buf.write_all(&hash.0).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentResponse {
+                compression,
+                proof_len,
+                block_len,
+                signature,
+            } => {
+                let mut buf = ArrayVec::<u8, 82>::new_const();
+
+                buf.push(FrameTag::ContentResponse as u8);
+                buf.push(compression);
+                buf.write_all(&proof_len.to_be_bytes()).unwrap();
+                buf.write_all(&block_len.to_be_bytes()).unwrap();
+                buf.write_all(&signature).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::ContentRangeRequest {
+                hash,
+                chunk_start,
+                chunks,
+            } => {
+                let mut buf = ArrayVec::<u8, 43>::new_const();
+
+                buf.push(FrameTag::ContentRangeRequest as u8);
+                buf.write_all(&hash.0).unwrap();
+                buf.write_all(&chunk_start.to_be_bytes()).unwrap();
+                buf.write_all(&chunks.to_be_bytes()).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::UpdateEpochSignal(nonce) => {
+                let mut buf = ArrayVec::<u8, 9>::new_const();
+
+                buf.push(FrameTag::UpdateEpochSignal as u8);
+                buf.write_all(&nonce.to_be_bytes()).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::DecryptionKeyRequest {
+                delivery_acknowledgment,
+            } => {
+                let mut buf = ArrayVec::<u8, 97>::new_const();
+
+                buf.push(FrameTag::DecryptionKeyRequest as u8);
+                buf.write_all(&delivery_acknowledgment).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::DecryptionKeyResponse { decryption_key } => {
+                let mut buf = ArrayVec::<u8, 34>::new_const();
+
+                buf.push(FrameTag::DecryptionKeyResponse as u8);
+                buf.write_all(&decryption_key).unwrap();
+
+                self.write_stream.write_all(&buf).await?;
+            }
+            UrsaFrame::EndOfRequestSignal => {
+                self.write_stream
+                    .write_u8(FrameTag::EndOfRequestSignal as u8)
+                    .await?
+            }
+            UrsaFrame::TerminationSignal(reason) => {
+                let mut buf = ArrayVec::<u8, 2>::new_const();
+
+                buf.push(FrameTag::TerminationSignal as u8);
+                buf.push(reason as u8);
+
+                self.write_stream.write_all(&buf).await?;
+            }
+        }
+
+        Ok(())
+    }
 
     /// Write a termination signal to the stream.
     #[inline(always)]
@@ -686,6 +711,42 @@ where
             reason.unwrap_or(Reason::Unknown),
         ))
         .await
+    }
+}
+
+impl<R, W> UfdpConnection<R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    pub fn new(
+        read_stream: impl Into<UfdpConnectionReadHalf<R>>,
+        write_stream: impl Into<UfdpConnectionWriteHalf<W>>,
+    ) -> Self {
+        Self {
+            read_half: read_stream.into(),
+            write_half: write_stream.into(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn read_buffer(&mut self, len: usize) {
+        self.read_half.read_buffer(len)
+    }
+
+    #[inline(always)]
+    pub async fn read_frame(&mut self, filter: Option<u8>) -> std::io::Result<Option<UrsaFrame>> {
+        self.read_half.read_frame(filter).await
+    }
+
+    #[inline(always)]
+    pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
+        self.write_half.write_frame(frame).await
+    }
+
+    #[inline(always)]
+    pub async fn termination_signal(&mut self, reason: Option<Reason>) -> std::io::Result<()> {
+        self.write_half.termination_signal(reason).await
     }
 }
 
@@ -715,9 +776,12 @@ mod tests {
         let alice_stream = TcpStream::connect(addr).await?;
         let bob_stream = rx.recv().await.unwrap();
 
+        let (alice_r, alice_w) = alice_stream.split();
+        let (bob_r, bob_w) = bob_stream.split();
+
         // create a raw ufdp connection to encode/decode with
-        let mut alice = UfdpConnection::new(alice_stream);
-        let mut bob = UfdpConnection::new(bob_stream);
+        let mut alice = UfdpConnection::new(alice_r, alice_w);
+        let mut bob = UfdpConnection::new(bob_r, bob_w);
 
         // write/read the frame, comparing the result afterwards
         alice.write_frame(frame.clone()).await?;

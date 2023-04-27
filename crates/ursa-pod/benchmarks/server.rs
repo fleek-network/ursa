@@ -67,9 +67,10 @@ async fn main() {
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
+        let (read, write) = stream.split();
 
         tokio::spawn(async move {
-            let handler = UfdpHandler::new(stream, BenchmarkBackend {}, session_id);
+            let handler = UfdpHandler::new(read, write, BenchmarkBackend {}, session_id);
             instrument!(
                 handler.serve().await.unwrap(),
                 "sid={session_id},tag=session"

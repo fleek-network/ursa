@@ -216,7 +216,8 @@ mod tcp_ufdp {
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            let (read, write) = stream.split();
+            let handler = UfdpHandler::new(read, write, DummyBackend { content }, 0);
             task::spawn(async move {
                 if let Err(e) = handler.serve().await {
                     println!("server error: {e:?}");
@@ -273,7 +274,8 @@ mod tcp_tls_ufdp {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
-            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            let (read, write) = stream.split();
+            let handler = UfdpHandler::new(read, write, DummyBackend { content }, 0);
             task::spawn(async move {
                 if let Err(e) = handler.serve().await {
                     println!("server error: {e:?}")
@@ -290,8 +292,11 @@ mod tcp_tls_ufdp {
             let connector = TlsConnector::from(tls_config.clone());
             let stream = TcpStream::connect(&addr).await.unwrap();
             let stream = connector.connect(domain.clone(), stream).await.unwrap();
+            let (readm, write) = stream.split();
             let task = task::spawn(async {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                let mut client = UfdpClient::new(read, write, CLIENT_PUB_KEY, None)
+                    .await
+                    .unwrap();
 
                 client.request(CID).await.unwrap();
                 client.finish().shutdown().await.unwrap();
@@ -408,9 +413,9 @@ mod quinn_ufdp {
                     match connection.accept_bi().await {
                         Ok((tx, rx)) => {
                             task::spawn(async {
-                                let stream = BiStream { tx, rx };
                                 let handler = UfdpHandler::new(
-                                    stream,
+                                    rx,
+                                    tx,
                                     DummyBackend {
                                         content: content_clone,
                                     },
@@ -444,9 +449,8 @@ mod quinn_ufdp {
             .unwrap();
         for _ in 0..iterations {
             let (tx, rx) = stream.open_bi().await.unwrap();
-            let stream = BiStream { tx, rx };
             let task = task::spawn(async move {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                let mut client = UfdpClient::new(rx, tx, CLIENT_PUB_KEY, None).await.unwrap();
                 client.request(CID).await.unwrap();
                 let mut stream = client.finish();
                 stream.tx.finish().await.unwrap();

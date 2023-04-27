@@ -49,9 +49,10 @@ async fn main() -> Result<(), UrsaCodecError> {
 
     let listener = TcpListener::bind(addr).await.unwrap();
     loop {
-        let (stream, _) = listener.accept().await.unwrap();
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let (read, write) = stream.split();
         info!("accepted conn");
-        let handler = UfdpHandler::new(stream, DummyBackend {}, 0);
+        let handler = UfdpHandler::new(read, write, DummyBackend {}, 0);
 
         if let Err(e) = handler.serve().await {
             error!("UFDP Session failed: {e:?}");

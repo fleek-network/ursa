@@ -32,25 +32,25 @@ pub trait Backend: Send + Sync + 'static {
 /// UFDP Handler.
 ///
 /// Accepts any stream of data supporting [`AsyncWrite`] + [`AsyncRead`], and a backend.
-pub struct UfdpHandler<S: AsyncRead + AsyncWrite + Unpin, B: Backend> {
-    pub conn: UfdpConnection<S>,
+pub struct UfdpHandler<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, B: Backend> {
+    pub conn: UfdpConnection<R, W>,
     backend: Arc<B>,
     #[allow(unused)]
     session_id: u64,
 }
 
-impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
+impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, B: Backend> UfdpHandler<R, W, B> {
     #[inline(always)]
-    pub fn new(stream: S, backend: B, session_id: u64) -> Self {
+    pub fn new(read: R, write: W, backend: B, session_id: u64) -> Self {
         Self {
-            conn: UfdpConnection::new(stream),
+            conn: UfdpConnection::new(read, write),
             backend: Arc::new(backend),
             session_id,
         }
     }
 
     /// Begin serving a request. Accepts a handshake, and then begins the request loop.
-    pub async fn serve(mut self) -> Result<S, UrsaCodecError> {
+    pub async fn serve(mut self) -> Result<(R, W), UrsaCodecError> {
         // Step 1: Perform the handshake.
         instrument!(
             self.handshake().await?,
@@ -89,7 +89,10 @@ impl<S: AsyncWrite + AsyncRead + Unpin, B: Backend> UfdpHandler<S, B> {
             }
         }
 
-        Ok(self.conn.stream)
+        Ok((
+            self.conn.read_half.read_stream,
+            self.conn.write_half.write_stream,
+        ))
     }
 
     /// Wait and respond to a handshake request.

@@ -20,8 +20,9 @@ async fn main() -> Result<(), UrsaCodecError> {
         #[cfg(not(feature = "bench-hyper"))]
         handles.push(tokio::spawn(async {
             let time = std::time::Instant::now();
-            let stream = TcpStream::connect(SERVER_ADDRESS).await.unwrap();
-            let mut client = UfdpClient::new(stream, PUB_KEY, None).await.unwrap();
+            let mut stream = TcpStream::connect(SERVER_ADDRESS).await.unwrap();
+            let (read, write) = stream.split();
+            let mut client = UfdpClient::new(read, write, PUB_KEY, None).await.unwrap();
             let size = client.request(CID).await.unwrap();
 
             let took = time.elapsed().as_millis();

@@ -83,8 +83,9 @@ async fn run(
 }
 
 async fn request(cid: Blake3Cid, addr: &str) -> usize {
-    let stream = TcpStream::connect(addr).await.unwrap();
-    let mut client = UfdpClient::new(stream, PUB_KEY, None).await.unwrap();
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+    let (read, write) = stream.split();
+    let mut client = UfdpClient::new(read, write, PUB_KEY, None).await.unwrap();
     client.request(cid).await.unwrap()
 }
 
