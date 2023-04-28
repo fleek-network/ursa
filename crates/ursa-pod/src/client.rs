@@ -69,6 +69,7 @@ where
             "tag=write_content_req"
         );
         let mut size = 0;
+        let mut block = 0;
 
         // Content response loop.
         loop {
@@ -121,6 +122,8 @@ where
                         }
                     }
 
+                    block += 1;
+
                     // Send decryption key request
                     // todo: crypto integration
                     instrument!(
@@ -131,22 +134,29 @@ where
                             .await?,
                         "tag=write_dk_req"
                     );
-
-                    // Receive decryption key
-                    match instrument!(
-                        self.conn.read_frame(Some(DECRYPTION_KEY_RES_TAG)).await?,
-                        "tag=read_dk_res"
-                    ) {
-                        Some(UrsaFrame::DecryptionKeyResponse { .. }) => {
-                            // todo: decrypt block & verify data
-                        }
-                        Some(_) => unreachable!(), // Guaranteed by frame filter
-                        _ => return Err(UrsaCodecError::Unknown),
-                    }
+                }
+                Some(UrsaFrame::DecryptionKeyResponse { .. }) => {
+                    // todo: decrypt block & verify data
+                    block -= 1;
                 }
                 Some(UrsaFrame::EndOfRequestSignal) => break,
                 Some(f) => return Err(UrsaCodecError::InvalidTag(f.tag().unwrap() as u8)),
                 None => return Err(UrsaCodecError::Unknown),
+            }
+        }
+
+        // Receive pending decryption keys
+        while block > 0 {
+            match instrument!(
+                self.conn.read_frame(Some(DECRYPTION_KEY_RES_TAG)).await?,
+                "tag=read_dk_res"
+            ) {
+                Some(UrsaFrame::DecryptionKeyResponse { .. }) => {
+                    block -= 1;
+                    // todo: decrypt block & verify data
+                }
+                Some(_) => unreachable!(), // Guaranteed by frame filter
+                _ => return Err(UrsaCodecError::Unknown),
             }
         }
 

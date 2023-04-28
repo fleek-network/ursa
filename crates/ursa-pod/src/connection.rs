@@ -320,28 +320,28 @@ impl From<UrsaCodecError> for std::io::Error {
 }
 
 /// Ursa Fair Delivery Codec for tokio's [`Encoder`] and [`Decoder`] traits.
-pub struct UfdpConnection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> {
+pub struct UfdpConnection<R: AsyncRead + Unpin + Send + Sync, W: AsyncWrite + Unpin + Send + Sync> {
     pub read_half: UfdpConnectionReadHalf<R>,
     pub write_half: UfdpConnectionWriteHalf<W>,
 }
 
-pub struct UfdpConnectionWriteHalf<W: AsyncWrite + Unpin> {
+pub struct UfdpConnectionWriteHalf<W: AsyncWrite + Unpin + Send + Sync> {
     pub write_stream: W,
 }
 
-pub struct UfdpConnectionReadHalf<R: AsyncRead + Unpin> {
+pub struct UfdpConnectionReadHalf<R: AsyncRead + Unpin + Send + Sync> {
     pub read_stream: R,
     buffer: BytesMut,
     pub take: usize,
 }
 
-impl<W: AsyncWrite + Unpin> From<W> for UfdpConnectionWriteHalf<W> {
+impl<W: AsyncWrite + Unpin + Send + Sync> From<W> for UfdpConnectionWriteHalf<W> {
     fn from(write_stream: W) -> Self {
         Self { write_stream }
     }
 }
 
-impl<R: AsyncRead + Unpin> From<R> for UfdpConnectionReadHalf<R> {
+impl<R: AsyncRead + Unpin + Send + Sync> From<R> for UfdpConnectionReadHalf<R> {
     fn from(read_stream: R) -> Self {
         Self {
             read_stream,
@@ -358,7 +358,7 @@ impl<R: AsyncRead + Unpin> From<R> for UfdpConnectionReadHalf<R> {
 
 impl<R> UfdpConnectionReadHalf<R>
 where
-    R: AsyncRead + Unpin,
+    R: AsyncRead + Unpin + Send + Sync,
 {
     /// Indicate the next `len` bytes are to be returned as a raw buffer. Always called after a content
     /// response, to receive the raw proof and block bytes.
@@ -571,7 +571,7 @@ where
 
 impl<W> UfdpConnectionWriteHalf<W>
 where
-    W: AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin + Send + Sync,
 {
     #[inline(always)]
     pub async fn write_frame(&mut self, frame: UrsaFrame) -> std::io::Result<()> {
@@ -716,8 +716,8 @@ where
 
 impl<R, W> UfdpConnection<R, W>
 where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
+    R: AsyncRead + Unpin + Send + Sync,
+    W: AsyncWrite + Unpin + Send + Sync,
 {
     pub fn new(
         read_stream: impl Into<UfdpConnectionReadHalf<R>>,
