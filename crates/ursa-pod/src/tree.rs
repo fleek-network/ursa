@@ -36,6 +36,8 @@ pub struct IncrementalVerifier {
     next_head: *mut IncrementalVerifierTreeNode,
 }
 
+unsafe impl Send for IncrementalVerifier {}
+
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum IncrementalVerifierError {
     #[error("The proof provided to the verifier does not have a valid length.")]
