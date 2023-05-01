@@ -67,7 +67,7 @@ libp2p-swarm = "0.42.0"
 lru = "0.10.0"
 maxminddb = "0.23"
 moka = "0.10"
-metrics = "0.20.1"
+metrics = "0.21.0"
 metrics-exporter-prometheus = "0.11.0"
 narwhal-types = { git = "https://github.com/MystenLabs/sui.git", rev = "aa957afb31054a24d3c220266fb8c92921e9a187", package = "narwhal-types" }
 opentelemetry = "0.18.0"
