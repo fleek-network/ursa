@@ -1,11 +1,15 @@
-use crate::tls_utils::TestTlsConfig;
 use criterion::{measurement::Measurement, *};
 use futures::Future;
 use std::time::Duration;
 use tokio::sync::oneshot;
-use ursa_pod::connection::consts::MAX_BLOCK_SIZE;
-use ursa_pod::server::Backend;
-use ursa_pod::types::{Blake3Cid, BlsSignature, Secp256k1PublicKey};
+use ursa_pod::{
+    blake3::Hash,
+    connection::consts::MAX_BLOCK_SIZE,
+    server::Backend,
+    types::{BlsSignature, Secp256k1PublicKey},
+};
+
+use crate::tls_utils::TestTlsConfig;
 
 const MAX_REQUESTS: usize = 64;
 const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
@@ -40,8 +44,8 @@ fn benchmark_sizes<T: Measurement, C, S>(
     files: &[&'static [u8]],
     uses_tls: bool,
     unit: usize,
-    client: impl Fn(String, usize, Option<TestTlsConfig>) -> C,
-    server: impl Fn(String, &'static [u8], oneshot::Sender<u16>, Option<TestTlsConfig>) -> S,
+    client: impl Fn(String, usize, Hash, Option<TestTlsConfig>) -> C,
+    server: impl Fn(String, &'static [u8], oneshot::Sender<(u16, Hash)>, Option<TestTlsConfig>) -> S,
 ) where
     C: Future,
     S: Future + Send + 'static,
@@ -52,7 +56,7 @@ fn benchmark_sizes<T: Measurement, C, S>(
         .build()
         .unwrap();
 
-    let certificate = uses_tls.then(|| TestTlsConfig::new());
+    let certificate = uses_tls.then(TestTlsConfig::new);
 
     for file in files {
         // Spawn the server and wait for it to signal that it's ready.
@@ -63,7 +67,7 @@ fn benchmark_sizes<T: Measurement, C, S>(
             tx_started,
             certificate.clone(),
         ));
-        let port = futures::executor::block_on(rx_started).unwrap();
+        let (port, hash) = futures::executor::block_on(rx_started).unwrap();
         let addr = format!("127.0.0.1:{port}");
 
         let mut num_requests = 1;
@@ -87,7 +91,7 @@ fn benchmark_sizes<T: Measurement, C, S>(
                 &num_requests,
                 |b, &n| {
                     b.to_async(&runtime)
-                        .iter(|| client(addr.clone(), n, certificate.clone()));
+                        .iter(|| client(addr.clone(), n, hash, certificate.clone()));
                 },
             );
 
@@ -160,20 +164,41 @@ fn protocol_benchmarks(c: &mut Criterion) {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct DummyBackend {
     content: &'static [u8],
+    tree: Vec<[u8; 32]>,
 }
 
-impl Backend for DummyBackend {
-    fn raw_block(&self, _cid: &Blake3Cid, block: u64) -> Option<&[u8]> {
+impl DummyBackend {
+    fn new(content: &'static [u8]) -> (Self, Hash) {
+        // build a 10GB blake3 tree
+        let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+        let mut i = 0;
+        while let Some(block) = Self::raw_block(content, i) {
+            tree_builder.update(block);
+            i += 1
+        }
+        let output = tree_builder.finalize();
+        let hash = output.hash;
+        let tree = output.tree;
+        (Self { content, tree }, hash)
+    }
+
+    fn raw_block(content: &'static [u8], block: u64) -> Option<&[u8]> {
         let s = block as usize * MAX_BLOCK_SIZE;
-        if s < self.content.len() {
-            let e = self.content.len().min(s + MAX_BLOCK_SIZE);
-            Some(&self.content[s..e])
+        if s < content.len() {
+            let e = content.len().min(s + MAX_BLOCK_SIZE);
+            Some(&content[s..e])
         } else {
             None
         }
+    }
+}
+
+impl Backend for DummyBackend {
+    fn raw_block(&self, _hash: &Hash, block: u64) -> Option<&[u8]> {
+        Self::raw_block(self.content, block)
     }
 
     fn decryption_key(&self, _request_id: u64) -> (ursa_pod::types::Secp256k1AffinePoint, u64) {
@@ -187,36 +212,42 @@ impl Backend for DummyBackend {
     fn save_batch(&self, _batch: BlsSignature) -> Result<(), String> {
         Ok(())
     }
+
+    fn get_tree(&self, _cid: &Hash) -> Option<Vec<[u8; 32]>> {
+        Some(self.tree.clone())
+    }
 }
 
 mod tcp_ufdp {
-    use super::DummyBackend;
-    use crate::tls_utils::TestTlsConfig;
     use futures::future::join_all;
     use tokio::{
         net::{TcpListener, TcpStream},
         task,
     };
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+
+    use super::DummyBackend;
+    use crate::tls_utils::TestTlsConfig;
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
     /// Simple tcp server loop that replies with static content
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<u16>,
+        tx_started: tokio::sync::oneshot::Sender<(u16, Hash)>,
         _: Option<TestTlsConfig>,
     ) {
+        let (backend, hash) = DummyBackend::new(content);
+
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        tx_started.send(port).unwrap();
+        tx_started.send((port, hash)).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            let handler = UfdpHandler::new(stream, backend.clone(), 0);
             task::spawn(async move {
                 if let Err(e) = handler.serve().await {
                     println!("server error: {e:?}");
@@ -227,14 +258,20 @@ mod tcp_ufdp {
 
     /// Simple client loop that sends a request and loops over the block stream, dropping the bytes
     /// immediately.
-    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestTlsConfig>) {
+
+    pub async fn client_loop(
+        addr: String,
+        iterations: usize,
+        hash: Hash,
+        _: Option<TestTlsConfig>,
+    ) {
         let mut tasks = vec![];
         for _ in 0..iterations {
             let stream = TcpStream::connect(&addr).await.unwrap();
-            let task = task::spawn(async {
+            let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
-                client.request(CID).await.unwrap();
+                client.request(hash).await.unwrap();
             });
             tasks.push(task);
         }
@@ -253,27 +290,27 @@ mod tcp_tls_ufdp {
         task,
     };
     use tokio_rustls::{TlsAcceptor, TlsConnector};
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<u16>,
+        tx_started: tokio::sync::oneshot::Sender<(u16, Hash)>,
         tls_config: Option<TestTlsConfig>,
     ) {
+        let (backend, hash) = DummyBackend::new(content);
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        tx_started.send(port).unwrap();
+        tx_started.send((port, hash)).unwrap();
 
         let acceptor = TlsAcceptor::from(Arc::new(tls_config.unwrap().server_config()));
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
-            let handler = UfdpHandler::new(stream, DummyBackend { content }, 0);
+            let handler = UfdpHandler::new(stream, backend.clone(), 0);
             task::spawn(async move {
                 if let Err(e) = handler.serve().await {
                     println!("server error: {e:?}")
@@ -282,7 +319,12 @@ mod tcp_tls_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
+    pub async fn client_loop(
+        addr: String,
+        iterations: usize,
+        hash: Hash,
+        tls_config: Option<TestTlsConfig>,
+    ) {
         let domain = rustls::ServerName::try_from("localhost").unwrap();
         let mut tasks = vec![];
         let tls_config = Arc::new(tls_config.unwrap().client_config());
@@ -290,10 +332,10 @@ mod tcp_tls_ufdp {
             let connector = TlsConnector::from(tls_config.clone());
             let stream = TcpStream::connect(&addr).await.unwrap();
             let stream = connector.connect(domain.clone(), stream).await.unwrap();
-            let task = task::spawn(async {
+            let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
 
-                client.request(CID).await.unwrap();
+                client.request(hash).await.unwrap();
                 client.finish().shutdown().await.unwrap();
             });
             tasks.push(task);
@@ -382,40 +424,35 @@ mod quinn_ufdp {
     };
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
     use tokio::task;
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<u16>,
+        tx_started: tokio::sync::oneshot::Sender<(u16, Hash)>,
         tls_config: Option<TestTlsConfig>,
     ) {
+        let (backend, hash) = DummyBackend::new(content);
         let server_config =
             ServerConfig::with_crypto(Arc::new(tls_config.unwrap().server_config()));
         let server = Endpoint::server(server_config, addr.parse().unwrap()).unwrap();
         let port = server.local_addr().unwrap().port();
 
-        tx_started.send(port).unwrap();
+        tx_started.send((port, hash)).unwrap();
 
         while let Some(connecting) = server.accept().await {
             let connection = connecting.await.unwrap();
-            let content_clone = content.clone();
+            let backend = backend.clone();
             task::spawn(async move {
                 loop {
+                    let backend = backend.clone();
                     match connection.accept_bi().await {
                         Ok((tx, rx)) => {
-                            task::spawn(async {
+                            task::spawn(async move {
                                 let stream = BiStream { tx, rx };
-                                let handler = UfdpHandler::new(
-                                    stream,
-                                    DummyBackend {
-                                        content: content_clone,
-                                    },
-                                    0,
-                                );
+                                let handler = UfdpHandler::new(stream, backend, 0);
                                 if let Err(e) = handler.serve().await {
                                     println!("server error: {e:?}");
                                 }
@@ -432,7 +469,12 @@ mod quinn_ufdp {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
+    pub async fn client_loop(
+        addr: String,
+        iterations: usize,
+        hash: Hash,
+        tls_config: Option<TestTlsConfig>,
+    ) {
         let mut tasks = vec![];
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
         let client_config = quinn::ClientConfig::new(Arc::new(tls_config.unwrap().client_config()));
@@ -447,7 +489,7 @@ mod quinn_ufdp {
             let stream = BiStream { tx, rx };
             let task = task::spawn(async move {
                 let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
-                client.request(CID).await.unwrap();
+                client.request(hash).await.unwrap();
                 let mut stream = client.finish();
                 stream.tx.finish().await.unwrap();
             });
@@ -543,7 +585,7 @@ mod tls_utils {
                 config
             } else {
                 let mut roots = rustls::RootCertStore::empty();
-                roots.add(&self.cert.first().unwrap()).unwrap();
+                roots.add(self.cert.first().unwrap()).unwrap();
 
                 let mut config = ClientConfig::builder()
                     .with_safe_defaults()
