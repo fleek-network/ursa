@@ -104,60 +104,6 @@ fn protocol_benchmarks(c: &mut Criterion) {
         ("Content Size (Kilobyte)", KILOBYTE_FILES, 1024),
         ("Content Size (Megabyte)", MEGABYTE_FILES, 1024 * 1024),
     ] {
-        {
-            let mut g = c.benchmark_group(format!("TCP UFDP/{range}"));
-            g.sample_size(20);
-            benchmark_sizes(
-                &mut g,
-                files,
-                false,
-                unit,
-                tcp_ufdp::client_loop,
-                tcp_ufdp::server_loop,
-            );
-        }
-
-        {
-            let mut g = c.benchmark_group(format!("TCP/TLS UFDP/{range}"));
-            g.sample_size(20);
-            benchmark_sizes(
-                &mut g,
-                files,
-                true,
-                unit,
-                tcp_tls_ufdp::client_loop,
-                tcp_tls_ufdp::server_loop,
-            );
-        }
-
-        #[cfg(feature = "bench-hyper")]
-        {
-            let mut g = c.benchmark_group(format!("HTTP Hyper/{range}"));
-            g.sample_size(20);
-            benchmark_sizes(
-                &mut g,
-                files,
-                false,
-                unit,
-                http_hyper::client_loop,
-                http_hyper::server_loop,
-            );
-        }
-
-        #[cfg(feature = "bench-quic")]
-        {
-            let mut g = c.benchmark_group(format!("QUINN UFDP/{range}"));
-            g.sample_size(20);
-            benchmark_sizes(
-                &mut g,
-                files,
-                true,
-                unit,
-                quinn_ufdp::client_loop,
-                quinn_ufdp::server_loop,
-            );
-        }
-
         #[cfg(feature = "bench-quic")]
         {
             let mut g = c.benchmark_group(format!("S2N-QUIC UFDP/{range}"));
