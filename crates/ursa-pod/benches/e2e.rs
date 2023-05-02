@@ -510,10 +510,8 @@ mod quinn_ufdp {
 
 #[cfg(feature = "bench-quic")]
 mod s2n_quic_ufdp {
-    use super::{
-        DummyBackend,
-    };
-    use crate::tls_utils::{TestTlsConfig};
+    use super::DummyBackend;
+    use crate::tls_utils::TestTlsConfig;
     use futures::future::join_all;
     use s2n_quic::{client::Connect, provider::tls, Client, Server};
     use std::net::SocketAddr;
@@ -575,6 +573,7 @@ mod s2n_quic_ufdp {
                                 // if let Err(e) = handler.serve().await {
                                 //     println!("server error: {e:?}");
                                 // }
+                                let mut buf = [0; 5];
                                 stream.read(&mut buf).await.unwrap();
                                 assert_eq!(&buf, b"hello");
                                 stream.write(&content_clone).await.unwrap();
