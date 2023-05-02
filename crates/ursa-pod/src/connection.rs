@@ -700,12 +700,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::mpsc::channel,
     };
+
+    use super::*;
 
     type TResult = Result<(), UrsaCodecError>;
 

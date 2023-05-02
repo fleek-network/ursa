@@ -71,8 +71,7 @@ pub fn stddev(list: &[u64], mean: Option<f64>) -> f64 {
 
 #[test]
 fn test() {
-    use rand::seq::SliceRandom;
-    use rand::thread_rng;
+    use rand::{seq::SliceRandom, thread_rng};
     let mut vec: Vec<u64> = (0..1000).map(|x| (2 * x + 5) as u64).collect();
     vec.shuffle(&mut thread_rng());
     let m = sum_mean(&vec).1;

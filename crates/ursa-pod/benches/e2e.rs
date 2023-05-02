@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use criterion::{measurement::Measurement, *};
 use futures::Future;
-use std::time::Duration;
 use tokio::sync::oneshot;
 use ursa_pod::{
     blake3::Hash,
@@ -421,18 +422,22 @@ mod http_hyper {
 
 #[cfg(feature = "bench-quic")]
 mod quinn_ufdp {
-    use super::{tls_utils::TestTlsConfig, DummyBackend};
-    use futures::future::join_all;
-    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
     use std::{
         io::Error,
         pin::Pin,
         sync::Arc,
         task::{Context, Poll},
     };
-    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-    use tokio::task;
+
+    use futures::future::join_all;
+    use quinn::{ConnectionError, Endpoint, RecvStream, SendStream, ServerConfig};
+    use tokio::{
+        io::{AsyncRead, AsyncWrite, ReadBuf},
+        task,
+    };
     use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
 
@@ -546,6 +551,7 @@ mod quinn_ufdp {
 
 mod tls_utils {
     use rustls::{Certificate, ClientConfig, PrivateKey, ServerConfig};
+
     #[derive(Clone)]
     pub struct TestTlsConfig {
         pub cert: Vec<Certificate>,

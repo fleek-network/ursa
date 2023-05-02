@@ -3,8 +3,10 @@
 use benchmarks_utils::*;
 use criterion::*;
 use rand_core::OsRng;
-use ursa_pod::keys::SecretKey;
-use ursa_pod::primitives::{encrypt_block, RequestInfo};
+use ursa_pod::{
+    keys::SecretKey,
+    primitives::{encrypt_block, RequestInfo},
+};
 
 fn bench_encrypt(c: &mut Criterion) {
     const SIZE: usize = 256 * KB;

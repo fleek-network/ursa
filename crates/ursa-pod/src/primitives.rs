@@ -1,13 +1,16 @@
 //! Implementation of primitive cryptographic functions and algorithms for PoD.
 
-use crate::keys::{PublicKey, SecretKey};
-use elliptic_curve::hash2curve::{FromOkm, MapToCurve};
-use elliptic_curve::sec1::ToEncodedPoint;
-use elliptic_curve::Field;
-use rand::Rng;
-use rand_core::RngCore;
-use rand_core::{block::BlockRngCore, OsRng, SeedableRng};
 use std::iter::zip;
+
+use elliptic_curve::{
+    hash2curve::{FromOkm, MapToCurve},
+    sec1::ToEncodedPoint,
+    Field,
+};
+use rand::Rng;
+use rand_core::{block::BlockRngCore, OsRng, RngCore, SeedableRng};
+
+use crate::keys::{PublicKey, SecretKey};
 
 const REQUEST_INFO_HASH_DOMAIN_SEP: &str = "FLEEK_NETWORK_POD_REQUEST_INFO_HASH";
 const SCHNORR_CHALLENGE_DOMAIN_SEP: &str = "FLEEK_NETWORK_POD_SCHNORR_CHALLENGE";

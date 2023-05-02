@@ -1,7 +1,7 @@
+use std::{borrow::Borrow, cmp::Ordering, fmt::Debug, ptr};
+
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
-use std::ptr;
-use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 use thiserror::Error;
 
 // Debug only code for testing against memory leaks.

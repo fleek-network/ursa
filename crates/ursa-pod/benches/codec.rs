@@ -4,9 +4,7 @@ use std::time::Duration;
 
 use arrayref::array_ref;
 use benchmarks_utils::*;
-
 use criterion::{measurement::Measurement, *};
-
 use futures::executor::block_on;
 use ursa_pod::{
     connection::{Reason, UfdpConnection, UrsaFrame},
