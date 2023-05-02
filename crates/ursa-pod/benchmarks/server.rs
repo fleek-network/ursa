@@ -70,7 +70,7 @@ impl BenchmarkBackend {
         Self { sizes, trees }
     }
 
-    fn raw_block<'a>(len: usize, block: usize) -> Option<&'static [u8]> {
+    fn raw_block(len: usize, block: usize) -> Option<&'static [u8]> {
         let s = block * BLOCK.len();
         if s < len {
             let e = len.min(s + BLOCK.len());
