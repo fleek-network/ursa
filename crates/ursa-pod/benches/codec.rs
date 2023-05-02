@@ -6,9 +6,10 @@ use arrayref::array_ref;
 use benchmarks_utils::*;
 use criterion::{measurement::Measurement, *};
 use futures::executor::block_on;
+use tokio::sync::Mutex;
 use ursa_pod::{
+    blake3::Hash,
     connection::{Reason, UfdpConnection, UrsaFrame},
-    types::Blake3Cid,
 };
 
 mod transport {
@@ -75,8 +76,10 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
     let transport = transport::DirectTransport::default();
 
     g.bench_function(format!("{title}/encode"), |b| {
+        let conn = Mutex::new(UfdpConnection::new(transport.clone()));
         b.to_async(&runtime).iter(|| async {
-            let mut conn = UfdpConnection::new(transport.clone());
+            // executed sequentially so should be a minimal await
+            let mut conn = conn.lock().await;
             conn.write_frame(frame.clone()).await
         })
     });
@@ -91,8 +94,9 @@ fn bench_frame<T: Measurement>(g: &mut BenchmarkGroup<T>, frame: UrsaFrame, titl
     });
 
     g.bench_function(format!("{title}/decode"), |b| {
+        let conn = Mutex::new(UfdpConnection::new(transport.clone()));
         b.to_async(&runtime).iter(|| async {
-            let mut conn = UfdpConnection::new(transport.clone());
+            let mut conn = conn.lock().await;
             conn.read_frame(None).await
         })
     });
@@ -126,14 +130,14 @@ fn bench_codec_group(c: &mut Criterion) {
     // Content request
     let cid = random_vec(32);
     let frame = UrsaFrame::ContentRequest {
-        hash: Blake3Cid(*array_ref!(cid, 0, 32)),
+        hash: Hash::from(*array_ref!(cid, 0, 32)),
     };
     bench_frame(&mut g, frame, "content_request");
 
     // Content range request
     let data = random_vec(32);
     let frame = UrsaFrame::ContentRangeRequest {
-        hash: Blake3Cid(*array_ref!(data, 0, 32)),
+        hash: Hash::from(*array_ref!(data, 0, 32)),
         chunk_start: 0,
         chunks: 1,
     };
