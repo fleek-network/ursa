@@ -157,6 +157,20 @@ fn protocol_benchmarks(c: &mut Criterion) {
                 quinn_ufdp::server_loop,
             );
         }
+
+        #[cfg(feature = "bench-quic")]
+        {
+            let mut g = c.benchmark_group(format!("S2N-QUIC UFDP/{range}"));
+            g.sample_size(20);
+            benchmark_sizes(
+                &mut g,
+                files,
+                true,
+                unit,
+                s2n_quic_ufdp::client_loop,
+                s2n_quic_ufdp::server_loop,
+            );
+        }
     }
 }
 
@@ -491,6 +505,109 @@ mod quinn_ufdp {
         ) -> Poll<Result<(), Error>> {
             Pin::new(&mut self.tx).poll_shutdown(cx)
         }
+    }
+}
+
+#[cfg(feature = "bench-quic")]
+mod s2n_quic_ufdp {
+    use super::{
+        DummyBackend,
+    };
+    use crate::tls_utils::{TestTlsConfig};
+    use futures::future::join_all;
+    use s2n_quic::{client::Connect, provider::tls, Client, Server};
+    use std::net::SocketAddr;
+    use tokio::task;
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
+
+    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+
+    pub struct TlsProvider(TestTlsConfig);
+
+    impl tls::Provider for TlsProvider {
+        type Server = tls::rustls::Server;
+        type Client = tls::rustls::Client;
+        type Error = rustls::Error;
+
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
+            Ok(self.0.server_config().into())
+        }
+
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
+            Ok(self.0.client_config().into())
+        }
+    }
+
+    pub async fn server_loop(
+        addr: String,
+        content: &'static [u8],
+        tx_started: tokio::sync::oneshot::Sender<u16>,
+        cert: Option<TestTlsConfig>,
+    ) {
+        let mut server = Server::builder()
+            .with_tls(TlsProvider(cert.unwrap()))
+            .unwrap()
+            .with_io(addr.as_str())
+            .unwrap()
+            .start()
+            .unwrap();
+
+        tx_started
+            .send(server.local_addr().unwrap().port())
+            .unwrap();
+
+        while let Some(mut conn) = server.accept().await {
+            let content_clone = content.clone();
+            task::spawn(async move {
+                loop {
+                    match conn.accept_bidirectional_stream().await {
+                        Ok(Some(stream)) => {
+                            task::spawn(async {
+                                let handler = UfdpHandler::new(
+                                    stream,
+                                    DummyBackend {
+                                        content: content_clone,
+                                    },
+                                    0,
+                                );
+                                if let Err(e) = handler.serve().await {
+                                    println!("server error: {e:?}");
+                                }
+                            });
+                        }
+                        Ok(None) => break,
+                        Err(s2n_quic::connection::Error::Closed { .. }) => break,
+                        Err(e) => panic!("{e:?}"),
+                    }
+                }
+            });
+        }
+    }
+
+    pub async fn client_loop(addr: String, iterations: usize, cert: Option<TestTlsConfig>) {
+        let mut tasks = vec![];
+        let client = Client::builder()
+            .with_tls(TlsProvider(cert.unwrap()))
+            .unwrap()
+            .with_io("0.0.0.0:0")
+            .unwrap()
+            .start()
+            .unwrap();
+        let addr: SocketAddr = addr.parse().unwrap();
+        let mut connection = client
+            .connect(Connect::new(addr).with_server_name("localhost"))
+            .await
+            .unwrap();
+        for _ in 0..iterations {
+            let stream = connection.open_bidirectional_stream().await.unwrap();
+            let task = task::spawn(async move {
+                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                client.request(CID).await.unwrap();
+            });
+            tasks.push(task);
+        }
+        join_all(tasks).await;
     }
 }
 

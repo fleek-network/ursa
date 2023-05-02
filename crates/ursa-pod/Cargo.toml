@@ -31,6 +31,7 @@ quinn = { version = "0.9", optional = true }
 rcgen = { version = "0.10", optional = true }
 rustls = { version = "0.20", default-features = false, features = ["dangerous_configuration"], optional = true }
 tokio-rustls = { version = "0.23.4", optional = true }
+s2n-quic = { version = "1.18", default-features = false, features = ["provider-address-token-default", "provider-tls-rustls"] , optional = true }
 
 # Binary benchmark dependencies
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -51,7 +52,7 @@ client = ["tokio", "tokio-stream", "futures", "tracing"]
 server = ["tokio", "tokio-stream", "futures", "tracing"]
 bench-hyper = ["tokio", "hyper", "http-body-util"]
 benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
-bench-quic = ["quinn", "tls"]
+bench-quic = ["quinn", "tls", "s2n-quic"]
 tls = ["rustls", "rcgen", "tokio-rustls"]
 
 [[bench]]
