@@ -562,7 +562,7 @@ mod s2n_quic_ufdp {
                 loop {
                     match conn.accept_bidirectional_stream().await {
                         Ok(Some(mut stream)) => {
-                            task::spawn(async {
+                            task::spawn(async move {
                                 // let handler = UfdpHandler::new(
                                 //     stream,
                                 //     DummyBackend {
@@ -573,10 +573,11 @@ mod s2n_quic_ufdp {
                                 // if let Err(e) = handler.serve().await {
                                 //     println!("server error: {e:?}");
                                 // }
+                                let test_content = [0; 1024];
                                 let mut buf = [0; 5];
                                 stream.read(&mut buf).await.unwrap();
                                 assert_eq!(&buf, b"hello");
-                                stream.write(&content_clone).await.unwrap();
+                                stream.write(&test_content).await.unwrap();
                             });
                         }
                         Ok(None) => break,
