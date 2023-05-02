@@ -280,17 +280,18 @@ mod tcp_ufdp {
 }
 
 mod tcp_tls_ufdp {
-    use super::DummyBackend;
-    use crate::tls_utils::TestTlsConfig;
-    use futures::future::join_all;
     use std::sync::Arc;
-    use tokio::io::AsyncWriteExt;
+
+    use futures::future::join_all;
     use tokio::{
+        io::AsyncWriteExt,
         net::{TcpListener, TcpStream},
         task,
     };
     use tokio_rustls::{TlsAcceptor, TlsConnector};
     use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
 
     const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
 
@@ -348,21 +349,23 @@ mod tcp_tls_ufdp {
 mod http_hyper {
     use std::io::Error;
 
-    use crate::tls_utils::TestTlsConfig;
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{server::conn::http1, service::service_fn, Request, Response};
     use tokio::net::{TcpListener, TcpStream};
+    use ursa_pod::blake3::Hash;
+
+    use super::tls_utils::TestTlsConfig;
 
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<u16>,
+        tx_started: tokio::sync::oneshot::Sender<(u16, Hash)>,
         _: Option<TestTlsConfig>,
     ) {
         let listener = TcpListener::bind(addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        tx_started.send(port).unwrap();
+        tx_started.send((port, Hash::from([0u8; 32]))).unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -380,7 +383,12 @@ mod http_hyper {
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, _: Option<TestTlsConfig>) {
+    pub async fn client_loop(
+        addr: String,
+        iterations: usize,
+        _hash: Hash,
+        _: Option<TestTlsConfig>,
+    ) {
         for _ in 0..iterations {
             // Open a TCP connection to the remote host
             let stream = TcpStream::connect(&addr).await.unwrap();
