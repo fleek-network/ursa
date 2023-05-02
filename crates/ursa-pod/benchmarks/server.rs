@@ -1,10 +1,5 @@
-use std::{
-    cmp::min,
-    collections::{BTreeMap, HashMap},
-    io::Write,
-};
+use std::{collections::HashMap, io::Write};
 
-use arrayref::array_ref;
 use tokio::net::TcpListener;
 use ursa_pod::{
     blake3::Hash,
@@ -18,7 +13,7 @@ const ADDRESS: &str = "0.0.0.0:6969";
 const BLOCK: &[u8] = &[0; 256 * 1024];
 const SIZES: [usize; 17] = [
     // MB
-    1 * 1024 * 1024,
+    1024 * 1024,
     2 * 1024 * 1024,
     4 * 1024 * 1024,
     8 * 1024 * 1024,
@@ -29,7 +24,7 @@ const SIZES: [usize; 17] = [
     256 * 1024 * 1024,
     512 * 1024 * 1024,
     // GB
-    1 * 1024 * 1024 * 1024,
+    1024 * 1024 * 1024,
     2 * 1024 * 1024 * 1024,
     4 * 1024 * 1024 * 1024,
     8 * 1024 * 1024 * 1024,
@@ -49,23 +44,44 @@ impl BenchmarkBackend {
         let mut sizes = HashMap::new();
         let mut trees = HashMap::new();
 
+        let mut threads = vec![];
+
+        eprint!("Building blake3 trees ... (1/{})", SIZES.len() - 1);
+        std::io::stdout().flush().unwrap();
         for (i, size) in SIZES.iter().enumerate() {
-            eprint!("\rBuilding blake3 trees ... ({i}/{})", SIZES.len() - 1);
-            std::io::stdout().flush().unwrap();
-            let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
-            let mut i = 0;
-            while let Some(block) = Self::raw_block(*size, i) {
-                tree_builder.update(block);
-                i += 1
-            }
-            let output = tree_builder.finalize();
-            sizes.insert(output.hash, *size);
-            trees.insert(output.hash, output.tree);
+            let thread = std::thread::spawn(move || {
+                std::io::stdout().flush().unwrap();
+                let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
+                let mut b = 0;
+                while let Some(block) = Self::raw_block(*size, b) {
+                    tree_builder.update(block);
+                    b += 1
+                }
+                let output = tree_builder.finalize();
+
+                eprint!(
+                    "\rBuilding blake3 trees ... ({}/{})",
+                    i + 1,
+                    SIZES.len() - 1
+                );
+                (*size, output.hash, output.tree)
+            });
+
+            threads.push(thread);
         }
-        eprintln!("\rBuilding blake3 trees ... (done)   ");
+
+        for thread in threads {
+            let (size, hash, tree) = thread.join().unwrap();
+            sizes.insert(hash, size);
+            trees.insert(hash, tree);
+        }
+        eprintln!("\rBuilding blake3 trees ... (done)  ");
+
         let mut arr = sizes.iter().collect::<Vec<(&Hash, &usize)>>();
         arr.sort_by(|(_, a), (_, b)| a.cmp(b));
-        eprintln!("{arr:?}");
+        for (hash, size) in arr {
+            eprintln!("{hash}: {size}");
+        }
 
         Self { sizes, trees }
     }
@@ -110,7 +126,7 @@ async fn main() {
     let backend = BenchmarkBackend::new();
 
     let listener = TcpListener::bind(ADDRESS).await.unwrap();
-    eprintln!("Listening on {ADDRESS}");
+    eprintln!("\nListening on {ADDRESS}");
 
     let mut session_id = 0;
     loop {
