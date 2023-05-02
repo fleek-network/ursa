@@ -77,7 +77,6 @@ path = "benchmarks/client.rs"
 [[bin]]
 name = "ufdp-bench-server"
 path = "benchmarks/server.rs"
-required-features = ["benchmarks"]
 
 [[bin]]
 name = "ufdp-bench-parser"
