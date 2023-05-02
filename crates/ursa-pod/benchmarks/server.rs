@@ -43,42 +43,31 @@ impl BenchmarkBackend {
     fn new() -> Self {
         let mut sizes = HashMap::new();
         let mut trees = HashMap::new();
+        let mut display = String::new();
 
-        let mut threads = vec![];
-
-        eprint!("Building blake3 trees ... (1/{})", SIZES.len() - 1);
+        eprint!("Building blake3 trees ... test");
         std::io::stdout().flush().unwrap();
-        for size in SIZES {
-            let thread = std::thread::spawn(move || {
-                std::io::stdout().flush().unwrap();
-                let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
-                let mut b = 0;
-                while let Some(block) = Self::raw_block(size, b) {
-                    tree_builder.update(block);
-                    b += 1
-                }
-                let output = tree_builder.finalize();
 
-                (size, output.hash, output.tree)
-            });
+        let mut builder = blake3::ursa::HashTreeBuilder::new();
+        let mut b = 0;
+        for (i, size) in SIZES.into_iter().enumerate() {
+            eprint!("\rBuilding blake3 trees ... ({}/{})", i + 1, SIZES.len());
+            std::io::stdout().flush().unwrap();
 
-            threads.push(thread);
+            while let Some(block) = Self::raw_block(size, b) {
+                builder.update(block);
+                b += 1;
+            }
+            // clone the builder at this state, and finalize it. The original will continue to be
+            // used for the next iterations
+            let output = builder.clone().finalize();
+            sizes.insert(output.hash, size);
+            trees.insert(output.hash, output.tree);
+
+            display.push_str(&format!("{}: {size}\n", output.hash));
         }
 
-        let len = threads.len() - 1;
-        for (i, thread) in threads.into_iter().enumerate() {
-            eprint!("\rBuilding blake3 trees ... ({i}/{len})");
-            let (size, hash, tree) = thread.join().unwrap();
-            sizes.insert(hash, size);
-            trees.insert(hash, tree);
-        }
-        eprintln!("\rBuilding blake3 trees ... done   ");
-
-        let mut arr = sizes.iter().collect::<Vec<(&Hash, &usize)>>();
-        arr.sort_by(|(_, a), (_, b)| a.cmp(b));
-        for (hash, size) in arr {
-            eprintln!("{hash} : {size}");
-        }
+        eprintln!("\rBuilding blake3 trees ... done\n{display}");
 
         Self { sizes, trees }
     }
@@ -123,7 +112,7 @@ async fn main() {
     let backend = BenchmarkBackend::new();
 
     let listener = TcpListener::bind(ADDRESS).await.unwrap();
-    eprintln!("\nListening on {ADDRESS}");
+    eprintln!("Listening on {ADDRESS}");
 
     let mut session_id = 0;
     loop {

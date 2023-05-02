@@ -34,7 +34,7 @@ axum = { version = "0.6.1", features = ["multipart", "headers"] }
 axum-server = { version = "0.4.4", features = ["tls-rustls"] }
 base64 = "0.13.0"
 bincode = "1.3.3"
-blake3 = { git = "https://github.com/fleek-network/BLAKE3", rev = "2a8ec765987c8114021570c42d04b4f09d3e57b0", features = ["rayon"] }
+blake3 = { git = "https://github.com/fleek-network/BLAKE3", rev = "95b16268d0af9ed0cdb1b915f2329ab689f71466", features = ["rayon"] }
 bytes = "1.3.0"
 clap = { version = "4.0.29", features = ["derive"] }
 console-subscriber = "0.1.8"
