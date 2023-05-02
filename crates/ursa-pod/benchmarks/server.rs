@@ -45,9 +45,6 @@ impl BenchmarkBackend {
         let mut trees = HashMap::new();
         let mut display = String::new();
 
-        eprint!("Building blake3 trees ... test");
-        std::io::stdout().flush().unwrap();
-
         let mut builder = blake3::ursa::HashTreeBuilder::new();
         let mut b = 0;
         for (i, size) in SIZES.into_iter().enumerate() {
