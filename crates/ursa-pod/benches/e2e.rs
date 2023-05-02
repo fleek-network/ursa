@@ -517,6 +517,7 @@ mod s2n_quic_ufdp {
     use futures::future::join_all;
     use s2n_quic::{client::Connect, provider::tls, Client, Server};
     use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::task;
     use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
 
@@ -562,18 +563,21 @@ mod s2n_quic_ufdp {
             task::spawn(async move {
                 loop {
                     match conn.accept_bidirectional_stream().await {
-                        Ok(Some(stream)) => {
+                        Ok(Some(mut stream)) => {
                             task::spawn(async {
-                                let handler = UfdpHandler::new(
-                                    stream,
-                                    DummyBackend {
-                                        content: content_clone,
-                                    },
-                                    0,
-                                );
-                                if let Err(e) = handler.serve().await {
-                                    println!("server error: {e:?}");
-                                }
+                                // let handler = UfdpHandler::new(
+                                //     stream,
+                                //     DummyBackend {
+                                //         content: content_clone,
+                                //     },
+                                //     0,
+                                // );
+                                // if let Err(e) = handler.serve().await {
+                                //     println!("server error: {e:?}");
+                                // }
+                                stream.read(&mut buf).await.unwrap();
+                                assert_eq!(&buf, b"hello");
+                                stream.write(&content_clone).await.unwrap();
                             });
                         }
                         Ok(None) => break,
@@ -600,10 +604,13 @@ mod s2n_quic_ufdp {
             .await
             .unwrap();
         for _ in 0..iterations {
-            let stream = connection.open_bidirectional_stream().await.unwrap();
+            let mut stream = connection.open_bidirectional_stream().await.unwrap();
             let task = task::spawn(async move {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
-                client.request(CID).await.unwrap();
+                // let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                // client.request(CID).await.unwrap();
+                stream.write(b"hello").await.unwrap();
+                let mut buf = [0; 1024];
+                stream.read_exact(&mut buf).await.unwrap();
             });
             tasks.push(task);
         }
