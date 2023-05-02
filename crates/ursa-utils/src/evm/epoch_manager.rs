@@ -54,10 +54,11 @@ pub struct SignalEpochChangeReturn(pub bool);
 #[derive(Clone, Debug, Eq, PartialEq, EthCall, EthDisplay, Default)]
 #[ethcall(
     name = "initialize",
-    abi = "initialize(address,uint256,uint256,uint256)"
+    abi = "initialize(address,address,uint256,uint256,uint256)"
 )]
 pub struct InitializeCall {
     pub node_registry: Address,
+    pub rewards_manager: Address,
     pub first_epoch_start: U256,
     pub epoch_duration: U256,
     pub max_committee_size: U256,

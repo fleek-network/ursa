@@ -2,6 +2,7 @@ use ethers::abi::AbiEncode;
 use ethers::prelude::Address;
 use ethers::prelude::U256 as UInt256;
 use ethers::types::Bytes;
+use ethers::types::H160;
 use serde::Deserialize;
 use serde::Serialize;
 use std::time::SystemTime;
@@ -11,6 +12,7 @@ use ursa_utils::evm::epoch_manager::{InitializeCall, Worker};
 use ursa_utils::evm::node_registry::{
     InitializeCall as RegistryInitCall, NodeInfo, REGISTRY_ADDRESS,
 };
+use hex_literal::hex;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GenesisNode {
@@ -29,6 +31,7 @@ struct GenesisCommittee {
 }
 
 const GENESIS_PATH: &str = "crates/ursa-application/genesis.toml";
+const REWARDS_MANAGER_ADDRESS: Address = H160(hex!("0000000000000000000000000000000000000094"));
 
 #[tokio::main]
 async fn main() {
@@ -46,6 +49,7 @@ async fn main() {
 
     let epoch_bytes = InitializeCall {
         node_registry: registry_address,
+        rewards_manager: REWARDS_MANAGER_ADDRESS,
         first_epoch_start: UInt256::from_dec_str(&now.to_string()).unwrap(),
         epoch_duration: UInt256::from_dec_str(epoch_time).unwrap(),
         max_committee_size: UInt256::from_dec_str("100").unwrap(),
