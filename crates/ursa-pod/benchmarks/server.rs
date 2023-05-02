@@ -48,39 +48,36 @@ impl BenchmarkBackend {
 
         eprint!("Building blake3 trees ... (1/{})", SIZES.len() - 1);
         std::io::stdout().flush().unwrap();
-        for (i, size) in SIZES.iter().enumerate() {
+        for size in SIZES {
             let thread = std::thread::spawn(move || {
                 std::io::stdout().flush().unwrap();
                 let mut tree_builder = blake3::ursa::HashTreeBuilder::new();
                 let mut b = 0;
-                while let Some(block) = Self::raw_block(*size, b) {
+                while let Some(block) = Self::raw_block(size, b) {
                     tree_builder.update(block);
                     b += 1
                 }
                 let output = tree_builder.finalize();
 
-                eprint!(
-                    "\rBuilding blake3 trees ... ({}/{})",
-                    i + 1,
-                    SIZES.len() - 1
-                );
-                (*size, output.hash, output.tree)
+                (size, output.hash, output.tree)
             });
 
             threads.push(thread);
         }
 
-        for thread in threads {
+        let len = threads.len() - 1;
+        for (i, thread) in threads.into_iter().enumerate() {
+            eprint!("\rBuilding blake3 trees ... ({i}/{len})");
             let (size, hash, tree) = thread.join().unwrap();
             sizes.insert(hash, size);
             trees.insert(hash, tree);
         }
-        eprintln!("\rBuilding blake3 trees ... (done)  ");
+        eprintln!("\rBuilding blake3 trees ... done   ");
 
         let mut arr = sizes.iter().collect::<Vec<(&Hash, &usize)>>();
         arr.sort_by(|(_, a), (_, b)| a.cmp(b));
         for (hash, size) in arr {
-            eprintln!("{hash}: {size}");
+            eprintln!("{hash} : {size}");
         }
 
         Self { sizes, trees }
