@@ -53,7 +53,7 @@ where
             "tag=read_handshake_res"
         ) {
             Some(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { conn, lane }),
-            Some(_) => unreachable!(), // Gauranteed by filter
+            Some(_) => unreachable!(), // Guaranteed by filter
             None => Err(UrsaCodecError::Unknown),
         }
     }
@@ -96,7 +96,7 @@ where
                                     )));
                                 }
                             }
-                            Some(_) => unreachable!(), // Gauranteed by read_buffer()
+                            Some(_) => unreachable!(), // Guaranteed by read_buffer()
                             None => return Err(UrsaCodecError::Unknown),
                         }
                     }
