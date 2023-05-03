@@ -5,7 +5,8 @@
 
 use multiaddr::Multiaddr;
 use narwhal_config::{
-    Authority, Committee, Parameters, Stake, WorkerCache, WorkerId, WorkerIndex, WorkerInfo,
+    Authority, Committee, CommitteeBuilder, Epoch, Parameters, Stake, WorkerCache, WorkerId,
+    WorkerIndex, WorkerInfo,
 };
 use narwhal_crypto::{NetworkPublicKey, PublicKey};
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,17 @@ impl Default for ConsensusConfig {
 
 impl From<&GenesisCommittee> for Committee {
     fn from(genesis_committee: &GenesisCommittee) -> Self {
+        let mut committee_builder = CommitteeBuilder::new(Epoch::default());
+
+        for authority in genesis_committee.authorities {
+            committee_builder = committee_builder.add_authority(
+                authority.protocol_key().clone(),
+                authority.stake(),
+                authority.primary_address(),
+                authority.network_key(),
+            );
+        }
+
         Committee {
             epoch: 0,
             authorities: genesis_committee

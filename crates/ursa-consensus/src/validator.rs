@@ -1,6 +1,8 @@
 // Copyright 2022-2023 Fleek Network
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use async_trait::async_trait;
+use narwhal_types::Batch;
 use narwhal_worker::TransactionValidator;
 use std::io::Error;
 
@@ -19,6 +21,7 @@ impl Default for Validator {
     }
 }
 
+#[async_trait]
 impl TransactionValidator for Validator {
     type Error = Error;
 
@@ -26,7 +29,7 @@ impl TransactionValidator for Validator {
         Ok(())
     }
 
-    fn validate_batch(&self, _b: &narwhal_types::Batch) -> Result<(), Self::Error> {
+    async fn validate_batch(&self, _b: &Batch) -> Result<(), Self::Error> {
         Ok(())
     }
 }

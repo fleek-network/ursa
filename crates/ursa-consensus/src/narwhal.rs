@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 // Copyright 2022-2023 Fleek Network
@@ -10,6 +11,8 @@ use mysten_metrics::RegistryService;
 use narwhal_config::{Committee, Parameters, WorkerCache};
 use narwhal_crypto::{KeyPair, NetworkKeyPair};
 use narwhal_executor::ExecutionState;
+use narwhal_network::client::NetworkClient;
+use narwhal_node::CertificateStoreCacheMetrics;
 use narwhal_node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStorage};
 use prometheus::Registry;
 use rand::thread_rng;
@@ -23,12 +26,14 @@ const MAX_RETRIES: u32 = 2;
 /// Manages running the narwhal and bullshark as a service.
 pub struct NarwhalService {
     arguments: NarwhalArgs,
-    store: NodeStorage,
+    store_path: PathBuf,
     primary: PrimaryNode,
     worker_node: WorkerNode,
+    network_client: NetworkClient,
     committee: Committee,
     worker_cache: WorkerCache,
     status: Mutex<Status>,
+    store_cache_metrics: CertificateStoreCacheMetrics,
 }
 
 /// Arguments used to run a consensus service.
@@ -51,7 +56,7 @@ impl NarwhalService {
     /// Create a new narwhal service using the provided arguments.
     pub fn new(
         arguments: NarwhalArgs,
-        store: NodeStorage,
+        store_path: PathBuf,
         committee: Committee,
         worker_cache: WorkerCache,
         parameters: Parameters,
@@ -61,14 +66,21 @@ impl NarwhalService {
 
         let worker_node = WorkerNode::new(0, parameters, arguments.registry_service.clone());
 
+        let network_client = NetworkClient::new_from_keypair(&arguments.primary_network_keypair);
+
+        let store_cache_metrics =
+            CertificateStoreCacheMetrics::new(&arguments.registry_service.default_registry());
+
         Self {
             arguments,
-            store,
+            store_path,
             primary,
             worker_node,
+            network_client,
             committee,
             worker_cache,
             status: Mutex::new(Status::Stopped),
+            store_cache_metrics,
         }
     }
 
@@ -90,7 +102,12 @@ impl NarwhalService {
         let name = self.arguments.primary_keypair.public().clone();
         let execution_state = Arc::new(state);
 
-        let epoch = self.committee.epoch;
+        let epoch = self.committee.epoch();
+        let store = NodeStorage::reopen(
+            self.store_path.clone(),
+            Some(self.store_cache_metrics.clone()),
+        );
+
         info!("Starting NarwhalService for epoch {}", epoch);
 
         let mut running = false;
@@ -107,7 +124,8 @@ impl NarwhalService {
                     self.arguments.primary_network_keypair.copy(),
                     self.committee.clone(),
                     self.worker_cache.clone(),
-                    &self.store,
+                    self.network_client.clone(),
+                    &store,
                     execution_state.clone(),
                 )
                 .await
@@ -136,7 +154,8 @@ impl NarwhalService {
                     self.arguments.worker_keypair.copy(),
                     self.committee.clone(),
                     self.worker_cache.clone(),
-                    &self.store,
+                    self.network_client.clone(),
+                    &store,
                     Validator::new(),
                     None,
                 )
@@ -165,7 +184,7 @@ impl NarwhalService {
         }
 
         let now = Instant::now();
-        let epoch = self.committee.epoch;
+        let epoch = self.committee.epoch();
         info!("Shutting down Narwhal epoch {:?}", epoch);
 
         self.worker_node.shutdown().await;

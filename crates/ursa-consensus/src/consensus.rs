@@ -103,7 +103,7 @@ impl Consensus {
 
         // If the this node is not on the committee, dont start narwhal start edge node logic.
         if !committee
-            .authorities
+            .authorities()
             .contains_key(self.narwhal_args.primary_keypair.public())
         {
             self.run_edge_node().await;
@@ -113,11 +113,10 @@ impl Consensus {
         // Make or open store specific to current epoch.
         let mut store_path = self.store_path.clone();
         store_path.push(format!("{epoch}"));
-        let store = NodeStorage::reopen(store_path);
 
         let service = NarwhalService::new(
             self.narwhal_args.clone(),
-            store,
+            store_path,
             committee,
             worker_cache,
             self.parameters.clone(),
