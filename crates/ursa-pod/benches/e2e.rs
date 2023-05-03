@@ -9,6 +9,8 @@ use ursa_pod::types::{Blake3Cid, BlsSignature, Secp256k1PublicKey};
 
 const MAX_REQUESTS: usize = 64;
 const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
+const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
+const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
@@ -160,7 +162,7 @@ fn protocol_benchmarks(c: &mut Criterion) {
 
         #[cfg(feature = "bench-websockets")]
         {
-            let mut g = c.benchmark_group(format!("WEBSOCKETS UFDP/{range}"));
+            let mut g = c.benchmark_group(format!("Websockets UFDP/{range}"));
             g.sample_size(20);
             benchmark_sizes(
                 &mut g,
@@ -211,10 +213,8 @@ mod tcp_ufdp {
         net::{TcpListener, TcpStream},
         task,
     };
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
-
-    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler};
+    use crate::{CID, CLIENT_PUB_KEY};
 
     /// Simple tcp server loop that replies with static content
     pub async fn server_loop(
@@ -267,10 +267,8 @@ mod tcp_tls_ufdp {
         task,
     };
     use tokio_rustls::{TlsAcceptor, TlsConnector};
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
-
-    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler};
+    use crate::{CID, CLIENT_PUB_KEY};
 
     pub async fn server_loop(
         addr: String,
@@ -333,10 +331,8 @@ mod websocket_ufdp {
     use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use tokio_tungstenite::{Connector, WebSocketStream};
     use url::Url;
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
-
-    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+    use ursa_pod::{client::UfdpClient, server::UfdpHandler};
+    use crate::{CID, CLIENT_PUB_KEY};
 
     pub async fn server_loop(
         addr: String,
@@ -369,10 +365,10 @@ mod websocket_ufdp {
 
     pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
-        let addr = format!("localhost:{}", addr.strip_prefix("127.0.0.1:").unwrap());
+        let addr = format!("wss://localhost:{}/bench", addr.strip_prefix("127.0.0.1:").unwrap());
         let tls_config = Arc::new(tls_config.unwrap().client_config());
         for _ in 0..iterations {
-            let url = Url::parse(format!("wss://{addr}/bench").as_str()).unwrap();
+            let url = Url::parse(&addr).unwrap();
             let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                 url,
                 Some(WebSocketConfig::default()),
@@ -562,9 +558,7 @@ mod quinn_ufdp {
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
     use tokio::task;
     use ursa_pod::{client::UfdpClient, server::UfdpHandler, types::Blake3Cid};
-
-    const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-    const CID: Blake3Cid = Blake3Cid([3u8; 32]);
+    use crate::{CID, CLIENT_PUB_KEY};
 
     pub async fn server_loop(
         addr: String,
