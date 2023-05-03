@@ -31,6 +31,8 @@ quinn = { version = "0.9", optional = true }
 rcgen = { version = "0.10", optional = true }
 rustls = { version = "0.20", default-features = false, features = ["dangerous_configuration"], optional = true }
 tokio-rustls = { version = "0.23.4", optional = true }
+tokio-tungstenite = { version = "0.18.0", optional = true}
+url = { version = "2.3.1", optional = true}
 
 # Binary benchmark dependencies
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -53,6 +55,7 @@ bench-hyper = ["tokio", "hyper", "http-body-util"]
 benchmarks = ["serde", "serde_json", "rayon", "fnv", "clap", "gnuplot"]
 bench-quic = ["quinn", "tls"]
 tls = ["rustls", "rcgen", "tokio-rustls"]
+bench-websockets = ["tls", "tokio-tungstenite", "url"]
 
 [[bench]]
 name = "encrypt"
