@@ -470,7 +470,7 @@ mod websocket_ufdp {
             };
 
             let mut buff = vec![0; item_to_copy.remaining().min(buf.remaining())];
-            item_to_copy.read(&mut buff).unwrap();
+            item_to_copy.read_exact(&mut buff).unwrap();
             buf.put_slice(buff.as_slice());
 
             Poll::Ready(Ok(()))
