@@ -4,30 +4,20 @@
 > comments from the team, and it is planned for this document to be transformed into the formal
 > protocol description once the initial implementation is done and the reviews have happened.
 
-Ursa's fair delivery protocol is a point to point protocol that different parties in Ursa use in order
-to transfer content to a client.
+Ursa's fair delivery protocol is a point-to-point protocol that different parties in Ursa use to transfer content to a client.
 
-In this version of the document we only focus on the cache node and the client, and leave the discussion
-about the gateway for future, but essentially the gateway has the power to intercept the request and perform
-some modifications to the data frames as it sees fit for the purposes of getting rewarded.
+In this version of the document we only focus on the cache node and the client, and leave the discussion about the gateway for the future, but essentially the gateway has the power to intercept the request and perform
+some modifications to the data frames as it sees fit for getting rewarded.
 
 ## Summary of the problem
 
-Ursa is not like a traditional CDN, some of the biggest differences are 1) relying on a decentralized account
-management, and 2) the decentralization of the nodes in the network which eliminates any trust assumptions
-about the intentions of the said nodes.
+Ursa is not like a traditional CDN, some of the biggest differences are 1) relying on a decentralized account management, and 2) the decentralization of the nodes in the network which eliminates any trust assumptions about the intentions of the said nodes.
 
-Implementing a working and efficient CDN within these constraints has never been done before, for example the
-integrity of the content being served is not guranteed in a naive implementation, luckily we don't have to deal
-with that problem since we are used content addressability.
+Implementing a working and efficient CDN within these constraints has never been done before, for example, the integrity of the content being served is not guaranteed in a naive implementation, luckily we don't have to deal with that problem since we use content addressability.
 
-The next big problem is the decentralized account management which revolves around the delivery of content, how
-do we ensure that the nodes running inside this network are getting paid for the work they do? And how do we charge
-a client for the bandwidth they are using, without impacting the latency?
+The next big problem is the decentralized account management which revolves around the delivery of content, how do we ensure that the nodes running inside this network are getting paid for the work they do? And how do we charge a client for the bandwidth they are using, without impacting the latency?
 
-In the literature this problem is referred to as the **Fair Market Exchange** problem, which states that once an
-exchange of goods between two parties is over, either no party should have received anything they wanted, or both
-parties should be satisfied.
+In the literature, this problem is referred to as the **Fair Market Exchange** problem, which states that once an exchange of goods between two parties is over, either no party should have received anything they wanted, or both parties should be satisfied.
 
 In our case the two parties are 1) the node, and 2) the client. They are exchanging payment for content.
 
@@ -51,12 +41,9 @@ sequenceDiagram
 > 📝 You might have heard me using the term "Receipt of Payment" before, but now I'm using the term
 > "Delivery Acknowledgment".
 
-The above diagram depicts the main concept behind the solution, a node sends the encrypted response and only
-delivers the decryption key to the client once it receives the  *Delivery Acknowledgment* from the client.
+The above diagram depicts the main concept behind the solution, a node sends the encrypted response and only delivers the decryption key to the client once it receives the  *Delivery Acknowledgment* from the client.
 
-And of course, you might naturally ask what if the node doesn't deliver the decryption key? Since the client
-can not unsend the "Delivery Acknowledgment" we have placed a slow-path for the client to retrieve the decryption
-key from the committee.
+And of course, you might naturally ask what if the node doesn't deliver the decryption key? Since the client can not unsend the "Delivery Acknowledgment" we have placed a slow path for the client to retrieve the decryption key from the committee.
 
 ```mermaid
 ---
@@ -74,26 +61,23 @@ sequenceDiagram
     end
     Note over Client, Node: Last Block
     Node->>Client: Publicly Verifiable Encrypted Content
-    Client->>Node: Delivery Acknowledgmen
+    Client->>Node: Delivery Acknowledgment
     Note over Client, Node: Connection Hungup
-    Client->>Committee: Delivery Acknowledgmen
+    Client->>Committee: Delivery Acknowledgment
     Committee->>Client: Decryption Key
 ```
 
 ## Algorithms
 
-In this section we will go through the algorithms used for different sections.
-
+In this section, we will go through the algorithms used for different sections.
 
 ### Key Generation
 
 #### Node
 
-The node has a ephemeral private key for this protocol, which is shared with the committee using Shamir Secret Sharing at
-the beginning of each consensus epoch. We use curve SECP256K1, the private key is a random number $\alpha \in \mathbb{Z}$.
+The node has an ephemeral private key for this protocol, which is shared with the committee using Shamir Secret Sharing at the beginning of each consensus epoch. We use curve SECP256K1, the private key is a random number $\alpha \in \mathbb{Z}$.
 
-This private key is only used for the purposes of delivery protocol and is refreshed every epoch. The public key obtained
-from this secret key should not be used to globally identify a node outside the epoch it was used at.
+This private key is only used for delivery protocol and is refreshed every epoch. The public key obtained from this secret key should not be used to globally identify a node outside the epoch it was used at.
 
 #### Client
 
@@ -102,7 +86,7 @@ is made to allow aggregation of the delivery acknowledgments when a node is send
 
 ### Request Info
 
-The request info contains all of the information about a request that is taking place in the protocol, at high level each request
+The request info contains all of the information about a request that is taking place in the protocol, at a high level each request
 is specific and unique per session and CID request, and the chunk index that is being served in the retrieval loop.
 
 ```rs
@@ -125,34 +109,26 @@ struct RequestChunkInfo {
 
 > TBW: How to hash `RequestInfo` and `RequestChunkInfo` with blake3.
 
-Summary: write everything to a buffer, use SEC-1 compressed encoding for public keys, and big endian for numbers, in
-the same order we have the struct fields, and use two unique DST for `blake3::keyed_hash`.
+Summary: write everything to a buffer, use SEC-1 compressed encoding for public keys, and big-endian for numbers, in the same order we have the struct fields, and use two unique DST for `blake3::keyed_hash`.
 
 #### Map to Curve
 
-The map to curve functionality is used to map the `RequestChunkInfo` to a point on the SECP256K1 curve, this point is used to
+The map-to-curve functionality is used to map the `RequestChunkInfo` to a point on the SECP256K1 curve, this point is used to
 drive the symmetric key used for the encryption and decryption phase, therefore it is important for this algorithm to be secure
 and produces points on the curve with unknown discrete logarithm.
 
-To achieve this we have adopted the IETF's [`Hashing to Elliptic Curves`](https://www.ietf.org/archive/id/draft-irtf-cfrg-hash-to-curve-16.html#name-hash_to_field-implementatio) standard, this standard specifies two methods to achieve this `encode_to_curve` and `hash_to_curve`. However only `hash_to_curve`
-guarantees the uniform statistical distribution.
+To achieve this we have adopted the IETF's [`Hashing to Elliptic Curves`](https://www.ietf.org/archive/id/draft-irtf-cfrg-hash-to-curve-16.html#name-hash_to_field-implementatio) standard, this standard specifies two methods to achieve this `encode_to_curve` and `hash_to_curve`. However, only `hash_to_curve` guarantees the uniform statistical distribution.
 
 To implement `hash_to_field` we have chosen `blake3::hash_xof` as the expand message algorithm and we use `FLEEK_NETWORK_UFDP_HASH_TO_FIELD`
 as the DST parameter.
 
 ### Block Encryption
 
-Based on the requirements, we needed a very efficient cryptographically secure symmetric encryption, and since
-[128-bit security is sufficient](https://eprint.iacr.org/2019/1492.pdf) for our use case, the decision is to use 
-[HC-128](https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf) which was found to perform the best during
-the benchmarks.
+Based on the requirements, we needed a very efficient cryptographically secure symmetric encryption, and since [128-bit security is sufficient](https://eprint.iacr.org/2019/1492.pdf) for our use case, the decision is to use  [HC-128](https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf) which was found to perform the best during the benchmarks.
 
-The `hc-128` cipher, takes as an input one `128-bit` key and another `128-bit` IV, which is in total `256-bit`,
-we provide this input from a blake3 hash.
+The `hc-128` cipher takes as an input one `128-bit` key and another `128-bit` IV, which is in total `256-bit`, we provide this input from a blake3 hash.
 
-The hash function uses the globally defined and unique DST `FLEEK_NETWORK_UFDP_HASH_SYMMETRIC_KEY`, and we hash the compressed SEC1 encoding of
-the `AffinePoint` obtained by multiplying the ephemeral secret key of the node with the point which we have obtained in the previous step by
-hashing the `RequestChunkInfo` to the curve.
+The hash function uses the globally defined and unique DST `FLEEK_NETWORK_UFDP_HASH_SYMMETRIC_KEY`, and we hash the compressed SEC1 encoding of the `AffinePoint` obtained by multiplying the ephemeral secret key of the node with the point which we have obtained in the previous step by hashing the `RequestChunkInfo` to the curve.
 
 The following pseudo code can demonstrate:
 
@@ -249,8 +225,7 @@ Client request to initiate a UFDP connection.
 ```
 size: 56 bytes
 
-Clients can optionally resume a previous lane in the event of a disconnection.
-To let the node select the lane automatically, `lane` should be set to `0xFF`.
+Clients can optionally resume a previous lane in the event of a disconnection. To let the node select the lane automatically, the `lane` should be set to `0xFF`.
 
 ### Handshake Response
 
