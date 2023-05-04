@@ -242,11 +242,8 @@ mod tcp_ufdp {
         task,
     };
     use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
-    
-    use super::{
-      CLIENT_PUB_KEY, DummyBackend,
-      tls_utils::TestTlsConfig,
-     };
+
+    use super::{tls_utils::TestTlsConfig, DummyBackend, CLIENT_PUB_KEY};
 
     /// Simple tcp server loop that replies with static content
     pub async fn server_loop(
@@ -361,24 +358,28 @@ mod tcp_tls_ufdp {
 
 #[cfg(feature = "bench-websockets")]
 mod websocket_ufdp {
-    use super::DummyBackend;
-    use crate::tls_utils::TestTlsConfig;
+    use std::{
+        io,
+        io::Read,
+        pin::Pin,
+        sync::Arc,
+        task::{Context, Poll},
+    };
+
     use bytes::Buf;
-    use futures::future::join_all;
-    use futures::{ready, Sink, TryStream};
-    use std::io;
-    use std::io::Read;
-    use std::pin::Pin;
-    use std::sync::Arc;
-    use std::task::{Context, Poll};
-    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-    use tokio::{net::TcpListener, task};
+    use futures::{future::join_all, ready, Sink, TryStream};
+    use tokio::{
+        io::{AsyncRead, AsyncWrite, ReadBuf},
+        net::TcpListener,
+        task,
+    };
     use tokio_rustls::TlsAcceptor;
-    use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-    use tokio_tungstenite::{Connector, WebSocketStream};
+    use tokio_tungstenite::{tungstenite::protocol::WebSocketConfig, Connector, WebSocketStream};
     use url::Url;
     use ursa_pod::{client::UfdpClient, server::UfdpHandler};
-    use crate::{CID, CLIENT_PUB_KEY};
+
+    use super::DummyBackend;
+    use crate::{tls_utils::TestTlsConfig, CID, CLIENT_PUB_KEY};
 
     pub async fn server_loop(
         addr: String,
@@ -411,7 +412,10 @@ mod websocket_ufdp {
 
     pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
         let mut tasks = vec![];
-        let addr = format!("wss://localhost:{}/bench", addr.strip_prefix("127.0.0.1:").unwrap());
+        let addr = format!(
+            "wss://localhost:{}/bench",
+            addr.strip_prefix("127.0.0.1:").unwrap()
+        );
         let tls_config = Arc::new(tls_config.unwrap().client_config());
         for _ in 0..iterations {
             let url = Url::parse(&addr).unwrap();
@@ -613,7 +617,7 @@ mod quinn_ufdp {
     };
     use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
 
-    use super::{CLIENT_PUB_KEY, tls_utils::TestTlsConfig, DummyBackend};
+    use super::{tls_utils::TestTlsConfig, DummyBackend, CLIENT_PUB_KEY};
 
     pub async fn server_loop(
         addr: String,
