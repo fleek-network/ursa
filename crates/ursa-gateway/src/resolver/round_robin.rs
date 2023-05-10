@@ -38,7 +38,7 @@ where
             drop(inner);
             match self.inner.try_write() {
                 Ok(mut writer_guard) => {
-                    let front = writer_guard.addresses.pop_front().unwrap();
+                    let front = writer_guard.addresses.pop_front()?;
                     writer_guard.addresses.push_back(front.clone());
                     writer_guard.stamp = now;
                     Some(front)
