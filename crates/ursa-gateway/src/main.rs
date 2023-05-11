@@ -1,5 +1,6 @@
 extern crate core;
 
+mod balance;
 mod cli;
 mod config;
 mod resolver;
