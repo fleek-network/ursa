@@ -1,8 +1,7 @@
-extern crate core;
-
 mod balance;
 mod cli;
 mod config;
+mod indexer;
 mod resolver;
 mod server;
 mod util;
