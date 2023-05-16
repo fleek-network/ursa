@@ -94,6 +94,7 @@ thiserror = "1.0.30"
 tracing-opentelemetry = "0.18.0"
 tokio = { version = "1.23.0", features = ["full", "tracing"] }
 tokio-util = { version = "0.7", features = ["io", "compat"] }
+tokio-test = { version = "0.4.2" }
 tokio-stream = "0.1"
 toml = "0.7.1"
 tower = "0.4.13"

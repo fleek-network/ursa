@@ -100,36 +100,84 @@ where
 }
 
 mod test {
-    use crate::resolver::Resolver;
+    use crate::indexer::{Cluster, IndexerCommand};
+    use crate::resolver::{Cid, Resolver};
     use anyhow::{Error, Result};
+    use hyper::body::HttpBody;
+    use hyper::{Body, Request, Response};
+    use std::collections::HashMap;
+    use std::task::Poll;
+    use tokio::sync::mpsc::Receiver;
+    use tower::Service;
 
-    #[test]
-    fn test_load_balancer() {
-        #[derive(Clone)]
-        struct Mock;
+    #[derive(Clone, Debug)]
+    struct MockBackend(String);
 
-        impl tower::Service<hyper::Request<hyper::Body>> for Mock {
-            type Response = hyper::Response<hyper::Body>;
-            type Error = Error;
-            type Future =
-                std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response>>>>;
+    impl Service<Request<Body>> for MockBackend {
+        type Response = Response<Body>;
+        type Error = Error;
+        type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response>>>>;
 
-            fn poll_ready(
-                &mut self,
-                _: &mut std::task::Context<'_>,
-            ) -> std::task::Poll<Result<(), Self::Error>> {
-                std::task::Poll::Ready(Ok(()))
-            }
-
-            fn call(&mut self, _: hyper::Request<hyper::Body>) -> Self::Future {
-                Box::pin(async { Ok(hyper::Response::new(hyper::Body::empty())) })
-            }
+        fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
         }
 
-        let (tx, _) = tokio::sync::mpsc::channel(100000);
+        fn call(&mut self, _: Request<Body>) -> Self::Future {
+            let inner = self.0.clone();
+            Box::pin(async move { Ok(Response::new(inner.into())) })
+        }
+    }
+
+    async fn start_mock_indexer(
+        services: HashMap<Cid, MockBackend>,
+        mut rx: Receiver<IndexerCommand<MockBackend>>,
+    ) {
+        loop {
+            if let Some(IndexerCommand::GetProviderList { tx, cid }) = rx.recv().await {
+                let backend = services.get(&cid).unwrap().clone();
+                if tx.send(Ok(Cluster::new(backend))).is_err() {
+                    panic!("Failed to send")
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve() {
+        // Given: Some cids.
+        let cid1 = "cid1".to_string();
+        let cid2 = "cid2".to_string();
+
+        let (tx, rx) = tokio::sync::mpsc::channel(100000);
         let resolver = Resolver::new(tx);
-        let _: tower::balance::p2c::MakeBalance<Resolver<Mock>, hyper::Request<hyper::Body>> =
+        let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockBackend>, Request<Body>> =
             tower::balance::p2c::MakeBalance::new(resolver);
-        println!("Hello world!")
+
+        // Given: Indexer that dynamically returns sets of services given a cid.
+        let mut services = HashMap::new();
+        services.insert(cid1.clone(), MockBackend(cid1.clone()));
+        services.insert(cid2.clone(), MockBackend(cid2.clone()));
+
+        tokio::spawn(async move { start_mock_indexer(services, rx).await });
+
+        // When: We resolve a CID.
+        let mut b = svc.call(cid1.clone()).await.unwrap();
+        assert!(!tokio_test::assert_ready!(
+            tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
+        )
+        .is_err());
+        // Then: The service that handles requests with those CIDs is used.
+        let response = b.call(Request::new(Body::empty())).await.unwrap();
+        assert_eq!(response.into_body().data().await.unwrap().unwrap(), cid1);
+
+        // When: We resolve the CID.
+        let mut b = svc.call(cid2.clone()).await.unwrap();
+        assert!(!tokio_test::assert_ready!(
+            tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
+        )
+        .is_err());
+        // Then: The service that handles requests with those CIDs is used.
+        let response = b.call(Request::new(Body::empty())).await.unwrap();
+        assert_eq!(response.into_body().data().await.unwrap().unwrap(), cid2);
     }
 }

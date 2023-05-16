@@ -1,7 +1,5 @@
 mod model;
 
-use crate::backend::Backend;
-use crate::util::Client;
 use anyhow::{Error, Result};
 use futures::Stream;
 use hyper::{Body, Request, Response};
@@ -28,13 +26,12 @@ pub struct Cluster<S> {
     services: Vec<(Key, S)>,
 }
 
-impl Cluster<Backend> {
-    pub fn new(client: Client) -> Cluster<Backend> {
+impl<S> Cluster<S> {
+    pub fn new(backend: S) -> Cluster<S> {
         Self {
             services: vec![(
-                0,
-                // TODO: Remove unwrap.
-                Backend::new("foo".parse().unwrap(), client),
+                0, // TODO: Remove unwrap.
+                backend,
             )],
         }
     }
