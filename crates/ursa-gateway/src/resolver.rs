@@ -21,6 +21,12 @@ use tracing::error;
 
 pub type Cid = String;
 
+#[derive(Default)]
+pub struct Config {
+    _indexer_cid_url: String,
+    load_balancer_config: PeakEwmaConfig,
+}
+
 struct PeakEwmaConfig {
     default_rtt: Duration,
     decay: Duration,
@@ -46,21 +52,18 @@ where
 {
     client: Client,
     indexer_tx: Sender<IndexerCommand<S>>,
-    indexer_cid_url: String,
-    config: Arc<PeakEwmaConfig>,
+    config: Arc<Config>,
 }
 
 impl<S> Resolver<S>
 where
     S: Service<Request<Body>, Response = Response<Body>, Error = Error> + Clone + Unpin + 'static,
 {
-    pub fn new(indexer_tx: Sender<IndexerCommand<S>>) -> Self {
+    pub fn new(indexer_tx: Sender<IndexerCommand<S>>, config: Arc<Config>) -> Self {
         Self {
             client: Client::new(),
-            indexer_cid_url: String::new(),
             indexer_tx,
-            // TODO: Pass this as argument.
-            config: Arc::new(Default::default()),
+            config,
         }
     }
 }
@@ -90,9 +93,9 @@ where
             let l = rx.await??;
             Ok(PeakEwmaDiscover::new(
                 l,
-                this.config.default_rtt,
-                this.config.decay,
-                this.config.completion,
+                this.config.load_balancer_config.default_rtt,
+                this.config.load_balancer_config.decay,
+                this.config.load_balancer_config.completion,
             ))
         };
         Box::pin(fut)
@@ -101,13 +104,14 @@ where
 
 mod test {
     use crate::indexer::{Cluster, IndexerCommand};
-    use crate::resolver::{Cid, Resolver};
+    use crate::resolver::{Cid, Config, Resolver};
     use anyhow::{Error, Result};
     use hyper::body::HttpBody;
     use hyper::{Body, Request, Response};
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::str::FromStr;
+    use std::sync::Arc;
     use std::task::Poll;
     use tokio::sync::mpsc::Receiver;
     use tower::Service;
@@ -157,7 +161,7 @@ mod test {
 
         // Given: The resolver.
         let (tx, rx) = tokio::sync::mpsc::channel(100000);
-        let resolver = Resolver::new(tx);
+        let resolver = Resolver::new(tx, Arc::new(Config::default()));
         let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockBackend>, Request<Body>> =
             tower::balance::p2c::MakeBalance::new(resolver);
 
