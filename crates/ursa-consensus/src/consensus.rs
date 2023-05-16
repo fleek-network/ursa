@@ -165,7 +165,6 @@ impl Consensus {
             // We shouldnt panic here lets repeatedly try.
             loop {
                 time::sleep(Duration::from_secs(1)).await;
-
                 // TODO: Get nonce and sign transaction
                 let transaction = Transaction {
                     sender: primary_public_key.clone(),

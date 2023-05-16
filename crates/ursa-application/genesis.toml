@@ -1,5 +1,5 @@
-epoch_start = 1684273502734
-epoch_time = 300000
+epoch_start = 1684276288383
+epoch_time = 120000
 committee_size = 10
 min_stake = 1000
 eligibility_time = 1

@@ -31,6 +31,7 @@ impl Execution {
                 if let TransactionResponse::Success(ExecutionData::EpochChange) =
                     self.deliver_tx(txn).await
                 {
+                    error!("We got the epoch change transaction");
                     change_epoch = true;
                 }
             }

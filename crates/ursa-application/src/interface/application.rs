@@ -326,7 +326,7 @@ impl<B: Backend> ApplicationState<B> {
         } else if current_committee.ready_to_change.contains(&sender) {
             return TransactionResponse::Revert(ExecutionError::AlreadySignaled);
         }
-        current_committee.members.push(sender);
+        current_committee.ready_to_change.push(sender);
 
         // If more than 2/3rds of the committee have signaled, start the epoch change process
         if current_committee.ready_to_change.len() >= (current_committee.members.len() / 2) + 1 {
