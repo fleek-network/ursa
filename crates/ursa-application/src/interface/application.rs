@@ -25,7 +25,8 @@ pub struct App {
 
 impl App {
     /// Creates and runs the application
-    pub fn new<E: Env>(env: E) -> Self {
+    pub fn new<E: Env>(mut env: E) -> Self {
+        env.genesis();
         Self {
             query_port: TokioSpawn::spawn_async(QueryWorker::new(env.query())),
             update_port: TokioSpawn::spawn(UpdateWorker::new(env)),
@@ -47,6 +48,8 @@ pub trait Env: Send + 'static {
     fn run(&mut self, transaction: Transaction) -> TransactionResponse;
     /// Returns the query env
     fn query(&self) -> Self::Query;
+    /// Load the genesis block for state. Is only called in the App::new()
+    fn genesis(&mut self);
 }
 
 pub trait QueryEnv: Send {
@@ -328,8 +331,26 @@ impl<B: Backend> ApplicationState<B> {
         // If more than 2/3rds of the committee have signaled, start the epoch change process
         if current_committee.ready_to_change.len() >= (current_committee.members.len() / 2) + 1 {
             // Todo: Reward nodes, calculate rep?, choose new committee, increment epoch.
+
+            // calculate the next epoch endstamp
+            let epoch_duration = self.parameters.get(&ProtocolParams::EpochTime).unwrap();
+            let new_epoch_end = current_committee.epoch_end_timestamp + epoch_duration as u64;
+
+            // Save the old committee so we can see who signaled
             self.committee_info.set(current_epoch, current_committee);
+            // Get new committee
+            let new_committee = self.choose_new_committee();
+            // increment epoch
             current_epoch += 1;
+
+            self.committee_info.set(
+                current_epoch,
+                Committee {
+                    ready_to_change: Vec::with_capacity(new_committee.len()),
+                    members: new_committee,
+                    epoch_end_timestamp: new_epoch_end,
+                },
+            );
             self.metadata.set(Metadata::Epoch, current_epoch);
             TransactionResponse::Success(ExecutionData::EpochChange)
         } else {
@@ -462,6 +483,12 @@ impl<B: Backend> ApplicationState<B> {
     // This function should be called during signal_epoch_change.
     fn distribute_rewards(&self) {
         todo!()
+    }
+    fn choose_new_committee(&self) -> Vec<PublicKey> {
+        // Todo
+        // we need true randomness here, for now we will return the same committee.
+        let epoch = self.metadata.get(&Metadata::Epoch).unwrap_or_default();
+        self.committee_info.get(&epoch).unwrap_or_default().members
     }
 }
 
@@ -705,20 +732,22 @@ pub struct Worker {
 pub enum ProtocolParams {
     /// The time in seconds that an epoch lasts for. Genesis 24 hours(86400)
     EpochTime = 0,
+    /// The size of the committee
+    CommitteeSize = 1,
     /// The min FLK a node has to stake to participate in the network
-    MinimumNodeStake = 1,
+    MinimumNodeStake = 2,
     /// The time in epochs a node has to be staked to participate in the network
-    EligibilityTime = 2,
+    EligibilityTime = 3,
     /// The time in epochs a node has to wait to withdraw after unstaking
-    LockTime = 3,
+    LockTime = 4,
     /// The percentage of the reward pool the protocol gets
-    ProtocolPercentage = 4,
+    ProtocolPercentage = 5,
     /// The maximum targed inflation rate in a year
-    MaxInflation = 5,
+    MaxInflation = 6,
     /// The minimum targeted inflation rate in a year
-    MinInflation = 6,
+    MinInflation = 7,
     /// The amount of FLK minted per GB they consume.
-    ConsumerRebate = 7,
+    ConsumerRebate = 8,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -735,9 +764,9 @@ pub struct BandwidthInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Committee {
-    members: Vec<PublicKey>,
-    ready_to_change: Vec<PublicKey>,
-    epoch_end_timestamp: u64,
+    pub members: Vec<PublicKey>,
+    pub ready_to_change: Vec<PublicKey>,
+    pub epoch_end_timestamp: u64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

@@ -9,7 +9,6 @@ impl Application {
     /// Creates and runs the application
     pub fn new() -> Self {
         let env = AtomoEnv::new();
-
         Self {
             inner: App::new(env),
         }

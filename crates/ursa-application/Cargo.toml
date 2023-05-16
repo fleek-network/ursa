@@ -11,6 +11,7 @@ anyhow.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 multiaddr.worksapce = true
+toml.workspace = true
 affair = "0.1.1"
 atomo = "0.0.3"
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "9fbe55e9d477eac6a6d13e872e1dee19b0c83f53" }
