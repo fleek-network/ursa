@@ -1,11 +1,11 @@
 mod model;
 
+use crate::backend::Backend;
 use crate::util::Client;
 use anyhow::{Error, Result};
 use futures::Stream;
-use hyper::{Body, Request, Response, Uri};
+use hyper::{Body, Request, Response};
 use std::{
-    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -28,15 +28,13 @@ pub struct Cluster<S> {
     services: Vec<(Key, S)>,
 }
 
-impl Cluster<Handler> {
-    pub fn new(client: Client) -> Cluster<Handler> {
+impl Cluster<Backend> {
+    pub fn new(client: Client) -> Cluster<Backend> {
         Self {
             services: vec![(
                 0,
-                Handler {
-                    uri: "foo".parse().unwrap(),
-                    client,
-                },
+                // TODO: Remove unwrap.
+                Backend::new("foo".parse().unwrap(), client),
             )],
         }
     }
@@ -53,33 +51,5 @@ where
             Some((k, service)) => Poll::Ready(Some(Ok(Change::Insert(k, service)))),
             None => Poll::Pending,
         }
-    }
-}
-
-// TODO: Implement Service.
-// This will query the edge node for the content.
-#[derive(Clone)]
-pub struct Handler {
-    uri: Uri,
-    client: Client,
-}
-
-impl Service<Request<Body>> for Handler {
-    type Response = Response<Body>;
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, _: Request<Body>) -> Self::Future {
-        let this = self.clone();
-        Box::pin(async move {
-            match this.client.get(this.uri).await {
-                Ok(response) => Ok(response),
-                Err(e) => Err(e.into()),
-            }
-        })
     }
 }
