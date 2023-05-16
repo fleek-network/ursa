@@ -1,9 +1,11 @@
+mod model;
+
 use crate::util::Client;
 use anyhow::{Error, Result};
 use futures::Stream;
 use hyper::{Body, Request, Response, Uri};
-use std::future::Future;
 use std::{
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };

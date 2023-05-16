@@ -1,20 +1,22 @@
-use crate::indexer::{Cluster, Handler, IndexerCommand};
-use crate::util::Client;
+use crate::{
+    indexer::{Cluster, IndexerCommand},
+    util::Client,
+};
 use anyhow::{Error, Result};
 use axum::http::Request;
 use hyper::{Body, Response};
-use std::sync::Arc;
-use std::time::Duration;
 use std::{
     future::Future,
-    hash::Hash,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::sync::mpsc::Sender;
-use tower::balance::p2c::Balance;
-use tower::load::{CompleteOnResponse, PeakEwmaDiscover};
-use tower::{discover::Discover, BoxError, Service};
+use tower::{
+    load::{CompleteOnResponse, PeakEwmaDiscover},
+    Service,
+};
 use tracing::error;
 
 pub type Cid = String;
@@ -98,8 +100,7 @@ where
 }
 
 mod test {
-    use crate::balance::Resolver;
-    use crate::indexer::{Cluster, Handler};
+    use crate::resolver::Resolver;
     use anyhow::{Error, Result};
 
     #[test]

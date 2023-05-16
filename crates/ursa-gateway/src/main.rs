@@ -1,9 +1,7 @@
-mod balance;
 mod cli;
 mod config;
 mod indexer;
 mod resolver;
-mod server;
 mod util;
 
 use std::{path::PathBuf, str::FromStr, sync::Arc};
@@ -26,7 +24,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::{error, info, info_span, Instrument, Level};
+use tracing::{info, info_span, Instrument, Level};
 use ursa_telemetry::TelemetryConfig;
 
 #[tokio::main]
@@ -62,17 +60,13 @@ async fn main() -> Result<()> {
             // sync
             gateway_config.merge_daemon_opts(opts);
 
-            let server_config = Arc::new(RwLock::new(gateway_config));
+            let _server_config = Arc::new(RwLock::new(gateway_config));
 
-            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+            let (shutdown_tx, _) = oneshot::channel();
 
             let (server_worker, mut server_worker_signal_rx) = {
-                let (signal_tx, signal_rx) = mpsc::channel(1);
+                let (_, signal_rx) = mpsc::channel::<()>(1);
                 let worker = async move {
-                    if let Err(e) = server::start(server_config, shutdown_rx).await {
-                        error!("[Server]: {e:?}");
-                        signal_tx.send(()).await.expect("Send signal successfully");
-                    };
                     info!("Server stopped");
                 };
                 (
