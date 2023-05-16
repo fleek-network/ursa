@@ -25,6 +25,8 @@ sudo apt-get install geoipupdate
 sudo vim /etc/GeoIP.conf # paste credentials here
 ```
 
+Note: Find that you have to execute `geoipupdate` at least once
+
 ### Create the TLS Certificates
 
 Find and replace `YOUR-EMAIL-ADDRESS` and `YOUR-DOMAIN-NAME` with yours.
