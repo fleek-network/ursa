@@ -9,7 +9,7 @@ The global metrics provides a dashboard showing the overview of the network from
 
 ## Usage
 
-Clone the project
+### Clone the project
 
 ```sh
 git clone https://github.com/fleek-network/ursa
@@ -17,7 +17,7 @@ git clone https://github.com/fleek-network/ursa
 cd ursa/docker/global-metrics
 ```
 
-Setup MaxMindDB
+### Setup MaxMindDB
 
 ```sh
 sudo apt-get install geoipupdate
@@ -25,7 +25,7 @@ sudo apt-get install geoipupdate
 sudo vim /etc/GeoIP.conf # paste credentials here
 ```
 
-Create the TLS Certificates
+### Create the TLS Certificates
 
 ```sh
 docker compose -f docker/global-metrics/docker-compose.yml \
@@ -41,7 +41,7 @@ docker compose -f docker/global-metrics/docker-compose.yml \
     --agree-tos -n" certbot
 ```
 
-Copy recommended TLS parameters (if missing)
+### Copy recommended TLS parameters (if missing)
 
 ```sh
 curl -s curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > docker/global-metrics/certbot/conf/options-ssl-nginx.conf
@@ -51,7 +51,11 @@ curl -s curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot
 curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > docker/global-metrics/certbot/conf/ssl-dhparams.pem
 ```
 
-Run the composition
+### Nginx custom domain
+
+Find and replace the `dashboard.ursa.earth` domain to your custom domain in `docker/global-metrics/data/nginx/app.conf`.
+
+### Run the composition
 
 ```sh
 docker compose up -d
