@@ -25,6 +25,32 @@ sudo apt-get install geoipupdate
 sudo vim /etc/GeoIP.conf # paste credentials here
 ```
 
+Create the TLS Certificates
+
+```sh
+docker compose -f docker/global-metrics/docker-compose.yml \
+  run \
+  -p 80:80 \
+  --rm --entrypoint "\
+  certbot certonly \
+    --standalone \
+    --preferred-challenges http \
+    --email <YOUR-EMAIL-ADDRESS> \
+    --domain <YOUR-DOMAIN-NAME> \
+    --rsa-key-size 4096 \
+    --agree-tos -n" certbot
+```
+
+Copy recommended TLS parameters (if missing)
+
+```sh
+curl -s curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > docker/global-metrics/certbot/conf/options-ssl-nginx.conf
+```
+
+```sh
+curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > docker/global-metrics/certbot/conf/ssl-dhparams.pem
+```
+
 Run the composition
 
 ```sh
