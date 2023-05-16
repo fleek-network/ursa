@@ -148,12 +148,14 @@ mod test {
         let cid1 = "cid1".to_string();
         let cid2 = "cid2".to_string();
 
+        // Given: The resolver.
         let (tx, rx) = tokio::sync::mpsc::channel(100000);
         let resolver = Resolver::new(tx);
         let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockBackend>, Request<Body>> =
             tower::balance::p2c::MakeBalance::new(resolver);
 
         // Given: Indexer that dynamically returns sets of services given a cid.
+        // Given: Some mock backends that will return the cid of the file they provide.
         let mut services = HashMap::new();
         services.insert(cid1.clone(), MockBackend(cid1.clone()));
         services.insert(cid2.clone(), MockBackend(cid2.clone()));
