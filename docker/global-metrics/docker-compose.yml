@@ -16,6 +16,7 @@ services:
     expose:
       - 80
       - 443
+      - "9090:9090"
     depends_on:
       - certbot
 
@@ -49,6 +50,7 @@ services:
       - '--web.enable-lifecycle'
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=200h'
+      - --web.external-url=http://localhost:9090
     depends_on:
       - kad-exporter
 
@@ -80,3 +82,5 @@ services:
     restart: unless-stopped 
     expose:
       - 8080
+    ports:
+      - "8080:8080"

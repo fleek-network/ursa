@@ -1,11 +1,7 @@
 version: '3'
-
 services:
   ursa-proxy:
-    image: ursa-proxy
-    build:
-      context: ../../.
-      dockerfile: Dockerfile-proxy
+    image: ghcr.io/fleek-network/ursa-proxy:latest
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
       - ./data/certbot/conf:/etc/letsencrypt
@@ -17,7 +13,6 @@ services:
       - 443
     depends_on:
       - certbot
-
   certbot:
     image: certbot/certbot
     restart: unless-stopped
@@ -25,7 +20,6 @@ services:
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-
   node-exporter:
     image: prom/node-exporter
     container_name: node-exporter
@@ -43,24 +37,22 @@ services:
       - 9100
     labels:
       org.label-schema.group: "monitoring"
-
   prometheus:
     image: prom/prometheus
     restart: always
     ports:
       - "9090:9090"
-    expose: 
+    expose:
       - "9090"
     volumes:
       - ./data/prom:/etc/prometheus
-    command: 
+    command:
       - '--web.enable-lifecycle'
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=72h'
     depends_on:
       - ursa
       - node-exporter
-
   grafana:
     image: grafana/grafana
     volumes:
@@ -80,13 +72,9 @@ services:
       - prometheus
     user: "$UID:$GID"
     entrypoint: "bash /var/lib/grafana/run.sh"
-
   ursa:
     # default image name which matches suggested docker run version for cache
-    image: ursa
-    build:
-      context: ../../.
-      dockerfile: Dockerfile
+    image: ghcr.io/fleek-network/ursa:latest
     restart: always
     ports:
       - "6009:6009"
@@ -98,24 +86,7 @@ services:
     volumes:
       - ${HOME}/.ursa/:/root/.ursa/:rw
     healthcheck:
-      test: |
-        curl http://localhost:4069/ping || (
-          config_path=./docker/full-node/docker-compose.yml
-
-          if [[ ! -f "$config_path" && -f "docker-compose.yml" ]]; then
-            printf "%s\n" "🤖 Found docker-compose.yml in current work dir and will override the default path."
-
-            config_path="docker-compose.yml"
-          fi
-
-          if [[ ! -f "$config_path" ]]; then
-            printf "%s\n" "👹 Oops! The Ursa service should be restarted but we couldn't locate the Stack configuration file. Have you started the Stack from the project root?"
-
-            exit 1
-          fi
-
-          docker-compose -f "$config_path" restart ursa
-        )
+      test: "curl http://localhost:4069/ping || (\n  config_path=./docker/full-node/docker-compose.yml\n\n  if [[ ! -f \"$config_path\" && -f \"docker-compose.yml\" ]]; then\n    printf \"%s\\n\" \"\U0001F916 Found docker-compose.yml in current work dir and will override the default path.\"\n\n    config_path=\"docker-compose.yml\"\n  fi\n\n  if [[ ! -f \"$config_path\" ]]; then\n    printf \"%s\\n\" \"\U0001F479 Oops! The Ursa service should be restarted but we couldn't locate the Stack configuration file. Have you started the Stack from the project root?\"\n\n    exit 1\n  fi\n\n  docker-compose -f \"$config_path\" restart ursa\n)\n"
       interval: 5m
       timeout: 10s
       retries: 3
