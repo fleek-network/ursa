@@ -4,12 +4,13 @@ use anyhow::{Error, Result};
 use futures::Stream;
 use hyper::{Body, Request, Response};
 use std::{
+    net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
 };
 use tower::{discover::Change, Service};
 
-type Key = usize;
+type Key = SocketAddr;
 
 pub enum IndexerCommand<S>
 where
@@ -27,13 +28,8 @@ pub struct Cluster<S> {
 }
 
 impl<S> Cluster<S> {
-    pub fn new(backend: S) -> Cluster<S> {
-        Self {
-            services: vec![(
-                0, // TODO: Remove unwrap.
-                backend,
-            )],
-        }
+    pub fn new(services: Vec<(Key, S)>) -> Cluster<S> {
+        Self { services }
     }
 }
 

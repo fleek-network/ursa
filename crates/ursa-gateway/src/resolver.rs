@@ -106,12 +106,14 @@ mod test {
     use hyper::body::HttpBody;
     use hyper::{Body, Request, Response};
     use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::str::FromStr;
     use std::task::Poll;
     use tokio::sync::mpsc::Receiver;
     use tower::Service;
 
     #[derive(Clone, Debug)]
-    struct MockBackend(String);
+    struct MockBackend(SocketAddr);
 
     impl Service<Request<Body>> for MockBackend {
         type Response = Response<Body>;
@@ -123,8 +125,8 @@ mod test {
         }
 
         fn call(&mut self, _: Request<Body>) -> Self::Future {
-            let inner = self.0.clone();
-            Box::pin(async move { Ok(Response::new(inner.into())) })
+            let inner = self.0;
+            Box::pin(async move { Ok(Response::new(inner.to_string().into())) })
         }
     }
 
@@ -135,7 +137,10 @@ mod test {
         loop {
             if let Some(IndexerCommand::GetProviderList { tx, cid }) = rx.recv().await {
                 let backend = services.get(&cid).unwrap().clone();
-                if tx.send(Ok(Cluster::new(backend))).is_err() {
+                if tx
+                    .send(Ok(Cluster::new(vec![(backend.0, backend)])))
+                    .is_err()
+                {
                     panic!("Failed to send")
                 }
             }
@@ -147,6 +152,8 @@ mod test {
         // Given: Some cids.
         let cid1 = "cid1".to_string();
         let cid2 = "cid2".to_string();
+        let svc1_address = SocketAddr::from_str("192.0.0.1:80").unwrap();
+        let svc2_address = SocketAddr::from_str("192.0.0.2:80").unwrap();
 
         // Given: The resolver.
         let (tx, rx) = tokio::sync::mpsc::channel(100000);
@@ -155,31 +162,37 @@ mod test {
             tower::balance::p2c::MakeBalance::new(resolver);
 
         // Given: Indexer that dynamically returns sets of services given a cid.
-        // Given: Some mock backends that will return the cid of the file they provide.
+        // Given: Some mock backends that will return their address.
         let mut services = HashMap::new();
-        services.insert(cid1.clone(), MockBackend(cid1.clone()));
-        services.insert(cid2.clone(), MockBackend(cid2.clone()));
+        services.insert(cid1.clone(), MockBackend(svc1_address));
+        services.insert(cid2.clone(), MockBackend(svc2_address));
 
         tokio::spawn(async move { start_mock_indexer(services, rx).await });
 
         // When: We resolve a CID.
-        let mut b = svc.call(cid1.clone()).await.unwrap();
+        let mut b = svc.call(cid1).await.unwrap();
         assert!(!tokio_test::assert_ready!(
             tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
         )
         .is_err());
         // Then: The service that handles requests with those CIDs is used.
         let response = b.call(Request::new(Body::empty())).await.unwrap();
-        assert_eq!(response.into_body().data().await.unwrap().unwrap(), cid1);
+        assert_eq!(
+            response.into_body().data().await.unwrap().unwrap(),
+            svc1_address.to_string()
+        );
 
         // When: We resolve the CID.
-        let mut b = svc.call(cid2.clone()).await.unwrap();
+        let mut b = svc.call(cid2).await.unwrap();
         assert!(!tokio_test::assert_ready!(
             tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
         )
         .is_err());
         // Then: The service that handles requests with those CIDs is used.
         let response = b.call(Request::new(Body::empty())).await.unwrap();
-        assert_eq!(response.into_body().data().await.unwrap().unwrap(), cid2);
+        assert_eq!(
+            response.into_body().data().await.unwrap().unwrap(),
+            svc2_address.to_string()
+        );
     }
 }
