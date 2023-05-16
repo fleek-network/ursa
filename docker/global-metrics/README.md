@@ -27,6 +27,8 @@ sudo vim /etc/GeoIP.conf # paste credentials here
 
 ### Create the TLS Certificates
 
+Find and replace `YOUR-EMAIL-ADDRESS` and `YOUR-DOMAIN-NAME` with yours.
+
 ```sh
 docker compose -f docker/global-metrics/docker-compose.yml \
   run \
