@@ -11,8 +11,8 @@ use tokio::sync::mpsc::channel;
 use tokio::task;
 use tracing::{error, info};
 use ursa::{Cli, Subcommand};
-use ursa_application::application_start;
-use ursa_consensus::{consensus::Consensus, Engine};
+use ursa_application::app::Application;
+use ursa_consensus::consensus::Consensus;
 use ursa_index_provider::engine::ProviderEngine;
 use ursa_network::UrsaService;
 use ursa_rpc_service::{api::NodeNetworkInterface, server::Server};
@@ -70,7 +70,6 @@ async fn run() -> Result<()> {
         provider_config,
         server_config,
         consensus_config,
-        application_config,
     } = config;
 
     // Ursa service setup.
@@ -118,16 +117,10 @@ async fn run() -> Result<()> {
     );
     let index_provider_router = index_provider_engine.router();
 
-    // Store the app address before passing to application so we can give to abci_engine.
-    let mut app_address = application_config.domain.clone().parse::<SocketAddr>()?;
-    app_address.set_ip("0.0.0.0".parse()?);
-
-    // Start the application server.
-    let application_task = task::spawn(async move {
-        if let Err(err) = application_start(application_config).await {
-            error!("[application_task] - {:?}", err)
-        }
-    });
+    // Start the application
+    let app = Application::new();
+    // Get the update and query port
+    let (app_update, app_query) = app.get_ports();
 
     // Server setup.
     let mempool_address = consensus_config.worker[0].transaction.clone();
@@ -143,22 +136,22 @@ async fn run() -> Result<()> {
     let mempool_address_string = format!("http://0.0.0.0:{}", mempool_port);
 
     // Create engine so we can grab senders.
-    let mut abci_engine = Engine::new(app_address).await;
+    // let mut abci_engine = Engine::new(app_address).await;
 
     // Store the senders from the engine.
-    let tx_abci_queries = abci_engine.get_abci_queries_sender();
-    let tx_certificates = abci_engine.get_certificates_sender();
-    let reconfigure_notify = abci_engine.get_reconfigure_notify();
+    // let tx_abci_queries = abci_engine.get_abci_queries_sender();
+    // let tx_certificates = abci_engine.get_certificates_sender();
+    // let reconfigure_notify = abci_engine.get_reconfigure_notify();
 
     // Spawn engine.
-    let engine_shutdown = shutdown_controller.clone();
-    let _abci_engine_task = task::spawn_blocking(|| {
-        futures::executor::block_on(async move {
-            if let Err(err) = abci_engine.start(engine_shutdown).await {
-                error!("[abci_engine_task] - {:?}", err);
-            }
-        })
-    });
+    // let engine_shutdown = shutdown_controller.clone();
+    // let _abci_engine_task = task::spawn_blocking(|| {
+    //     futures::executor::block_on(async move {
+    //         if let Err(err) = abci_engine.start(engine_shutdown).await {
+    //             error!("[abci_engine_task] - {:?}", err);
+    //         }
+    //     })
+    // });
 
     let interface = Arc::new(NodeNetworkInterface::new(
         store,
@@ -166,7 +159,6 @@ async fn run() -> Result<()> {
         index_provider_engine.command_sender(),
         server_config.origin.clone(),
         mempool_address_string.clone(),
-        tx_abci_queries.clone(),
     ));
 
     let server = Server::new(interface);
@@ -208,9 +200,8 @@ async fn run() -> Result<()> {
     let consensus_handle = task::spawn(async move {
         let mut consensus_service = Consensus::new(
             consensus_config,
-            tx_abci_queries,
-            tx_certificates,
-            reconfigure_notify,
+            app_query,
+            app_update,
             mempool_address_string,
         )
         .unwrap();
@@ -224,7 +215,6 @@ async fn run() -> Result<()> {
     rpc_task.abort();
     service_task.abort();
     provider_task.abort();
-    application_task.abort();
     consensus_handle.abort();
     Ok(())
 }

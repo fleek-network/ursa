@@ -1,28 +1,29 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use fastcrypto::traits::KeyPair;
 use futures::lock::Mutex;
-use narwhal_config::{Committee, Epoch, Parameters, WorkerCache};
+use narwhal_config::{
+    Authority, Committee, Epoch, Parameters, WorkerCache, WorkerIndex, WorkerInfo,
+};
 use narwhal_node::NodeStorage;
-use narwhal_types::{Batch, TransactionProto, TransactionsClient};
+use narwhal_types::{TransactionProto, TransactionsClient};
 use resolve_path::PathResolveExt;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tendermint_proto::abci::ResponseQuery;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::Notify;
 use tokio::{pin, select, task, time};
 use tracing::error;
+use ursa_application::interface::application::{
+    ApplicationQuery, ApplicationUpdate, ExecutionData, Query, Transaction, TransactionResponse,
+    TransactionType,
+};
 
-use crate::AbciQueryQuery;
 use crate::{
     config::ConsensusConfig,
     execution::Execution,
     narwhal::{NarwhalArgs, NarwhalService},
-};
-use ursa_application::types::Query;
-use ursa_utils::evm::epoch_manager::{
-    decode_committee, decode_epoch_info_return, get_epoch_info_call, get_signal_epoch_change_call,
 };
 
 // what do we need for this file to work and be complete?
@@ -56,7 +57,7 @@ pub struct Consensus {
     /// exit.
     shutdown_notify: Notify,
     /// Used to query application state.
-    tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
+    tx_abci_queries: ApplicationQuery,
 }
 
 /// This struct contains mutable state only for the current epoch.
@@ -68,14 +69,13 @@ struct EpochState {
 impl Consensus {
     pub fn new(
         config: ConsensusConfig,
-        tx_abci_queries: mpsc::Sender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
-        tx_certificates: mpsc::Sender<Vec<Batch>>,
-        reconfigure_notify: Arc<Notify>,
+        tx_abci_queries: ApplicationQuery,
+        tx_certificates: ApplicationUpdate,
         mempool_address: String,
     ) -> Result<Self> {
         let narwhal_args = NarwhalArgs::load(config.clone())?;
-
-        let execution_state = Execution::new(tx_certificates);
+        let reconfigure_notify = Arc::new(Notify::new());
+        let execution_state = Execution::new(tx_certificates, reconfigure_notify.clone());
 
         let mut store_path = config.store_path.clone();
         store_path.push(STORE_NAME);
@@ -158,7 +158,7 @@ impl Consensus {
     }
 
     async fn wait_to_signal_epoch_change(&self, time_until_change: Duration) {
-        let primary_public_key = self.narwhal_args.primary_keypair.public().clone();
+        let primary_public_key = self.narwhal_args.primary_network_keypair.public().clone();
         let mempool_address = self.mempool_address.clone();
         task::spawn(async move {
             time::sleep(time_until_change).await;
@@ -166,18 +166,24 @@ impl Consensus {
             loop {
                 time::sleep(Duration::from_secs(1)).await;
 
-                let txn = match serde_json::to_vec(&get_signal_epoch_change_call(
-                    primary_public_key.to_string(),
-                )) {
-                    Ok(txn) => txn,
+                // TODO: Get nonce and sign transaction
+                let transaction = Transaction {
+                    sender: primary_public_key.clone(),
+                    nonce: 0,
+                    transaction_type: TransactionType::ChangeEpoch,
+                    signature: None,
+                };
+
+                let txn_bytes = match bincode::serialize(&transaction) {
+                    Ok(bytes) => bytes,
                     Err(_) => {
-                        error!("Error signaling epoch change, trying again");
+                        error!("Error decoding transaction to signal epoch change");
                         continue;
                     }
                 };
 
                 let request = TransactionProto {
-                    transaction: Bytes::from(txn),
+                    transaction: Bytes::from(txn_bytes),
                 };
 
                 let mut client = match TransactionsClient::connect(mempool_address.clone()).await {
@@ -227,34 +233,56 @@ impl Consensus {
 // Application Query Helpers.
 impl Consensus {
     async fn get_epoch_info(&self) -> Result<(Committee, WorkerCache, Epoch, u64)> {
-        // Build transaction.
-        let txn = get_epoch_info_call();
-        let query = Query::EthCall(txn);
-
-        let query_string = serde_json::to_string(&query)?;
-
-        let abci_query = AbciQueryQuery {
-            data: query_string,
-            path: "".to_string(),
-            height: None,
-            prove: None,
+        let response = match self
+            .tx_abci_queries
+            .run(Transaction::get_query(TransactionType::Query(
+                Query::CurrentEpochInfo,
+            )))
+            .await
+        {
+            Ok(TransactionResponse::Success(ExecutionData::EpochInfo(info))) => info,
+            _ => return Err(anyhow!("Unable to get epoch info")),
         };
 
-        // Construct one shot channel to recieve response.
-        let (tx, rx) = oneshot::channel();
+        let committee = Committee {
+            epoch: response.epoch,
+            authorities: response
+                .committee
+                .iter()
+                .map(|node| {
+                    let authority = Authority {
+                        stake: 1,
+                        primary_address: node.domain.clone(),
+                        network_key: node.network_key.clone(),
+                    };
+                    (node.public_key.clone(), authority)
+                })
+                .collect(),
+        };
 
-        // Send and wait for response.
-        self.tx_abci_queries.send((tx, abci_query)).await?;
-        let response = rx.await.with_context(|| "Failure querying abci")?;
+        let worker_cache = WorkerCache {
+            epoch: response.epoch,
+            workers: response
+                .committee
+                .iter()
+                .map(|node| {
+                    let mut worker_index = BTreeMap::new();
+                    node.workers
+                        .iter()
+                        .map(|worker| WorkerInfo {
+                            name: worker.public_key.clone(),
+                            transactions: worker.mempool.clone(),
+                            worker_address: worker.address.clone(),
+                        })
+                        .enumerate()
+                        .for_each(|(index, worker)| {
+                            worker_index.insert(index as u32, worker);
+                        });
+                    (node.public_key.clone(), WorkerIndex(worker_index))
+                })
+                .collect(),
+        };
 
-        // Decode response.
-        let epoch_info = decode_epoch_info_return(response.value)?;
-
-        let epoch = epoch_info.epoch.as_u64();
-        let epoch_timestamp = epoch_info.current_epoch_end_ms.as_u64();
-
-        let (committee, worker_cache) = decode_committee(epoch_info.committee_members, epoch);
-
-        Ok((committee, worker_cache, epoch, epoch_timestamp))
+        Ok((committee, worker_cache, response.epoch, response.epoch_end))
     }
 }

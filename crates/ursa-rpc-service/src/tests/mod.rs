@@ -39,7 +39,6 @@ type InitResult = Result<(
     ProviderEngine<MemoryDB>,
     Arc<UrsaStore<MemoryDB>>,
     String,
-    BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
 )>;
 
 pub fn init() -> InitResult {
@@ -63,8 +62,7 @@ pub fn init() -> InitResult {
         receiver,
     );
     let mempool_address = "/ip4/0.0.0.0/tcp/8102/http".to_string();
-    let (abci_send, _abci_recieve) = channel(1000);
-    Ok((service, provider_engine, store, mempool_address, abci_send))
+    Ok((service, provider_engine, store, mempool_address))
 }
 
 pub async fn dummy_ipfs() -> Result<()> {

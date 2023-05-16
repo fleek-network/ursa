@@ -8,8 +8,8 @@ pub mod keys;
 pub mod narwhal;
 pub mod validator;
 
-mod abci_engine;
-pub use abci_engine::Engine;
+// mod abci_engine;
+// pub use abci_engine::Engine;
 
 use serde::{Deserialize, Serialize};
 

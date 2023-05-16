@@ -18,7 +18,7 @@ mod tests {
     #[tokio::test]
     async fn test_http_server() -> Result<()> {
         setup_logger();
-        let (ursa_service, provider_engine, store, mempool_address, abci_send) = init()?;
+        let (ursa_service, provider_engine, store, mempool_address) = init()?;
 
         let interface = Arc::new(NodeNetworkInterface::new(
             Arc::clone(&store),
@@ -26,7 +26,6 @@ mod tests {
             provider_engine.command_sender(),
             Default::default(),
             mempool_address,
-            abci_send,
         ));
         let server = Server::new(interface);
         let metrics = ursa_metrics::routes::init();
@@ -47,7 +46,7 @@ mod tests {
     #[tokio::test]
     async fn test_rpc_server() -> Result<()> {
         setup_logger();
-        let (ursa_service, provider_engine, store, mempool_address, abci_send) = init()?;
+        let (ursa_service, provider_engine, store, mempool_address) = init()?;
 
         let interface = Arc::new(NodeNetworkInterface::new(
             Arc::clone(&store),
@@ -55,7 +54,6 @@ mod tests {
             provider_engine.command_sender(),
             Default::default(),
             mempool_address,
-            abci_send,
         ));
         let server = Server::new(interface);
         let rpc_app = server.rpc_app();

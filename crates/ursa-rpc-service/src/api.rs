@@ -30,6 +30,7 @@ use tokio::sync::{
 use tokio::task;
 use tokio_util::{compat::TokioAsyncWriteCompatExt, io::ReaderStream};
 use tracing::{debug, error, info};
+use ursa_application::interface::application::ApplicationQuery;
 use ursa_consensus::AbciQueryQuery;
 use ursa_index_provider::engine::ProviderCommand;
 use ursa_network::NetworkCommand;
@@ -106,12 +107,6 @@ pub trait NetworkInterface: Sync + Send + 'static {
 
     /// Get the addresses that p2p node is listening on
     async fn get_listener_addresses(&self) -> Result<Vec<Multiaddr>>;
-
-    /// Stream txn to the Narwhal worker mempool
-    async fn submit_narwhal_txn(&self, txn: TransactionProto) -> Result<()>;
-
-    /// Query the application layer through abci
-    async fn query_abci(&self, txn: AbciQueryQuery) -> Result<ResponseQuery>;
 }
 
 type PendingRequests = Arc<RwLock<HashMap<Cid, Vec<Sender<Result<u64>>>>>>;
@@ -128,7 +123,6 @@ where
     pending_requests: PendingRequests,
     client: Arc<Client>,
     origin_config: OriginConfig,
-    abci_send: BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
 }
 
 #[async_trait]
@@ -257,28 +251,6 @@ where
             ))),
         }
     }
-
-    async fn submit_narwhal_txn(&self, txn: TransactionProto) -> Result<()> {
-        let mut client = TransactionsClient::connect(self.mempool_address.clone())
-            .await
-            .unwrap();
-
-        if let Err(e) = client.submit_transaction(txn).await {
-            Err(anyhow!("Failure sending transacation: {e:?}"))
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn query_abci(&self, req: AbciQueryQuery) -> Result<ResponseQuery> {
-        let (tx, rx) = oneshot::channel();
-
-        if let Err(err) = self.abci_send.send((tx, req.clone())).await {
-            error!("Error forwarding abci query: {}", err);
-        };
-
-        rx.await.with_context(|| "Failure querying abci")
-    }
 }
 
 impl<S> NodeNetworkInterface<S>
@@ -291,7 +263,6 @@ where
         provider_send: Sender<ProviderCommand>,
         origin_config: OriginConfig,
         mempool_address: String,
-        abci_send: BoundedSender<(oneshot::Sender<ResponseQuery>, AbciQueryQuery)>,
     ) -> Self {
         Self {
             store,
@@ -299,7 +270,6 @@ where
             provider_send,
             mempool_address,
             origin_config,
-            abci_send,
             pending_requests: Arc::new(RwLock::new(HashMap::new())),
             client: Arc::new(Client::new()),
         }

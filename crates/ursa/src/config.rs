@@ -8,7 +8,6 @@ use std::{
     path::PathBuf,
 };
 use tracing::{info, warn};
-use ursa_application::ApplicationConfig;
 use ursa_consensus::config::ConsensusConfig;
 use ursa_index_provider::config::ProviderConfig;
 use ursa_network::NetworkConfig;
@@ -26,8 +25,6 @@ pub struct UrsaConfig {
     pub server_config: ServerConfig,
     #[serde(default)]
     pub consensus_config: ConsensusConfig,
-    #[serde(default)]
-    pub application_config: ApplicationConfig,
 }
 
 impl UrsaConfig {

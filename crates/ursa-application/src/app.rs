@@ -1,49 +1,32 @@
-use crate::types::{Consensus, Info, Mempool, Snapshot, State};
-use revm::db::{CacheDB, EmptyDB};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::env::AtomoEnv;
+use crate::interface::application::{App, ApplicationQuery, ApplicationUpdate};
 
-pub struct App<Db> {
-    pub mempool: Mempool,
-    pub snapshot: Snapshot,
-    pub consensus: Consensus<Db>,
-    pub info: Info<Db>,
+pub struct Application {
+    inner: App,
 }
 
-impl Default for App<CacheDB<EmptyDB>> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl App<CacheDB<EmptyDB>> {
+impl Application {
+    /// Creates and runs the application
     pub fn new() -> Self {
-        let state = State {
-            db: CacheDB::new(EmptyDB()),
-            block_height: Default::default(),
-            app_hash: Default::default(),
-            env: Default::default(),
-        };
+        let env = AtomoEnv::new();
 
-        let committed_state = Arc::new(Mutex::new(state.clone()));
-        let current_state = Arc::new(Mutex::new(state));
-
-        let consensus = Consensus {
-            committed_state: committed_state.clone(),
-            current_state,
-        };
-
-        let mempool = Mempool::default();
-        let info = Info {
-            state: committed_state,
-        };
-        let snapshot = Snapshot::default();
-
-        App {
-            consensus,
-            mempool,
-            info,
-            snapshot,
+        Self {
+            inner: App::new(env),
         }
+    }
+
+    /// Get the query port. There can be multiple clones of this port and it can be called multiple times
+    pub fn get_query_port(&self) -> ApplicationQuery {
+        self.inner.get_query_port()
+    }
+
+    /// Get the update port. There should only be one update port and it should be handed to consensus
+    pub fn get_update_port(&self) -> ApplicationUpdate {
+        self.inner.get_query_port()
+    }
+
+    /// Helper function to recieve the update and query port
+    pub fn get_ports(&self) -> (ApplicationUpdate, ApplicationQuery) {
+        (self.inner.get_update_port(), self.inner.get_query_port())
     }
 }

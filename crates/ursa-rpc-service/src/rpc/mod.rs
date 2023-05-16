@@ -8,7 +8,7 @@ use axum::{
 };
 use jsonrpc_v2::{Data, Error, MapRouter, RequestObject, ResponseObject, ResponseObjects, Server};
 
-use self::routes::{eth, network};
+use self::routes::network;
 use crate::api::NetworkInterface;
 
 pub mod routes;
@@ -65,8 +65,6 @@ impl RpcServer {
             .with_method("ursa_get_file", network::get_file_handler::<I>)
             .with_method("ursa_put_file", network::put_file_handler::<I>)
             .with_method("ursa_get_peers", network::get_peers::<I>)
-            .with_method("eth_sendTransaction", eth::eth_send_raw_transaction::<I>)
-            .with_method("eth_call", eth::eth_call::<I>)
             .with_method(
                 "ursa_listener_addresses",
                 network::get_listener_addresses::<I>,
