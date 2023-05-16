@@ -1,6 +1,7 @@
 use crate::util::Client;
 use anyhow::{Error, Result};
-use hyper::{Body, Request, Response, Uri};
+use axum::response::{IntoResponse, Response};
+use hyper::{Body, Request, Uri};
 use std::{
     future::Future,
     pin::Pin,
@@ -8,8 +9,7 @@ use std::{
 };
 use tower::Service;
 
-// TODO: Implement Service.
-// This will query the edge node for the content.
+// Service that will query the edge nodes for the content.
 #[derive(Clone)]
 pub struct Backend {
     uri: Uri,
@@ -23,7 +23,7 @@ impl Backend {
 }
 
 impl Service<Request<Body>> for Backend {
-    type Response = Response<Body>;
+    type Response = Response;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
 
@@ -35,7 +35,7 @@ impl Service<Request<Body>> for Backend {
         let this = self.clone();
         Box::pin(async move {
             match this.client.get(this.uri).await {
-                Ok(response) => Ok(response),
+                Ok(response) => Ok(response.into_response()),
                 Err(e) => Err(e.into()),
             }
         })

@@ -2,8 +2,8 @@ mod model;
 
 use anyhow::{Error, Result};
 use futures::Stream;
-use hyper::{Body, Request, Response};
 use std::{
+    marker::PhantomData,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
@@ -12,30 +12,44 @@ use tower::{discover::Change, Service};
 
 type Key = SocketAddr;
 
-pub enum IndexerCommand<S>
-where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Error>,
-{
+pub enum IndexerCommand<S, Req> {
     GetProviderList {
         cid: String,
-        tx: tokio::sync::oneshot::Sender<Result<Cluster<S>>>,
+        tx: tokio::sync::oneshot::Sender<Result<Cluster<S, Req>>>,
     },
 }
 
 // TODO: This will be returned by the indexer worker.
-pub struct Cluster<S> {
+pub struct Cluster<S, Req> {
     services: Vec<(Key, S)>,
+    _req: PhantomData<Req>,
 }
 
-impl<S> Cluster<S> {
-    pub fn new(services: Vec<(Key, S)>) -> Cluster<S> {
-        Self { services }
+impl<S, Req> Clone for Cluster<S, Req>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Cluster<S, Req> {
+        Self {
+            services: self.services.clone(),
+            _req: PhantomData,
+        }
     }
 }
 
-impl<S> Stream for Cluster<S>
+impl<S, Req> Cluster<S, Req> {
+    pub fn new(services: Vec<(Key, S)>) -> Cluster<S, Req> {
+        Self {
+            services,
+            _req: Default::default(),
+        }
+    }
+}
+
+impl<S, Req> Stream for Cluster<S, Req>
 where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Error> + Unpin,
+    S: Service<Req> + Unpin,
+    Req: Unpin,
 {
     type Item = Result<Change<Key, S>, Error>;
 

@@ -3,8 +3,6 @@ use crate::{
     util::Client,
 };
 use anyhow::{Error, Result};
-use axum::http::Request;
-use hyper::{Body, Response};
 use std::{
     future::Future,
     pin::Pin,
@@ -45,21 +43,24 @@ impl Default for PeakEwmaConfig {
 
 /// Reads the cluster identifier (cid) from the request
 /// and returns a set of services (cluster) wrapped by a Balance.
-#[derive(Clone)]
-pub struct Resolver<S>
-where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Error> + Clone + Unpin + 'static,
-{
+pub struct Resolver<S, Req> {
     client: Client,
-    indexer_tx: Sender<IndexerCommand<S>>,
+    indexer_tx: Sender<IndexerCommand<S, Req>>,
     config: Arc<Config>,
 }
 
-impl<S> Resolver<S>
-where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Error> + Clone + Unpin + 'static,
-{
-    pub fn new(indexer_tx: Sender<IndexerCommand<S>>, config: Arc<Config>) -> Self {
+impl<S, Req> Clone for Resolver<S, Req> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            indexer_tx: self.indexer_tx.clone(),
+            config: self.config.clone(),
+        }
+    }
+}
+
+impl<S, Req> Resolver<S, Req> {
+    pub fn new(indexer_tx: Sender<IndexerCommand<S, Req>>, config: Arc<Config>) -> Self {
         Self {
             client: Client::new(),
             indexer_tx,
@@ -68,11 +69,12 @@ where
     }
 }
 
-impl<S> Service<Cid> for Resolver<S>
+impl<S, Req> Service<Cid> for Resolver<S, Req>
 where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Error> + Clone + Unpin + 'static,
+    S: Service<Req> + Clone + Unpin + 'static,
+    Req: Unpin + 'static,
 {
-    type Response = PeakEwmaDiscover<Cluster<S>>;
+    type Response = PeakEwmaDiscover<Cluster<S, Req>>;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
 
@@ -136,7 +138,7 @@ mod test {
 
     async fn start_mock_indexer(
         services: HashMap<Cid, MockBackend>,
-        mut rx: Receiver<IndexerCommand<MockBackend>>,
+        mut rx: Receiver<IndexerCommand<MockBackend, Request<Body>>>,
     ) {
         loop {
             if let Some(IndexerCommand::GetProviderList { tx, cid }) = rx.recv().await {
@@ -162,8 +164,10 @@ mod test {
         // Given: The resolver.
         let (tx, rx) = tokio::sync::mpsc::channel(100000);
         let resolver = Resolver::new(tx, Arc::new(Config::default()));
-        let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockBackend>, Request<Body>> =
-            tower::balance::p2c::MakeBalance::new(resolver);
+        let mut svc: tower::balance::p2c::MakeBalance<
+            Resolver<MockBackend, Request<Body>>,
+            Request<Body>,
+        > = tower::balance::p2c::MakeBalance::new(resolver);
 
         // Given: Indexer that dynamically returns sets of services given a cid.
         // Given: Some mock backends that will return their address.
