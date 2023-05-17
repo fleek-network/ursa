@@ -18,9 +18,9 @@ pub type ApplicationUpdate = Port<Transaction, TransactionResponse>;
 
 pub struct App {
     /// Cloneable port to send txns to the application layer
-    update_port: ApplicationUpdate,
+    update_socket: ApplicationUpdate,
     /// Cloneable port used to send querys to the application layer
-    query_port: ApplicationQuery,
+    query_socket: ApplicationQuery,
 }
 
 impl App {
@@ -28,17 +28,17 @@ impl App {
     pub fn new<E: Env>(mut env: E) -> Self {
         env.genesis();
         Self {
-            query_port: TokioSpawn::spawn_async(QueryWorker::new(env.query())),
-            update_port: TokioSpawn::spawn(UpdateWorker::new(env)),
+            query_socket: TokioSpawn::spawn_async(QueryWorker::new(env.query())),
+            update_socket: TokioSpawn::spawn(UpdateWorker::new(env)),
         }
     }
     /// Get the port for sending Query transactions to the application
-    pub fn get_query_port(&self) -> ApplicationQuery {
-        self.query_port.clone()
+    pub fn get_query_socket(&self) -> ApplicationQuery {
+        self.query_socket.clone()
     }
     /// Get the port for sending update to the application layer. This should only be called once and given to Narwhal
-    pub fn get_update_port(&self) -> ApplicationUpdate {
-        self.update_port.clone()
+    pub fn get_update_socket(&self) -> ApplicationUpdate {
+        self.update_socket.clone()
     }
 }
 

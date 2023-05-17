@@ -120,7 +120,7 @@ async fn run() -> Result<()> {
     // Start the application
     let app = Application::new();
     // Get the update and query port
-    let (app_update, app_query) = app.get_ports();
+    let (app_update, app_query) = app.get_sockets();
 
     // Server setup.
     let mempool_address = consensus_config.worker[0].transaction.clone();
