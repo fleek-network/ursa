@@ -2,7 +2,7 @@ use crate::{
     indexer::IndexerCommand,
     resolver::{Config, Resolver},
 };
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result};
 use axum::response::Response;
 use hyper::{Body, Request};
 use std::{
@@ -15,13 +15,17 @@ use std::{
 use tokio::sync::mpsc::Sender;
 use tower::{balance::p2c::MakeBalance, Service};
 
-// TODO: Add a state that is cheap to copy.
-struct Gateway<S, Req> {
-    config: Arc<Config>,
-    tx: Sender<IndexerCommand<S, Req>>,
+#[derive(Clone)]
+struct Gateway<S> {
+    state: Arc<State<S>>,
 }
 
-impl<S> Service<Request<Body>> for Gateway<S, Request<Body>>
+struct State<S> {
+    config: Arc<Config>,
+    tx: Sender<IndexerCommand<S, Request<Body>>>,
+}
+
+impl<S> Service<Request<Body>> for Gateway<S>
 where
     S: Service<Request<Body>, Response = Response, Error = Error> + Clone + Unpin + 'static,
     <S as Service<Request<Body>>>::Future: Unpin,
@@ -37,7 +41,10 @@ where
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         ResponseFuture {
             request: Some(req),
-            balance: MakeBalance::new(Resolver::new(self.tx.clone(), self.config.clone())),
+            balance: MakeBalance::new(Resolver::new(
+                self.state.tx.clone(),
+                self.state.config.clone(),
+            )),
         }
     }
 }
@@ -58,24 +65,16 @@ where
         let cid = self
             .request
             .as_ref()
-            .map(|r| r.uri().path().trim_start_matches('/'))
-            .expect("There to be a request")
-            .to_string();
+            .map(|r| r.uri().path().trim_start_matches('/').to_string())
+            .expect("There to be a request");
         let mut balance = match ready!(Pin::new(&mut self.balance.call(cid)).poll(cx)) {
             Ok(balance) => balance,
             Err(e) => return Poll::Ready(Err(e)),
         };
-        if let Err(e) = ready!(balance.poll_ready(cx)) {
-            // TODO: Add logging.
-            return Poll::Ready(Err(anyhow!("{e:?}")));
-        }
-
+        ready!(balance.poll_ready(cx)).map_err(Error::msg)?;
         let request = self.request.take().expect("There to be a request");
-        let response = match ready!(Pin::new(&mut balance.call(request)).poll(cx)) {
-            Ok(r) => r,
-            // TODO: Can we convert from BoxError?
-            Err(e) => return Poll::Ready(Err(anyhow!("{e:?}"))),
-        };
-        Poll::Ready(Ok(response))
+        Pin::new(&mut balance.call(request))
+            .poll(cx)
+            .map_err(Error::msg)
     }
 }
