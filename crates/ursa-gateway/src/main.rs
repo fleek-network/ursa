@@ -1,6 +1,7 @@
 mod backend;
 mod cli;
 mod config;
+mod core;
 mod indexer;
 mod resolver;
 mod util;
