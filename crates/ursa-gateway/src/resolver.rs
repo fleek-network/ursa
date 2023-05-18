@@ -1,6 +1,6 @@
 use crate::{
-    indexer::{Cluster, IndexerCommand},
-    util::Client,
+    indexer::Cluster,
+    util::{Client, Worker},
 };
 use anyhow::{Error, Result};
 use std::{
@@ -10,12 +10,10 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::sync::mpsc::Sender;
 use tower::{
     load::{CompleteOnResponse, PeakEwmaDiscover},
-    Service,
+    BoxError, Service,
 };
-use tracing::error;
 
 pub type Cid = String;
 
@@ -43,58 +41,71 @@ impl Default for PeakEwmaConfig {
 
 /// Reads the cluster identifier (cid) from the request
 /// and returns a set of services (cluster) wrapped by a Balance.
-pub struct Resolver<S, Req> {
+pub struct Resolver<S>
+where
+    S: Service<Cid>,
+    <S as Service<Cid>>::Error: Into<BoxError>,
+{
     client: Client,
-    indexer_tx: Sender<IndexerCommand<S, Req>>,
+    // TODO: We actually want to send a command instead of CID.
+    // This way we may let the indexer know about backend failures.
+    // TODO: How will we implement retry?
+    indexer: Worker<S, Cid>,
     config: Arc<Config>,
 }
 
-impl<S, Req> Clone for Resolver<S, Req> {
+impl<S> Clone for Resolver<S>
+where
+    S: Service<Cid>,
+    <S as Service<Cid>>::Error: Into<BoxError>,
+{
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            indexer_tx: self.indexer_tx.clone(),
             config: self.config.clone(),
+            indexer: self.indexer.clone(),
         }
     }
 }
 
-impl<S, Req> Resolver<S, Req> {
-    pub fn new(indexer_tx: Sender<IndexerCommand<S, Req>>, config: Arc<Config>) -> Self {
+impl<S> Resolver<S>
+where
+    S: Service<Cid>,
+    <S as Service<Cid>>::Error: Into<BoxError>,
+{
+    pub fn new(indexer: Worker<S, Cid>, config: Arc<Config>) -> Self {
         Self {
             client: Client::new(),
-            indexer_tx,
             config,
+            indexer,
         }
     }
 }
 
-impl<S, Req> Service<Cid> for Resolver<S, Req>
+impl<S, H, Req> Service<Cid> for Resolver<S>
 where
-    S: Service<Req> + Clone + Unpin + 'static,
+    S: Service<Cid, Response = Cluster<H, Req>> + Clone + Unpin + 'static,
+    H: Service<Req> + Clone + Unpin + 'static,
+    <S as Service<Cid>>::Error: Into<BoxError>,
     Req: Unpin + 'static,
 {
-    type Response = PeakEwmaDiscover<Cluster<S, Req>>;
+    type Response = PeakEwmaDiscover<Cluster<H, Req>>;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.indexer.poll_ready(cx).map_err(Error::msg)
     }
 
     fn call(&mut self, cid: Cid) -> Self::Future {
         let this = self.clone();
+        let indexer = self.indexer.clone();
+        let mut indexer = std::mem::replace(&mut self.indexer, indexer);
         let fut = async move {
-            let (tx, rx) = tokio::sync::oneshot::channel();
             // Send request to indexer worker.
-            let cmd = IndexerCommand::GetProviderList { cid, tx };
-            if let Err(e) = this.indexer_tx.send(cmd).await {
-                error!("Sending failed {e}");
-                return Err(anyhow::anyhow!("Sending failed {e}"));
-            }
-            let l = rx.await??;
+            let f = indexer.call(cid).await.unwrap();
             Ok(PeakEwmaDiscover::new(
-                l,
+                f,
                 this.config.load_balancer_config.default_rtt,
                 this.config.load_balancer_config.decay,
                 this.config.load_balancer_config.completion,
@@ -105,8 +116,9 @@ where
 }
 
 mod test {
-    use crate::indexer::{Cluster, IndexerCommand};
+    use crate::indexer::Cluster;
     use crate::resolver::{Cid, Config, Resolver};
+    use crate::util::Worker;
     use anyhow::{Error, Result};
     use hyper::body::HttpBody;
     use hyper::{Body, Request, Response};
@@ -114,8 +126,7 @@ mod test {
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
-    use std::task::Poll;
-    use tokio::sync::mpsc::Receiver;
+    use std::task::{Context, Poll};
     use tower::Service;
 
     #[derive(Clone, Debug)]
@@ -124,7 +135,9 @@ mod test {
     impl Service<Request<Body>> for MockBackend {
         type Response = Response<Body>;
         type Error = Error;
-        type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response>>>>;
+        type Future = std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<Self::Response>> + Send + 'static>,
+        >;
 
         fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
@@ -136,48 +149,56 @@ mod test {
         }
     }
 
-    async fn start_mock_indexer(
-        services: HashMap<Cid, MockBackend>,
-        mut rx: Receiver<IndexerCommand<MockBackend, Request<Body>>>,
-    ) {
-        loop {
-            if let Some(IndexerCommand::GetProviderList { tx, cid }) = rx.recv().await {
-                let backend = services.get(&cid).unwrap().clone();
-                if tx
-                    .send(Ok(Cluster::new(vec![(backend.0, backend)])))
-                    .is_err()
-                {
-                    panic!("Failed to send")
-                }
-            }
+    #[derive(Clone)]
+    struct MockIndexer(HashMap<Cid, MockBackend>);
+
+    impl Service<Cid> for MockIndexer {
+        type Response = Cluster<MockBackend, Request<Body>>;
+        type Error = Error;
+        type Future = std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<Self::Response>> + Send + 'static>,
+        >;
+
+        fn poll_ready(
+            &mut self,
+            _: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, cid: Cid) -> Self::Future {
+            let backend = self.0.get(cid.as_str()).unwrap().clone();
+            let fut = async move { Ok(Cluster::new(vec![(backend.0, backend)])) };
+            Box::pin(fut)
         }
     }
 
     #[tokio::test]
     async fn test_resolve() {
-        // Given: Some cids.
+        // Given: Some CIDs.
         let cid1 = "cid1".to_string();
         let cid2 = "cid2".to_string();
         let svc1_address = SocketAddr::from_str("192.0.0.1:80").unwrap();
         let svc2_address = SocketAddr::from_str("192.0.0.2:80").unwrap();
 
-        // Given: The resolver.
-        let (tx, rx) = tokio::sync::mpsc::channel(100000);
-        let resolver = Resolver::new(tx, Arc::new(Config::default()));
-        let mut svc: tower::balance::p2c::MakeBalance<
-            Resolver<MockBackend, Request<Body>>,
-            Request<Body>,
-        > = tower::balance::p2c::MakeBalance::new(resolver);
-
-        // Given: Indexer that dynamically returns sets of services given a cid.
+        // Given: Mock Indexer that dynamically returns sets of services given a cid.
         // Given: Some mock backends that will return their address.
+        // Given: The resolver.
         let mut services = HashMap::new();
         services.insert(cid1.clone(), MockBackend(svc1_address));
         services.insert(cid2.clone(), MockBackend(svc2_address));
-
-        tokio::spawn(async move { start_mock_indexer(services, rx).await });
+        let resolver = Resolver::new(
+            Worker::new(MockIndexer(services), 10),
+            Arc::new(Config::default()),
+        );
+        let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockIndexer>, Request<Body>> =
+            tower::balance::p2c::MakeBalance::new(resolver);
 
         // When: We resolve a CID.
+        assert!(!tokio_test::assert_ready!(
+            tokio_test::task::spawn(()).enter(|cx, _| svc.poll_ready(cx))
+        )
+        .is_err());
         let mut b = svc.call(cid1).await.unwrap();
         assert!(!tokio_test::assert_ready!(
             tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
@@ -191,6 +212,10 @@ mod test {
         );
 
         // When: We resolve the CID.
+        assert!(!tokio_test::assert_ready!(
+            tokio_test::task::spawn(()).enter(|cx, _| svc.poll_ready(cx))
+        )
+        .is_err());
         let mut b = svc.call(cid2).await.unwrap();
         assert!(!tokio_test::assert_ready!(
             tokio_test::task::spawn(()).enter(|cx, _| b.poll_ready(cx))
