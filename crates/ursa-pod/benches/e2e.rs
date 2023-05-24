@@ -7,19 +7,17 @@ use ursa_pod::{
     blake3::Hash,
     connection::consts::MAX_BLOCK_SIZE,
     server::Backend,
-    types::{BlsSignature, Secp256k1PublicKey},
+    types::{BlsPublicKey, BlsSignature, Secp256k1PublicKey},
 };
 
 use crate::tls_utils::TestTlsConfig;
 
-const MAX_REQUESTS: usize = 64;
+const MAX_REQUESTS: usize = 2;
 const DECRYPTION_KEY: [u8; 33] = [3u8; 33];
-const CLIENT_PUB_KEY: [u8; 48] = [3u8; 48];
-const CID: Blake3Cid = Blake3Cid([3u8; 32]);
 
 const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024],
-    &[0u8; 2 * 1024],
+    /*&[0u8; 2 * 1024],
     &[0u8; 4 * 1024],
     &[0u8; 8 * 1024],
     &[0u8; 16 * 1024],
@@ -27,11 +25,11 @@ const KILOBYTE_FILES: &[&[u8]] = &[
     &[0u8; 64 * 1024],
     &[0u8; 128 * 1024],
     &[0u8; 256 * 1024],
-    &[0u8; 512 * 1024],
+    &[0u8; 512 * 1024],*/
 ];
 const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 1024 * 1024],
-    &[0u8; 2 * 1024 * 1024],
+    /*&[0u8; 2 * 1024 * 1024],
     &[0u8; 4 * 1024 * 1024],
     &[0u8; 8 * 1024 * 1024],
     &[0u8; 16 * 1024 * 1024],
@@ -39,8 +37,15 @@ const MEGABYTE_FILES: &[&[u8]] = &[
     &[0u8; 64 * 1024 * 1024],
     &[0u8; 128 * 1024 * 1024],
     &[0u8; 256 * 1024 * 1024],
-    &[0u8; 512 * 1024 * 1024],
+    &[0u8; 512 * 1024 * 1024],*/
 ];
+
+fn random_pubkey() -> BlsPublicKey {
+    use rand::Rng;
+    let mut arr = [0u8; 48];
+    rand::thread_rng().fill(&mut arr[..]);
+    arr
+}
 
 fn benchmark_sizes<T: Measurement, C, S>(
     g: &mut BenchmarkGroup<T>,
@@ -236,14 +241,17 @@ impl Backend for DummyBackend {
 }
 
 mod tcp_ufdp {
+    use std::sync::Arc;
+
     use futures::future::join_all;
     use tokio::{
         net::{TcpListener, TcpStream},
         task,
     };
-    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpServer};
 
-    use super::{tls_utils::TestTlsConfig, DummyBackend, CLIENT_PUB_KEY};
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
+    use crate::random_pubkey;
 
     /// Simple tcp server loop that replies with static content
     pub async fn server_loop(
@@ -259,11 +267,12 @@ mod tcp_ufdp {
 
         tx_started.send((port, hash)).unwrap();
 
+        let server = Arc::new(UfdpServer::new(Arc::new(backend)));
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            let handler = UfdpHandler::new(stream, backend.clone(), 0);
+            let server = server.clone();
             task::spawn(async move {
-                if let Err(e) = handler.serve().await {
+                if let Err(e) = server.serve(stream).await {
                     println!("server error: {e:?}");
                 }
             });
@@ -283,7 +292,9 @@ mod tcp_ufdp {
         for _ in 0..iterations {
             let stream = TcpStream::connect(&addr).await.unwrap();
             let task = task::spawn(async move {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                let mut client = UfdpClient::new(stream, random_pubkey(), None)
+                    .await
+                    .unwrap();
 
                 client.request(hash).await.unwrap();
             });
@@ -303,9 +314,10 @@ mod tcp_tls_ufdp {
         task,
     };
     use tokio_rustls::{TlsAcceptor, TlsConnector};
-    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpServer};
 
-    use super::{tls_utils::TestTlsConfig, DummyBackend, CLIENT_PUB_KEY};
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
+    use crate::random_pubkey;
 
     pub async fn server_loop(
         addr: String,
@@ -320,12 +332,15 @@ mod tcp_tls_ufdp {
         tx_started.send((port, hash)).unwrap();
 
         let acceptor = TlsAcceptor::from(Arc::new(tls_config.unwrap().server_config()));
+        let server = Arc::new(UfdpServer::new(Arc::new(backend)));
+
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
-            let handler = UfdpHandler::new(stream, backend.clone(), 0);
+
+            let server = server.clone();
             task::spawn(async move {
-                if let Err(e) = handler.serve().await {
+                if let Err(e) = server.serve(stream).await {
                     println!("server error: {e:?}");
                 }
             });
@@ -346,7 +361,9 @@ mod tcp_tls_ufdp {
             let stream = TcpStream::connect(&addr).await.unwrap();
             let stream = connector.connect(domain.clone(), stream).await.unwrap();
             let task = task::spawn(async move {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                let mut client = UfdpClient::new(stream, random_pubkey(), None)
+                    .await
+                    .unwrap();
                 client.request(hash).await.unwrap();
                 client.finish().shutdown().await.unwrap();
             });
@@ -376,41 +393,46 @@ mod websocket_ufdp {
     use tokio_rustls::TlsAcceptor;
     use tokio_tungstenite::{tungstenite::protocol::WebSocketConfig, Connector, WebSocketStream};
     use url::Url;
-    use ursa_pod::{client::UfdpClient, server::UfdpHandler};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpServer};
 
-    use super::DummyBackend;
-    use crate::{tls_utils::TestTlsConfig, CID, CLIENT_PUB_KEY};
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
+    use crate::random_pubkey;
 
     pub async fn server_loop(
         addr: String,
         content: &'static [u8],
-        tx_started: tokio::sync::oneshot::Sender<u16>,
+        tx_started: tokio::sync::oneshot::Sender<(u16, Hash)>,
         tls_config: Option<TestTlsConfig>,
     ) {
+        let (backend, hash) = DummyBackend::new(content);
         let listener = TcpListener::bind(&addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        tx_started.send(port).unwrap();
+        tx_started.send((port, hash)).unwrap();
 
         let acceptor = TlsAcceptor::from(Arc::new(tls_config.unwrap().server_config()));
+        let server = Arc::new(UfdpServer::new(Arc::new(backend)));
+
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let stream = acceptor.accept(stream).await.unwrap();
+
             let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
-            let handler = UfdpHandler::new(
-                WebSocketStreamWrap::new(stream),
-                DummyBackend { content },
-                0,
-            );
+            let server = server.clone();
             task::spawn(async move {
-                if let Err(e) = handler.serve().await {
+                if let Err(e) = server.serve(WebSocketStreamWrap::new(stream)).await {
                     println!("server error: {e:?}");
                 }
             });
         }
     }
 
-    pub async fn client_loop(addr: String, iterations: usize, tls_config: Option<TestTlsConfig>) {
+    pub async fn client_loop(
+        addr: String,
+        iterations: usize,
+        hash: Hash,
+        tls_config: Option<TestTlsConfig>,
+    ) {
         let mut tasks = vec![];
         let addr = format!(
             "wss://localhost:{}/bench",
@@ -426,13 +448,13 @@ mod websocket_ufdp {
             )
             .await
             .unwrap();
-            let task = task::spawn(async {
+            let task = task::spawn(async move {
                 let mut client =
-                    UfdpClient::new(WebSocketStreamWrap::new(stream), CLIENT_PUB_KEY, None)
+                    UfdpClient::new(WebSocketStreamWrap::new(stream), random_pubkey(), None)
                         .await
                         .unwrap();
 
-                client.request(CID).await.unwrap();
+                client.request(hash).await.unwrap();
                 let mut stream = client.finish();
                 stream.inner.close(None).await.unwrap();
             });
@@ -532,7 +554,7 @@ mod websocket_ufdp {
 mod http_hyper {
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
-    use hyper::{server::conn::http1, service::service_fn, Request, Response};
+    use hyper::{server::conn::http1, service::service_fn, Error, Request, Response};
     use tokio::net::{TcpListener, TcpStream};
     use ursa_pod::blake3::Hash;
 
@@ -615,9 +637,10 @@ mod quinn_ufdp {
         io::{AsyncRead, AsyncWrite, ReadBuf},
         task,
     };
-    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpHandler};
+    use ursa_pod::{blake3::Hash, client::UfdpClient, server::UfdpServer};
 
-    use super::{tls_utils::TestTlsConfig, DummyBackend, CLIENT_PUB_KEY};
+    use super::{tls_utils::TestTlsConfig, DummyBackend};
+    use crate::random_pubkey;
 
     pub async fn server_loop(
         addr: String,
@@ -633,18 +656,18 @@ mod quinn_ufdp {
 
         tx_started.send((port, hash)).unwrap();
 
+        let ufdp_server = Arc::new(UfdpServer::new(backend.clone().into()));
         while let Some(connecting) = server.accept().await {
             let connection = connecting.await.unwrap();
-            let backend = backend.clone();
+            let server = ufdp_server.clone();
             task::spawn(async move {
                 loop {
-                    let backend = backend.clone();
                     match connection.accept_bi().await {
                         Ok((tx, rx)) => {
+                            let server = server.clone();
                             task::spawn(async move {
                                 let stream = BiStream { tx, rx };
-                                let handler = UfdpHandler::new(stream, backend, 0);
-                                if let Err(e) = handler.serve().await {
+                                if let Err(e) = server.serve(stream).await {
                                     println!("server error: {e:?}");
                                 }
                             });
@@ -679,7 +702,9 @@ mod quinn_ufdp {
             let (tx, rx) = stream.open_bi().await.unwrap();
             let stream = BiStream { tx, rx };
             let task = task::spawn(async move {
-                let mut client = UfdpClient::new(stream, CLIENT_PUB_KEY, None).await.unwrap();
+                let mut client = UfdpClient::new(stream, random_pubkey(), None)
+                    .await
+                    .unwrap();
                 client.request(hash).await.unwrap();
                 let mut stream = client.finish();
                 stream.tx.finish().await.unwrap();
