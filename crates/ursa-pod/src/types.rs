@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 pub type EpochNonce = u64;
 pub type Secp256k1AffinePoint = [u8; 33];
 

@@ -20,7 +20,7 @@ pub mod consts {
     /// Maximum size for a frame
     pub const MAX_FRAME_SIZE: usize = 1024;
     /// Maximum lanes a client can use at one time
-    pub const MAX_LANES: u8 = 24;
+    pub const MAX_LANES: usize = 24;
     /// Maximum bytes a proof can be.
     ///
     /// The maximum theoretical file we support is `2^64` bytes, given we transfer
@@ -69,7 +69,8 @@ pub mod consts {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
     UnexpectedFrame = 0x00,
-    InsufficientBalance = 0x01,
+    OutOfLanes = 0x01,
+    InsufficientBalance = 0x02,
     Unknown = 0xFF,
 }
 
@@ -85,7 +86,7 @@ impl Reason {
 }
 
 /// Last known data for a lane
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LastLaneData {
     pub bytes: u64,
     pub signature: BlsSignature,
@@ -302,6 +303,7 @@ pub enum UrsaCodecError {
     UnexpectedFrame(FrameTag),
     ZeroLengthBlock,
     Io(std::io::Error),
+    OccupiedLane,
     Unknown,
 }
 

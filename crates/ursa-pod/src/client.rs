@@ -10,7 +10,7 @@ use crate::{
     },
     instrument,
     tree::IncrementalVerifier,
-    types::BlsPublicKey,
+    types::{BlsPublicKey, BlsSignature, Secp256k1AffinePoint},
 };
 
 /// UFDP Client. Accepts any stream of bytes supporting [`AsyncRead`] + [`AsyncWrite`]
@@ -55,6 +55,29 @@ where
             Some(UrsaFrame::HandshakeResponse { lane, .. }) => Ok(Self { conn, lane }),
             Some(_) => unreachable!(), // Guaranteed by filter
             None => Err(UrsaCodecError::Unknown),
+        }
+    }
+
+    pub async fn resume(
+        &mut self,
+        delivery_acknowledgment: BlsSignature,
+    ) -> Result<Secp256k1AffinePoint, UrsaCodecError> {
+        instrument!(
+            self.conn
+                .write_frame(UrsaFrame::DecryptionKeyRequest {
+                    delivery_acknowledgment
+                })
+                .await?,
+            "tag=write_da"
+        );
+
+        if let Some(UrsaFrame::DecryptionKeyResponse { decryption_key }) = instrument!(
+            self.conn.read_frame(Some(DECRYPTION_KEY_RES_TAG)).await?,
+            "tag=read_dk"
+        ) {
+            Ok(decryption_key)
+        } else {
+            unreachable!()
         }
     }
 
