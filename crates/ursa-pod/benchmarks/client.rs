@@ -7,10 +7,10 @@ use std::{
 };
 
 use futures::{future::Either, stream::FuturesUnordered, StreamExt};
+use rand::Rng;
 use tokio::net::TcpStream;
 use ursa_pod::{blake3::Hash, client::UfdpClient, connection::UrsaCodecError};
 
-const PUB_KEY: [u8; 48] = [2u8; 48];
 const SIZES: [(&str, u64); 17] = [
     // MB
     (
@@ -154,8 +154,12 @@ async fn run(cid: Hash, addr: &str, workers: u64, param: Either<u64, Duration>) 
 }
 
 async fn request(cid: Hash, addr: &str) -> usize {
+    let mut pubkey = [0u8; 48];
+    rand::thread_rng().fill(&mut pubkey[..]);
+
     let stream = TcpStream::connect(addr).await.unwrap();
-    let mut client = UfdpClient::new(stream, PUB_KEY, None).await.unwrap();
+    let mut client = UfdpClient::new(stream, pubkey, None).await.unwrap();
+
     client.request(cid).await.unwrap()
 }
 

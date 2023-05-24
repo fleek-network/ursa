@@ -131,6 +131,9 @@ fn parse_raw_data() {
     let mut stdin = stdin().lock().lines();
     while let Some(Ok(line)) = stdin.next() {
         let vals: Vec<&str> = line.split(',').collect();
+        if vals[0] != "SAMPLE" {
+            continue;
+        }
         let start = u64::from_str(&vals[1].replace("start=", "")).unwrap();
         let end = u64::from_str(&vals[2].replace("end=", "")).unwrap();
         let elapsed = end - start;

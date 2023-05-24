@@ -4,7 +4,7 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use ursa_pod::{
     connection::UrsaCodecError,
-    server::{Backend, UfdpHandler},
+    server::{Backend, UfdpServer},
     types::{BlsSignature, Secp256k1PublicKey},
 };
 
@@ -48,7 +48,7 @@ impl Backend for DummyBackend {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), UrsaCodecError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
@@ -66,13 +66,13 @@ async fn main() -> Result<(), UrsaCodecError> {
     info!("Serving content on port 6969, for: {hash}");
 
     let listener = TcpListener::bind(addr).await.unwrap();
+    let server = UfdpServer::new(backend.into());
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
         info!("handling connection");
-        let handler = UfdpHandler::new(stream, backend.clone(), 0);
 
-        if let Err(e) = handler.serve().await {
+        if let Err(e) = server.serve(stream).await {
             error!("UFDP Session failed: {e:?}");
         }
     }

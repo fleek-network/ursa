@@ -1,10 +1,10 @@
-use std::{collections::HashMap, io::Write};
+use std::{collections::HashMap, io::Write, sync::Arc};
 
 use tokio::net::TcpListener;
 use ursa_pod::{
     blake3::Hash,
     instrument,
-    server::{Backend, UfdpHandler},
+    server::{Backend, UfdpServer},
     types::{BlsSignature, Secp256k1PublicKey},
 };
 
@@ -107,22 +107,16 @@ impl Backend for BenchmarkBackend {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let backend = BenchmarkBackend::new();
+    let server = Arc::new(UfdpServer::new(backend.into()));
 
     let listener = TcpListener::bind(ADDRESS).await.unwrap();
     eprintln!("Listening on {ADDRESS}");
 
-    let mut session_id = 0;
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-
-        let backend = backend.clone();
+        let server = server.clone();
         tokio::spawn(async move {
-            let handler = UfdpHandler::new(stream, backend, session_id);
-            instrument!(
-                handler.serve().await.unwrap(),
-                "sid={session_id},tag=session"
-            );
+            instrument!(server.serve(stream).await.unwrap(), "tag=session");
         });
-        session_id += 1;
     }
 }
