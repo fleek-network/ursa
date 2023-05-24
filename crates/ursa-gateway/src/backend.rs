@@ -1,4 +1,4 @@
-use crate::util::Client;
+use crate::types::Client;
 use anyhow::{Error, Result};
 use axum::response::{IntoResponse, Response};
 use hyper::{Body, Request, Uri};

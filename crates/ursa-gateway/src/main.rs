@@ -4,7 +4,7 @@ mod config;
 mod core;
 mod indexer;
 mod resolver;
-mod util;
+mod types;
 
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 

@@ -12,12 +12,15 @@ use tower::{discover::Change, Service};
 
 type Key = SocketAddr;
 
-pub enum IndexerCommand<S, Req> {
-    GetProviderList {
-        cid: String,
-        tx: tokio::sync::oneshot::Sender<Result<Cluster<S, Req>>>,
-    },
+// TODO: The plan is to send the indexer commands to fetch clusters
+// and commands to remove backends, from those clusters, that failed.
+// Could/should we delegate the management of a cluster
+// to another service that could also serve as a cache?
+pub enum Request<Cid = String> {
+    Get(Cid),
 }
+
+pub struct Response<S, Req>(pub Option<Cluster<S, Req>>);
 
 // TODO: This will be returned by the indexer worker.
 pub struct Cluster<S, Req> {
