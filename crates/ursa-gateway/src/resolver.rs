@@ -47,8 +47,6 @@ where
     <I as Service<IndexerRequest>>::Error: Into<BoxError>,
 {
     client: Client,
-    // TODO: We actually want to send a command instead of CID.
-    // This way we may let the indexer know about backend failures.
     // TODO: How will we implement retry?
     indexer: Worker<I, IndexerRequest>,
     config: Arc<Config>,
@@ -98,18 +96,21 @@ where
     }
 
     fn call(&mut self, cid: Cid) -> Self::Future {
-        let this = self.clone();
+        let config = self.config.clone();
         let indexer = self.indexer.clone();
         let mut indexer = std::mem::replace(&mut self.indexer, indexer);
         let fut = async move {
-            // Send request to indexer worker.
-            // TODO: Remove unwrap.
-            let f = indexer.call(IndexerRequest::Get(cid)).await.unwrap();
+            let cluster_svc = indexer
+                .call(IndexerRequest::Get(cid))
+                .await
+                .map_err(Error::msg)?
+                .0
+                .expect("Indexer to return a cluster");
             Ok(PeakEwmaDiscover::new(
-                f.0.unwrap(),
-                this.config.load_balancer_config.default_rtt,
-                this.config.load_balancer_config.decay,
-                this.config.load_balancer_config.completion,
+                cluster_svc,
+                config.load_balancer_config.default_rtt,
+                config.load_balancer_config.decay,
+                config.load_balancer_config.completion,
             ))
         };
         Box::pin(fut)
