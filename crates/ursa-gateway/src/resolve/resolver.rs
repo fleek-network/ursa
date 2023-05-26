@@ -1,21 +1,67 @@
 use crate::{
-    indexer::{Cluster, Request as IndexerRequest, Response},
+    resolve::{
+        cid::{Cid, Request as IndexerRequest, Response},
+        Key,
+    },
     types::{Client, Worker},
 };
 use anyhow::{Error, Result};
+use futures::Stream;
 use std::{
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 use tower::{
+    discover::Change,
     load::{CompleteOnResponse, PeakEwmaDiscover},
-    BoxError, Service,
+    {BoxError, Service},
 };
 
-pub type Cid = String;
+// TODO: This will be returned by the indexer worker.
+pub struct Cluster<S, Req> {
+    services: Vec<(Key, S)>,
+    _req: PhantomData<Req>,
+}
+
+impl<S, Req> Clone for Cluster<S, Req>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Cluster<S, Req> {
+        Self {
+            services: self.services.clone(),
+            _req: PhantomData,
+        }
+    }
+}
+
+impl<S, Req> Cluster<S, Req> {
+    pub fn new(services: Vec<(Key, S)>) -> Cluster<S, Req> {
+        Self {
+            services,
+            _req: Default::default(),
+        }
+    }
+}
+
+impl<S, Req> Stream for Cluster<S, Req>
+where
+    S: Service<Req> + Unpin,
+    Req: Unpin,
+{
+    type Item = Result<Change<Key, S>, Error>;
+
+    fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.get_mut().services.pop() {
+            Some((k, service)) => Poll::Ready(Some(Ok(Change::Insert(k, service)))),
+            None => Poll::Pending,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Config {
@@ -118,21 +164,23 @@ where
 }
 
 mod test {
-    use crate::indexer::{Cluster, Request as IndexerRequest, Response as IndexerResponse};
-    use crate::resolver::{Cid, Config, Resolver};
+    use crate::resolve::{
+        cid::{Cid, Request as IndexerRequest, Response as IndexerResponse},
+        resolver::{Cluster, Config, Resolver},
+    };
     use crate::types::Worker;
     use anyhow::{Error, Result};
     use hyper::body::HttpBody;
     use hyper::{Body, Request, Response};
     use std::collections::HashMap;
-    use std::net::SocketAddr;
+    use std::net::IpAddr;
     use std::str::FromStr;
     use std::sync::Arc;
     use std::task::{Context, Poll};
     use tower::Service;
 
     #[derive(Clone, Debug)]
-    struct MockBackend(SocketAddr);
+    struct MockBackend(IpAddr);
 
     impl Service<Request<Body>> for MockBackend {
         type Response = Response<Body>;
@@ -185,8 +233,8 @@ mod test {
         // Given: Some CIDs.
         let cid1 = "cid1".to_string();
         let cid2 = "cid2".to_string();
-        let svc1_address = SocketAddr::from_str("192.0.0.1:80").unwrap();
-        let svc2_address = SocketAddr::from_str("192.0.0.2:80").unwrap();
+        let svc1_address = IpAddr::from_str("192.0.0.1").unwrap();
+        let svc2_address = IpAddr::from_str("192.0.0.2").unwrap();
 
         // Given: Mock Indexer that dynamically returns sets of services given a cid.
         // Given: Some mock backends that will return their address.
