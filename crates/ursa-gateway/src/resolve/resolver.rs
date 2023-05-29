@@ -1,12 +1,11 @@
 use crate::{
-    resolve::{
-        cid::{Cid, Request as IndexerRequest, Response},
-        Key,
-    },
+    resolve::{cid::Cid, Key},
     types::{Client, Worker},
 };
 use anyhow::{Error, Result};
+use axum::http::Request;
 use futures::Stream;
+use hyper::Body;
 use std::{
     future::Future,
     marker::PhantomData,
@@ -16,6 +15,7 @@ use std::{
     time::Duration,
 };
 use tower::{
+    balance::p2c::MakeBalance,
     discover::Change,
     load::{CompleteOnResponse, PeakEwmaDiscover},
     {BoxError, Service},
@@ -85,52 +85,52 @@ impl Default for PeakEwmaConfig {
     }
 }
 
-/// Reads the cluster identifier (cid) from the request
-/// and returns a set of services (cluster) wrapped by a Balance.
-pub struct Resolver<I>
+/// Wrapper around a generic CID resolver.
+/// TODO: Maybe we could bound the response so that
+/// it's more clear the service that R provides.
+pub struct Resolve<R>
 where
-    I: Service<IndexerRequest>,
-    <I as Service<IndexerRequest>>::Error: Into<BoxError>,
+    R: Service<Cid>,
+    <R as Service<Cid>>::Error: Into<BoxError>,
 {
     client: Client,
-    // TODO: How will we implement retry?
-    indexer: Worker<I, IndexerRequest>,
+    cid_resolver: Worker<R, Cid>,
     config: Arc<Config>,
 }
 
-impl<I> Clone for Resolver<I>
+impl<R> Clone for Resolve<R>
 where
-    I: Service<IndexerRequest>,
-    <I as Service<IndexerRequest>>::Error: Into<BoxError>,
+    R: Service<Cid>,
+    <R as Service<Cid>>::Error: Into<BoxError>,
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             config: self.config.clone(),
-            indexer: self.indexer.clone(),
+            cid_resolver: self.cid_resolver.clone(),
         }
     }
 }
 
-impl<I> Resolver<I>
+impl<R> Resolve<R>
 where
-    I: Service<IndexerRequest>,
-    <I as Service<IndexerRequest>>::Error: Into<BoxError>,
+    R: Service<Cid>,
+    <R as Service<Cid>>::Error: Into<BoxError>,
 {
-    pub fn new(indexer: Worker<I, IndexerRequest>, config: Arc<Config>) -> Self {
+    pub fn new(indexer: Worker<R, Cid>, config: Arc<Config>) -> Self {
         Self {
             client: Client::new(),
             config,
-            indexer,
+            cid_resolver: indexer,
         }
     }
 }
 
-impl<I, S, Req> Service<Cid> for Resolver<I>
+impl<R, S, Req> Service<Cid> for Resolve<R>
 where
-    I: Service<IndexerRequest<Cid>, Response = Response<S, Req>> + Clone + Unpin + 'static,
+    R: Service<Cid, Response = Cluster<S, Req>> + Clone + Unpin + 'static,
     S: Service<Req> + Clone + Unpin + 'static,
-    <I as Service<IndexerRequest<Cid>>>::Error: Into<BoxError>,
+    <R as Service<Cid>>::Error: Into<BoxError>,
     Req: Unpin + 'static,
 {
     type Response = PeakEwmaDiscover<Cluster<S, Req>>;
@@ -138,20 +138,15 @@ where
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.indexer.poll_ready(cx).map_err(Error::msg)
+        self.cid_resolver.poll_ready(cx).map_err(Error::msg)
     }
 
     fn call(&mut self, cid: Cid) -> Self::Future {
         let config = self.config.clone();
-        let indexer = self.indexer.clone();
-        let mut indexer = std::mem::replace(&mut self.indexer, indexer);
+        let indexer = self.cid_resolver.clone();
+        let mut indexer = std::mem::replace(&mut self.cid_resolver, indexer);
         let fut = async move {
-            let cluster_svc = indexer
-                .call(IndexerRequest::Get(cid))
-                .await
-                .map_err(Error::msg)?
-                .0
-                .expect("Indexer to return a cluster");
+            let cluster_svc = indexer.call(cid).await.map_err(Error::msg)?;
             Ok(PeakEwmaDiscover::new(
                 cluster_svc,
                 config.load_balancer_config.default_rtt,
@@ -163,10 +158,31 @@ where
     }
 }
 
+// TODO: Make inner type private.
+pub struct Resolver<R>(pub MakeBalance<Resolve<R>, Request<Body>>)
+where
+    R: Service<Cid>,
+    <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
+    <R as Service<Cid>>::Future: Send;
+
+impl<R> Resolver<R>
+where
+    R: Service<Cid> + Send + 'static,
+    <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
+    <R as Service<Cid>>::Future: Send,
+{
+    fn new(resolver: R) -> Self {
+        Self(MakeBalance::new(Resolve::new(
+            Worker::new(resolver, 10),
+            Arc::new(Config::default()),
+        )))
+    }
+}
+
 mod test {
     use crate::resolve::{
-        cid::{Cid, Request as IndexerRequest, Response as IndexerResponse},
-        resolver::{Cluster, Config, Resolver},
+        cid::Cid,
+        resolver::{Cluster, Config, Resolve},
     };
     use crate::types::Worker;
     use anyhow::{Error, Result};
@@ -202,8 +218,8 @@ mod test {
     #[derive(Clone)]
     struct MockIndexer(HashMap<Cid, MockBackend>);
 
-    impl Service<IndexerRequest> for MockIndexer {
-        type Response = IndexerResponse<MockBackend, Request<Body>>;
+    impl Service<Cid> for MockIndexer {
+        type Response = Cluster<MockBackend, Request<Body>>;
         type Error = Error;
         type Future = std::pin::Pin<
             Box<dyn std::future::Future<Output = Result<Self::Response>> + Send + 'static>,
@@ -216,14 +232,9 @@ mod test {
             Poll::Ready(Ok(()))
         }
 
-        fn call(&mut self, req: IndexerRequest) -> Self::Future {
-            let IndexerRequest::Get(cid) = req;
+        fn call(&mut self, cid: Cid) -> Self::Future {
             let backend = self.0.get(&cid).unwrap().clone();
-            let fut = async move {
-                Ok(IndexerResponse(Some(Cluster::new(vec![(
-                    backend.0, backend,
-                )]))))
-            };
+            let fut = async move { Ok(Cluster::new(vec![(backend.0, backend)])) };
             return Box::pin(fut);
         }
     }
@@ -242,11 +253,11 @@ mod test {
         let mut services = HashMap::new();
         services.insert(cid1.clone(), MockBackend(svc1_address));
         services.insert(cid2.clone(), MockBackend(svc2_address));
-        let resolver = Resolver::new(
+        let resolver = Resolve::new(
             Worker::new(MockIndexer(services), 10),
             Arc::new(Config::default()),
         );
-        let mut svc: tower::balance::p2c::MakeBalance<Resolver<MockIndexer>, Request<Body>> =
+        let mut svc: tower::balance::p2c::MakeBalance<Resolve<MockIndexer>, Request<Body>> =
             tower::balance::p2c::MakeBalance::new(resolver);
 
         // When: We resolve a CID.

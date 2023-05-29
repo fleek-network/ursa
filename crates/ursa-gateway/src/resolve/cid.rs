@@ -23,51 +23,38 @@ use tracing::{error, warn};
 
 pub type Cid = String;
 
-pub struct Config {
-    indexer_url: String,
-}
-
-// TODO: The plan is to send the indexer commands to fetch clusters
-// and commands to remove backends, from those clusters, that failed.
-// Could/should we delegate the management of a cluster
-// to another service that could also serve as a cache?
-pub enum Request<Cid = String> {
-    Get(Cid),
-}
-
-pub struct Response<S, Req>(pub Option<Cluster<S, Req>>);
-
-pub struct Indexer {
+#[derive(Clone)]
+pub struct CIDResolver {
     inner: Arc<State>,
 }
 
 pub struct State {
-    config: Config,
+    indexer_url: String,
     client: Client,
 }
 
-impl Service<Request<Cid>> for Indexer {
-    type Response = Response<Backend, HttpRequest<Body>>;
+impl Service<Cid> for CIDResolver {
+    type Response = Cluster<Backend, HttpRequest<Body>>;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
 
+    #[inline]
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: Request<Cid>) -> Self::Future {
+    fn call(&mut self, cid: Cid) -> Self::Future {
         let state = self.inner.clone();
         let fut = async move {
-            let Request::Get(cid) = req;
             // Resolve.
-            let uri = format!("{}/{:?}", state.config.indexer_url, cid)
+            let uri = format!("{}/{:?}", state.indexer_url, cid)
                 .parse::<Uri>()
                 .map_err(Error::msg)?;
             let response = state.client.get(uri).await?;
             if response.status() != StatusCode::OK {
                 return Err(anyhow!(
                     "Bad response from the indexer {}",
-                    state.config.indexer_url
+                    state.indexer_url
                 ));
             }
             let body = response.into_body();
@@ -134,7 +121,7 @@ impl Service<Request<Cid>> for Indexer {
                     Some((host, Backend::new(uri, state.client.clone())))
                 })
                 .collect();
-            Ok(Response(Some(Cluster::new(services))))
+            Ok(Cluster::new(services))
         };
         Box::pin(fut)
     }
