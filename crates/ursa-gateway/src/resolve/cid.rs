@@ -23,6 +23,7 @@ use tracing::{error, warn};
 
 pub type Cid = String;
 
+/// Resolves CIDs to sets of backend services by making queries over the network to an indexer.
 #[derive(Clone)]
 pub struct CIDResolver {
     inner: Arc<State>,
@@ -36,7 +37,7 @@ pub struct State {
 impl Service<Cid> for CIDResolver {
     type Response = Cluster<Backend, HttpRequest<Body>>;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>;
 
     #[inline]
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {

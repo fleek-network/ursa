@@ -25,7 +25,7 @@ impl Backend {
 impl Service<Request<Body>> for Backend {
     type Response = Response;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send + Sync>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))

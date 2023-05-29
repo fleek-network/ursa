@@ -21,7 +21,7 @@ use tower::{
     {BoxError, Service},
 };
 
-// TODO: This will be returned by the indexer worker.
+/// [`tower::discover::Discover`] that returns sets of backend services. See [`tower::balance::p2c::MakeBalance`].
 pub struct Cluster<S, Req> {
     services: Vec<(Key, S)>,
     _req: PhantomData<Req>,
@@ -75,6 +75,7 @@ struct PeakEwmaConfig {
     completion: CompleteOnResponse,
 }
 
+// TODO: Make these configurable.
 impl Default for PeakEwmaConfig {
     fn default() -> Self {
         Self {
@@ -86,8 +87,8 @@ impl Default for PeakEwmaConfig {
 }
 
 /// Wrapper around a generic CID resolver.
-/// TODO: Maybe we could bound the response so that
-/// it's more clear the service that R provides.
+// TODO: Maybe we could bound the response so that
+// it's more clear the service that R provides.
 pub struct Resolve<R>
 where
     R: Service<Cid>,
@@ -159,6 +160,8 @@ where
 }
 
 // TODO: Make inner type private.
+/// Wrapper to abstract Balance type.
+#[derive(Clone)]
 pub struct Resolver<R>(pub MakeBalance<Resolve<R>, Request<Body>>)
 where
     R: Service<Cid>,
@@ -171,8 +174,9 @@ where
     <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
     <R as Service<Cid>>::Future: Send,
 {
-    fn new(resolver: R) -> Self {
+    pub fn _new(resolver: R) -> Self {
         Self(MakeBalance::new(Resolve::new(
+            // TODO: Make bound configurable.
             Worker::new(resolver, 10),
             Arc::new(Config::default()),
         )))
