@@ -66,7 +66,7 @@ pub fn load_config(path: &PathBuf) -> Result<GatewayConfig> {
 pub struct GatewayConfig {
     pub log_level: String,
     pub server: ServerConfig,
-    pub indexer: IndexerConfig,
+    pub indexer: ResolverConfig,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -86,7 +86,7 @@ pub struct ServerConfig {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct IndexerConfig {
+pub struct ResolverConfig {
     pub cid_url: String,
 }
 
@@ -112,7 +112,7 @@ impl Default for GatewayConfig {
                 cache_time_to_live: 5 * 60 * 1000, //  5 mins.
                 maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".into(),
             },
-            indexer: IndexerConfig {
+            indexer: ResolverConfig {
                 cid_url: "https://dev.cid.contact/cid".into(),
             },
         }

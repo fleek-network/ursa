@@ -131,23 +131,25 @@ impl<R, S, Req> Service<Cid> for Resolve<R>
 where
     R: Service<Cid, Response = Cluster<S, Req>> + Clone + Unpin + 'static,
     S: Service<Req> + Clone + Unpin + 'static,
+    <R as Service<Cid>>::Future: Send,
     <R as Service<Cid>>::Error: Into<BoxError>,
     Req: Unpin + 'static,
 {
     type Response = PeakEwmaDiscover<Cluster<S, Req>>;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.cid_resolver.poll_ready(cx).map_err(Error::msg)
     }
 
     fn call(&mut self, cid: Cid) -> Self::Future {
+        tracing::trace!("Resolving {cid:?}");
         let config = self.config.clone();
-        let indexer = self.cid_resolver.clone();
-        let mut indexer = std::mem::replace(&mut self.cid_resolver, indexer);
+        let resolver = self.cid_resolver.clone();
+        let mut resolver = std::mem::replace(&mut self.cid_resolver, resolver);
         let fut = async move {
-            let cluster_svc = indexer.call(cid).await.map_err(Error::msg)?;
+            let cluster_svc = resolver.call(cid).await.map_err(Error::msg)?;
             Ok(PeakEwmaDiscover::new(
                 cluster_svc,
                 config.load_balancer_config.default_rtt,
@@ -159,7 +161,7 @@ where
     }
 }
 
-// TODO: Make inner type private.
+// TODO: Make inner type private. Also do we need this wrapper? Let's try to simplify.
 /// Wrapper to abstract Balance type.
 #[derive(Clone)]
 pub struct Resolver<R>(pub MakeBalance<Resolve<R>, Request<Body>>)
@@ -174,15 +176,16 @@ where
     <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
     <R as Service<Cid>>::Future: Send,
 {
-    pub fn _new(resolver: R) -> Self {
+    pub fn new(resolver: R) -> Self {
         Self(MakeBalance::new(Resolve::new(
             // TODO: Make bound configurable.
-            Worker::new(resolver, 10),
+            Worker::new(resolver, 10000),
             Arc::new(Config::default()),
         )))
     }
 }
 
+#[test]
 mod test {
     use crate::resolve::{
         cid::Cid,

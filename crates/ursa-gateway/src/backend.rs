@@ -10,7 +10,7 @@ use std::{
 use tower::Service;
 
 // Service that will query the edge nodes for the content.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Backend {
     uri: Uri,
     client: Client,
@@ -33,6 +33,7 @@ impl Service<Request<Body>> for Backend {
 
     fn call(&mut self, _: Request<Body>) -> Self::Future {
         let this = self.clone();
+        tracing::info!("Sending request to {:?}", this.uri);
         Box::pin(async move {
             match this.client.get(this.uri).await {
                 Ok(response) => Ok(response.into_response()),

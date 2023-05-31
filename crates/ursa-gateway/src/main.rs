@@ -5,27 +5,22 @@ mod core;
 mod resolve;
 mod types;
 
-use std::{path::PathBuf, str::FromStr, sync::Arc};
-
+use crate::{core::Server, resolve::CIDResolver};
 use anyhow::{Context, Result};
+use axum::{
+    error_handling::HandleError,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Router,
+};
 use clap::Parser;
 use cli::{Cli, Commands};
 use config::{init_config, load_config};
-use tokio::{
-    select,
-    signal::{
-        ctrl_c,
-        unix::{signal, SignalKind},
-    },
-    spawn,
-    sync::{
-        mpsc::{self},
-        oneshot::{self, Sender},
-        RwLock,
-    },
-    task::JoinHandle,
-};
-use tracing::{info, info_span, Instrument, Level};
+use hyper::Client;
+use moka::sync::Cache;
+use std::{path::PathBuf, str::FromStr};
+use tokio::{sync::oneshot::Sender, task::JoinHandle};
+use tracing::Level;
 use ursa_telemetry::TelemetryConfig;
 
 #[tokio::main]
@@ -54,53 +49,36 @@ async fn main() -> Result<()> {
         .with_jaeger_tracer()
         .init()?;
 
+    async fn handle_anyhow_error(err: anyhow::Error) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", err),
+        )
+            .into_response()
+    }
+
     match command {
-        Commands::Daemon(opts) => {
-            let _s = info_span!("Daemon start").entered();
+        Commands::Daemon(_) => {
+            let client = Client::new();
+            let resolver = CIDResolver::new(gateway_config.indexer.cid_url, client);
+            let cache = Cache::new(10000);
 
-            // sync
-            gateway_config.merge_daemon_opts(opts);
-
-            let _server_config = Arc::new(RwLock::new(gateway_config));
-
-            let (shutdown_tx, _) = oneshot::channel();
-
-            let (server_worker, mut server_worker_signal_rx) = {
-                let (_, signal_rx) = mpsc::channel::<()>(1);
-                let worker = async move {
-                    info!("Server stopped");
-                };
-                (
-                    spawn(worker.instrument(info_span!("Server worker"))),
-                    signal_rx,
-                )
-            };
-
-            #[cfg(unix)]
-            let terminate = async {
-                signal(SignalKind::terminate())
-                    .expect("Failed to install signal handler")
-                    .recv()
-                    .await;
-            };
-
-            #[cfg(not(unix))]
-            let terminate = std::future::pending::<()>();
-
-            select! {
-                _ = ctrl_c() => graceful_shutdown(shutdown_tx, server_worker).await,
-                _ = terminate => graceful_shutdown(shutdown_tx, server_worker).await,
-                _ = server_worker_signal_rx.recv() => graceful_shutdown(shutdown_tx, server_worker).await,
-            }
-            info!("Gateway shut down successfully")
+            let app = Router::new().route_service(
+                "/",
+                HandleError::new(Server::new(resolver, cache), handle_anyhow_error),
+            );
+            axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
         }
     }
     TelemetryConfig::teardown();
     Ok(())
 }
 
-async fn graceful_shutdown(shutdown_tx: Sender<()>, worker: JoinHandle<()>) {
-    info!("Gateway shutting down...");
+async fn _graceful_shutdown(shutdown_tx: Sender<()>, worker: JoinHandle<()>) {
+    tracing::info!("Gateway shutting down...");
     shutdown_tx
         .send(())
         .expect("Send shutdown signal successfully");

@@ -19,9 +19,13 @@ use std::{
     task::{Context, Poll},
 };
 use tower::Service;
-use tracing::{error, warn};
 
 pub type Cid = String;
+
+pub struct State {
+    indexer_url: String,
+    client: Client,
+}
 
 /// Resolves CIDs to sets of backend services by making queries over the network to an indexer.
 #[derive(Clone)]
@@ -29,9 +33,15 @@ pub struct CIDResolver {
     inner: Arc<State>,
 }
 
-pub struct State {
-    indexer_url: String,
-    client: Client,
+impl CIDResolver {
+    pub fn new(indexer_url: String, client: Client) -> Self {
+        Self {
+            inner: Arc::new(State {
+                indexer_url,
+                client,
+            }),
+        }
+    }
 }
 
 impl Service<Cid> for CIDResolver {
@@ -47,17 +57,17 @@ impl Service<Cid> for CIDResolver {
     fn call(&mut self, cid: Cid) -> Self::Future {
         let state = self.inner.clone();
         let fut = async move {
-            // Resolve.
-            let uri = format!("{}/{:?}", state.indexer_url, cid)
+            let uri = format!("{}/{}", state.indexer_url, cid)
                 .parse::<Uri>()
                 .map_err(Error::msg)?;
+            tracing::trace!("Indexer uri {uri:?}");
             let response = state.client.get(uri).await?;
             if response.status() != StatusCode::OK {
-                return Err(anyhow!(
-                    "Bad response from the indexer {}",
-                    state.indexer_url
-                ));
+                let error_msg = format!("Bad response from the indexer {}", state.indexer_url);
+                tracing::error!(error_msg);
+                return Err(anyhow!(error_msg));
             }
+
             let body = response.into_body();
             let bytes = to_bytes(body).await.map_err(Error::msg)?;
             let indexer_response: IndexerResponse =
@@ -72,24 +82,25 @@ impl Service<Cid> for CIDResolver {
                     let metadata_bytes = match base64::decode(&provider.metadata) {
                         Ok(b) => b,
                         Err(e) => {
-                            error!("Failed to decode metadata {e:?}");
+                            tracing::error!("Failed to decode metadata {e:?}");
                             return false;
                         }
                     };
                     let metadata = match bincode::deserialize::<Metadata>(&metadata_bytes) {
                         Ok(b) => b,
                         Err(e) => {
-                            error!("Failed to deserialize metadata {e:?}");
+                            tracing::error!("Failed to deserialize metadata {e:?}");
                             return false;
                         }
                     };
                     if metadata.data == FLEEK_NETWORK_FILTER {
                         return true;
                     }
-                    warn!("Invalid data in metadata {:?}", metadata.data);
+                    tracing::warn!("Invalid data in metadata {:?}", metadata.data);
                     false
                 })
                 .collect();
+
             let services: Vec<(Key, Backend)> = result
                 .into_iter()
                 .flat_map(|provider_result| &provider_result.provider.addrs)
@@ -118,7 +129,9 @@ impl Service<Cid> for CIDResolver {
                     let host = host.unwrap();
                     let port = port.unwrap();
                     // TODO: Remove unwrap().
-                    let uri = format!("{protocol}://{host}:{port}").parse().unwrap();
+                    let uri = format!("{protocol}://{host}:{port}/ursa/v0/{cid}")
+                        .parse()
+                        .unwrap();
                     Some((host, Backend::new(uri, state.client.clone())))
                 })
                 .collect();
