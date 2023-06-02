@@ -19,24 +19,34 @@ use tower::{
     BoxError, Service,
 };
 
-type ResolutionFuture = MakeFuture<
-    Pin<Box<dyn Future<Output = Result<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>>> + Send>>,
-    Request<Body>,
+type Resolving = Pin<
+    Box<
+        MakeFuture<
+            Pin<
+                Box<
+                    dyn Future<Output = Result<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>>>
+                        + Send,
+                >,
+            >,
+            Request<Body>,
+        >,
+    >,
 >;
-type BackendServiceWorker = Worker<
+type BackendWorker = Worker<
     Balance<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>, Request<Body>>,
     Request<Body>,
 >;
+type Serving = Pin<Box<dyn Future<Output = std::result::Result<Response, BoxError>> + Send>>;
 
 /// Service that will run in Hyper/Axum.
 #[derive(Clone)]
 pub struct Server {
-    cache: Cache<Cid, BackendServiceWorker>,
+    cache: Cache<Cid, BackendWorker>,
     resolver: Resolver<CIDResolver>,
 }
 
 impl Server {
-    pub fn new(resolver: CIDResolver, cache: Cache<Cid, BackendServiceWorker>) -> Self {
+    pub fn new(resolver: CIDResolver, cache: Cache<Cid, BackendWorker>) -> Self {
         Self {
             cache,
             resolver: Resolver::new(resolver),
@@ -70,19 +80,15 @@ pub struct Handling {
     request: Option<Request<Body>>,
 }
 
-// TODO:
-// Let's save the futures in the state.
-// Can we avoid boxing and just use generics?
 enum State {
     Initial,
     Resolve {
         cid: Cid,
-        resolving: Pin<Box<ResolutionFuture>>,
+        resolving: Resolving,
     },
     Serve {
-        worker: BackendServiceWorker,
-        serving:
-            Option<Pin<Box<dyn Future<Output = std::result::Result<Response, BoxError>> + Send>>>,
+        worker: BackendWorker,
+        serving: Option<Serving>,
     },
 }
 

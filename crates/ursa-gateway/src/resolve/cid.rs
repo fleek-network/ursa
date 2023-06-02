@@ -3,7 +3,7 @@ use crate::{
     resolve::{
         indexer::model::{IndexerResponse, Metadata, ProviderResult},
         resolver::Cluster,
-        Key, FLEEK_NETWORK_FILTER,
+        Key,
     },
     types::Client,
 };
@@ -21,6 +21,8 @@ use std::{
 use tower::Service;
 
 pub type Cid = String;
+
+const FLEEK_NETWORK_FILTER: &[u8] = b"FleekNetwork";
 
 pub struct State {
     indexer_url: String,
