@@ -1,8 +1,8 @@
+use crate::resolve::ResolutionError;
 use crate::{
     resolve::{cid::Cid, Key},
     types::{Client, Worker},
 };
-use anyhow::{Error, Result};
 use axum::http::Request;
 use futures::Stream;
 use hyper::Body;
@@ -53,7 +53,7 @@ where
     S: Service<Req> + Unpin,
     Req: Unpin,
 {
-    type Item = Result<Change<Key, S>, Error>;
+    type Item = Result<Change<Key, S>, ResolutionError>;
 
     fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.get_mut().services.pop() {
@@ -136,11 +136,13 @@ where
     Req: Unpin + 'static,
 {
     type Response = PeakEwmaDiscover<Cluster<S, Req>>;
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>;
+    type Error = ResolutionError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.cid_resolver.poll_ready(cx).map_err(Error::msg)
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.cid_resolver
+            .poll_ready(cx)
+            .map_err(|e| ResolutionError::Internal(e.to_string()))
     }
 
     fn call(&mut self, cid: Cid) -> Self::Future {
@@ -149,7 +151,10 @@ where
         let resolver = self.cid_resolver.clone();
         let mut resolver = std::mem::replace(&mut self.cid_resolver, resolver);
         let fut = async move {
-            let cluster_svc = resolver.call(cid).await.map_err(Error::msg)?;
+            let cluster_svc = resolver
+                .call(cid)
+                .await
+                .map_err(|e| ResolutionError::Internal(e.to_string()))?;
             Ok(PeakEwmaDiscover::new(
                 cluster_svc,
                 config.load_balancer_config.default_rtt,

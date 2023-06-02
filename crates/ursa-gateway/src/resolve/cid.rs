@@ -3,11 +3,10 @@ use crate::{
     resolve::{
         indexer::model::{IndexerResponse, Metadata, ProviderResult},
         resolver::Cluster,
-        Key,
+        Key, ResolutionError,
     },
     types::Client,
 };
-use anyhow::{anyhow, Context as AnyhowContext, Error, Result};
 use hyper::{body::to_bytes, Body, Request as HttpRequest, StatusCode, Uri};
 use libp2p::multiaddr::Protocol;
 use serde_json::from_slice;
@@ -48,11 +47,11 @@ impl CIDResolver {
 
 impl Service<Cid> for CIDResolver {
     type Response = Cluster<Backend, HttpRequest<Body>>;
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>;
+    type Error = ResolutionError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     #[inline]
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<()>> {
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
@@ -61,23 +60,36 @@ impl Service<Cid> for CIDResolver {
         let fut = async move {
             let uri = format!("{}/{}", state.indexer_url, cid)
                 .parse::<Uri>()
-                .map_err(Error::msg)?;
-            tracing::trace!("Indexer uri {uri:?}");
-            let response = state.client.get(uri).await?;
+                .map_err(|e| ResolutionError::Internal(e.to_string()))?;
+            tracing::trace!("Requesting providers from indexer at {uri:?}");
+            let response = state
+                .client
+                .get(uri)
+                .await
+                .map_err(|e| ResolutionError::Internal(e.to_string()))?;
             if response.status() != StatusCode::OK {
-                let error_msg = format!("Bad response from the indexer {}", state.indexer_url);
-                tracing::error!(error_msg);
-                return Err(anyhow!(error_msg));
+                tracing::error!("Bad response from the indexer {:?}", response);
+                return Err(ResolutionError::InvalidResponseFromIndexer);
             }
 
             let body = response.into_body();
-            let bytes = to_bytes(body).await.map_err(Error::msg)?;
-            let indexer_response: IndexerResponse =
-                from_slice(&bytes).context("Error parsed indexer response from indexer")?;
+            let bytes = to_bytes(body).await.map_err(|e| {
+                tracing::error!("Failed to parse response from indexer");
+                ResolutionError::Internal(e.to_string())
+            })?;
+            let indexer_response: IndexerResponse = from_slice(&bytes).map_err(|e| {
+                tracing::error!("failed to deserialize indexer response: {e:?}");
+                ResolutionError::Internal(e.to_string())
+            })?;
+
             let result: Vec<&ProviderResult> = indexer_response
                 .multihash_results
                 .first()
-                .context("Indexer result did not contain a multi-hash result")?
+                .ok_or_else(|| {
+                    ResolutionError::Internal(
+                        "Indexer result did not contain a multi-hash result".to_string(),
+                    )
+                })?
                 .provider_results
                 .iter()
                 .filter(|provider| {
@@ -130,10 +142,13 @@ impl Service<Cid> for CIDResolver {
                     }
                     let host = host.unwrap();
                     let port = port.unwrap();
-                    // TODO: Remove unwrap().
+                    // TODO: Make path in endpoint configurable.
                     let uri = format!("{protocol}://{host}:{port}/ursa/v0/{cid}")
-                        .parse()
-                        .unwrap();
+                        .parse::<Uri>()
+                        .map_err(|e| {
+                            tracing::error!("{e:?}");
+                        })
+                        .ok()?;
                     Some((host, Backend::new(uri, state.client.clone())))
                 })
                 .collect();

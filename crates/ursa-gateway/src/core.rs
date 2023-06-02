@@ -1,18 +1,19 @@
 use crate::{
     backend::Backend,
-    resolve::{CIDResolver, Cid, Cluster, Resolver},
+    resolve::{CIDResolver, Cid, Cluster, ResolutionError, Resolver},
     types::Worker,
 };
-use anyhow::{Error, Result};
-use axum::response::Response;
-use hyper::{Body, Request};
+use axum::response::{IntoResponse, Response};
+use hyper::{Body, Request, StatusCode};
 use moka::sync::Cache;
+use std::convert::Infallible;
 use std::{
     future::Future,
     pin::Pin,
     task::ready,
     task::{Context, Poll},
 };
+use thiserror::Error;
 use tower::{
     balance::p2c::{Balance, MakeFuture},
     load::PeakEwmaDiscover,
@@ -24,8 +25,12 @@ type Resolving = Pin<
         MakeFuture<
             Pin<
                 Box<
-                    dyn Future<Output = Result<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>>>
-                        + Send,
+                    dyn Future<
+                            Output = Result<
+                                PeakEwmaDiscover<Cluster<Backend, Request<Body>>>,
+                                ResolutionError,
+                            >,
+                        > + Send,
                 >,
             >,
             Request<Body>,
@@ -36,7 +41,25 @@ type BackendWorker = Worker<
     Balance<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>, Request<Body>>,
     Request<Body>,
 >;
-type Serving = Pin<Box<dyn Future<Output = std::result::Result<Response, BoxError>> + Send>>;
+type Serving = Pin<Box<dyn Future<Output = Result<Response, BoxError>> + Send>>;
+
+/// Returns a response on an error.
+macro_rules! handle_err {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(e) => return Poll::Ready(Ok(handle_error(e))),
+        }
+    };
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("there was an internal error")]
+    Internal,
+    #[error(transparent)]
+    Resolution(#[from] ResolutionError),
+}
 
 /// Service that will run in Hyper/Axum.
 #[derive(Clone)]
@@ -56,7 +79,7 @@ impl Server {
 
 impl Service<Request<Body>> for Server {
     type Response = Response;
-    type Error = Error;
+    type Error = Infallible;
     type Future = Handling;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -93,7 +116,7 @@ enum State {
 }
 
 impl Future for Handling {
-    type Output = Result<Response>;
+    type Output = Result<Response, Infallible>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // TODO: Return better errors.
@@ -116,7 +139,8 @@ impl Future for Handling {
                     match this.server.cache.get(&cid) {
                         None => {
                             tracing::trace!("Backend cache miss");
-                            ready!(this.server.resolver.0.poll_ready(cx))?;
+                            handle_err!(ready!(this.server.resolver.0.poll_ready(cx))
+                                .map_err(Error::Resolution));
                             State::Resolve {
                                 cid: cid.clone(),
                                 resolving: Box::pin(this.server.resolver.0.call(cid)),
@@ -132,7 +156,8 @@ impl Future for Handling {
                     }
                 }
                 State::Resolve { cid, resolving } => {
-                    let svc = ready!(resolving.as_mut().poll(cx))?;
+                    let svc =
+                        handle_err!(ready!(resolving.as_mut().poll(cx)).map_err(Error::Resolution));
                     // TODO: Make bound configurable.
                     let svc = Worker::new(svc, 10000);
                     this.server.cache.insert(cid.clone(), svc.clone());
@@ -143,23 +168,48 @@ impl Future for Handling {
                 }
                 State::Serve { worker, serving } => {
                     if serving.is_none() {
-                        ready!(worker.poll_ready(cx)).map_err(Error::msg)?;
+                        handle_err!(ready!(worker.poll_ready(cx)).map_err(|e| {
+                            tracing::error!("backend worker failed: {e:?}");
+                            Error::Internal
+                        }));
                         tracing::trace!("Ready to handle the request");
-
                         let request = this.request.take().expect("There to be a request");
                         serving.replace(Box::pin(worker.call(request)));
                     }
-
                     tracing::trace!("Ready to handle the request");
-                    return serving
+                    let response = ready!(serving
                         .as_mut()
                         .expect("There to be a future")
                         .as_mut()
-                        .poll(cx)
-                        .map_err(Error::msg);
+                        .poll(cx));
+
+                    return match response {
+                        // Tower's Balance returns Boxed errors so we have no way to
+                        // propagate typed errors all the way here.
+                        Err(e) => {
+                            Poll::Ready(Ok(
+                                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                            ))
+                        }
+                        Ok(response) if !response.status().is_success() => {
+                            Poll::Ready(Ok(StatusCode::BAD_GATEWAY.into_response()))
+                        }
+                        Ok(response) => Poll::Ready(Ok(response)),
+                    };
                 }
             };
             this.state = next;
+        }
+    }
+}
+
+fn handle_error(error: Error) -> Response {
+    match error {
+        Error::Internal | Error::Resolution(ResolutionError::Internal(_)) => {
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+        Error::Resolution(ResolutionError::InvalidResponseFromIndexer) => {
+            StatusCode::BAD_GATEWAY.into_response()
         }
     }
 }

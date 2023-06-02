@@ -7,12 +7,7 @@ mod types;
 
 use crate::{core::Server, resolve::CIDResolver};
 use anyhow::{Context, Result};
-use axum::{
-    error_handling::HandleError,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Router,
-};
+use axum::Router;
 use clap::Parser;
 use cli::{Cli, Commands};
 use config::{init_config, load_config};
@@ -49,14 +44,6 @@ async fn main() -> Result<()> {
         .with_jaeger_tracer()
         .init()?;
 
-    async fn handle_anyhow_error(err: anyhow::Error) -> Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", err),
-        )
-            .into_response()
-    }
-
     match command {
         Commands::Daemon(_) => {
             let client = Client::new();
@@ -65,7 +52,8 @@ async fn main() -> Result<()> {
 
             let app = Router::new().route_service(
                 "/:cid",
-                HandleError::new(Server::new(resolver, cache), handle_anyhow_error),
+                // HandleError::new(Server::new(resolver, cache), handle_anyhow_error),
+                Server::new(resolver, cache),
             );
             axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
                 .serve(app.into_make_service())
@@ -77,7 +65,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn _graceful_shutdown(shutdown_tx: Sender<()>, worker: JoinHandle<()>) {
+pub async fn _graceful_shutdown(shutdown_tx: Sender<()>, worker: JoinHandle<()>) {
     tracing::info!("Gateway shutting down...");
     shutdown_tx
         .send(())
