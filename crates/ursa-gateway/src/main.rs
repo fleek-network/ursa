@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
             let cache = Cache::new(10000);
 
             let app = Router::new().route_service(
-                "/",
+                "/:cid",
                 HandleError::new(Server::new(resolver, cache), handle_anyhow_error),
             );
             axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
