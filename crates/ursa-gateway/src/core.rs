@@ -1,15 +1,16 @@
 use crate::{
     backend::Backend,
-    resolve::{CIDResolver, Cid, Cluster, ResolutionError, Resolver},
+    resolve::{CIDResolver, Cid, Cluster, Config, MakeBackend, ResolutionError, Resolve},
     types::Worker,
 };
 use axum::response::{IntoResponse, Response};
 use hyper::{Body, Request, StatusCode};
 use moka::sync::Cache;
-use std::convert::Infallible;
 use std::{
+    convert::Infallible,
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::ready,
     task::{Context, Poll},
 };
@@ -65,14 +66,18 @@ pub enum Error {
 #[derive(Clone)]
 pub struct Server {
     cache: Cache<Cid, BackendWorker>,
-    resolver: Resolver<CIDResolver>,
+    resolver: MakeBackend<CIDResolver>,
 }
 
 impl Server {
     pub fn new(resolver: CIDResolver, cache: Cache<Cid, BackendWorker>) -> Self {
         Self {
             cache,
-            resolver: Resolver::new(resolver),
+            resolver: MakeBackend::new(Resolve::new(
+                // TODO: Make bound configurable.
+                Worker::new(resolver, 10000),
+                Arc::new(Config::default()),
+            )),
         }
     }
 }
@@ -119,7 +124,6 @@ impl Future for Handling {
     type Output = Result<Response, Infallible>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // TODO: Return better errors.
         let mut this = &mut *self;
         loop {
             let next = match &mut this.state {
@@ -139,11 +143,11 @@ impl Future for Handling {
                     match this.server.cache.get(&cid) {
                         None => {
                             tracing::trace!("Backend cache miss");
-                            handle_err!(ready!(this.server.resolver.0.poll_ready(cx))
+                            handle_err!(ready!(this.server.resolver.poll_ready(cx))
                                 .map_err(Error::Resolution));
                             State::Resolve {
                                 cid: cid.clone(),
-                                resolving: Box::pin(this.server.resolver.0.call(cid)),
+                                resolving: Box::pin(this.server.resolver.call(cid)),
                             }
                         }
                         Some(svc) => {

@@ -50,11 +50,7 @@ async fn main() -> Result<()> {
             let resolver = CIDResolver::new(gateway_config.indexer.cid_url, client);
             let cache = Cache::new(10000);
 
-            let app = Router::new().route_service(
-                "/:cid",
-                // HandleError::new(Server::new(resolver, cache), handle_anyhow_error),
-                Server::new(resolver, cache),
-            );
+            let app = Router::new().route_service("/:cid", Server::new(resolver, cache));
             axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
                 .serve(app.into_make_service())
                 .await

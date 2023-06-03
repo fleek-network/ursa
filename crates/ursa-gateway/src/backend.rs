@@ -22,6 +22,8 @@ impl Backend {
     }
 }
 
+// TODO: What happens to the backends if they return an error?
+// Does balance take them out from the cluster?
 impl Service<Request<Body>> for Backend {
     type Response = Response;
     type Error = Error;

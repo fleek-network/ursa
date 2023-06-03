@@ -3,9 +3,7 @@ use crate::{
     resolve::{cid::Cid, Key},
     types::{Client, Worker},
 };
-use axum::http::Request;
 use futures::Stream;
-use hyper::Body;
 use std::{
     future::Future,
     marker::PhantomData,
@@ -15,7 +13,6 @@ use std::{
     time::Duration,
 };
 use tower::{
-    balance::p2c::MakeBalance,
     discover::Change,
     load::{CompleteOnResponse, PeakEwmaDiscover},
     {BoxError, Service},
@@ -127,6 +124,7 @@ where
     }
 }
 
+/// [`tower::discover::Discover`]
 impl<R, S, Req> Service<Cid> for Resolve<R>
 where
     R: Service<Cid, Response = Cluster<S, Req>> + Clone + Unpin + 'static,
@@ -166,31 +164,7 @@ where
     }
 }
 
-// TODO: Make inner type private. Also do we need this wrapper? Let's try to simplify.
-/// Wrapper to abstract Balance type.
-#[derive(Clone)]
-pub struct Resolver<R>(pub MakeBalance<Resolve<R>, Request<Body>>)
-where
-    R: Service<Cid>,
-    <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
-    <R as Service<Cid>>::Future: Send;
-
-impl<R> Resolver<R>
-where
-    R: Service<Cid> + Send + 'static,
-    <R as Service<Cid>>::Error: Into<BoxError> + Send + Sync,
-    <R as Service<Cid>>::Future: Send,
-{
-    pub fn new(resolver: R) -> Self {
-        Self(MakeBalance::new(Resolve::new(
-            // TODO: Make bound configurable.
-            Worker::new(resolver, 10000),
-            Arc::new(Config::default()),
-        )))
-    }
-}
-
-#[test]
+#[cfg(test)]
 mod test {
     use crate::resolve::{
         cid::Cid,
