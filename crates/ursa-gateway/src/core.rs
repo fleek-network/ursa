@@ -62,22 +62,29 @@ pub enum Error {
     Resolution(#[from] ResolutionError),
 }
 
-/// Service that will run in Hyper/Axum.
+/// Core [`tower::Service`] that will handle incoming requests.
 #[derive(Clone)]
 pub struct Server {
     cache: Cache<Cid, BackendWorker>,
     resolver: MakeBackend<CIDResolver>,
+    request_buffer_capacity: usize,
 }
 
 impl Server {
-    pub fn new(resolver: CIDResolver, cache: Cache<Cid, BackendWorker>) -> Self {
+    // TODO: Make a better design on how configuration can be passed to server, workers, etc.
+    pub fn new(
+        resolver: CIDResolver,
+        cache_max_capacity: u64,
+        request_buffer_capacity: usize,
+    ) -> Self {
+        let cache = Cache::new(cache_max_capacity);
         Self {
             cache,
             resolver: MakeBackend::new(Resolve::new(
-                // TODO: Make bound configurable.
-                Worker::new(resolver, 10000),
+                Worker::new(resolver, request_buffer_capacity),
                 Arc::new(Config::default()),
             )),
+            request_buffer_capacity,
         }
     }
 }
@@ -108,6 +115,7 @@ pub struct Handling {
     request: Option<Request<Body>>,
 }
 
+/// Implements state machine that will drive the request to completion.
 enum State {
     Initial,
     Resolve {
@@ -162,8 +170,7 @@ impl Future for Handling {
                 State::Resolve { cid, resolving } => {
                     let svc =
                         handle_err!(ready!(resolving.as_mut().poll(cx)).map_err(Error::Resolution));
-                    // TODO: Make bound configurable.
-                    let svc = Worker::new(svc, 10000);
+                    let svc = Worker::new(svc, this.server.request_buffer_capacity);
                     this.server.cache.insert(cid.clone(), svc.clone());
                     State::Serve {
                         worker: svc,

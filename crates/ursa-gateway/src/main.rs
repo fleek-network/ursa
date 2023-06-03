@@ -12,7 +12,6 @@ use clap::Parser;
 use cli::{Cli, Commands};
 use config::{init_config, load_config};
 use hyper::Client;
-use moka::sync::Cache;
 use std::{path::PathBuf, str::FromStr};
 use tokio::{sync::oneshot::Sender, task::JoinHandle};
 use tracing::Level;
@@ -48,9 +47,14 @@ async fn main() -> Result<()> {
         Commands::Daemon(_) => {
             let client = Client::new();
             let resolver = CIDResolver::new(gateway_config.indexer.cid_url, client);
-            let cache = Cache::new(10000);
-
-            let app = Router::new().route_service("/:cid", Server::new(resolver, cache));
+            let app = Router::new().route_service(
+                "/:cid",
+                Server::new(
+                    resolver,
+                    gateway_config.server.cache_max_capacity,
+                    gateway_config.server.request_buffer_capacity,
+                ),
+            );
             axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
                 .serve(app.into_make_service())
                 .await

@@ -9,7 +9,7 @@ use std::{
 };
 use tower::Service;
 
-// Service that will query the edge nodes for the content.
+/// Service that will query the edge nodes for the content.
 #[derive(Clone, Debug)]
 pub struct Backend {
     uri: Uri,

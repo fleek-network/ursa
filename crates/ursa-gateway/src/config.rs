@@ -83,6 +83,7 @@ pub struct ServerConfig {
     pub cache_time_to_idle: u64,
     pub cache_time_to_live: u64,
     pub maxminddb: PathBuf,
+    pub request_buffer_capacity: usize,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -111,6 +112,7 @@ impl Default for GatewayConfig {
                 cache_time_to_idle: 5 * 60 * 1000, //  5 mins.
                 cache_time_to_live: 5 * 60 * 1000, //  5 mins.
                 maxminddb: "/usr/local/etc/GeoIP/GeoLite2-City.mmdb".into(),
+                request_buffer_capacity: 100_000,
             },
             indexer: ResolverConfig {
                 cid_url: "https://dev.cid.contact/cid".into(),
