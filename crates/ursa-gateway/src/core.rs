@@ -1,5 +1,6 @@
 use crate::{
     backend::Backend,
+    middleware::headers::Cid as CidFromHeader,
     resolve::{CIDResolver, Cid, Cluster, Config, MakeBackend, ResolutionError, Resolve},
     types::Worker,
 };
@@ -135,18 +136,15 @@ impl Future for Handling {
         loop {
             let next = match &mut this.state {
                 State::Initial => {
-                    // TODO: We need a better way to get the cid from a request.
-                    // Maybe we can introduce a layer that parses this from path
-                    // or from Host header.
-                    // Axum extensions does not currently return this for us
-                    // https://github.com/tokio-rs/axum/issues/2029.
-                    // At the moment, this computation keep calculating cid
-                    // everytime poll_ready returns pending.
-                    let cid = this
+                    let cid = match this
                         .request
                         .as_ref()
-                        .map(|request| request.uri().path().trim_start_matches('/').to_string())
-                        .expect("There to be a request");
+                        .map(|request| request.extensions().get::<CidFromHeader>())
+                        .flatten()
+                    {
+                        None => return Poll::Ready(Ok(bad_request())),
+                        Some(cid) => cid.clone().to_string(),
+                    };
                     match this.server.cache.get(&cid) {
                         None => {
                             tracing::trace!("Backend cache miss");
@@ -229,6 +227,13 @@ fn internal_server_error() -> Response<Body> {
 fn bad_gateway() -> Response<Body> {
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn bad_request() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
         .body(Body::empty())
         .unwrap()
 }

@@ -3,10 +3,11 @@ use hyper::{Request, Response, StatusCode};
 use std::str::FromStr;
 use tower_http::validate_request::ValidateRequest;
 
-struct Cid(String);
+#[derive(Clone)]
+pub struct Cid(String);
 
 impl Cid {
-    pub fn _to_string(self) -> String {
+    pub fn to_string(self) -> String {
         self.0
     }
 }
