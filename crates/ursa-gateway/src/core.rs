@@ -3,8 +3,7 @@ use crate::{
     resolve::{CIDResolver, Cid, Cluster, Config, MakeBackend, ResolutionError, Resolve},
     types::Worker,
 };
-use axum::response::{IntoResponse, Response};
-use hyper::{Body, Request, StatusCode};
+use hyper::{Body, Request, Response, StatusCode};
 use moka::sync::Cache;
 use std::{
     convert::Infallible,
@@ -42,7 +41,7 @@ type BackendWorker = Worker<
     Balance<PeakEwmaDiscover<Cluster<Backend, Request<Body>>>, Request<Body>>,
     Request<Body>,
 >;
-type Serving = Pin<Box<dyn Future<Output = Result<Response, BoxError>> + Send>>;
+type Serving = Pin<Box<dyn Future<Output = Result<Response<Body>, BoxError>> + Send>>;
 
 /// Returns a response on an error.
 macro_rules! handle_err {
@@ -90,7 +89,7 @@ impl Server {
 }
 
 impl Service<Request<Body>> for Server {
-    type Response = Response;
+    type Response = Response<Body>;
     type Error = Infallible;
     type Future = Handling;
 
@@ -129,7 +128,7 @@ enum State {
 }
 
 impl Future for Handling {
-    type Output = Result<Response, Infallible>;
+    type Output = Result<Response<Body>, Infallible>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = &mut *self;
@@ -195,15 +194,12 @@ impl Future for Handling {
                         .poll(cx));
 
                     return match response {
+                        // TODO: Improve how we return responses.
                         // Tower's Balance returns Boxed errors so we have no way to
                         // propagate typed errors all the way here.
-                        Err(e) => {
-                            Poll::Ready(Ok(
-                                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
-                            ))
-                        }
+                        Err(_) => Poll::Ready(Ok(internal_server_error())),
                         Ok(response) if !response.status().is_success() => {
-                            Poll::Ready(Ok(StatusCode::BAD_GATEWAY.into_response()))
+                            Poll::Ready(Ok(bad_gateway()))
                         }
                         Ok(response) => Poll::Ready(Ok(response)),
                     };
@@ -214,13 +210,25 @@ impl Future for Handling {
     }
 }
 
-fn handle_error(error: Error) -> Response {
+fn handle_error(error: Error) -> Response<Body> {
     match error {
         Error::Internal | Error::Resolution(ResolutionError::Internal(_)) => {
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            internal_server_error()
         }
-        Error::Resolution(ResolutionError::InvalidResponseFromIndexer) => {
-            StatusCode::BAD_GATEWAY.into_response()
-        }
+        Error::Resolution(ResolutionError::InvalidResponseFromIndexer) => bad_gateway(),
     }
+}
+
+fn internal_server_error() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn bad_gateway() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .body(Body::empty())
+        .unwrap()
 }

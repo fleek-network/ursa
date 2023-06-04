@@ -1,7 +1,6 @@
 use crate::types::Client;
 use anyhow::{Error, Result};
-use axum::response::{IntoResponse, Response};
-use hyper::{Body, Request, Uri};
+use hyper::{Body, Request, Response, Uri};
 use std::{
     future::Future,
     pin::Pin,
@@ -25,7 +24,7 @@ impl Backend {
 // TODO: What happens to the backends if they return an error?
 // Does balance take them out from the cluster?
 impl Service<Request<Body>> for Backend {
-    type Response = Response;
+    type Response = Response<Body>;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send + Sync>>;
 
@@ -38,7 +37,7 @@ impl Service<Request<Body>> for Backend {
         tracing::info!("Sending request to {:?}", this.uri);
         Box::pin(async move {
             match this.client.get(this.uri).await {
-                Ok(response) => Ok(response.into_response()),
+                Ok(response) => Ok(response),
                 Err(e) => Err(e.into()),
             }
         })

@@ -2,9 +2,11 @@ mod backend;
 mod cli;
 mod config;
 mod core;
+mod middleware;
 mod resolve;
 mod types;
 
+use crate::middleware::headers::GetRequestCid;
 use crate::{core::Server, resolve::CIDResolver};
 use anyhow::{Context, Result};
 use axum::Router;
@@ -14,6 +16,8 @@ use config::{init_config, load_config};
 use hyper::Client;
 use std::{path::PathBuf, str::FromStr};
 use tokio::{sync::oneshot::Sender, task::JoinHandle};
+use tower::ServiceBuilder;
+use tower_http::validate_request::ValidateRequestHeaderLayer;
 use tracing::Level;
 use ursa_telemetry::TelemetryConfig;
 
@@ -49,11 +53,14 @@ async fn main() -> Result<()> {
             let resolver = CIDResolver::new(gateway_config.indexer.cid_url, client);
             let app = Router::new().route_service(
                 "/:cid",
-                Server::new(
-                    resolver,
-                    gateway_config.server.cache_max_capacity,
-                    gateway_config.server.request_buffer_capacity,
-                ),
+                ServiceBuilder::new()
+                    // Extract CID from Host header.
+                    .layer(ValidateRequestHeaderLayer::custom(GetRequestCid))
+                    .service(Server::new(
+                        resolver,
+                        gateway_config.server.cache_max_capacity,
+                        gateway_config.server.request_buffer_capacity,
+                    )),
             );
             axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
                 .serve(app.into_make_service())
