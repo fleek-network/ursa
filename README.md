@@ -1,3 +1,9 @@
+# Archived
+
+After months developing Fleek Network in this repository, we have realized the need to reboot the codebase, our engineers are actively working harder than ever on the upcoming new iteration of the protocol (it's gonna be cool 😎). We appreciate all of the love you have given to this repository with your stars. But since we have no activity here, we have decided to archive this repository, and let it live forever as a part of the history of Fleek Network.
+
+Expect a new source code and a more detailed breakdown of the changes and what motivated us to do so.
+
 # Ursa
 
 [![website](https://img.shields.io/badge/website-000?style=for-the-badge)](https://fleek.network)&nbsp;
